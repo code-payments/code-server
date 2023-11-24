@@ -1,0 +1,3084 @@
+package transaction_v2
+
+import (
+	"bytes"
+	"context"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/mr-tron/base58/base58"
+	"github.com/oschwald/maxminddb-golang"
+	"github.com/pkg/errors"
+
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
+	"github.com/code-payments/code-server/pkg/code/antispam"
+	"github.com/code-payments/code-server/pkg/code/balance"
+	"github.com/code-payments/code-server/pkg/code/common"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/event"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	event_util "github.com/code-payments/code-server/pkg/code/event"
+	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
+	"github.com/code-payments/code-server/pkg/code/lawenforcement"
+	"github.com/code-payments/code-server/pkg/code/thirdparty"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	push_lib "github.com/code-payments/code-server/pkg/push"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+)
+
+// todo: Make working with different timelock versions easier
+
+var accountTypesToOpen = []commonpb.AccountType{
+	commonpb.AccountType_PRIMARY,
+	commonpb.AccountType_TEMPORARY_INCOMING,
+	commonpb.AccountType_TEMPORARY_OUTGOING,
+	commonpb.AccountType_BUCKET_1_KIN,
+	commonpb.AccountType_BUCKET_10_KIN,
+	commonpb.AccountType_BUCKET_100_KIN,
+	commonpb.AccountType_BUCKET_1_000_KIN,
+	commonpb.AccountType_BUCKET_10_000_KIN,
+	commonpb.AccountType_BUCKET_100_000_KIN,
+	commonpb.AccountType_BUCKET_1_000_000_KIN,
+}
+
+var bucketSizeByAccountType = map[commonpb.AccountType]uint64{
+	commonpb.AccountType_BUCKET_1_KIN:         kin.ToQuarks(1),
+	commonpb.AccountType_BUCKET_10_KIN:        kin.ToQuarks(10),
+	commonpb.AccountType_BUCKET_100_KIN:       kin.ToQuarks(100),
+	commonpb.AccountType_BUCKET_1_000_KIN:     kin.ToQuarks(1_000),
+	commonpb.AccountType_BUCKET_10_000_KIN:    kin.ToQuarks(10_000),
+	commonpb.AccountType_BUCKET_100_000_KIN:   kin.ToQuarks(100_000),
+	commonpb.AccountType_BUCKET_1_000_000_KIN: kin.ToQuarks(1_000_000),
+}
+
+var allowedBucketQuarkAmounts map[uint64]struct{}
+
+func init() {
+	allowedBucketQuarkAmounts = make(map[uint64]struct{})
+	for _, bucketSize := range bucketSizeByAccountType {
+		for multiple := uint64(1); multiple < 10; multiple++ {
+			allowedBucketQuarkAmounts[multiple*bucketSize] = struct{}{}
+		}
+	}
+}
+
+type lockableAccounts struct {
+	DestinationOwner        *common.Account
+	RemoteSendGiftCardVault *common.Account
+}
+
+// CreateIntentHandler is an interface for handling new intent creations
+type CreateIntentHandler interface {
+	// PopulateMetadata adds intent metadata to the provided intent record
+	// using the client-provided protobuf variant. No other fields in the
+	// intent should be modified.
+	PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error
+
+	// IsNoop determines whether the intent is a no-op operation. SubmitIntent will
+	// simply return OK and stop any further intent processing.
+	//
+	// Note: This occurs before validation, so if anything appears out-of-order, then
+	// the recommendation is to return false and have the verification logic catch the
+	// error.
+	IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error)
+
+	// GetAdditionalAccountsToLock gets additional accounts to apply distributed
+	// locking on that are specific to an intent.
+	//
+	// Note: Assumes relevant information is contained in the intent record after
+	// calling PopulateMetadata.
+	GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error)
+
+	// AllowCreation determines whether the new intent creation should be allowed.
+	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error
+
+	// OnSaveToDB is a callback when the intent is being saved to the DB
+	// within the scope of a DB transaction. Additional supporting DB records
+	// (ie. not the intent record) relevant to the intent should be saved here.
+	OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error
+
+	// OnCommittedToDB is a callback when the intent has been committed to the
+	// DB. Any instant side-effects should called here, and can be done async
+	// in a new goroutine to not affect SubmitIntent latency.
+	//
+	// Note: Any errors generated here have no effect on rolling back the intent.
+	//       This is all best-effort up to this point. Use a worker for things
+	//       requiring retries!
+	OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error
+}
+
+// UpdateIntentHandler is an interface for handling updates to an existing intent
+type UpdateIntentHandler interface {
+	// AllowUpdate determines whether an intent update should be allowed.
+	AllowUpdate(ctx context.Context, existingIntent *intent.Record, metdata *transactionpb.Metadata, actions []*transactionpb.Action) error
+}
+
+type OpenAccountsIntentHandler struct {
+	conf                    *conf
+	data                    code_data.Provider
+	antispamGuard           *antispam.Guard
+	antispamSuccessCallback func() error
+	maxmind                 *maxminddb.Reader
+}
+
+func NewOpenAccountsIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard, maxmind *maxminddb.Reader) CreateIntentHandler {
+	return &OpenAccountsIntentHandler{
+		conf:          conf,
+		data:          data,
+		antispamGuard: antispamGuard,
+		maxmind:       maxmind,
+	}
+}
+
+func (h *OpenAccountsIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetOpenAccounts()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	intentRecord.IntentType = intent.OpenAccounts
+	intentRecord.OpenAccountsMetadata = &intent.OpenAccountsMetadata{}
+
+	return nil
+}
+
+func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = h.data.GetLatestIntentByInitiatorAndType(ctx, intent.OpenAccounts, initiatiorOwnerAccount.PublicKey().ToBase58())
+	if err == nil {
+		return true, nil
+	} else if err != intent.ErrIntentNotFound {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func (h *OpenAccountsIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	return &lockableAccounts{}, nil
+}
+
+func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := metadata.GetOpenAccounts()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 1: Intent ID validation
+	//
+
+	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Antispam checks against the phone number
+	//
+
+	if !h.conf.disableAntispamChecks.Get(ctx) {
+		allow, successCallback, err := h.antispamGuard.AllowOpenAccounts(ctx, initiatiorOwnerAccount, deviceToken)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTooManyAccountCreations
+		}
+		h.antispamSuccessCallback = successCallback
+	}
+
+	//
+	// Part 3: Validate the owner hasn't already created an OpenAccounts intent
+	//
+
+	_, err = h.data.GetLatestIntentByInitiatorAndType(ctx, intent.OpenAccounts, initiatiorOwnerAccount.PublicKey().ToBase58())
+	if err == nil {
+		return newStaleStateError("already submitted intent to open accounts")
+	} else if err != intent.ErrIntentNotFound {
+		return err
+	}
+
+	//
+	// Part 4: Validate the individual actions
+	//
+
+	err = h.validateActions(initiatiorOwnerAccount, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Local simulation
+	//
+
+	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 6: Validate fee payments
+	//
+
+	return validateFeePayment(ctx, h.data, intentRecord, simResult)
+}
+
+func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
+	// Validate action count. Primary account has 1 open action and every other
+	// account has 1 open and 1 close action.
+	expectedActionCount := 2*len(accountTypesToOpen) - 1
+	if len(actions) != expectedActionCount {
+		return newIntentValidationErrorf("expected %d total actions", expectedActionCount)
+	}
+
+	// Validate the first action is opening the primary account using the owner
+	// account as the authority.
+
+	openAction := actions[0]
+	if openAction.GetOpenAccount() == nil {
+		return newActionValidationError(openAction, "expected an open account action")
+	}
+
+	if openAction.GetOpenAccount().AccountType != commonpb.AccountType_PRIMARY {
+		return newActionValidationErrorf(openAction, "account type must be %s", commonpb.AccountType_PRIMARY)
+	}
+
+	if openAction.GetOpenAccount().Index != 0 {
+		return newActionValidationError(openAction, "index must be 0 for all newly opened accounts")
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatiorOwnerAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "owner must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+		return newActionValidationErrorf(openAction, "authority must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
+	}
+
+	tokenAccountToCollapseTo := openAction.GetOpenAccount().Token
+
+	// Validate all other actions are to open and close all other remaining account types
+	actions = actions[1:]
+	for i, expectedAccountType := range accountTypesToOpen[1:] {
+		openAction := actions[2*i]
+		closeDormantAction := actions[2*i+1]
+
+		// Validate the open action
+
+		if openAction.GetOpenAccount() == nil {
+			return newActionValidationError(openAction, "expected an open account action")
+		}
+
+		if openAction.GetOpenAccount().AccountType != expectedAccountType {
+			return newActionValidationErrorf(openAction, "account type must be %s", expectedAccountType)
+		}
+
+		if openAction.GetOpenAccount().Index != 0 {
+			return newActionValidationError(openAction, "index must be 0 for all newly opened accounts")
+		}
+
+		if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatiorOwnerAccount.PublicKey().ToBytes()) {
+			return newActionValidationErrorf(openAction, "owner must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+		}
+
+		if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+			return newActionValidationErrorf(openAction, "authority cannot be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+		}
+
+		expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
+		if err != nil {
+			return err
+		}
+
+		if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
+			return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
+		}
+
+		// Validate the close dormant action
+
+		if closeDormantAction.GetCloseDormantAccount() == nil {
+			return newActionValidationError(closeDormantAction, "expected a close dormant account action")
+		}
+
+		if closeDormantAction.GetCloseDormantAccount().AccountType != expectedAccountType {
+			return newActionValidationErrorf(closeDormantAction, "expected %s account type", expectedAccountType)
+		}
+
+		if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Authority.Value, openAction.GetOpenAccount().Authority.Value) {
+			return newActionValidationErrorf(closeDormantAction, "authority must be %s", base58.Encode(openAction.GetOpenAccount().Authority.Value))
+		}
+
+		if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Token.Value, openAction.GetOpenAccount().Token.Value) {
+			return newActionValidationErrorf(closeDormantAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
+		}
+
+		if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Destination.Value, tokenAccountToCollapseTo.Value) {
+			return newActionValidationErrorf(closeDormantAction, "destination must be %s", base58.Encode(tokenAccountToCollapseTo.Value))
+		}
+	}
+
+	return nil
+}
+
+func (h *OpenAccountsIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	eventRecord := &event.Record{
+		EventId:   intentRecord.IntentId,
+		EventType: event.AccountCreated,
+
+		SourceCodeAccount: intentRecord.InitiatorOwnerAccount,
+
+		SourceIdentity: *intentRecord.InitiatorPhoneNumber,
+
+		SpamConfidence: 0,
+
+		CreatedAt: time.Now(),
+	}
+	event_util.InjectClientDetails(ctx, h.maxmind, eventRecord, true)
+
+	return h.data.SaveEvent(ctx, eventRecord)
+}
+
+func (h *OpenAccountsIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	if h.antispamSuccessCallback != nil {
+		// todo: Something more robust, since this is part of the fire & forget
+		//       portion of SubmitIntent
+		return h.antispamSuccessCallback()
+	}
+
+	return nil
+}
+
+type SendPrivatePaymentIntentHandler struct {
+	conf          *conf
+	data          code_data.Provider
+	pusher        push_lib.Provider
+	antispamGuard *antispam.Guard
+	amlGuard      *lawenforcement.AntiMoneyLaunderingGuard
+	maxmind       *maxminddb.Reader
+}
+
+func NewSendPrivatePaymentIntentHandler(
+	conf *conf,
+	data code_data.Provider,
+	pusher push_lib.Provider,
+	antispamGuard *antispam.Guard,
+	amlGuard *lawenforcement.AntiMoneyLaunderingGuard,
+	maxmind *maxminddb.Reader,
+) CreateIntentHandler {
+	return &SendPrivatePaymentIntentHandler{
+		conf:          conf,
+		data:          data,
+		pusher:        pusher,
+		antispamGuard: antispamGuard,
+		amlGuard:      amlGuard,
+		maxmind:       maxmind,
+	}
+}
+
+func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetSendPrivatePayment()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	exchangeData := typedProtoMetadata.ExchangeData
+
+	// Fetch USD exchange data in a consistent way with the currency server
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	if err != nil {
+		return errors.Wrap(err, "error getting current usd exchange rate")
+	}
+
+	destination, err := common.NewAccountFromProto(typedProtoMetadata.Destination)
+	if err != nil {
+		return err
+	}
+
+	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
+	if err != nil && err != account.ErrAccountInfoNotFound {
+		return err
+	}
+
+	var isMicroPayment bool
+	_, err = h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
+	if err == nil {
+		isMicroPayment = true
+	} else if err != paymentrequest.ErrPaymentRequestNotFound {
+		return err
+	}
+
+	intentRecord.IntentType = intent.SendPrivatePayment
+	intentRecord.SendPrivatePaymentMetadata = &intent.SendPrivatePaymentMetadata{
+		DestinationTokenAccount: destination.PublicKey().ToBase58(),
+		Quantity:                exchangeData.Quarks,
+
+		ExchangeCurrency: currency_lib.Code(exchangeData.Currency),
+		ExchangeRate:     exchangeData.ExchangeRate,
+		NativeAmount:     typedProtoMetadata.ExchangeData.NativeAmount,
+		UsdMarketValue:   usdExchangeRecord.Rate * float64(kin.FromQuarks(exchangeData.Quarks)),
+		IsWithdrawal:     typedProtoMetadata.IsWithdrawal,
+		IsRemoteSend:     typedProtoMetadata.IsRemoteSend,
+		IsMicroPayment:   isMicroPayment,
+	}
+
+	if destinationAccountInfo != nil {
+		intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount = destinationAccountInfo.OwnerAccount
+	}
+
+	return nil
+}
+
+func (h *SendPrivatePaymentIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	return false, nil
+}
+
+func (h *SendPrivatePaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	var destinationOwnerAccount, giftCardVaultAccount *common.Account
+	var err error
+
+	if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
+		destinationOwnerAccount, err = common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if intentRecord.SendPrivatePaymentMetadata.IsRemoteSend {
+		giftCardVaultAccount, err = common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &lockableAccounts{
+		DestinationOwner:        destinationOwnerAccount,
+		RemoteSendGiftCardVault: giftCardVaultAccount,
+	}, nil
+}
+
+func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := untypedMetadata.GetSendPrivatePayment()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccounts := make([]*common.AccountRecords, 0)
+	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
+	for _, records := range initiatorAccountsByType {
+		initiatorAccounts = append(initiatorAccounts, records)
+		initiatorAccountsByVault[records.General.TokenAccount] = records
+	}
+
+	//
+	// Part 1: Antispam and anti-money laundering guard checks against the phone number
+	//
+
+	if !h.conf.disableAntispamChecks.Get(ctx) {
+		destination, err := common.NewAccountFromProto(typedMetadata.Destination)
+		if err != nil {
+			return err
+		}
+
+		allow, err := h.antispamGuard.AllowSendPayment(ctx, initiatiorOwnerAccount, false, destination)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTooManyPayments
+		}
+	}
+
+	if !h.conf.disableAmlChecks.Get(ctx) {
+		allow, err := h.amlGuard.AllowMoneyMovement(ctx, intentRecord)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTransactionLimitExceeded
+		}
+	}
+
+	//
+	// Part 2: Account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 3: Exchange data validation
+	//
+
+	if err := validateExchangeDataWithinIntent(ctx, h.data, intentRecord.IntentId, typedMetadata.ExchangeData); err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Local simulation
+	//
+
+	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Validate fee payments
+	//
+
+	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Validate the individual actions
+	//
+
+	return h.validateActions(
+		ctx,
+		initiatiorOwnerAccount,
+		initiatorAccountsByType,
+		initiatorAccountsByVault,
+		intentRecord,
+		typedMetadata,
+		actions,
+		simResult,
+	)
+}
+
+func (h *SendPrivatePaymentIntentHandler) validateActions(
+	ctx context.Context,
+	initiatorOwnerAccount *common.Account,
+	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByVault map[string]*common.AccountRecords,
+	intentRecord *intent.Record,
+	metadata *transactionpb.SendPrivatePaymentMetadata,
+	actions []*transactionpb.Action,
+	simResult *LocalSimulationResult,
+) error {
+	destination, err := common.NewAccountFromProto(metadata.Destination)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 1: Validate actions match intent metadata
+	//
+
+	//
+	// Part 1.1: Check destination and fee collection accounts are paid exact quark amount from latest temp outgoing account
+	//
+
+	// Minimal validation required here since validateFeePayment generically handles
+	// most metadata that isn't specific to an intent
+	var feePayment *TransferSimulation
+	feePayments := simResult.GetFeePayments()
+	expectedDestinationPayment := int64(metadata.ExchangeData.Quarks)
+	if len(feePayments) > 0 {
+		feePayment = &feePayments[0]
+		expectedDestinationPayment += feePayment.DeltaQuarks
+	}
+
+	destinationSimulation, ok := simResult.SimulationsByAccount[destination.PublicKey().ToBase58()]
+	if !ok {
+		return newIntentValidationErrorf("must send payment to destination account %s", destination.PublicKey().ToBase58())
+	} else if len(destinationSimulation.Transfers) != 1 {
+		return newIntentValidationError("destination account can only receive funds in one action")
+	} else if destinationSimulation.Transfers[0].IsPrivate || !destinationSimulation.Transfers[0].IsWithdraw {
+		return newActionValidationError(destinationSimulation.Transfers[0].Action, "payment sent to destination must be a public withdraw")
+	} else if destinationSimulation.GetDeltaQuarks() != expectedDestinationPayment {
+		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "must send %d quarks to destination account", expectedDestinationPayment)
+	}
+
+	tempOutgoing := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_OUTGOING].General.TokenAccount
+	tempOutgoingSimulation, ok := simResult.SimulationsByAccount[tempOutgoing]
+	if !ok || len(tempOutgoingSimulation.Transfers) == 0 {
+		return newIntentValidationErrorf("payment must be sent from temporary outgoing account %s", tempOutgoing)
+	}
+
+	lastTransferFromTempOutgoing := tempOutgoingSimulation.Transfers[len(tempOutgoingSimulation.Transfers)-1]
+	if lastTransferFromTempOutgoing.Action.Id != destinationSimulation.Transfers[0].Action.Id {
+		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "destination account must be paid by temporary outgoing account %s", tempOutgoing)
+	}
+
+	if feePayment != nil && base58.Encode(feePayment.Action.GetFeePayment().Source.Value) != tempOutgoing {
+		return newActionValidationErrorf(feePayment.Action, "fee payment must come from temporary outgoing account %s", tempOutgoing)
+	}
+
+	if tempOutgoingSimulation.GetDeltaQuarks() != 0 {
+		return newIntentValidationErrorf("must fund temporary outgoing account with %d quarks", metadata.ExchangeData.Quarks)
+	}
+
+	//
+	// Part 1.2: Check destination account based on withdrawal and remote send flags
+	//
+
+	// The account type isn't defined for these use cases
+	if metadata.IsWithdrawal && metadata.IsRemoteSend {
+		return newIntentValidationError("withdrawal and remote send flags cannot both be true set at the same time")
+	} else if metadata.IsRemoteSend && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		return newIntentValidationError("remote send cannot be used for micro payments")
+	}
+
+	// Note: Assumes account info only stores Code user accounts
+	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		// The remote send gift card cannot exist. It must be created as part of this intent.
+		if metadata.IsRemoteSend {
+			return newIntentValidationError("remote send must be to a brand new gift card account")
+		}
+
+		// Code->Code withdrawals must be sent to a primary account. We allow the
+		// same owner, since the user might be funding a public withdrawal.
+		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
+			return newIntentValidationError("destination account must be a primary account")
+		}
+
+		if !metadata.IsWithdrawal {
+			// Code->Code payments must be sent to a temporary incoming account
+			if destinationAccountInfo.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
+				return newIntentValidationError("destination account must be a temporary incoming account")
+			}
+
+			// That temporary incoming account must be the latest one
+			latestTempIncomingAccountInfo, err := h.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, destinationAccountInfo.OwnerAccount, commonpb.AccountType_TEMPORARY_INCOMING)
+			if err != nil {
+				return err
+			} else if latestTempIncomingAccountInfo.TokenAccount != destinationAccountInfo.TokenAccount {
+				// Important Note: Do not leak the account address and break privacy!
+				return newStaleStateError("destination is not the latest temporary incoming account")
+			}
+
+			// The temporary incoming account has limited usage
+			err = validateMinimalTempIncomingAccountUsage(ctx, h.data, destinationAccountInfo)
+			if err != nil {
+				return err
+			}
+
+			// And that payment cannot be done to the same owner
+			if destinationAccountInfo.OwnerAccount == initiatorOwnerAccount.PublicKey().ToBase58() {
+				return newIntentValidationError("payments within the same owner are not allowed")
+			}
+		}
+	case account.ErrAccountInfoNotFound:
+		// There are two cases:
+		//  1. An external token account that must be validated to exist.
+		//  2. A remote send gift card that will be created as part of this intent.
+		if metadata.IsWithdrawal {
+			if !h.conf.disableBlockchainChecks.Get(ctx) {
+				err = validateExternalKinTokenAccountWithinIntent(ctx, h.data, destination)
+				if err != nil {
+					return err
+				}
+			}
+		} else if metadata.IsRemoteSend {
+			// No validation needed here. Open validation is handled later.
+		} else {
+			// The client is trying a Code->Code payment since withdrawal and remote
+			// send flags are both false. The temporary incoming account doesn't exist.
+			return newIntentValidationError("destination account must be a temporary incoming account")
+		}
+	default:
+		return err
+	}
+
+	//
+	// Part 1.3: Validate destination account matches payment request, if it exists
+	//
+
+	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
+	if err == nil && paymentRequestRecord.DestinationTokenAccount != destination.PublicKey().ToBase58() {
+		return newIntentValidationErrorf("payment has a request to destination %s", paymentRequestRecord.DestinationTokenAccount)
+	} else if err != paymentrequest.ErrPaymentRequestNotFound {
+		return err
+	}
+
+	//
+	// Part 2: Validate actions that open/close accounts
+	//
+
+	openedAccounts := simResult.GetOpenedAccounts()
+	if metadata.IsRemoteSend {
+		// There are two opened accounts, one for the gift card and one for the temporary outgoing account
+		if len(openedAccounts) != 2 {
+			return newIntentValidationError("must open two accounts")
+		}
+
+		err = validateGiftCardAccountOpened(
+			initiatorOwnerAccount,
+			initiatorAccountsByType,
+			destination,
+			actions,
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		// There's one opened account, and it must be a new temporary outgoing account.
+		if len(openedAccounts) != 1 {
+			return newIntentValidationError("must open one account")
+		}
+	}
+
+	err = validateNextTemporaryAccountOpened(
+		commonpb.AccountType_TEMPORARY_OUTGOING,
+		initiatorOwnerAccount,
+		initiatorAccountsByType,
+		actions,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Ensure the client isn't trying to sneak in additional close dormant account actions
+	if metadata.IsRemoteSend {
+		err = validateCloseDormantAccountActionCount(actions, 2)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = validateCloseDormantAccountActionCount(actions, 1)
+		if err != nil {
+			return err
+		}
+	}
+
+	// There's one closed account, and it must be the latest temporary outgoing account.
+	closedAccounts := simResult.GetClosedAccounts()
+	if len(closedAccounts) != 1 {
+		return newIntentValidationError("must close one account")
+	} else if closedAccounts[0].TokenAccount.PublicKey().ToBase58() != tempOutgoing {
+		return newActionValidationError(closedAccounts[0].CloseAction, "must close latest temporary outgoing account")
+	}
+
+	//
+	// Part 3: Validate actions that move money
+	//
+
+	err = validateMoneyMovementActionCount(actions)
+	if err != nil {
+		return err
+	}
+
+	for _, simulation := range simResult.SimulationsByAccount {
+		if len(simulation.Transfers) == 0 {
+			continue
+		}
+
+		// Destination account transfers are already validated during intent
+		// metadata validation
+		if simulation.TokenAccount.PublicKey().ToBase58() == destination.PublicKey().ToBase58() {
+			continue
+		}
+
+		// By previous validation, we know the only opened account is the new temp
+		// outgoing account
+		if simulation.Opened {
+			return newActionValidationError(simulation.Transfers[0].Action, "new temporary outgoing account cannot send/receive kin")
+		}
+
+		// Every account going forward must be part of the initiator owner's latest
+		// account set.
+		accountRecords, ok := initiatorAccountsByVault[simulation.TokenAccount.PublicKey().ToBase58()]
+		if !ok {
+			usedAs := "source"
+			if simulation.Transfers[0].DeltaQuarks > 0 {
+				usedAs = "destination"
+			}
+			return newActionValidationErrorf(simulation.Transfers[0].Action, "%s is not a latest owned account", usedAs)
+		}
+
+		// Enforce how each account can send/receive Kin
+		switch accountRecords.General.AccountType {
+		case commonpb.AccountType_PRIMARY:
+			return newActionValidationError(simulation.Transfers[0].Action, "primary account cannot send/receive kin")
+		case commonpb.AccountType_TEMPORARY_INCOMING:
+			return newActionValidationError(simulation.Transfers[0].Action, "temporary incoming account cannot send/receive kin")
+		case commonpb.AccountType_TEMPORARY_OUTGOING:
+			if simulation.CountPublicTransfers() != 1 || simulation.CountWithdrawals() != 1 {
+				return newIntentValidationError("temporary outgoing account can only have one public withdraw")
+			}
+
+			if simulation.CountOutgoingTransfers() != 1 {
+				return newIntentValidationError("temporary outgoing account can only send kin once")
+			}
+		case commonpb.AccountType_BUCKET_1_KIN,
+			commonpb.AccountType_BUCKET_10_KIN,
+			commonpb.AccountType_BUCKET_100_KIN,
+			commonpb.AccountType_BUCKET_1_000_KIN,
+			commonpb.AccountType_BUCKET_10_000_KIN,
+			commonpb.AccountType_BUCKET_100_000_KIN,
+			commonpb.AccountType_BUCKET_1_000_000_KIN:
+
+			err = validateBucketAccountSimulation(accountRecords.General.AccountType, simulation)
+			if err != nil {
+				return err
+			}
+		default:
+			return errors.New("unhandled account type")
+		}
+	}
+
+	err = validateMoneyMovementActionUserAccounts(intent.SendPrivatePayment, initiatorAccountsByVault, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Validate there are no update actions
+	//
+
+	return validateNoUpgradeActions(actions)
+}
+
+func (h *SendPrivatePaymentIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	var eventRecord *event.Record
+	if !intentRecord.SendPrivatePaymentMetadata.IsRemoteSend && !intentRecord.SendPrivatePaymentMetadata.IsWithdrawal && !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		// todo: Collect additional destination info on private receive
+		eventRecord = &event.Record{
+			EventId:   intentRecord.IntentId,
+			EventType: event.InPersonGrab,
+
+			SourceCodeAccount:      intentRecord.InitiatorOwnerAccount,
+			DestinationCodeAccount: &intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount,
+
+			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
+
+			UsdValue: &intentRecord.SendPrivatePaymentMetadata.UsdMarketValue,
+
+			SpamConfidence: 0,
+
+			CreatedAt: time.Now(),
+		}
+	} else if intentRecord.SendPrivatePaymentMetadata.IsRemoteSend {
+		eventRecord = &event.Record{
+			EventId:   intentRecord.IntentId,
+			EventType: event.RemoteSend,
+
+			SourceCodeAccount: intentRecord.InitiatorOwnerAccount,
+
+			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
+
+			UsdValue: &intentRecord.SendPrivatePaymentMetadata.UsdMarketValue,
+
+			SpamConfidence: 0,
+
+			CreatedAt: time.Now(),
+		}
+	} else if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		eventRecord = &event.Record{
+			EventId:   intentRecord.IntentId,
+			EventType: event.MicroPayment,
+
+			SourceCodeAccount: intentRecord.InitiatorOwnerAccount,
+
+			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
+
+			UsdValue: &intentRecord.SendPrivatePaymentMetadata.UsdMarketValue,
+
+			SpamConfidence: 0,
+
+			CreatedAt: time.Now(),
+		}
+
+		if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
+			eventRecord.DestinationCodeAccount = &intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount
+		} else {
+			eventRecord.ExternalTokenAccount = &intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount
+		}
+	}
+
+	if eventRecord != nil {
+		event_util.InjectClientDetails(ctx, h.maxmind, eventRecord, true)
+
+		if eventRecord.DestinationCodeAccount != nil {
+			destinationVerificationRecord, err := h.data.GetLatestPhoneVerificationForAccount(ctx, *eventRecord.DestinationCodeAccount)
+			if err != nil {
+				return err
+			}
+			eventRecord.DestinationIdentity = &destinationVerificationRecord.PhoneNumber
+		}
+
+		err := h.data.SaveEvent(ctx, eventRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *SendPrivatePaymentIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		go bestEffortMicroPaymentPostProcessingJob(
+			h.data,
+			h.pusher,
+			intentRecord,
+		)
+	}
+
+	return nil
+}
+
+type ReceivePaymentsPrivatelyIntentHandler struct {
+	conf          *conf
+	data          code_data.Provider
+	antispamGuard *antispam.Guard
+	amlGuard      *lawenforcement.AntiMoneyLaunderingGuard
+}
+
+func NewReceivePaymentsPrivatelyIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard, amlGuard *lawenforcement.AntiMoneyLaunderingGuard) CreateIntentHandler {
+	return &ReceivePaymentsPrivatelyIntentHandler{
+		conf:          conf,
+		data:          data,
+		antispamGuard: antispamGuard,
+		amlGuard:      amlGuard,
+	}
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetReceivePaymentsPrivately()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	if err != nil {
+		return errors.Wrap(err, "error getting current usd exchange rate")
+	}
+
+	intentRecord.IntentType = intent.ReceivePaymentsPrivately
+	intentRecord.ReceivePaymentsPrivatelyMetadata = &intent.ReceivePaymentsPrivatelyMetadata{
+		Source:    base58.Encode(typedProtoMetadata.Source.Value),
+		Quantity:  typedProtoMetadata.Quarks,
+		IsDeposit: typedProtoMetadata.IsDeposit,
+
+		UsdMarketValue: usdExchangeRecord.Rate * float64(kin.FromQuarks(typedProtoMetadata.Quarks)),
+	}
+
+	return nil
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	return false, nil
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	return &lockableAccounts{}, nil
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := untypedMetadata.GetReceivePaymentsPrivately()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccounts := make([]*common.AccountRecords, 0)
+	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
+	for _, records := range initiatorAccountsByType {
+		initiatorAccounts = append(initiatorAccounts, records)
+		initiatorAccountsByVault[records.General.TokenAccount] = records
+	}
+
+	//
+	// Part 1: Intent ID validation
+	//
+
+	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Antispam and anti-money laundering guard checks against the phone number
+	//
+	if !h.conf.disableAntispamChecks.Get(ctx) {
+		allow, err := h.antispamGuard.AllowReceivePayments(ctx, initiatiorOwnerAccount, false)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTooManyPayments
+		}
+	}
+
+	if !h.conf.disableAmlChecks.Get(ctx) {
+		allow, err := h.amlGuard.AllowMoneyMovement(ctx, intentRecord)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTransactionLimitExceeded
+		}
+	}
+
+	//
+	// Part 3: Account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Local simulation
+	//
+
+	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Validate fee payments
+	//
+
+	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 6: Validate the individual actions
+	//
+
+	return h.validateActions(
+		ctx,
+		initiatiorOwnerAccount,
+		initiatorAccountsByType,
+		initiatorAccountsByVault,
+		typedMetadata,
+		actions,
+		simResult,
+	)
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
+	ctx context.Context,
+	initiatorOwnerAccount *common.Account,
+	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByVault map[string]*common.AccountRecords,
+	metadata *transactionpb.ReceivePaymentsPrivatelyMetadata,
+	actions []*transactionpb.Action,
+	simResult *LocalSimulationResult,
+) error {
+	source, err := common.NewAccountFromProto(metadata.Source)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 1: Validate actions match intent metadata
+	//
+
+	//
+	// Part 1.1: Check exact quark amount is received from the source account
+	//
+
+	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
+	if !ok || len(sourceSimulation.Transfers) == 0 {
+		return newIntentValidationError("must receive payments from source account")
+	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.Quarks) {
+		return newIntentValidationErrorf("must receive %d quarks from source account", metadata.Quarks)
+	}
+
+	//
+	// Part 1.2: Check source account type based on deposit flag
+	//
+
+	sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+	if !ok {
+		return newIntentValidationError("source is not a latest owned account")
+	} else if metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
+		return newIntentValidationError("must receive from primary account")
+	} else if !metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
+		return newIntentValidationError("must receive from latest temporary incoming account")
+	}
+
+	//
+	// Part 2: Validate actions that open/close accounts
+	//
+
+	openedAccounts := simResult.GetOpenedAccounts()
+	closedAccounts := simResult.GetClosedAccounts()
+	if metadata.IsDeposit {
+		if len(openedAccounts) > 0 {
+			return newActionValidationError(openedAccounts[0].OpenAction, "cannot open any account")
+		}
+
+		if len(closedAccounts) > 0 {
+			return newActionValidationError(closedAccounts[0].CloseAction, "cannot close any account")
+		}
+
+		err = validateCloseDormantAccountActionCount(actions, 0)
+		if err != nil {
+			return err
+		}
+	} else {
+
+		// There's one opened account, and it must be the new temporary incoming account.
+		if len(openedAccounts) != 1 {
+			return newIntentValidationError("must open one account")
+		}
+
+		err = validateNextTemporaryAccountOpened(
+			commonpb.AccountType_TEMPORARY_INCOMING,
+			initiatorOwnerAccount,
+			initiatorAccountsByType,
+			actions,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Ensure the client isn't trying to sneak in additional close dormant account actions
+		err = validateCloseDormantAccountActionCount(actions, 1)
+		if err != nil {
+			return err
+		}
+
+		// There's one closed account, and it must be the latest temporary incoming account.
+		closedAccounts := simResult.GetClosedAccounts()
+		if len(closedAccounts) != 1 {
+			return newIntentValidationError("must close one account")
+		} else if closedAccounts[0].TokenAccount.PublicKey().ToBase58() != source.PublicKey().ToBase58() {
+			return newActionValidationError(closedAccounts[0].CloseAction, "must close latest temporary incoming account")
+		}
+	}
+
+	//
+	// Part 3: Validate actions that move money
+	//
+
+	err = validateMoneyMovementActionCount(actions)
+	if err != nil {
+		return err
+	}
+
+	for _, simulation := range simResult.SimulationsByAccount {
+		if len(simulation.Transfers) == 0 {
+			continue
+		}
+
+		// By previous validation, we know the only opened account is the new temp
+		// incoming account
+		if simulation.Opened {
+			return newActionValidationError(simulation.Transfers[0].Action, "new temporary incoming account cannot send/receive kin")
+		}
+
+		// Every account going forward must be part of the initiator owner's latest
+		// account set.
+		accountRecords, ok := initiatorAccountsByVault[simulation.TokenAccount.PublicKey().ToBase58()]
+		if !ok {
+			usedAs := "source"
+			if simulation.Transfers[0].DeltaQuarks > 0 {
+				usedAs = "destination"
+			}
+			return newActionValidationErrorf(simulation.Transfers[0].Action, "%s is not a latest owned account", usedAs)
+		}
+
+		// Enforce how each account can send/receive Kin
+		switch accountRecords.General.AccountType {
+		case commonpb.AccountType_TEMPORARY_OUTGOING:
+			return newActionValidationError(simulation.Transfers[0].Action, "temporary outgoing account cannot send/receive kin")
+		case commonpb.AccountType_PRIMARY:
+			if !metadata.IsDeposit {
+				return newActionValidationError(simulation.Transfers[0].Action, "primary account cannot send/receive kin")
+			}
+
+			if metadata.IsDeposit {
+				incomingTransfers := simulation.GetIncomingTransfers()
+				if len(incomingTransfers) > 0 {
+					return newActionValidationError(incomingTransfers[0].Action, "primary account cannot receive kin")
+				}
+
+				publicTransfers := simulation.GetPublicTransfers()
+				if len(publicTransfers) > 0 {
+					return newActionValidationError(publicTransfers[0].Action, "receipt of kin must be private")
+				}
+
+				withdraws := simulation.GetWithdraws()
+				if len(withdraws) > 0 {
+					return newActionValidationError(withdraws[0].Action, "receipt of kin cannot be done with a withdraw")
+				}
+			}
+		case commonpb.AccountType_TEMPORARY_INCOMING:
+			if metadata.IsDeposit {
+				return newActionValidationError(simulation.Transfers[0].Action, "temporary incoming account cannot send/receive kin")
+			}
+
+			if !metadata.IsDeposit {
+				incomingTransfers := simulation.GetIncomingTransfers()
+				if len(incomingTransfers) > 0 {
+					return newActionValidationError(incomingTransfers[0].Action, "temporary incoming account cannot receive kin")
+				}
+
+				publicTransfers := simulation.GetPublicTransfers()
+				if len(publicTransfers) > 0 {
+					return newActionValidationError(publicTransfers[0].Action, "receipt of kin must be private")
+				}
+
+				withdraws := simulation.GetWithdraws()
+				if len(withdraws) > 0 {
+					return newActionValidationError(withdraws[0].Action, "receipt of kin cannot be done with a withdraw")
+				}
+			}
+		case commonpb.AccountType_BUCKET_1_KIN,
+			commonpb.AccountType_BUCKET_10_KIN,
+			commonpb.AccountType_BUCKET_100_KIN,
+			commonpb.AccountType_BUCKET_1_000_KIN,
+			commonpb.AccountType_BUCKET_10_000_KIN,
+			commonpb.AccountType_BUCKET_100_000_KIN,
+			commonpb.AccountType_BUCKET_1_000_000_KIN:
+
+			err = validateBucketAccountSimulation(accountRecords.General.AccountType, simulation)
+			if err != nil {
+				return err
+			}
+		default:
+			return errors.New("unhandled account type")
+		}
+	}
+
+	err = validateMoneyMovementActionUserAccounts(intent.ReceivePaymentsPrivately, initiatorAccountsByVault, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Validate there are no upgrade actions
+	//
+
+	return validateNoUpgradeActions(actions)
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+func (h *ReceivePaymentsPrivatelyIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+type UpgradePrivacyIntentHandler struct {
+	conf                 *conf
+	data                 code_data.Provider
+	cachedUpgradeTargets map[uint32]*privacyUpgradeCandidate
+}
+
+func NewUpgradePrivacyIntentHandler(conf *conf, data code_data.Provider) UpdateIntentHandler {
+	return &UpgradePrivacyIntentHandler{
+		conf: conf,
+		data: data,
+	}
+}
+
+func (h *UpgradePrivacyIntentHandler) AllowUpdate(ctx context.Context, existingIntent *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
+	if untypedMetadata.GetUpgradePrivacy() == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	cachedUpgradeTargets := make(map[uint32]*privacyUpgradeCandidate)
+	for _, untypedAction := range actions {
+		var actionId uint32
+		switch typedAction := untypedAction.Type.(type) {
+		case *transactionpb.Action_PermanentPrivacyUpgrade:
+			actionId = typedAction.PermanentPrivacyUpgrade.ActionId
+			_, ok := cachedUpgradeTargets[actionId]
+			if ok {
+				return newActionValidationError(untypedAction, "duplicate upgrade action detected")
+			}
+		default:
+			return newActionValidationError(untypedAction, "all actions must be to upgrade private transactions")
+		}
+
+		cachedUpgradeTarget, err := selectCandidateForPrivacyUpgrade(ctx, h.data, existingIntent.IntentId, actionId)
+		switch err {
+		case nil:
+		case ErrPrivacyAlreadyUpgraded:
+			return newActionWithStaleStateError(untypedAction, err.Error())
+		case ErrInvalidActionToUpgrade, ErrPrivacyUpgradeMissed, ErrWaitForNextBlock:
+			return newActionValidationError(untypedAction, err.Error())
+		default:
+			return err
+		}
+		cachedUpgradeTargets[actionId] = cachedUpgradeTarget
+	}
+	h.cachedUpgradeTargets = cachedUpgradeTargets
+
+	return nil
+}
+
+func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transactionpb.PermanentPrivacyUpgradeAction) (*privacyUpgradeCandidate, bool) {
+	upgradeTo, ok := h.cachedUpgradeTargets[protoAction.ActionId]
+	return upgradeTo, ok
+}
+
+type MigrateToPrivacy2022IntentHandler struct {
+	conf *conf
+	data code_data.Provider
+}
+
+func NewMigrateToPrivacy2022IntentHandler(conf *conf, data code_data.Provider) CreateIntentHandler {
+	return &MigrateToPrivacy2022IntentHandler{
+		conf: conf,
+		data: data,
+	}
+}
+
+func (h *MigrateToPrivacy2022IntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetMigrateToPrivacy_2022()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	intentRecord.IntentType = intent.MigrateToPrivacy2022
+	intentRecord.MigrateToPrivacy2022Metadata = &intent.MigrateToPrivacy2022Metadata{
+		Quantity: typedProtoMetadata.Quarks,
+	}
+
+	return nil
+}
+
+func (h *MigrateToPrivacy2022IntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	return false, nil
+}
+
+func (h *MigrateToPrivacy2022IntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	return &lockableAccounts{}, nil
+}
+
+// Note: Most validation helper functions (eg. LocalSimulation) assume DataVersion1
+// timelock accounts and aren't used. That should be fine given there's only one action and
+// validation is trivial. Migration of old timelock accounts is completely scoped to this
+// intent type.
+func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := metadata.GetMigrateToPrivacy_2022()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 1: Intent ID validation
+	//
+
+	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Validate there's a legacy timelock account to migrate.
+	//
+
+	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	if err != nil {
+		return err
+	}
+
+	legacyTimelockRecord, err := legacyTimelockAccounts.GetDBRecord(ctx, h.data)
+	if err == timelock.ErrTimelockNotFound {
+		return newStaleStateError("no account to migrate")
+	} else if err != nil {
+		return err
+	}
+
+	//
+	// Part 3: Validate a privacy migration intent hasn't already been submitted
+	//
+
+	_, err = h.data.GetLatestIntentByInitiatorAndType(ctx, intent.MigrateToPrivacy2022, initiatiorOwnerAccount.PublicKey().ToBase58())
+	if err == nil {
+		return newStaleStateError("already submitted intent to migrate to privacy")
+	} else if err != intent.ErrIntentNotFound {
+		return err
+	}
+
+	//
+	// Part 4: Validate an OpenAccounts intent has been submitted. In particular,
+	//         we need the new primary account to exist.
+	//
+
+	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	if err != nil {
+		return err
+	} else if len(initiatorAccountsByType) == 0 {
+		return newStaleStateError("must submit open accounts intent")
+	}
+
+	//
+	// Part 5: Validate all involved accounts are managed by code
+	//
+
+	involvedAccounts := []*common.AccountRecords{
+		initiatorAccountsByType[commonpb.AccountType_PRIMARY],
+		{
+			Timelock: legacyTimelockRecord,
+			General:  nil, // validateAllAccountsManagedByCode requires common.AccountRecords, but this isn't used and doesn't exist in the DB
+		},
+	}
+	err = validateAllUserAccountsManagedByCode(ctx, involvedAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 6: Validate full balance is being migrated
+	//
+
+	balance, err := balance.DefaultCalculation(ctx, h.data, legacyTimelockAccounts.Vault)
+	if err != nil {
+		return err
+	} else if balance != typedMetadata.Quarks {
+		return newIntentValidationErrorf("must migrate %d quarks", balance)
+	}
+
+	//
+	// Part 7: Validate the individual actions
+	//
+
+	return h.validateActions(ctx, initiatiorOwnerAccount, typedMetadata, actions)
+}
+
+func (h *MigrateToPrivacy2022IntentHandler) validateActions(
+	ctx context.Context,
+	initiatiorOwnerAccount *common.Account,
+	metadata *transactionpb.MigrateToPrivacy2022Metadata,
+	actions []*transactionpb.Action,
+) error {
+	if len(actions) != 1 {
+		return newIntentValidationError("expected 1 action")
+	}
+
+	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 1: Validate actions match intent
+	//
+
+	var authorityAccount, sourceAccount, destinationAccount *commonpb.SolanaAccountId
+	switch typed := actions[0].Type.(type) {
+	case *transactionpb.Action_NoPrivacyWithdraw:
+		if metadata.Quarks == 0 {
+			return newActionValidationError(actions[0], "expected a close empty account action")
+		}
+
+		if typed.NoPrivacyWithdraw.Amount != metadata.Quarks {
+			return newActionValidationError(actions[0], "quark amount must match intent metadata")
+		}
+
+		authorityAccount = typed.NoPrivacyWithdraw.Authority
+		sourceAccount = typed.NoPrivacyWithdraw.Source
+		destinationAccount = typed.NoPrivacyWithdraw.Destination
+	case *transactionpb.Action_CloseEmptyAccount:
+		if typed.CloseEmptyAccount.AccountType != commonpb.AccountType_LEGACY_PRIMARY_2022 {
+			return newActionValidationErrorf(actions[0], "account type must be %s", commonpb.AccountType_LEGACY_PRIMARY_2022)
+		}
+
+		if metadata.Quarks > 0 {
+			return newActionValidationError(actions[0], "expected a no privacy withdraw action")
+		}
+
+		authorityAccount = typed.CloseEmptyAccount.Authority
+		sourceAccount = typed.CloseEmptyAccount.Token
+	default:
+		if metadata.Quarks > 0 {
+			return newActionValidationError(actions[0], "expected a no privacy withdraw action")
+		} else {
+			return newActionValidationError(actions[0], "expected a close empty account action")
+		}
+	}
+
+	//
+	// Part 2: Validate all accounts involved in the action
+	//
+
+	if !bytes.Equal(authorityAccount.Value, initiatiorOwnerAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(actions[0], "authority must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	if !bytes.Equal(sourceAccount.Value, legacyTimelockAccounts.Vault.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(actions[0], "must migrate from account %s", legacyTimelockAccounts.Vault.PublicKey().ToBase58())
+	}
+
+	if metadata.Quarks > 0 {
+		primaryTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		if err != nil {
+			return err
+		}
+
+		if !bytes.Equal(destinationAccount.Value, primaryTimelockAccounts.Vault.PublicKey().ToBytes()) {
+			return newActionValidationErrorf(actions[0], "must migrate funds to account %s", primaryTimelockAccounts.Vault.PublicKey().ToBase58())
+		}
+	}
+
+	return nil
+}
+
+func (h *MigrateToPrivacy2022IntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+func (h *MigrateToPrivacy2022IntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+type SendPublicPaymentIntentHandler struct {
+	conf          *conf
+	data          code_data.Provider
+	pusher        push_lib.Provider
+	antispamGuard *antispam.Guard
+	maxmind       *maxminddb.Reader
+}
+
+func NewSendPublicPaymentIntentHandler(
+	conf *conf,
+	data code_data.Provider,
+	pusher push_lib.Provider,
+	antispamGuard *antispam.Guard,
+	maxmind *maxminddb.Reader,
+) CreateIntentHandler {
+	return &SendPublicPaymentIntentHandler{
+		conf:          conf,
+		data:          data,
+		pusher:        pusher,
+		antispamGuard: antispamGuard,
+		maxmind:       maxmind,
+	}
+}
+
+func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetSendPublicPayment()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	exchangeData := typedProtoMetadata.ExchangeData
+
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	if err != nil {
+		return errors.Wrap(err, "error getting current usd exchange rate")
+	}
+
+	destination, err := common.NewAccountFromProto(typedProtoMetadata.Destination)
+	if err != nil {
+		return err
+	}
+
+	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
+	if err != nil && err != account.ErrAccountInfoNotFound {
+		return err
+	}
+
+	intentRecord.IntentType = intent.SendPublicPayment
+	intentRecord.SendPublicPaymentMetadata = &intent.SendPublicPaymentMetadata{
+		DestinationTokenAccount: destination.PublicKey().ToBase58(),
+		Quantity:                exchangeData.Quarks,
+
+		ExchangeCurrency: currency_lib.Code(exchangeData.Currency),
+		ExchangeRate:     exchangeData.ExchangeRate,
+		NativeAmount:     typedProtoMetadata.ExchangeData.NativeAmount,
+		UsdMarketValue:   usdExchangeRecord.Rate * float64(kin.FromQuarks(exchangeData.Quarks)),
+
+		IsWithdrawal: typedProtoMetadata.IsWithdrawal,
+	}
+
+	if destinationAccountInfo != nil {
+		intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount = destinationAccountInfo.OwnerAccount
+	}
+
+	return nil
+}
+
+func (h *SendPublicPaymentIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	return false, nil
+}
+
+func (h *SendPublicPaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
+		return &lockableAccounts{}, nil
+	}
+
+	destinationOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	return &lockableAccounts{
+		DestinationOwner: destinationOwnerAccount,
+	}, nil
+}
+
+func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := untypedMetadata.GetSendPublicPayment()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccounts := make([]*common.AccountRecords, 0)
+	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
+	for _, records := range initiatorAccountsByType {
+		initiatorAccounts = append(initiatorAccounts, records)
+		initiatorAccountsByVault[records.General.TokenAccount] = records
+	}
+
+	//
+	// Part 1: Intent ID validation
+	//
+
+	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Antispam guard checks against the phone number
+	//
+
+	if !h.conf.disableAntispamChecks.Get(ctx) {
+		destination, err := common.NewAccountFromProto(typedMetadata.Destination)
+		if err != nil {
+			return err
+		}
+
+		allow, err := h.antispamGuard.AllowSendPayment(ctx, initiatiorOwnerAccount, true, destination)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTooManyPayments
+		}
+	}
+
+	//
+	// Part 3: Account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Exchange data validation
+	//
+
+	if err := validateExchangeDataWithinIntent(ctx, h.data, intentRecord.IntentId, typedMetadata.ExchangeData); err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Local simulation
+	//
+
+	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 6: Validate fee payments
+	//
+
+	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 7: Validate the individual actions
+	//
+
+	return h.validateActions(
+		ctx,
+		initiatiorOwnerAccount,
+		initiatorAccountsByType,
+		initiatorAccountsByVault,
+		intentRecord,
+		typedMetadata,
+		actions,
+		simResult,
+	)
+}
+
+func (h *SendPublicPaymentIntentHandler) validateActions(
+	ctx context.Context,
+	initiatorOwnerAccount *common.Account,
+	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByVault map[string]*common.AccountRecords,
+	intentRecord *intent.Record,
+	metadata *transactionpb.SendPublicPaymentMetadata,
+	actions []*transactionpb.Action,
+	simResult *LocalSimulationResult,
+) error {
+	if len(actions) != 1 {
+		return newIntentValidationError("expected 1 action")
+	}
+
+	destination, err := common.NewAccountFromProto(metadata.Destination)
+	if err != nil {
+		return err
+	}
+
+	// Part 1: Check the destination account itself is valid
+
+	//
+	// Part 1.1: Check against allowed destination account types
+	//
+
+	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		// Code->Code public withdraws must be done to primary accounts
+		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
+			return newIntentValidationError("destination account must be a primary account")
+		}
+
+		// And that primary account cannot be yourself
+		if destinationAccountInfo.OwnerAccount == initiatorOwnerAccount.PublicKey().ToBase58() {
+			return newIntentValidationError("payments within the same owner are not allowed")
+		}
+	case account.ErrAccountInfoNotFound:
+		// Check whether the destination account is a Kin token account that's
+		// been created on the blockchain.
+		if !h.conf.disableBlockchainChecks.Get(ctx) {
+			err = validateExternalKinTokenAccountWithinIntent(ctx, h.data, destination)
+			if err != nil {
+				return err
+			}
+		}
+	default:
+		return err
+	}
+
+	//
+	// Part 1.2: Validate destination account matches payment request, if it exists
+	//
+
+	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
+	if err == nil && paymentRequestRecord.DestinationTokenAccount != destination.PublicKey().ToBase58() {
+		return newIntentValidationErrorf("payment has a request to destination %s", paymentRequestRecord.DestinationTokenAccount)
+	} else if err != paymentrequest.ErrPaymentRequestNotFound {
+		return err
+	}
+
+	//
+	// Part 2: Validate actions match intent metadata
+	//
+
+	//
+	// Part 2.1: Check destination account is paid exact quark amount from primary account
+	//
+
+	destinationSimulation, ok := simResult.SimulationsByAccount[destination.PublicKey().ToBase58()]
+	if !ok {
+		return newIntentValidationErrorf("must send payment to destination account %s", destination.PublicKey().ToBase58())
+	} else if destinationSimulation.Transfers[0].IsPrivate || destinationSimulation.Transfers[0].IsWithdraw {
+		return newActionValidationError(destinationSimulation.Transfers[0].Action, "payment sent to destination must be a public transfer")
+	} else if destinationSimulation.GetDeltaQuarks() != int64(metadata.ExchangeData.Quarks) {
+		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "must send %d quarks to destination account", metadata.ExchangeData.Quarks)
+	}
+
+	//
+	// Part 2.2: Check that the user's primary account was used as the source of funds
+	//
+
+	sourceSimulation, ok := simResult.SimulationsByAccount[initiatorAccountsByType[commonpb.AccountType_PRIMARY].General.TokenAccount]
+	if !ok {
+		return newIntentValidationErrorf("must send payment from primary account %s", initiatorAccountsByType[commonpb.AccountType_PRIMARY].General.TokenAccount)
+	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.ExchangeData.Quarks) {
+		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must send %d quarks from source account", metadata.ExchangeData.Quarks)
+	}
+
+	// Part 3: Generic validation of actions that move money
+
+	err = validateMoneyMovementActionUserAccounts(intent.SendPublicPayment, initiatorAccountsByVault, actions)
+	if err != nil {
+		return err
+	}
+
+	// Part 4: Sanity check no open and closed accounts
+
+	if len(simResult.GetOpenedAccounts()) > 0 {
+		return newIntentValidationError("cannot open any account")
+	}
+
+	if len(simResult.GetClosedAccounts()) > 0 {
+		return newIntentValidationError("cannot close any account")
+	}
+
+	return nil
+}
+
+func (h *SendPublicPaymentIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	if intentRecord.SendPublicPaymentMetadata.IsWithdrawal && len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
+		eventRecord := &event.Record{
+			EventId:   intentRecord.IntentId,
+			EventType: event.Withdrawal,
+
+			SourceCodeAccount:    intentRecord.InitiatorOwnerAccount,
+			ExternalTokenAccount: &intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount,
+
+			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
+
+			UsdValue: &intentRecord.SendPublicPaymentMetadata.UsdMarketValue,
+
+			SpamConfidence: 0,
+
+			CreatedAt: time.Now(),
+		}
+		event_util.InjectClientDetails(ctx, h.maxmind, eventRecord, true)
+
+		err := h.data.SaveEvent(ctx, eventRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *SendPublicPaymentIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+type ReceivePaymentsPubliclyIntentHandler struct {
+	conf          *conf
+	data          code_data.Provider
+	antispamGuard *antispam.Guard
+	maxmind       *maxminddb.Reader
+
+	cachedGiftCardIssuedIntentRecord *intent.Record
+}
+
+func NewReceivePaymentsPubliclyIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard, maxmind *maxminddb.Reader) CreateIntentHandler {
+	return &ReceivePaymentsPubliclyIntentHandler{
+		conf:          conf,
+		data:          data,
+		antispamGuard: antispamGuard,
+		maxmind:       maxmind,
+	}
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetReceivePaymentsPublicly()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	giftCardVault, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
+	if err != nil {
+		return err
+	}
+
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	if err != nil {
+		return errors.Wrap(err, "error getting current usd exchange rate")
+	}
+
+	// This is an optimization for payment history. Original fiat amounts are not
+	// easily linked due to the nature of gift cards and the remote send flow. We
+	// fetch this metadata up front so we don't need to do it every time in history.
+	giftCardIssuedIntentRecord, err := h.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVault.PublicKey().ToBase58())
+	if err == intent.ErrIntentNotFound {
+		return newIntentValidationError("source is not a remote send gift card")
+	} else if err != nil {
+		return err
+	}
+	h.cachedGiftCardIssuedIntentRecord = giftCardIssuedIntentRecord
+
+	intentRecord.IntentType = intent.ReceivePaymentsPublicly
+	intentRecord.ReceivePaymentsPubliclyMetadata = &intent.ReceivePaymentsPubliclyMetadata{
+		Source:                  giftCardVault.PublicKey().ToBase58(),
+		Quantity:                typedProtoMetadata.Quarks,
+		IsRemoteSend:            typedProtoMetadata.IsRemoteSend,
+		IsReturned:              false,
+		IsIssuerVoidingGiftCard: typedProtoMetadata.IsIssuerVoidingGiftCard,
+
+		OriginalExchangeCurrency: giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeCurrency,
+		OriginalExchangeRate:     giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeRate,
+		OriginalNativeAmount:     giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.NativeAmount,
+
+		UsdMarketValue: usdExchangeRecord.Rate * float64(kin.FromQuarks(typedProtoMetadata.Quarks)),
+	}
+
+	if intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard && intentRecord.InitiatorOwnerAccount != giftCardIssuedIntentRecord.InitiatorOwnerAccount {
+		return newIntentValidationError("only the issuer can void the gift card")
+	}
+
+	return nil
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	return false, nil
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	if !intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
+		return &lockableAccounts{}, nil
+	}
+
+	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	return &lockableAccounts{
+		RemoteSendGiftCardVault: giftCardVaultAccount,
+	}, nil
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := untypedMetadata.GetReceivePaymentsPublicly()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	if !typedMetadata.IsRemoteSend {
+		return newIntentValidationError("only remote send is supported")
+	}
+
+	if typedMetadata.ExchangeData != nil {
+		return newIntentValidationError("exchange data cannot be set")
+	}
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	initiatorAccounts := make([]*common.AccountRecords, 0)
+	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
+	for _, records := range initiatorAccountsByType {
+		initiatorAccounts = append(initiatorAccounts, records)
+		initiatorAccountsByVault[records.General.TokenAccount] = records
+	}
+
+	//
+	// Part 1: Intent ID validation
+	//
+
+	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Antispam guard checks against the phone number
+	//
+	if !h.conf.disableAntispamChecks.Get(ctx) {
+		allow, err := h.antispamGuard.AllowReceivePayments(ctx, initiatiorOwnerAccount, true)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTooManyPayments
+		}
+	}
+
+	//
+	// Part 3: User account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Gift card account validation
+	//
+
+	err = validateClaimedGiftCard(ctx, h.data, giftCardVaultAccount, typedMetadata.Quarks)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Local simulation
+	//
+
+	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 6: Validate fee payments
+	//
+
+	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 7: Validate the individual actions
+	//
+
+	return h.validateActions(
+		ctx,
+		initiatiorOwnerAccount,
+		initiatorAccountsByType,
+		initiatorAccountsByVault,
+		typedMetadata,
+		actions,
+		simResult,
+	)
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
+	ctx context.Context,
+	initiatorOwnerAccount *common.Account,
+	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByVault map[string]*common.AccountRecords,
+	metadata *transactionpb.ReceivePaymentsPubliclyMetadata,
+	actions []*transactionpb.Action,
+	simResult *LocalSimulationResult,
+) error {
+	if len(actions) != 1 {
+		return newIntentValidationError("expected 1 action")
+	}
+
+	//
+	// Part 1: Validate source and destination accounts are valid to use
+	//
+
+	// Note: Already validated to be a claimable gift card elsewhere
+	source, err := common.NewAccountFromProto(metadata.Source)
+	if err != nil {
+		return err
+	}
+
+	// The destination account must be the latest temporary incoming account
+	destinationAccountInfo := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_INCOMING].General
+	destinationSimulation, ok := simResult.SimulationsByAccount[destinationAccountInfo.TokenAccount]
+	if !ok {
+		return newActionValidationError(actions[0], "must send payment to latest temp incoming account")
+	}
+
+	// And that temporary incoming account has limited usage
+	err = validateMinimalTempIncomingAccountUsage(ctx, h.data, destinationAccountInfo)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Validate actions match intent
+	//
+
+	//
+	// Part 2.1: Check source account pays exact quark amount to destination in a public withdraw
+	//
+
+	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
+	if !ok {
+		return newIntentValidationError("must receive payments from source account")
+	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.Quarks) {
+		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must receive %d quarks from source account", metadata.Quarks)
+	} else if sourceSimulation.Transfers[0].IsPrivate || !sourceSimulation.Transfers[0].IsWithdraw {
+		return newActionValidationError(sourceSimulation.Transfers[0].Action, "transfer must be a public withdraw")
+	}
+
+	//
+	// Part 2.2: Check destination account is paid exact quark amount from source account in a public withdraw
+	//
+
+	if destinationSimulation.GetDeltaQuarks() != int64(metadata.Quarks) {
+		return newActionValidationErrorf(actions[0], "must receive %d quarks to temp incoming account", metadata.Quarks)
+	} else if destinationSimulation.Transfers[0].IsPrivate || !destinationSimulation.Transfers[0].IsWithdraw {
+		return newActionValidationError(sourceSimulation.Transfers[0].Action, "transfer must be a public withdraw")
+	}
+
+	//
+	// Part 3: Validate accounts that are opened and closed
+	//
+
+	if len(simResult.GetOpenedAccounts()) > 0 {
+		return newIntentValidationError("cannot open any account")
+	}
+
+	closedAccounts := simResult.GetClosedAccounts()
+	if len(closedAccounts) != 1 {
+		return newIntentValidationError("must close 1 account")
+	} else if closedAccounts[0].TokenAccount.PublicKey().ToBase58() != source.PublicKey().ToBase58() {
+		return newActionValidationError(actions[0], "must close source account")
+	}
+
+	//
+	// Part 4: Generic validation of actions that move money
+	//
+
+	return validateMoneyMovementActionUserAccounts(intent.ReceivePaymentsPublicly, initiatorAccountsByVault, actions)
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	if intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
+		eventRecord, err := h.data.GetEvent(ctx, h.cachedGiftCardIssuedIntentRecord.IntentId)
+		if err == nil {
+			eventRecord.DestinationCodeAccount = &intentRecord.InitiatorOwnerAccount
+			eventRecord.DestinationIdentity = pointer.StringCopy(intentRecord.InitiatorPhoneNumber)
+			event_util.InjectClientDetails(ctx, h.maxmind, eventRecord, false) // Will be AWS if desktop
+
+			err = h.data.SaveEvent(ctx, eventRecord)
+			if err != nil {
+				return err
+			}
+		} else if err != event.ErrEventNotFound { // todo: can be dropped when older gift cards (prior to tracking) have been resolved prior
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+type EstablishRelationshipIntentHandler struct {
+	conf          *conf
+	data          code_data.Provider
+	antispamGuard *antispam.Guard
+}
+
+func NewEstablishRelationshipIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard) CreateIntentHandler {
+	return &EstablishRelationshipIntentHandler{
+		conf:          conf,
+		data:          data,
+		antispamGuard: antispamGuard,
+	}
+}
+
+func (h *EstablishRelationshipIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
+	typedProtoMetadata := protoMetadata.GetEstablishRelationship()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+
+	intentRecord.IntentType = intent.EstablishRelationship
+	intentRecord.EstablishRelationshipMetadata = &intent.EstablishRelationshipMetadata{
+		RelationshipTo: typedProtoMetadata.Relationship.GetDomain().Value,
+	}
+
+	return nil
+}
+
+func (h *EstablishRelationshipIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
+	openAction := actions[0].GetOpenAccount()
+	if openAction == nil {
+		// Something is off, send it to validation
+		return false, nil
+	}
+	authority, err := common.NewAccountFromProto(openAction.Authority)
+	if err != nil {
+		return false, err
+	}
+
+	// Ensure the authority is the same, otherwise something is off and this
+	// intent should be sent off to validation.
+	existingAccountInfoRecord, err := h.data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, intentRecord.EstablishRelationshipMetadata.RelationshipTo)
+	if err == nil && existingAccountInfoRecord.AuthorityAccount == authority.PublicKey().ToBase58() {
+		return true, nil
+	} else if err != account.ErrAccountInfoNotFound {
+		return false, err
+	}
+	return false, nil
+}
+
+func (h *EstablishRelationshipIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+	return &lockableAccounts{}, nil
+}
+
+func (h *EstablishRelationshipIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
+	typedMetadata := metadata.GetEstablishRelationship()
+	if typedMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
+	reslationshipTo := typedMetadata.Relationship.GetDomain().Value
+
+	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 1: Intent ID validation
+	//
+
+	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Antispam checks against the phone number
+	//
+
+	if !h.conf.disableAntispamChecks.Get(ctx) {
+		allow, err := h.antispamGuard.AllowEstablishNewRelationship(ctx, initiatiorOwnerAccount, reslationshipTo)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTooManyNewRelationships
+		}
+	}
+
+	//
+	// Part 3: User accounts must be opened
+	//
+
+	_, err = h.data.GetLatestIntentByInitiatorAndType(ctx, intent.OpenAccounts, initiatiorOwnerAccount.PublicKey().ToBase58())
+	if err == intent.ErrIntentNotFound {
+		return newIntentDeniedError("open accounts intent not submitted")
+	} else if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Relationship identifier validation
+	//
+
+	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(reslationshipTo)
+	if err != nil || asciiBaseDomain != intentRecord.EstablishRelationshipMetadata.RelationshipTo {
+		return newIntentValidationError("domain is not an ascii base domain")
+	}
+
+	//
+	// Part 5: Validate the owner hasn't already established a relationship
+	//
+
+	existingAccountInfoRecord, err := h.data.GetRelationshipAccountInfoByOwnerAddress(ctx, initiatiorOwnerAccount.PublicKey().ToBase58(), reslationshipTo)
+	if err == nil {
+		return newStaleStateErrorf("existing relationship account exists with authority %s", existingAccountInfoRecord.AuthorityAccount)
+	} else if err != account.ErrAccountInfoNotFound {
+		return err
+	}
+
+	//
+	// Part 6: Local simulation
+	//
+
+	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 7: Validate fee payments
+	//
+
+	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 8: Validate the individual actions
+	//
+
+	return h.validateActions(initiatiorOwnerAccount, actions)
+}
+
+func (h *EstablishRelationshipIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
+	if len(actions) != 1 {
+		return newIntentValidationError("expected 1 action")
+	}
+
+	openAction := actions[0]
+	if openAction.GetOpenAccount() == nil {
+		return newActionValidationError(openAction, "expected an open account action")
+	}
+
+	if openAction.GetOpenAccount().AccountType != commonpb.AccountType_RELATIONSHIP {
+		return newActionValidationErrorf(openAction, "account type must be %s", commonpb.AccountType_RELATIONSHIP)
+	}
+
+	if openAction.GetOpenAccount().Index != 0 {
+		return newActionValidationError(openAction, "index must be 0")
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatiorOwnerAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "owner must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+		return newActionValidationErrorf(openAction, "authority cannot be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	return nil
+}
+
+func (h *EstablishRelationshipIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+func (h *EstablishRelationshipIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
+	return nil
+}
+
+func validateAllUserAccountsManagedByCode(ctx context.Context, initiatorAccounts []*common.AccountRecords) error {
+	// Try to unlock *ANY* latest account, and you're done
+	for _, accountRecords := range initiatorAccounts {
+		if !accountRecords.IsManagedByCode(ctx) {
+			return ErrNotManagedByCode
+		}
+	}
+
+	return nil
+}
+
+func validateBucketAccountSimulation(accountType commonpb.AccountType, simulation TokenAccountSimulation) error {
+	publicTransfers := simulation.GetPublicTransfers()
+	if len(publicTransfers) > 0 {
+		return newActionValidationError(publicTransfers[0].Action, "bucket account cannot send/receive kin publicly")
+	}
+
+	withdraws := simulation.GetWithdraws()
+	if len(withdraws) > 0 {
+		return newActionValidationError(withdraws[0].Action, "bucket account cannot send/receive kin using withdraw")
+	}
+
+	bucketSize, ok := bucketSizeByAccountType[accountType]
+	if !ok {
+		return errors.New("bucket size is not defined")
+	}
+
+	for _, transfer := range simulation.Transfers {
+		if transfer.DeltaQuarks%int64(bucketSize) != 0 {
+			return newActionValidationErrorf(transfer.Action, "quark amount must be a multiple of %d kin", kin.FromQuarks(bucketSize))
+		}
+
+		absDeltaQuarks := transfer.DeltaQuarks
+		if absDeltaQuarks < 0 {
+			absDeltaQuarks = -absDeltaQuarks
+		}
+
+		_, anonymized := allowedBucketQuarkAmounts[uint64(absDeltaQuarks)]
+		if !anonymized {
+			return newActionValidationError(transfer.Action, "quark amount must be anonymized")
+		}
+	}
+
+	return nil
+}
+
+func validateMoneyMovementActionCount(actions []*transactionpb.Action) error {
+	var numMoneyMovementActions int
+
+	for _, action := range actions {
+		switch action.Type.(type) {
+		case *transactionpb.Action_NoPrivacyWithdraw,
+			*transactionpb.Action_NoPrivacyTransfer,
+			*transactionpb.Action_TemporaryPrivacyTransfer,
+			*transactionpb.Action_TemporaryPrivacyExchange,
+			*transactionpb.Action_FeePayment:
+
+			numMoneyMovementActions++
+		}
+	}
+
+	// todo: configurable
+	if numMoneyMovementActions > 50 {
+		return newIntentDeniedError("too many transfer/exchange/withdraw actions")
+	}
+	return nil
+}
+
+// Provides generic and lightweight validation of which accounts owned by a Code
+// user can be used in certain actions. This is by no means a comprehensive check.
+// Other account types (eg. gift cards, external wallets, etc) and intent-specific
+// complex nuances should be handled elsewhere.
+func validateMoneyMovementActionUserAccounts(
+	intentType intent.Type,
+	initiatorAccountsByVault map[string]*common.AccountRecords,
+	actions []*transactionpb.Action,
+) error {
+	for _, action := range actions {
+		var authority, source *common.Account
+		var err error
+
+		switch typedAction := action.Type.(type) {
+		case *transactionpb.Action_NoPrivacyTransfer:
+			// No privacy transfers are always come from the primary account
+
+			authority, err = common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Authority)
+			if err != nil {
+				return err
+			}
+
+			source, err = common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Source)
+			if err != nil {
+				return err
+			}
+
+			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
+				return newActionValidationErrorf(action, "source account must be the primary account %s", sourceAccountInfo.General.TokenAccount)
+			}
+		case *transactionpb.Action_NoPrivacyWithdraw:
+			// No privacy withdraws are used in two ways depending on the intent:
+			//  1. As the sender of funds from the latest temp outgoing account in a private send
+			//  2. As a receiver of funds to the latest temp incoming account in a public receive
+
+			authority, err = common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Authority)
+			if err != nil {
+				return err
+			}
+
+			source, err = common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Source)
+			if err != nil {
+				return err
+			}
+
+			destination, err := common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Destination)
+			if err != nil {
+				return err
+			}
+
+			switch intentType {
+			case intent.SendPrivatePayment:
+				sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+				if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_OUTGOING {
+					return newActionValidationError(action, "source account must be the latest temporary outgoing account")
+				}
+			case intent.ReceivePaymentsPublicly:
+				destinationAccountInfo, ok := initiatorAccountsByVault[destination.PublicKey().ToBase58()]
+				if !ok || destinationAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
+					return newActionValidationError(action, "source account must be the latest temporary incoming account")
+				}
+			}
+		case *transactionpb.Action_TemporaryPrivacyTransfer:
+			// Temporary privacy transfers are always between Code user accounts
+			// where one of the source or destination account is a bucket.
+
+			authority, err = common.NewAccountFromProto(typedAction.TemporaryPrivacyTransfer.Authority)
+			if err != nil {
+				return err
+			}
+
+			source, err = common.NewAccountFromProto(typedAction.TemporaryPrivacyTransfer.Source)
+			if err != nil {
+				return err
+			}
+
+			destination, err := common.NewAccountFromProto(typedAction.TemporaryPrivacyTransfer.Destination)
+			if err != nil {
+				return err
+			}
+
+			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+			if !ok {
+				return newActionValidationError(action, "source account is not a latest owned account")
+			}
+
+			destinationAccountInfo, ok := initiatorAccountsByVault[destination.PublicKey().ToBase58()]
+			if !ok {
+				return newActionValidationError(action, "destination account is not a latest owned account")
+			}
+
+			if sourceAccountInfo.General.IsBucket() && destinationAccountInfo.General.IsBucket() {
+				return newActionValidationError(action, "expected an exchange action")
+			}
+
+			if !sourceAccountInfo.General.IsBucket() && !destinationAccountInfo.General.IsBucket() {
+				return newActionValidationError(action, "bucket account must be involved in a private transfer")
+			}
+
+			if !sourceAccountInfo.General.IsBucket() &&
+				sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING &&
+				sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
+				return newActionValidationError(action, "source account must be the primary or latest temporary incoming account when not a bucket account")
+			}
+
+			if !destinationAccountInfo.General.IsBucket() && destinationAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_OUTGOING {
+				return newActionValidationError(action, "destination account must be the latest temporary outgoing account when not a bucket account")
+			}
+		case *transactionpb.Action_TemporaryPrivacyExchange:
+			// Temporary privacy exchanges are always between bucket accounts
+
+			authority, err = common.NewAccountFromProto(typedAction.TemporaryPrivacyExchange.Authority)
+			if err != nil {
+				return err
+			}
+
+			source, err = common.NewAccountFromProto(typedAction.TemporaryPrivacyExchange.Source)
+			if err != nil {
+				return err
+			}
+
+			destination, err := common.NewAccountFromProto(typedAction.TemporaryPrivacyExchange.Destination)
+			if err != nil {
+				return err
+			}
+
+			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+			if !ok || !sourceAccountInfo.General.IsBucket() {
+				return newActionValidationError(action, "source account must be an owned bucket account")
+			}
+
+			destinationAccountInfo, ok := initiatorAccountsByVault[destination.PublicKey().ToBase58()]
+			if !ok || !destinationAccountInfo.General.IsBucket() {
+				return newActionValidationError(action, "destination account must be an owned bucket account")
+			}
+		default:
+			continue
+		}
+
+		expectedTimelockVault, err := getExpectedTimelockVaultFromProtoAccount(authority.ToProto())
+		if err != nil {
+			return err
+		} else if !bytes.Equal(expectedTimelockVault.PublicKey().ToBytes(), source.PublicKey().ToBytes()) {
+			return newActionValidationErrorf(action, "authority is invalid")
+		}
+	}
+
+	return nil
+}
+
+func validateNextTemporaryAccountOpened(
+	accountType commonpb.AccountType,
+	initiatorOwnerAccount *common.Account,
+	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	actions []*transactionpb.Action,
+) error {
+	if accountType != commonpb.AccountType_TEMPORARY_INCOMING && accountType != commonpb.AccountType_TEMPORARY_OUTGOING {
+		return errors.New("unexpected account type")
+	}
+
+	prevTempAccountRecords, ok := initiatorAccountsByType[accountType]
+	if !ok {
+		return errors.New("previous temp account record missing")
+	}
+
+	primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
+	if !ok {
+		return errors.New("primary account record missing")
+	}
+	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords.Timelock.VaultAddress)
+	if err != nil {
+		return err
+	}
+
+	// Find the open and close actions
+
+	var openAction, closeDormantAction *transactionpb.Action
+	for _, action := range actions {
+		switch typed := action.Type.(type) {
+		case *transactionpb.Action_OpenAccount:
+			if typed.OpenAccount.AccountType == accountType {
+				if openAction != nil {
+					return newIntentValidationErrorf("multiple open actions for %s account type", accountType)
+				}
+
+				openAction = action
+			}
+		case *transactionpb.Action_CloseDormantAccount:
+			if typed.CloseDormantAccount.AccountType == accountType {
+				if closeDormantAction != nil {
+					return newIntentValidationErrorf("multiple close dormant account actions for %s account type", accountType)
+				}
+
+				closeDormantAction = action
+			}
+		}
+	}
+
+	// Validate the open action
+
+	if openAction == nil {
+		return newIntentValidationErrorf("open account action for %s account type missing", accountType)
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatorOwnerAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "owner must be %s", initiatorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+		return newActionValidationErrorf(openAction, "authority cannot be %s", initiatorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	expectedIndex := prevTempAccountRecords.General.Index + 1
+	if openAction.GetOpenAccount().Index != expectedIndex {
+		return newActionValidationErrorf(openAction, "next derivation expected to be %d", expectedIndex)
+	}
+
+	expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
+	}
+
+	// Validate the close dormant action
+
+	if closeDormantAction == nil {
+		return newIntentValidationErrorf("close dormant account action for %s account type missing", accountType)
+	}
+
+	if closeDormantAction.Id < openAction.Id {
+		return newIntentValidationError("open account action must come before close dormant account action")
+	}
+
+	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Authority.Value, openAction.GetOpenAccount().Authority.Value) {
+		return newActionValidationErrorf(closeDormantAction, "authority must be %s", base58.Encode(openAction.GetOpenAccount().Authority.Value))
+	}
+
+	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Token.Value, openAction.GetOpenAccount().Token.Value) {
+		return newActionValidationErrorf(closeDormantAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
+	}
+
+	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Destination.Value, tokenAccountToCollapseTo.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(closeDormantAction, "destination must be %s", tokenAccountToCollapseTo.PublicKey().ToBase58())
+	}
+
+	return nil
+}
+
+// Assumes only one gift card account is opened per intent
+func validateGiftCardAccountOpened(
+	initiatorOwnerAccount *common.Account,
+	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	expectedGiftCardVault *common.Account,
+	actions []*transactionpb.Action,
+) error {
+	primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
+	if !ok {
+		return errors.New("primary account record missing")
+	}
+	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords.Timelock.VaultAddress)
+	if err != nil {
+		return err
+	}
+
+	// Find the open and close actions
+
+	var openAction, closeDormantAction *transactionpb.Action
+	for _, action := range actions {
+		switch typed := action.Type.(type) {
+		case *transactionpb.Action_OpenAccount:
+			if typed.OpenAccount.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+				if openAction != nil {
+					return newIntentValidationErrorf("multiple open actions for %s account type", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+				}
+
+				openAction = action
+			}
+		case *transactionpb.Action_CloseDormantAccount:
+			if typed.CloseDormantAccount.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+				if closeDormantAction != nil {
+					return newIntentValidationErrorf("multiple close dormant account actions for %s account type", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+				}
+
+				closeDormantAction = action
+			}
+		}
+	}
+
+	// Validate the open action
+
+	if openAction == nil {
+		return newIntentValidationErrorf("open account action for %s account type missing", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+	}
+
+	if bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatorOwnerAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "owner cannot be %s", initiatorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+		return newActionValidationErrorf(openAction, "authority must be %s", openAction.GetOpenAccount().Owner.Value)
+	}
+
+	if openAction.GetOpenAccount().Index != 0 {
+		return newActionValidationError(openAction, "index must be 0")
+	}
+
+	derivedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.Equal(expectedGiftCardVault.PublicKey().ToBytes(), derivedVaultAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "token must be %s", expectedGiftCardVault.PublicKey().ToBase58())
+	}
+
+	if !bytes.Equal(openAction.GetOpenAccount().Token.Value, derivedVaultAccount.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(openAction, "token must be %s", derivedVaultAccount.PublicKey().ToBase58())
+	}
+
+	// Validate the close dormant action
+
+	if closeDormantAction == nil {
+		return newIntentValidationErrorf("close dormant account action for %s account type missing", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+	}
+
+	if closeDormantAction.Id < openAction.Id {
+		return newIntentValidationError("open account action must come before close dormant account action")
+	}
+
+	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Authority.Value, openAction.GetOpenAccount().Authority.Value) {
+		return newActionValidationErrorf(closeDormantAction, "authority must be %s", base58.Encode(openAction.GetOpenAccount().Authority.Value))
+	}
+
+	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Token.Value, openAction.GetOpenAccount().Token.Value) {
+		return newActionValidationErrorf(closeDormantAction, "token must be %s", derivedVaultAccount.PublicKey().ToBase58())
+	}
+
+	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Destination.Value, tokenAccountToCollapseTo.PublicKey().ToBytes()) {
+		return newActionValidationErrorf(closeDormantAction, "destination must be %s", tokenAccountToCollapseTo.PublicKey().ToBase58())
+	}
+
+	return nil
+}
+
+func validateCloseDormantAccountActionCount(actions []*transactionpb.Action, expected int) error {
+	var actual int
+	for _, action := range actions {
+		switch action.Type.(type) {
+		case *transactionpb.Action_CloseDormantAccount:
+			actual++
+		}
+	}
+
+	if actual < expected {
+		return newIntentValidationError("too few close dormant account actions")
+	}
+	if actual > expected {
+		return newIntentValidationError("too many close dormant account actions")
+	}
+	return nil
+}
+
+func validateNoUpgradeActions(actions []*transactionpb.Action) error {
+	for _, action := range actions {
+		switch action.Type.(type) {
+		case *transactionpb.Action_PermanentPrivacyUpgrade:
+			return newActionValidationError(action, "update action not allowed")
+		}
+	}
+
+	return nil
+}
+
+func validateExternalKinTokenAccountWithinIntent(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) error {
+	isValid, message, err := common.ValidateExternalKinTokenAccount(ctx, data, tokenAccount)
+	if err != nil {
+		return err
+	} else if !isValid {
+		return newIntentValidationError(message)
+	}
+	return nil
+}
+
+func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, intentId string, proto *transactionpb.ExchangeData) error {
+	// If there's a payment request record, then validate exchange data client
+	// provided matches exactly. The payment request record should already have
+	// validated exchange data before it was created.
+	paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentId)
+	if err == nil {
+		if proto.Currency != string(paymentRequestRecord.ExchangeCurrency) {
+			return newIntentValidationErrorf("payment has a request for %s currency", paymentRequestRecord.ExchangeCurrency)
+		}
+
+		absNativeAmountDiff := math.Abs(proto.NativeAmount - paymentRequestRecord.NativeAmount)
+		if absNativeAmountDiff > 0.0001 {
+			return newIntentValidationErrorf("payment has a request for %.2f native amount", paymentRequestRecord.NativeAmount)
+		}
+
+		// No need to validate exchange details in the payment request. Only Kin has
+		// exact exchange data requirements, which has already been validated at time
+		// of payment intent creation. We do leave the ability open to reserve an exchange
+		// rate, but no use cases warrant that atm.
+
+	} else if err != paymentrequest.ErrPaymentRequestNotFound {
+		return err
+	}
+
+	// Otherwise, validate exchange data fully using the common method
+	isValid, message, err := exchange_rate_util.ValidateClientExchangeData(ctx, data, proto)
+	if err != nil {
+		return err
+	} else if !isValid {
+		if strings.Contains(message, "stale") {
+			return newStaleStateError(message)
+		}
+		return newIntentValidationError(message)
+	}
+	return nil
+}
+
+// Generically validates fee payments as much as possible, but won't cover any
+// intent-specific nuances (eg. where the fee payment comes from)
+func validateFeePayment(
+	ctx context.Context,
+	data code_data.Provider,
+	intentRecord *intent.Record,
+	simResult *LocalSimulationResult,
+) error {
+	var requiresFee bool
+	switch intentRecord.IntentType {
+	case intent.SendPrivatePayment:
+		requiresFee = intentRecord.SendPrivatePaymentMetadata.IsMicroPayment
+	}
+
+	if !requiresFee && simResult.HasAnyFeePayments() {
+		return newIntentValidationError("intent doesn't require a fee payment")
+	}
+
+	if requiresFee && !simResult.HasAnyFeePayments() {
+		return newIntentValidationError("intent requires a fee payment")
+	}
+
+	if !requiresFee {
+		return nil
+	}
+
+	feePayments := simResult.GetFeePayments()
+	if len(feePayments) > 1 {
+		return newIntentValidationError("fee payment must be done in a single action")
+	}
+	feeAmount := feePayments[0].DeltaQuarks
+	if feeAmount >= 0 {
+		return newIntentValidationError("fee payment is not a payment to code")
+	}
+	feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
+
+	usdExchangeRecords, err := exchange_rate_util.GetPotentialClientExchangeRates(ctx, data, currency_lib.USD)
+	if err != nil {
+		return err
+	}
+	for _, exchangeRecord := range usdExchangeRecords {
+		usdValue := exchangeRecord.Rate * float64(feeAmount) / float64(kin.QuarksPerKin)
+
+		// Allow for some small margin of error
+		//
+		// todo: Hardcoded as a penny USD, but might want a dynamic amount if we
+		//       have use cases with different fee amounts.
+		if usdValue > 0.0099 && usdValue < 0.0101 {
+			return nil
+		}
+	}
+
+	return newActionValidationError(feePayments[0].Action, "fee payment must be $0.01 USD")
+}
+
+func validateMinimalTempIncomingAccountUsage(ctx context.Context, data code_data.Provider, accountInfo *account.Record) error {
+	if accountInfo.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
+		return errors.New("expected a temporary incoming account")
+	}
+
+	actionRecords, err := data.GetAllActionsByAddress(ctx, accountInfo.TokenAccount)
+	if err != nil && err != action.ErrActionNotFound {
+		return err
+	}
+
+	var paymentCount int
+	for _, actionRecord := range actionRecords {
+		// Revoked actions don't count
+		if actionRecord.State == action.StateRevoked {
+			continue
+		}
+
+		// Temp incoming accounts are always paid via no privacy withdraws
+		if actionRecord.ActionType != action.NoPrivacyWithdraw {
+			continue
+		}
+
+		paymentCount += 1
+	}
+
+	// Should be coordinated with MustRotate flag in GetTokenAccountInfos
+	//
+	// todo: configurable
+	if paymentCount >= 2 {
+		// Important Note: Do not leak anything. Just say it isn't the latest.
+		return newStaleStateError("destination is not the latest temporary incoming account")
+	}
+	return nil
+}
+
+func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account, claimedAmount uint64) error {
+	//
+	// Part 1: Is the account a gift card?
+	//
+
+	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err == account.ErrAccountInfoNotFound || accountInfoRecord.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+		return newIntentValidationError("source is not a remote send gift card")
+	}
+
+	//
+	// Part 2: Is there already an action to claim the gift card balance?
+	//
+
+	_, err = data.GetGiftCardClaimedAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err == nil {
+		return newStaleStateError("gift card balance has already been claimed")
+	} else if err == action.ErrActionNotFound {
+		// No action to claim it, so we can proceed
+	} else if err != nil {
+		return err
+	}
+
+	//
+	// Part 3: Is the action to auto-return the balance back to the issuer in a scheduling or post-scheduling state?
+	//
+
+	autoReturnActionRecord, err := data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err != nil && err != action.ErrActionNotFound {
+		return err
+	}
+
+	if err == nil && autoReturnActionRecord.State != action.StateUnknown {
+		return newStaleStateError("gift card is expired")
+	}
+
+	//
+	// Part 4: Is the gift card managed by Code?
+	//
+
+	timelockRecord, err := data.GetTimelockByVault(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
+
+	isManagedByCode := common.IsManagedByCode(ctx, timelockRecord)
+	if err != nil {
+		return err
+	} else if !isManagedByCode {
+		if timelockRecord.IsClosed() {
+			// Better error messaging, since we know we'll never reopen the account
+			// and the balance is guaranteed to be claimed (not necessarily through
+			// Code server though).
+			return newStaleStateError("gift card balance has already been claimed")
+		}
+		return ErrNotManagedByCode
+	}
+
+	//
+	// Part 5: Is the full amount being claimed?
+	//
+
+	// We don't track external deposits to gift cards or any further Code transfers
+	// to it in SubmitIntent, so this check is sufficient for now.
+	giftCardBalance, err := balance.DefaultCalculation(ctx, data, giftCardVaultAccount)
+	if err != nil {
+		return err
+	} else if giftCardBalance == 0 {
+		// Shouldn't be hit with checks from part 3, but left for completeness
+		return newStaleStateError("gift card balance has already been claimed")
+	} else if giftCardBalance != claimedAmount {
+		return newIntentValidationErrorf("must receive entire gift card balance of %d quarks", giftCardBalance)
+	}
+
+	//
+	// Part 6: Are we within the threshold for auto-return back to the issuer?
+	//
+
+	// todo: I think we use the same trick of doing deadline - x minutes to avoid race
+	//       conditions without distributed locks.
+	if time.Since(accountInfoRecord.CreatedAt) > 24*time.Hour-15*time.Minute {
+		return newStaleStateError("gift card is expired")
+	}
+
+	return nil
+}
+
+func validateIntentIdIsNotPaymentRequest(ctx context.Context, data code_data.Provider, intentId string) error {
+	_, err := data.GetPaymentRequest(ctx, intentId)
+	if err == nil {
+		return newIntentDeniedError("intent id is reserved for a payment request")
+	} else if err != paymentrequest.ErrPaymentRequestNotFound {
+		return err
+	}
+	return nil
+}
+
+func getExpectedTimelockVaultFromProtoAccount(authorityProto *commonpb.SolanaAccountId) (*common.Account, error) {
+	authorityAccount, err := common.NewAccountFromProto(authorityProto)
+	if err != nil {
+		return nil, err
+	}
+
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	if err != nil {
+		return nil, err
+	}
+	return timelockAccounts.Vault, nil
+}

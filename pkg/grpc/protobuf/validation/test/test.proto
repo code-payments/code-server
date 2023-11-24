@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package test;
+
+option go_package=".;test";
+
+import "validate/validate.proto";
+
+service MyService {
+    rpc Ping(PingRequest) returns (PingResponse) {}
+    rpc PingStream(stream PingRequest) returns (stream PingResponse) {}
+}
+
+message PingRequest {
+    int64 id = 1 [(validate.rules).int64 = {
+        gt: 0
+        lt: 100
+    }];
+}
+message PingResponse {
+    int64 id = 1 [(validate.rules).int64 = {
+        gt: 0
+        lt: 100
+    }];
+}
