@@ -1,4 +1,4 @@
-![Code Server](https://github.com/code-payments/code-server/assets/5760385/769d43fe-4bd2-4e79-8274-78dde08cc73c)
+<img width="1280" alt="Code Server" src="https://github.com/code-payments/code-server/assets/5760385/a7f19b1a-8052-422c-88c6-ad68cd86eb6d">
 
 # Code Server
 
