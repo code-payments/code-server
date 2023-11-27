@@ -17,7 +17,7 @@ cooperation in maintaining the security of our products is appreciated.
 <a name="reporting"></a>
 ## Reporting security problems in the Code Program Library
 
-Please use this [Report a Vulnerability](https://github.com/code-payments/code-program-library/security/advisories/new) link.
+Please use this [Report a Vulnerability](https://github.com/code-payments/code-server/security/advisories/new) link.
 Provide a helpful title and detailed description of the problem.
 
 If you haven't done so already, please **enable two-factor auth** in your GitHub account.
