@@ -1,11 +1,11 @@
 ![Code Server](https://github.com/code-payments/code-server/assets/5760385/769d43fe-4bd2-4e79-8274-78dde08cc73c)
 
+# Code Server
+
 [![Release](https://img.shields.io/github/v/release/code-payments/code-server.svg)](https://github.com/code-payments/code-server/releases/latest)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/code-payments/code-server)](https://pkg.go.dev/github.com/code-payments/code-server/pkg)
 [![Tests](https://github.com/code-payments/code-server/actions/workflows/test.yml/badge.svg)](https://github.com/code-payments/code-server/actions/workflows/test.yml)
 [![GitHub License](https://img.shields.io/badge/license-MIT-lightgrey.svg?style=flat)](https://github.com/code-payments/code-server/blob/main/LICENSE.md)
-
-# Code Server
 
 Code server monolith containing the gRPC/web services and workers that power a next-generation payments system. The project contains the first L2 solution on top of Solana, utilizing an intent-based system backed by the Code Sequencer to handle transactions.
 
