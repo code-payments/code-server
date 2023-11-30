@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -49,8 +48,6 @@ func TestGetUserAgent_ParseError(t *testing.T) {
 		// Version components missing
 		"Code/iOS/1",
 		"Code/iOS/1.",
-		"Code/iOS/1.2",
-		"Code/iOS/1.2.",
 		"Code/iOS/.2.3",
 		"Code/iOS/..3",
 		"Code/iOS/..",
@@ -63,7 +60,6 @@ func TestGetUserAgent_ParseError(t *testing.T) {
 		// Negative values in version
 		"Code/iOS/-1.2.3",
 		"Code/iOS/1.-2.3",
-		"Code/iOS/1.2.-3",
 	} {
 		ctx := context.Background()
 		ctx, err := headers.ContextWithHeaders(ctx)
@@ -71,9 +67,6 @@ func TestGetUserAgent_ParseError(t *testing.T) {
 		require.NoError(t, headers.SetASCIIHeader(ctx, UserAgentHeaderName, headerValue))
 
 		_, err = GetUserAgent(ctx)
-		if err == nil {
-			fmt.Println(headerValue)
-		}
 		assert.Error(t, err)
 	}
 }

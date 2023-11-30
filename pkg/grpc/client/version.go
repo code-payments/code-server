@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	versionPattern = "\\d+.\\d+.\\d+"
+	versionPattern = "\\d+.\\d+(.\\d+)?"
 )
 
 var (
@@ -55,14 +55,20 @@ func ParseVersion(value string) (*Version, error) {
 		return nil, errors.Wrap(err, "unable to parse major part as an int")
 	}
 
-	minor, err := strconv.Atoi(versionComponents[1])
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to parse minor part as an int")
+	var minor int
+	if len(versionComponents) > 1 {
+		minor, err = strconv.Atoi(versionComponents[1])
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to parse minor part as an int")
+		}
 	}
 
-	patch, err := strconv.Atoi(versionComponents[2])
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to parse patch part as an int")
+	var patch int
+	if len(versionComponents) > 2 {
+		patch, err = strconv.Atoi(versionComponents[2])
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to parse patch part as an int")
+		}
 	}
 
 	return &Version{

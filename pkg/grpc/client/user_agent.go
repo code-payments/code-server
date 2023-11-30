@@ -37,6 +37,8 @@ func GetUserAgent(ctx context.Context) (*UserAgent, error) {
 		return nil, errors.Wrap(err, "user agent header not present")
 	}
 
+	headerValue = strings.TrimSpace(headerValue)
+
 	matches := userAgentRegex.FindAllStringSubmatch(headerValue, -1)
 	if len(matches) != 1 {
 		return nil, errors.New("zero or more than one code version present")
