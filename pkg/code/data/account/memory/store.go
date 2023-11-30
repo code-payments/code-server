@@ -9,8 +9,8 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type store struct {
@@ -151,6 +151,15 @@ func (s *store) filterByRelationship(items []*account.Record, relationshipTo str
 	return res
 }
 
+func (s *store) groupByRelationship(items []*account.Record) map[string][]*account.Record {
+	res := make(map[string][]*account.Record)
+	for _, item := range items {
+		key := *pointer.StringOrDefault(item.RelationshipTo, "")
+		res[key] = append(res[key], item)
+	}
+	return res
+}
+
 // Put implements account.Store.Put
 func (s *store) Put(_ context.Context, data *account.Record) error {
 	if err := data.Validate(); err != nil {
@@ -247,11 +256,11 @@ func (s *store) GetByAuthorityAddress(_ context.Context, address string) (*accou
 }
 
 // GetLatestByOwnerAddress implements account.Store.GetLatestByOwnerAddress
-func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[commonpb.AccountType]*account.Record, error) {
+func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[commonpb.AccountType][]*account.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res := make(map[commonpb.AccountType]*account.Record)
+	res := make(map[commonpb.AccountType][]*account.Record)
 
 	items := s.findByOwnerAddress(address)
 	for _, accountType := range account.AllAccountTypes {
@@ -260,12 +269,16 @@ func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[
 			continue
 		}
 
-		sorted := ByIndex(items)
-		sort.Sort(sorted)
+		grouped := s.groupByRelationship(items)
 
-		cloned := items[len(items)-1].Clone()
+		for _, group := range grouped {
+			sorted := ByIndex(group)
+			sort.Sort(sorted)
 
-		res[accountType] = &cloned
+			cloned := group[len(group)-1].Clone()
+
+			res[accountType] = append(res[accountType], &cloned)
+		}
 	}
 
 	if len(res) == 0 {

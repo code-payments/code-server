@@ -11,8 +11,8 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s account.Store, teardown func()) {
@@ -297,7 +297,8 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 		} {
 			actual, ok := actualByType[accountType]
 			require.True(t, ok)
-			assert.Equal(t, fmt.Sprintf("token%d4", i), actual.TokenAccount)
+			require.Len(t, actual, 1)
+			assert.Equal(t, fmt.Sprintf("token%d4", i), actual[0].TokenAccount)
 		}
 	})
 }
@@ -340,8 +341,10 @@ func testRemoteSendEdgeCases(t *testing.T, s account.Store) {
 		latest, err := s.GetLatestByOwnerAddress(ctx, "owner")
 		require.NoError(t, err)
 		require.Len(t, latest, 1)
-		actual, ok := latest[commonpb.AccountType_REMOTE_SEND_GIFT_CARD]
+		records, ok := latest[commonpb.AccountType_REMOTE_SEND_GIFT_CARD]
 		require.True(t, ok)
+		require.Len(t, records, 1)
+		actual = records[0]
 		assert.Equal(t, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, actual.AccountType)
 		assertEquivalentRecords(t, &cloned, actual)
 
@@ -362,6 +365,7 @@ func testRelationshipAccountEdgeCases(t *testing.T, s account.Store) {
 		ctx := context.Background()
 
 		// Different relationships within the same owner
+		var allExpectedRecords []*account.Record
 		for i, relationshipTo := range []string{"app1.com", "app2.com"} {
 			relationshipRecord := &account.Record{
 				OwnerAccount:     "owner",
@@ -372,6 +376,7 @@ func testRelationshipAccountEdgeCases(t *testing.T, s account.Store) {
 				Index:            uint64(0),
 			}
 			cloned := relationshipRecord.Clone()
+			allExpectedRecords = append(allExpectedRecords, &cloned)
 
 			_, err := s.GetRelationshipByOwnerAddress(ctx, cloned.OwnerAccount, relationshipTo)
 			assert.Equal(t, account.ErrAccountInfoNotFound, err)
@@ -400,8 +405,14 @@ func testRelationshipAccountEdgeCases(t *testing.T, s account.Store) {
 			assertEquivalentRecords(t, &cloned, actual)
 		}
 
-		_, err := s.GetLatestByOwnerAddress(ctx, "owner")
-		assert.Equal(t, account.ErrAccountInfoNotFound, err)
+		recordsByType, err := s.GetLatestByOwnerAddress(ctx, "owner")
+		require.NoError(t, err)
+		allActualRecords, ok := recordsByType[commonpb.AccountType_RELATIONSHIP]
+		require.True(t, ok)
+		require.Len(t, allActualRecords, len(allExpectedRecords))
+		for i := 0; i < len(allActualRecords); i++ {
+			assertEquivalentRecords(t, allExpectedRecords[i], allActualRecords[i])
+		}
 
 		_, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_RELATIONSHIP)
 		assert.Error(t, err)

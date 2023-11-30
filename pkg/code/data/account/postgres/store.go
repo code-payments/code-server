@@ -77,15 +77,16 @@ func (s *store) GetByAuthorityAddress(ctx context.Context, address string) (*acc
 }
 
 // GetLatestByOwnerAddress implements account.Store.GetLatestByOwnerAddress
-func (s *store) GetLatestByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType]*account.Record, error) {
+func (s *store) GetLatestByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*account.Record, error) {
 	modelsByType, err := dbGetLatestByOwnerAddress(ctx, s.db, address)
 	if err != nil {
 		return nil, err
 	}
 
-	res := make(map[commonpb.AccountType]*account.Record)
-	for accountType, model := range modelsByType {
-		res[accountType] = fromModel(model)
+	res := make(map[commonpb.AccountType][]*account.Record)
+	for _, model := range modelsByType {
+		record := fromModel(model)
+		res[record.AccountType] = append(res[record.AccountType], record)
 	}
 	return res, nil
 }

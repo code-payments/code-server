@@ -10,8 +10,6 @@ import (
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
-// todo: RELATIONSHIP explicitly left out, which requires a refactor of GetLatestByOwnerAddress.
-// This is fine, because these account types are not part of any payment flows atm.
 var AllAccountTypes = []commonpb.AccountType{
 	commonpb.AccountType_PRIMARY,
 	commonpb.AccountType_TEMPORARY_INCOMING,
@@ -24,6 +22,7 @@ var AllAccountTypes = []commonpb.AccountType{
 	commonpb.AccountType_BUCKET_100_000_KIN,
 	commonpb.AccountType_BUCKET_1_000_000_KIN,
 	commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
+	commonpb.AccountType_RELATIONSHIP,
 }
 
 type Record struct {
