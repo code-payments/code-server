@@ -14,14 +14,14 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
-	"github.com/code-payments/code-server/pkg/grpc/client"
-	"github.com/code-payments/code-server/pkg/kin"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/grpc/client"
+	"github.com/code-payments/code-server/pkg/kin"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 var (
@@ -367,6 +367,11 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		MustRotate:           mustRotate,
 		ClaimState:           claimState,
 		OriginalExchangeData: originalExchangeData,
+		Mint: &commonpb.SolanaAccountId{
+			Value: kin.TokenMint,
+		},
+		MintDecimals:    kin.Decimals,
+		MintDisplayName: "Kin",
 	}, nil
 }
 
