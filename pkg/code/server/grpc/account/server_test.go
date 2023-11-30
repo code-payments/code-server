@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -17,11 +18,6 @@ import (
 	accountpb "github.com/code-payments/code-protobuf-api/generated/go/account/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -33,6 +29,11 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
+	"github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 type testEnv struct {
@@ -254,6 +255,9 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 		assert.False(t, accountInfo.MustRotate)
 		assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
 		assert.Nil(t, accountInfo.OriginalExchangeData)
+		assert.Equal(t, kin.Mint, base58.Encode(accountInfo.Mint.Value))
+		assert.EqualValues(t, kin.Decimals, accountInfo.MintDecimals)
+		assert.Equal(t, "Kin", accountInfo.MintDisplayName)
 	}
 
 	primaryAccountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
