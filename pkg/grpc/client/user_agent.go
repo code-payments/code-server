@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	userAgentPattern = fmt.Sprintf("Code/(iOS|Android)/%s", versionPattern)
+	userAgentPattern = fmt.Sprintf("^Code/(iOS|Android)/%s$", versionPattern)
 	userAgentRegex   = regexp.MustCompile(userAgentPattern)
 )
 
@@ -36,6 +36,8 @@ func GetUserAgent(ctx context.Context) (*UserAgent, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "user agent header not present")
 	}
+
+	headerValue = strings.TrimSpace(headerValue)
 
 	matches := userAgentRegex.FindAllStringSubmatch(headerValue, -1)
 	if len(matches) != 1 {

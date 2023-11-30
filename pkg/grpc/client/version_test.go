@@ -15,6 +15,12 @@ func TestVersion_ParseHappyPath(t *testing.T) {
 	assert.Equal(t, 11, version.Major)
 	assert.Equal(t, 22, version.Minor)
 	assert.Equal(t, 33, version.Patch)
+
+	version, err = ParseVersion("1.2")
+	require.NoError(t, err)
+	assert.Equal(t, 1, version.Major)
+	assert.Equal(t, 2, version.Minor)
+	assert.Equal(t, 0, version.Patch)
 }
 
 func TestVersion_ParseError(t *testing.T) {
@@ -22,7 +28,6 @@ func TestVersion_ParseError(t *testing.T) {
 		// Version components missing
 		"1",
 		"1.",
-		"1.2",
 		"1.2.",
 		".2.3",
 		"..3",
