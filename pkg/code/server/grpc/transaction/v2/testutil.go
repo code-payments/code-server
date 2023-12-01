@@ -1803,6 +1803,7 @@ type phoneConf struct {
 
 	simulateSendingTooLittle        bool
 	simulateSendingTooMuch          bool
+	simulateNotSendingFromSource    bool
 	simulateNotSendingToDestination bool
 
 	simulateSendPrivatePaymentFromPreviousTempOutgoingAccount       bool
@@ -2453,6 +2454,53 @@ func (p *phoneTestEnv) publiclyWithdraw123KinToExternalWallet(t *testing.T) subm
 	metadata := &transactionpb.Metadata{
 		Type: &transactionpb.Metadata_SendPublicPayment{
 			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+				Destination: destination.ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "kin",
+					ExchangeRate: 1,
+					NativeAmount: 123,
+					Quarks:       kin.ToQuarks(123),
+				},
+				IsWithdrawal: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
+func (p *phoneTestEnv) publiclyWithdraw123KinToExternalWalletFromRelationshipAccount(t *testing.T, relationship string) submitIntentCallMetadata {
+	destination := testutil.NewRandomAccount(t)
+
+	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
+
+	actions := []*transactionpb.Action{
+		// Send full payment from primary to payment destination in a single transfer
+		{Type: &transactionpb.Action_NoPrivacyTransfer{
+			NoPrivacyTransfer: &transactionpb.NoPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: destination.ToProto(),
+				Amount:      kin.ToQuarks(123),
+			},
+		}},
+	}
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPublicPayment{
+			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
 				Destination: destination.ToProto(),
 				ExchangeData: &transactionpb.ExchangeData{
 					Currency:     "kin",
@@ -2873,6 +2921,7 @@ func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUser(t *testing.T, receiver p
 	metadata := &transactionpb.Metadata{
 		Type: &transactionpb.Metadata_SendPublicPayment{
 			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
 				Destination: destination.ToProto(),
 				ExchangeData: &transactionpb.ExchangeData{
 					Currency:     "usd",
@@ -3849,14 +3898,21 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		}
 
 		if p.conf.simulateSendPublicPaymentFromBucketAccount {
+			metadata.GetSendPublicPayment().Source = p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 			actions[0].GetNoPrivacyTransfer().Authority = p.getAuthority(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 			actions[0].GetNoPrivacyTransfer().Source = p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 		}
 
 		if p.conf.simulateUsingGiftCardAccount {
 			giftCardAccount := p.directServerAccess.generateRandomUnclaimedGiftCard(t)
+			metadata.GetSendPublicPayment().Source = getTimelockVault(t, giftCardAccount).ToProto()
 			actions[0].GetNoPrivacyTransfer().Authority = giftCardAccount.ToProto()
 			actions[0].GetNoPrivacyTransfer().Source = getTimelockVault(t, giftCardAccount).ToProto()
+		}
+
+		if p.conf.simulateNotSendingFromSource {
+			actions[0].GetNoPrivacyTransfer().Authority = p.getAuthority(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
+			actions[0].GetNoPrivacyTransfer().Source = p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 		}
 	case *transactionpb.Metadata_ReceivePaymentsPublicly:
 		if p.conf.simulateReceivingFromDesktop {

@@ -1794,12 +1794,28 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return newIntentValidationError("expected 1 action")
 	}
 
+	var source *common.Account
+	var err error
+	if metadata.Source != nil {
+		source, err = common.NewAccountFromProto(metadata.Source)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Backwards compat for old clients using metadata without source. It was
+		// always assumed to be from the primary account
+		source, err = common.NewAccountFromPublicKeyString(initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General.TokenAccount)
+		if err != nil {
+			return err
+		}
+	}
+
 	destination, err := common.NewAccountFromProto(metadata.Destination)
 	if err != nil {
 		return err
 	}
 
-	// Part 1: Check the destination account itself is valid
+	// Part 1: Check the source and destination accounts are valid
 
 	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
 	switch err {
@@ -1826,12 +1842,17 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return err
 	}
 
+	sourceAccountRecords, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+	if !ok || (sourceAccountRecords.General.AccountType != commonpb.AccountType_PRIMARY && sourceAccountRecords.General.AccountType != commonpb.AccountType_RELATIONSHIP) {
+		return newIntentValidationError("source account must be a deposit account")
+	}
+
 	//
 	// Part 2: Validate actions match intent metadata
 	//
 
 	//
-	// Part 2.1: Check destination account is paid exact quark amount from primary account
+	// Part 2.1: Check destination account is paid exact quark amount from the deposit account
 	//
 
 	destinationSimulation, ok := simResult.SimulationsByAccount[destination.PublicKey().ToBase58()]
@@ -1844,12 +1865,13 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2.2: Check that the user's primary account was used as the source of funds
+	// Part 2.2: Check that the user's deposit account was used as the source of funds
+	//           as specified in the metadata
 	//
 
-	sourceSimulation, ok := simResult.SimulationsByAccount[initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General.TokenAccount]
+	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
 	if !ok {
-		return newIntentValidationErrorf("must send payment from primary account %s", initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General.TokenAccount)
+		return newIntentValidationErrorf("must send payment from source account %s", source.PublicKey().ToBase58())
 	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.ExchangeData.Quarks) {
 		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must send %d quarks from source account", metadata.ExchangeData.Quarks)
 	}
@@ -2475,7 +2497,7 @@ func validateMoneyMovementActionUserAccounts(
 
 		switch typedAction := action.Type.(type) {
 		case *transactionpb.Action_NoPrivacyTransfer:
-			// No privacy transfers are always come from the primary account
+			// No privacy transfers are always come from a deposit account
 
 			authority, err = common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Authority)
 			if err != nil {
@@ -2488,8 +2510,8 @@ func validateMoneyMovementActionUserAccounts(
 			}
 
 			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
-			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-				return newActionValidationError(action, "source account must be the primary account")
+			if !ok || (sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY && sourceAccountInfo.General.AccountType != commonpb.AccountType_RELATIONSHIP) {
+				return newActionValidationError(action, "source account must be a deposit account")
 			}
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			// No privacy withdraws are used in two ways depending on the intent:
