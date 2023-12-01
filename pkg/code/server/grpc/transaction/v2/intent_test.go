@@ -1244,7 +1244,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_FromRemoteSendGiftCardPublicRecei
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, receivingPhone, nil)
 }
 
-func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_HappyPath(t *testing.T) {
+func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_PrimaryAccount_HappyPath(t *testing.T) {
 	server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
@@ -1253,6 +1253,24 @@ func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_HappyPath(t *testing.
 	receivingPhone.openAccounts(t).requireSuccess(t)
 
 	submitIntentCall := receivingPhone.deposit777KinIntoOrganizer(t)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, receivingPhone, nil)
+}
+
+func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_RelationshipAccount_HappyPath(t *testing.T) {
+	server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 100)
+
+	domain := "getcode.com"
+
+	receivingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+	server.fundAccount(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+
+	submitIntentCall := receivingPhone.deposit777KinIntoOrganizerFromRelationshipAccount(t, domain)
 	submitIntentCall.requireSuccess(t)
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, receivingPhone, nil)
 }
@@ -1385,7 +1403,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulateFlippingDepositFlag = true
 	submitIntentCall = receivingPhone.receive42KinFromCodeUser(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "must receive from primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "must receive from a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
@@ -1411,7 +1429,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 
 	server.fundAccount(t, receivingPhone.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, 0), kin.ToQuarks(777))
 	submitIntentCall = receivingPhone.deposit777KinIntoOrganizer(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "must receive from primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "must receive from a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
@@ -1422,7 +1440,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	submitIntentCall = receivingPhone.deposit777KinIntoOrganizer(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "must receive from primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "must receive from a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//
@@ -1514,13 +1532,13 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulateUsingPrimaryAccountAsSource = true
 	submitIntentCall = receivingPhone.receive42KinFromCodeUser(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "actions[6]: primary account cannot send/receive kin")
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[6]: deposit account cannot send/receive kin")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulateUsingPrimaryAccountAsDestination = true
 	submitIntentCall = receivingPhone.deposit777KinIntoOrganizer(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: primary account cannot receive kin")
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: deposit account cannot receive kin")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()

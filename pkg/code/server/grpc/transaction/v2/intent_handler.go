@@ -1149,8 +1149,8 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 	sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
 	if !ok {
 		return newIntentValidationError("source is not a latest owned account")
-	} else if metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-		return newIntentValidationError("must receive from primary account")
+	} else if metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY && sourceAccountInfo.General.AccountType != commonpb.AccountType_RELATIONSHIP {
+		return newIntentValidationError("must receive from a deposit account")
 	} else if !metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
 		return newIntentValidationError("must receive from latest temporary incoming account")
 	}
@@ -1241,15 +1241,15 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 		switch accountRecords.General.AccountType {
 		case commonpb.AccountType_TEMPORARY_OUTGOING:
 			return newActionValidationError(simulation.Transfers[0].Action, "temporary outgoing account cannot send/receive kin")
-		case commonpb.AccountType_PRIMARY:
+		case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
 			if !metadata.IsDeposit {
-				return newActionValidationError(simulation.Transfers[0].Action, "primary account cannot send/receive kin")
+				return newActionValidationError(simulation.Transfers[0].Action, "deposit account cannot send/receive kin")
 			}
 
 			if metadata.IsDeposit {
 				incomingTransfers := simulation.GetIncomingTransfers()
 				if len(incomingTransfers) > 0 {
-					return newActionValidationError(incomingTransfers[0].Action, "primary account cannot receive kin")
+					return newActionValidationError(incomingTransfers[0].Action, "deposit account cannot receive kin")
 				}
 
 				publicTransfers := simulation.GetPublicTransfers()
@@ -2562,8 +2562,9 @@ func validateMoneyMovementActionUserAccounts(
 
 			if !sourceAccountInfo.General.IsBucket() &&
 				sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING &&
-				sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-				return newActionValidationError(action, "source account must be the primary or latest temporary incoming account when not a bucket account")
+				sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY &&
+				sourceAccountInfo.General.AccountType != commonpb.AccountType_RELATIONSHIP {
+				return newActionValidationError(action, "source account must be a deposit or latest temporary incoming account when not a bucket account")
 			}
 
 			if !destinationAccountInfo.General.IsBucket() && destinationAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_OUTGOING {

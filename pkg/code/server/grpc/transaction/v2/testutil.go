@@ -2791,6 +2791,70 @@ func (p *phoneTestEnv) deposit777KinIntoOrganizer(t *testing.T) submitIntentCall
 	}
 }
 
+func (p *phoneTestEnv) deposit777KinIntoOrganizerFromRelationshipAccount(t *testing.T, relationship string) submitIntentCallMetadata {
+	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
+
+	actions := []*transactionpb.Action{
+		// Receive from temporary incoming to bucketed accounts
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(7),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(70),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_100_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(700),
+			},
+		}},
+
+		// Re-organize bucket accounts (example)
+		{Type: &transactionpb.Action_TemporaryPrivacyExchange{
+			TemporaryPrivacyExchange: &transactionpb.TemporaryPrivacyExchangeAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(10),
+			},
+		}},
+	}
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_ReceivePaymentsPrivately{
+			ReceivePaymentsPrivately: &transactionpb.ReceivePaymentsPrivatelyMetadata{
+				Source:    getTimelockVault(t, sourceAuthority).ToProto(),
+				Quarks:    kin.ToQuarks(777),
+				IsDeposit: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
 func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUser(t *testing.T, receiver phoneTestEnv) submitIntentCallMetadata {
 	destination := receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0)
 
@@ -5227,6 +5291,10 @@ func (p *phoneTestEnv) getTimelockVault(t *testing.T, accountType commonpb.Accou
 }
 
 func (p *phoneTestEnv) getAuthority(t *testing.T, accountType commonpb.AccountType, index uint64) *common.Account {
+	if accountType == commonpb.AccountType_RELATIONSHIP {
+		require.Fail(t, "relationship account not supported in this function")
+	}
+
 	if accountType == commonpb.AccountType_PRIMARY {
 		return p.parentAccount
 	}
@@ -5234,6 +5302,10 @@ func (p *phoneTestEnv) getAuthority(t *testing.T, accountType commonpb.AccountTy
 }
 
 func (p *phoneTestEnv) getAuthorityForLatestAccount(t *testing.T, accountType commonpb.AccountType) (*common.Account, uint64) {
+	if accountType == commonpb.AccountType_RELATIONSHIP {
+		require.Fail(t, "relationship account not supported in this function")
+	}
+
 	if accountType == commonpb.AccountType_PRIMARY {
 		return p.parentAccount, 0
 	}
@@ -5248,7 +5320,23 @@ func (p *phoneTestEnv) getAuthorityForLatestAccount(t *testing.T, accountType co
 	return p.getDerivedAccount(t, accountType, index), index
 }
 
+func (p *phoneTestEnv) getAuthorityForRelationshipAccount(t *testing.T, relationship string) *common.Account {
+	for i := len(p.allDerivedAccounts) - 1; i >= 0; i-- {
+		if p.allDerivedAccounts[i].accountType == commonpb.AccountType_RELATIONSHIP && *p.allDerivedAccounts[i].relationshipTo == relationship {
+			return p.allDerivedAccounts[i].value
+		}
+	}
+
+	require.Fail(t, "relationship account not found")
+
+	return nil
+}
+
 func (p *phoneTestEnv) getDerivedAccount(t *testing.T, accountType commonpb.AccountType, index uint64) *common.Account {
+	if accountType == commonpb.AccountType_RELATIONSHIP {
+		require.Fail(t, "relationship account not supported in this function")
+	}
+
 	for i := len(p.allDerivedAccounts) - 1; i >= 0; i-- {
 		if p.allDerivedAccounts[i].accountType == accountType && p.allDerivedAccounts[i].index == index {
 			return p.allDerivedAccounts[i].value
