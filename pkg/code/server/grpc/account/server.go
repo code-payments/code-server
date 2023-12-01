@@ -124,16 +124,16 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 		log.WithError(err).Warn("failure getting legacy 2022 account records")
 		return nil, status.Error(codes.Internal, "")
 	} else if err == nil {
-		recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022] = legacyPrimary2022Records
+		recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022] = []*common.AccountRecords{legacyPrimary2022Records}
 	}
 
 	// Trigger a deposit sync with the blockchain for the primary account, if it exists
 	if primaryRecords, ok := recordsByType[commonpb.AccountType_PRIMARY]; ok {
-		if !primaryRecords.General.RequiresDepositSync {
-			primaryRecords.General.RequiresDepositSync = true
-			err = s.data.UpdateAccountInfo(ctx, primaryRecords.General)
+		if !primaryRecords[0].General.RequiresDepositSync {
+			primaryRecords[0].General.RequiresDepositSync = true
+			err = s.data.UpdateAccountInfo(ctx, primaryRecords[0].General)
 			if err != nil {
-				log.WithError(err).WithField("token_account", primaryRecords.General.TokenAccount).Warn("failure marking primary account for deposit sync")
+				log.WithError(err).WithField("token_account", primaryRecords[0].General.TokenAccount).Warn("failure marking primary account for deposit sync")
 			}
 		}
 	}
@@ -143,9 +143,9 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 
 	// Pre-privacy accounts are not supported by the new batching stuff
 	if _, ok := recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022]; ok {
-		log := log.WithField("token_account", recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022].General.TokenAccount)
+		log := log.WithField("token_account", recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022][0].General.TokenAccount)
 
-		tokenAccount, err := common.NewAccountFromPublicKeyString(recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022].General.TokenAccount)
+		tokenAccount, err := common.NewAccountFromPublicKeyString(recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022][0].General.TokenAccount)
 		if err != nil {
 			return nil, status.Error(codes.Internal, "")
 		}
@@ -171,18 +171,20 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 
 	// Privacy account balances can be fetched in a batched method
 	var batchedAccountRecords []*common.AccountRecords
-	for accountType, accountRecords := range recordsByType {
+	for accountType, batchAccountRecords := range recordsByType {
 		if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
 			continue
 		}
 
-		if common.IsManagedByCode(ctx, accountRecords.Timelock) {
-			batchedAccountRecords = append(batchedAccountRecords, accountRecords)
-		} else {
-			// Don't bother calculating a balance, the account isn't useable in Code
-			balanceMetadataByTokenAccount[accountRecords.General.TokenAccount] = &balanceMetadata{
-				value:  0,
-				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
+		for _, accountRecords := range batchAccountRecords {
+			if common.IsManagedByCode(ctx, accountRecords.Timelock) {
+				batchedAccountRecords = append(batchedAccountRecords, accountRecords)
+			} else {
+				// Don't bother calculating a balance, the account isn't useable in Code
+				balanceMetadataByTokenAccount[accountRecords.General.TokenAccount] = &balanceMetadata{
+					value:  0,
+					source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
+				}
 			}
 		}
 	}
@@ -199,16 +201,18 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	}
 
 	tokenAccountInfos := make(map[string]*accountpb.TokenAccountInfo)
-	for _, records := range recordsByType {
-		log := log.WithField("token_account", records.General.TokenAccount)
+	for _, batchRecords := range recordsByType {
+		for _, records := range batchRecords {
+			log := log.WithField("token_account", records.General.TokenAccount)
 
-		proto, err := s.getProtoAccountInfo(ctx, records, balanceMetadataByTokenAccount[records.General.TokenAccount])
-		if err != nil {
-			log.WithError(err).Warn("failure getting proto account info")
-			return nil, status.Error(codes.Internal, "")
+			proto, err := s.getProtoAccountInfo(ctx, records, balanceMetadataByTokenAccount[records.General.TokenAccount])
+			if err != nil {
+				log.WithError(err).Warn("failure getting proto account info")
+				return nil, status.Error(codes.Internal, "")
+			}
+
+			tokenAccountInfos[records.General.TokenAccount] = proto
 		}
-
-		tokenAccountInfos[records.General.TokenAccount] = proto
 	}
 
 	if len(tokenAccountInfos) == 0 {
@@ -224,7 +228,7 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 
 	// Is this a gift card in a terminal state that we can cache?
 	if _, ok := recordsByType[commonpb.AccountType_REMOTE_SEND_GIFT_CARD]; len(tokenAccountInfos) == 1 && ok {
-		tokenAccountInfo := tokenAccountInfos[recordsByType[commonpb.AccountType_REMOTE_SEND_GIFT_CARD].General.TokenAccount]
+		tokenAccountInfo := tokenAccountInfos[recordsByType[commonpb.AccountType_REMOTE_SEND_GIFT_CARD][0].General.TokenAccount]
 
 		switch tokenAccountInfo.ClaimState {
 		case accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED, accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED:

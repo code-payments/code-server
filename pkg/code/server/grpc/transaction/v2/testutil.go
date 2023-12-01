@@ -29,19 +29,6 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/database/query"
-	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	memory_push "github.com/code-payments/code-server/pkg/push/memory"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -68,6 +55,19 @@ import (
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
+	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/memo"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/solana/system"
+	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 // todo: Make working with different timelock versions easier
@@ -1228,27 +1228,27 @@ func (s serverTestEnv) assertLatestAccountRecordsSaved(t *testing.T, phone phone
 		timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
 		require.NoError(t, err)
 
-		assert.Equal(t, accountType, accountRecords.General.AccountType)
-		assert.Equal(t, phone.parentAccount.PublicKey().ToBase58(), accountRecords.General.OwnerAccount)
-		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords.General.AuthorityAccount)
-		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords.General.TokenAccount)
-		assert.EqualValues(t, index, accountRecords.General.Index)
-		assert.Nil(t, accountRecords.General.RelationshipTo)
-		assert.False(t, accountRecords.General.RequiresDepositSync)
-		assert.False(t, accountRecords.General.RequiresAutoReturnCheck)
+		assert.Equal(t, accountType, accountRecords[0].General.AccountType)
+		assert.Equal(t, phone.parentAccount.PublicKey().ToBase58(), accountRecords[0].General.OwnerAccount)
+		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords[0].General.AuthorityAccount)
+		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords[0].General.TokenAccount)
+		assert.EqualValues(t, index, accountRecords[0].General.Index)
+		assert.Nil(t, accountRecords[0].General.RelationshipTo)
+		assert.False(t, accountRecords[0].General.RequiresDepositSync)
+		assert.False(t, accountRecords[0].General.RequiresAutoReturnCheck)
 
-		assert.Equal(t, timelock_token_v1.DataVersion1, accountRecords.Timelock.DataVersion)
-		assert.Equal(t, timelockAccounts.State.PublicKey().ToBase58(), accountRecords.Timelock.Address)
-		assert.Equal(t, timelockAccounts.StateBump, accountRecords.Timelock.Bump)
-		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords.Timelock.VaultAddress)
-		assert.Equal(t, timelockAccounts.VaultBump, accountRecords.Timelock.VaultBump)
-		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords.Timelock.VaultOwner)
-		assert.Equal(t, timelock_token_v1.StateUnknown, accountRecords.Timelock.VaultState)
-		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords.Timelock.TimeAuthority)
-		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords.Timelock.CloseAuthority)
-		assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, accountRecords.Timelock.NumDaysLocked)
-		assert.Nil(t, accountRecords.Timelock.UnlockAt)
-		assert.EqualValues(t, 0, accountRecords.Timelock.Block)
+		assert.Equal(t, timelock_token_v1.DataVersion1, accountRecords[0].Timelock.DataVersion)
+		assert.Equal(t, timelockAccounts.State.PublicKey().ToBase58(), accountRecords[0].Timelock.Address)
+		assert.Equal(t, timelockAccounts.StateBump, accountRecords[0].Timelock.Bump)
+		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords[0].Timelock.VaultAddress)
+		assert.Equal(t, timelockAccounts.VaultBump, accountRecords[0].Timelock.VaultBump)
+		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords[0].Timelock.VaultOwner)
+		assert.Equal(t, timelock_token_v1.StateUnknown, accountRecords[0].Timelock.VaultState)
+		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords[0].Timelock.TimeAuthority)
+		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords[0].Timelock.CloseAuthority)
+		assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, accountRecords[0].Timelock.NumDaysLocked)
+		assert.Nil(t, accountRecords[0].Timelock.UnlockAt)
+		assert.EqualValues(t, 0, accountRecords[0].Timelock.Block)
 	}
 }
 

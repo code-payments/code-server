@@ -12,9 +12,6 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/currency"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -23,6 +20,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	"github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/pointer"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
@@ -45,7 +46,7 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, balance)
 
-	balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY])
+	balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 0, balanceByAccount[newTokenAccount.PublicKey().ToBase58()])
@@ -91,7 +92,7 @@ func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
 			accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner)
 			require.NoError(t, err)
 
-			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY])
+			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
 			require.NoError(t, err)
 			require.Len(t, balanceByAccount, 1)
 			assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
@@ -197,7 +198,7 @@ func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
 			accountRecords4, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner4)
 			require.NoError(t, err)
 
-			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY], accountRecords2[commonpb.AccountType_PRIMARY], accountRecords3[commonpb.AccountType_PRIMARY], accountRecords4[commonpb.AccountType_PRIMARY])
+			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0], accountRecords3[commonpb.AccountType_PRIMARY][0], accountRecords4[commonpb.AccountType_PRIMARY][0])
 			require.NoError(t, err)
 			require.Len(t, balanceByAccount, 4)
 			assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
@@ -264,7 +265,7 @@ func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
 			accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
 			require.NoError(t, err)
 
-			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY], accountRecords2[commonpb.AccountType_PRIMARY])
+			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0])
 			require.NoError(t, err)
 			require.Len(t, balanceByAccount, 2)
 			assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
@@ -316,7 +317,7 @@ func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
 			accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, ownerAccount)
 			require.NoError(t, err)
 
-			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY])
+			balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
 			require.NoError(t, err)
 			require.Len(t, balanceByAccount, 1)
 			assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
@@ -354,7 +355,7 @@ func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	_, err = DefaultCalculation(env.ctx, env.data, tokenAccount)
 	assert.Equal(t, ErrNotManagedByCode, err)
 
-	_, err = DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY])
+	_, err = DefaultBatchCalculationWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
 	assert.Equal(t, ErrNotManagedByCode, err)
 
 	_, err = DefaultBatchCalculationWithTokenAccounts(env.ctx, env.data, tokenAccount)
@@ -419,7 +420,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 
 		balance := uint64(math.Pow10(i))
 		expectedTotalBalance += balance
-		if accountType != commonpb.AccountType_PRIMARY {
+		if accountType != commonpb.AccountType_PRIMARY && accountType != commonpb.AccountType_RELATIONSHIP {
 			expectedPrivateBalance += balance
 		}
 
@@ -434,6 +435,9 @@ func TestGetAggregatedBalances(t *testing.T) {
 			AuthorityAccount: authority.PublicKey().ToBase58(),
 			TokenAccount:     timelockRecord.VaultAddress,
 			AccountType:      accountType,
+		}
+		if accountType == commonpb.AccountType_RELATIONSHIP {
+			accountInfoRecord.RelationshipTo = pointer.String("example.com")
 		}
 		require.NoError(t, env.data.CreateAccountInfo(env.ctx, &accountInfoRecord))
 
