@@ -718,7 +718,7 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateSendPrivatePaymentWithMoreTempOutgoingOutboundTransfers = true
 	submitIntentCall = sendingPhone.send42KinToCodeUser(t, receivingPhone)
-	submitIntentCall.assertInvalidIntentResponse(t, "temporary outgoing account can only send kin once")
+	submitIntentCall.assertInvalidIntentResponse(t, "temporary outgoing account can only send kin 1 time")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()

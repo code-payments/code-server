@@ -728,7 +728,7 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
 	if err == nil && paymentRequestRecord.DestinationTokenAccount != destination.PublicKey().ToBase58() {
 		return newIntentValidationErrorf("payment has a request to destination %s", paymentRequestRecord.DestinationTokenAccount)
-	} else if err != paymentrequest.ErrPaymentRequestNotFound {
+	} else if err != paymentrequest.ErrPaymentRequestNotFound && err != nil {
 		return err
 	}
 
@@ -834,12 +834,20 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		case commonpb.AccountType_TEMPORARY_INCOMING:
 			return newActionValidationError(simulation.Transfers[0].Action, "temporary incoming account cannot send/receive kin")
 		case commonpb.AccountType_TEMPORARY_OUTGOING:
-			if simulation.CountPublicTransfers() != 1 || simulation.CountWithdrawals() != 1 {
+			expectedPublicTransfers := 1
+			if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+				expectedPublicTransfers = 2
+			}
+			if simulation.CountPublicTransfers() != expectedPublicTransfers {
+				return newIntentValidationErrorf("temporary outgoing account can only have %d public transfers", expectedPublicTransfers)
+			}
+
+			if simulation.CountWithdrawals() != 1 {
 				return newIntentValidationError("temporary outgoing account can only have one public withdraw")
 			}
 
-			if simulation.CountOutgoingTransfers() != 1 {
-				return newIntentValidationError("temporary outgoing account can only send kin once")
+			if simulation.CountOutgoingTransfers() != expectedPublicTransfers {
+				return newIntentValidationErrorf("temporary outgoing account can only send kin %d times", expectedPublicTransfers)
 			}
 		case commonpb.AccountType_BUCKET_1_KIN,
 			commonpb.AccountType_BUCKET_10_KIN,
@@ -1787,10 +1795,6 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 	// Part 1: Check the destination account itself is valid
 
-	//
-	// Part 1.1: Check against allowed destination account types
-	//
-
 	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
 	switch err {
 	case nil:
@@ -1813,17 +1817,6 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 			}
 		}
 	default:
-		return err
-	}
-
-	//
-	// Part 1.2: Validate destination account matches payment request, if it exists
-	//
-
-	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
-	if err == nil && paymentRequestRecord.DestinationTokenAccount != destination.PublicKey().ToBase58() {
-		return newIntentValidationErrorf("payment has a request to destination %s", paymentRequestRecord.DestinationTokenAccount)
-	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
 
@@ -2488,7 +2481,7 @@ func validateMoneyMovementActionUserAccounts(
 
 			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
 			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-				return newActionValidationErrorf(action, "source account must be the primary account %s", sourceAccountInfo.General.TokenAccount)
+				return newActionValidationError(action, "source account must be the primary account")
 			}
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			// No privacy withdraws are used in two ways depending on the intent:
@@ -2594,6 +2587,23 @@ func validateMoneyMovementActionUserAccounts(
 			destinationAccountInfo, ok := initiatorAccountsByVault[destination.PublicKey().ToBase58()]
 			if !ok || !destinationAccountInfo.General.IsBucket() {
 				return newActionValidationError(action, "destination account must be an owned bucket account")
+			}
+		case *transactionpb.Action_FeePayment:
+			// Fee payments always come from the latest temporary outgoing account
+
+			authority, err = common.NewAccountFromProto(typedAction.FeePayment.Authority)
+			if err != nil {
+				return err
+			}
+
+			source, err = common.NewAccountFromProto(typedAction.FeePayment.Source)
+			if err != nil {
+				return err
+			}
+
+			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_OUTGOING {
+				return newActionValidationError(action, "source account must be the latest temporary outgoing account")
 			}
 		default:
 			continue
