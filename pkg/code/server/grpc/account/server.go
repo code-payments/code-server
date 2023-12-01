@@ -358,6 +358,17 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		}
 	}
 
+	var relationship *commonpb.Relationship
+	if records.General.AccountType == commonpb.AccountType_RELATIONSHIP {
+		relationship = &commonpb.Relationship{
+			Type: &commonpb.Relationship_Domain{
+				Domain: &commonpb.Domain{
+					Value: *records.General.RelationshipTo,
+				},
+			},
+		}
+	}
+
 	return &accountpb.TokenAccountInfo{
 		Address:              tokenAccount.ToProto(),
 		Owner:                ownerAccount.ToProto(),
@@ -371,6 +382,7 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		MustRotate:           mustRotate,
 		ClaimState:           claimState,
 		OriginalExchangeData: originalExchangeData,
+		Relationship:         relationship,
 		Mint: &commonpb.SolanaAccountId{
 			Value: kin.TokenMint,
 		},

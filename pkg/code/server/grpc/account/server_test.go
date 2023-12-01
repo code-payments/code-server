@@ -268,6 +268,12 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			require.Fail(t, "unexpected authority")
 		}
 
+		if accountInfo.AccountType == commonpb.AccountType_RELATIONSHIP {
+			require.NotNil(t, accountInfo.Relationship)
+		} else {
+			assert.Nil(t, accountInfo.Relationship)
+		}
+
 		assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
 		assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
 		assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS, accountInfo.BlockchainState)
@@ -542,6 +548,8 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		assert.Equal(t, giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
 
 		assert.False(t, accountInfo.MustRotate)
+
+		assert.Nil(t, accountInfo.Relationship)
 
 		accountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 		require.NoError(t, err)
