@@ -1820,12 +1820,12 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
 	switch err {
 	case nil:
-		// Code->Code public withdraws must be done to primary accounts
-		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
-			return newIntentValidationError("destination account must be a primary account")
+		// Code->Code public withdraws must be done against other deposit accounts
+		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY && destinationAccountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
+			return newIntentValidationError("destination account must be a deposit account")
 		}
 
-		// And that primary account cannot be yourself
+		// And that deposit account cannot be yourself
 		if destinationAccountInfo.OwnerAccount == initiatorOwnerAccount.PublicKey().ToBase58() {
 			return newIntentValidationError("payments within the same owner are not allowed")
 		}

@@ -261,12 +261,9 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		return errors.Wrap(err, "error saving intent record")
 	}
 
-	// todo: Define chat message
-	if accountInfoRecord.AccountType != commonpb.AccountType_RELATIONSHIP {
-		err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
-		if err != nil {
-			return errors.Wrap(err, "error updating cash transactions chat")
-		}
+	err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
+	if err != nil {
+		return errors.Wrap(err, "error updating cash transactions chat")
 	}
 
 	// For tracking in balances

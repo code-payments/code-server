@@ -18,6 +18,8 @@ import (
 // chat with exchange data content related to the submitted intent.
 //
 // Note: Tests covered in SubmitIntent history tests
+//
+// todo: How are we handling relationship account flows?
 func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) error {
 	exchangeData, ok := getExchangeDataFromIntent(intentRecord)
 	if !ok {

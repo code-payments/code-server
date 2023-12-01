@@ -13,12 +13,12 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	chat_util "github.com/code-payments/code-server/pkg/code/chat"
+	"github.com/code-payments/code-server/pkg/code/data/chat"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 func TestPaymentHistory_HappyPath(t *testing.T) {
@@ -62,7 +62,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	// [Cash Transactions] sendingPhone   WITHDREW  $77.70 USD of Kin
 	// [Cash Transactions] receivingPhone DEPOSITED $77.70 USD of Kin
 	sendingPhone.privatelyWithdraw777KinToCodeUser(t, sendingPhone).requireSuccess(t)
-	sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
+	sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone).requireSuccess(t)
 
 	// [Cash Transactions] sendingPhone   SENT     $2.10 CAD of Kin
 	// [Cash Transactions] receivingPhone RECEIVED $2.10 CAD of Kin
