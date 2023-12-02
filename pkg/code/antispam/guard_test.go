@@ -429,9 +429,13 @@ func TestAllowOpenAccounts_HappyPath(t *testing.T) {
 			require.NoError(t, env.guard.data.SavePhoneVerification(env.ctx, verification))
 		}
 
-		// New accounts are always denied when using a fake device.
+		// New accounts are always denied when using a fake or unverifiable device.
 		for i := 0; i < 5; i++ {
 			allow, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.InvalidDeviceToken))
+			require.NoError(t, err)
+			assert.False(t, allow)
+
+			allow, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, nil)
 			require.NoError(t, err)
 			assert.False(t, allow)
 		}
@@ -644,9 +648,13 @@ func TestAllowNewPhoneVerification_HappyPath(t *testing.T) {
 		assert.True(t, allow)
 	}
 
-	// New verifications are always denied when using a fake device.
+	// New verifications are always denied when using a fake or unverifiable device.
 	for i := 0; i < 5; i++ {
 		allow, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.InvalidDeviceToken))
+		require.NoError(t, err)
+		assert.False(t, allow)
+
+		allow, err = env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
 		require.NoError(t, err)
 		assert.False(t, allow)
 	}

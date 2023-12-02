@@ -44,6 +44,8 @@ type conf struct {
 
 	restrictedMobileCountryCodes map[int]struct{}
 	restrictedMobileNetworkCodes map[int]struct{}
+
+	androidDevsByPhoneNumber map[string]struct{}
 }
 
 // Option configures a Guard with an overrided configuration value
@@ -156,6 +158,18 @@ func WithRestrictedMobileCountryCodes(mccs ...int) Option {
 	}
 }
 
+// WithAndroidDevs configures a set of open source Android devs that get to bypass certain
+// antispam measures to enable testing. Android is currently behind the latest antispam
+// system requirements, and will fail things like device attestation.
+func WithAndroidDevs(phoneNumbers ...string) Option {
+	return func(c *conf) {
+		c.androidDevsByPhoneNumber = make(map[string]struct{})
+		for _, phoneNumber := range phoneNumbers {
+			c.androidDevsByPhoneNumber[phoneNumber] = struct{}{}
+		}
+	}
+}
+
 // WithRestrictedMobileNetworkCodes overrides the default set of restricted mobile network
 // codes. The values specify the mobile network codes with restricted access to prevent
 // attacks from fraudulent operators.
@@ -190,6 +204,8 @@ func applyOptions(opts ...Option) *conf {
 
 		restrictedMobileCountryCodes: make(map[int]struct{}),
 		restrictedMobileNetworkCodes: make(map[int]struct{}),
+
+		androidDevsByPhoneNumber: make(map[string]struct{}),
 	}
 
 	for _, opt := range opts {
