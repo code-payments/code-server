@@ -92,30 +92,33 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 
 	// Device-based restrictions guaranteeing 1 free account per valid device
 
-	if deviceToken == nil {
-		log.Info("denying attempt without device token")
-		recordDenialEvent(ctx, actionOpenAccounts, "device token missing")
-		return false, nil, nil
-	}
+	_, isAndroidDev := g.conf.androidDevsByPhoneNumber[verification.PhoneNumber]
+	if !isAndroidDev {
+		if deviceToken == nil {
+			log.Info("denying attempt without device token")
+			recordDenialEvent(ctx, actionOpenAccounts, "device token missing")
+			return false, nil, nil
+		}
 
-	isValidDeviceToken, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
-	if err != nil {
-		log.WithError(err).Warn("failure performing device validation check")
-		return false, nil, err
-	} else if !isValidDeviceToken {
-		log.Info("denying fake device")
-		recordDenialEvent(ctx, actionOpenAccounts, "fake device")
-		return false, nil, nil
-	}
+		isValidDeviceToken, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
+		if err != nil {
+			log.WithError(err).Warn("failure performing device validation check")
+			return false, nil, err
+		} else if !isValidDeviceToken {
+			log.Info("denying fake device")
+			recordDenialEvent(ctx, actionOpenAccounts, "fake device")
+			return false, nil, nil
+		}
 
-	hasCreatedFreeAccount, err := g.deviceVerifier.HasCreatedFreeAccount(ctx, *deviceToken)
-	if err != nil {
-		log.WithError(err).Warn("failure performing free account check for device")
-		return false, nil, err
-	} else if hasCreatedFreeAccount {
-		log.Info("denying duplicate device")
-		recordDenialEvent(ctx, actionOpenAccounts, "duplicate device")
-		return false, nil, nil
+		hasCreatedFreeAccount, err := g.deviceVerifier.HasCreatedFreeAccount(ctx, *deviceToken)
+		if err != nil {
+			log.WithError(err).Warn("failure performing free account check for device")
+			return false, nil, err
+		} else if hasCreatedFreeAccount {
+			log.Info("denying duplicate device")
+			recordDenialEvent(ctx, actionOpenAccounts, "duplicate device")
+			return false, nil, nil
+		}
 	}
 
 	// Note: If we have multiple accounts per phone number, then this affects the
@@ -127,6 +130,9 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 	}
 
 	onFreeAccountCreated := func() error {
+		if isAndroidDev {
+			return nil
+		}
 		return g.deviceVerifier.MarkCreatedFreeAccount(ctx, *deviceToken)
 	}
 	return true, onFreeAccountCreated, nil
