@@ -56,7 +56,7 @@ func (p *provider) IsValidPushToken(ctx context.Context, pushToken string) (bool
 		})
 
 		// https://firebase.google.com/docs/cloud-messaging/manage-tokens#detect-invalid-token-responses-from-the-fcm-backend
-		if messaging.IsInvalidArgument(err) || messaging.IsUnregistered(err) {
+		if messaging.IsInvalidArgument(err) || messaging.IsUnregistered(err) || messaging.IsSenderIDMismatch(err) {
 			return nil
 		} else if err != nil {
 			return err
