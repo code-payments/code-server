@@ -669,10 +669,10 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 			return newIntentValidationError("remote send must be to a brand new gift card account")
 		}
 
-		// Code->Code withdrawals must be sent to a primary account. We allow the
+		// Code->Code withdrawals must be sent to a deposit account. We allow the
 		// same owner, since the user might be funding a public withdrawal.
-		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
-			return newIntentValidationError("destination account must be a primary account")
+		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY && destinationAccountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
+			return newIntentValidationError("destination account must be a deposit account")
 		}
 
 		if !metadata.IsWithdrawal {
