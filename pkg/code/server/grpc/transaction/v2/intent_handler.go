@@ -382,6 +382,8 @@ type SendPrivatePaymentIntentHandler struct {
 	antispamGuard *antispam.Guard
 	amlGuard      *lawenforcement.AntiMoneyLaunderingGuard
 	maxmind       *maxminddb.Reader
+
+	cachedPaymentRequestRequest *paymentrequest.Record
 }
 
 func NewSendPrivatePaymentIntentHandler(
@@ -427,9 +429,10 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 	}
 
 	var isMicroPayment bool
-	_, err = h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
+	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
 	if err == nil {
 		isMicroPayment = true
+		h.cachedPaymentRequestRequest = paymentRequestRecord
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
@@ -730,11 +733,8 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	// Part 1.3: Validate destination account matches payment request, if it exists
 	//
 
-	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
-	if err == nil && paymentRequestRecord.DestinationTokenAccount != destination.PublicKey().ToBase58() {
-		return newIntentValidationErrorf("payment has a request to destination %s", paymentRequestRecord.DestinationTokenAccount)
-	} else if err != paymentrequest.ErrPaymentRequestNotFound && err != nil {
-		return err
+	if h.cachedPaymentRequestRequest != nil && h.cachedPaymentRequestRequest.DestinationTokenAccount != destination.PublicKey().ToBase58() {
+		return newIntentValidationErrorf("payment has a request to destination %s", h.cachedPaymentRequestRequest.DestinationTokenAccount)
 	}
 
 	//
@@ -966,6 +966,7 @@ func (h *SendPrivatePaymentIntentHandler) OnCommittedToDB(ctx context.Context, i
 			h.data,
 			h.pusher,
 			intentRecord,
+			h.cachedPaymentRequestRequest,
 		)
 	}
 

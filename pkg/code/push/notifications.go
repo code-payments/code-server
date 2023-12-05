@@ -17,6 +17,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -157,6 +158,7 @@ func SendMicroPaymentReceivedPushNotification(
 	data code_data.Provider,
 	pusher push_lib.Provider,
 	intentRecord *intent.Record,
+	paymentRequestRecord *paymentrequest.Record,
 ) error {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"method": "SendMicroPaymentReceivedPushNotification",
@@ -211,6 +213,9 @@ func SendMicroPaymentReceivedPushNotification(
 	// todo: localized keys
 	title := "Payment Received"
 	body := fmt.Sprintf("Someone bought your content for %s", amountArg)
+	if paymentRequestRecord.IsVerified && paymentRequestRecord.Domain != nil {
+		body = fmt.Sprintf("%s on %s", body, *paymentRequestRecord.Domain)
+	}
 	return sendBasicPushNotificationToOwner(
 		ctx,
 		data,
