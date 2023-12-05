@@ -8,14 +8,15 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
 const maxHistoryPageSize = 100
@@ -92,6 +93,18 @@ func (s *transactionServer) GetPaymentHistory(ctx context.Context, req *transact
 		var isDeposit, isWithdrawal, isRemoteSend, isReturned, isAirdrop, isMicroPayment bool
 		var exchangeData *transactionpb.ExchangeData
 		var airdropType transactionpb.AirdropType
+
+		intentId, err := common.NewAccountFromPublicKeyString(intentRecord.IntentId)
+		if err != nil {
+			// Some legacy intent IDs are not public keys, so generate a random one.
+			// This is fine since this RPC is deprecated, and we are only concerned
+			// about support use cases for newly created payments.
+			intentId, err = common.NewRandomAccount()
+			if err != nil {
+				log.WithError(err).Warn("failure generating intent id")
+				return nil, status.Error(codes.Internal, "")
+			}
+		}
 
 		// Extract payment details from intents, where applicable, into a view
 		// that makes sense for a user.
@@ -245,6 +258,10 @@ func (s *transactionServer) GetPaymentHistory(ctx context.Context, req *transact
 			IsMicroPayment: isMicroPayment,
 
 			AirdropType: airdropType,
+
+			IntentId: &commonpb.IntentId{
+				Value: intentId.PublicKey().ToBytes(),
+			},
 
 			Timestamp: timestamppb.New(intentRecord.CreatedAt),
 		}
