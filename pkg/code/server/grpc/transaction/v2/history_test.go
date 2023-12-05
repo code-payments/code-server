@@ -37,6 +37,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, "example.com").requireSuccess(t)
 
 	// [Cash Transactions] sendingPhone DEPOSITED 23 Kin
 	sendingPhone.migrateToPrivacy2022(t, amountForPrivacyMigration).requireSuccess(t)
@@ -97,14 +98,23 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulatePaymentRequest = true
 
+	// [Verified Merchant] sendingPhone   SPENT $77.7 USD of Kin
+	// [Verified Merchant] receivingPhone PAID  $77.7 USD of Kin
 	sendingPhone.privatelyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
 	receivingPhone.deposit777KinIntoOrganizer(t).requireSuccess(t)
 
+	// [Verified Merchant] sendingPhone   SPENT $32.1 USD of Kin
+	// [Verified Merchant] receivingPhone PAID  $32.1 USD of Kin
+	sendingPhone.privatelyWithdraw321KinToCodeUserRelationshipAccount(t, receivingPhone, "example.com").requireSuccess(t)
+
+	// [Verified Merchant] sendingPhone   SPENT 123 Kin
 	sendingPhone.privatelyWithdraw123KinToExternalWallet(t).requireSuccess(t)
 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulatePaymentRequest = true
 	receivingPhone.conf.simulateUnverifiedPaymentRequest = true
+
+	// [Unverified Mechant] receivingPhone PAID $77.7 USD of Kin
 	receivingPhone.privatelyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
 
 	//
@@ -189,7 +199,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 
 	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", sendingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
-	require.Len(t, chatMessageRecords, 2)
+	require.Len(t, chatMessageRecords, 3)
 
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[0])
 	require.Len(t, protoChatMessage.Content, 1)
@@ -201,6 +211,15 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, kin.ToQuarks(777), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[1])
+	require.Len(t, protoChatMessage.Content, 1)
+	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
+	assert.Equal(t, chatpb.ExchangeDataContent_SPENT, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
+	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
+	assert.Equal(t, 32.1, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
+	assert.Equal(t, kin.ToQuarks(321), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
+
+	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[2])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
 	assert.Equal(t, chatpb.ExchangeDataContent_SPENT, protoChatMessage.Content[0].GetExchangeData().Verb)
@@ -278,7 +297,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 
 	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
-	require.Len(t, chatMessageRecords, 1)
+	require.Len(t, chatMessageRecords, 2)
 
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[0])
 	require.Len(t, protoChatMessage.Content, 1)
@@ -289,7 +308,16 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 77.7, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(777), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), true))
+	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[1])
+	require.Len(t, protoChatMessage.Content, 1)
+	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
+	assert.Equal(t, chatpb.ExchangeDataContent_PAID, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
+	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
+	assert.Equal(t, 32.1, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
+	assert.Equal(t, kin.ToQuarks(321), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
+
+	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), false))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 1)
 
@@ -307,7 +335,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	//
 
 	items := sendingPhone.getPaymentHistory(t)
-	require.Len(t, items, 11)
+	require.Len(t, items, 12)
 
 	assert.Equal(t, transactionpb.PaymentHistoryItem_RECEIVE, items[0].PaymentType)
 	assert.Equal(t, amountForPrivacyMigration, items[0].ExchangeData.Quarks)
@@ -435,15 +463,15 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.False(t, items[9].IsDeposit)
 	assert.False(t, items[9].IsRemoteSend)
 	assert.False(t, items[9].IsReturned)
-	assert.False(t, items[10].IsAirdrop)
+	assert.False(t, items[9].IsAirdrop)
 	assert.Equal(t, transactionpb.AirdropType_UNKNOWN, items[9].AirdropType)
 	assert.True(t, items[9].IsMicroPayment)
 
 	assert.Equal(t, transactionpb.PaymentHistoryItem_SEND, items[10].PaymentType)
-	assert.Equal(t, kin.ToQuarks(123), items[10].ExchangeData.Quarks)
-	assert.EqualValues(t, currency_lib.KIN, items[10].ExchangeData.Currency)
-	assert.EqualValues(t, 1, items[10].ExchangeData.ExchangeRate)
-	assert.EqualValues(t, 123, items[10].ExchangeData.NativeAmount)
+	assert.Equal(t, kin.ToQuarks(321), items[10].ExchangeData.Quarks)
+	assert.EqualValues(t, currency_lib.USD, items[10].ExchangeData.Currency)
+	assert.EqualValues(t, 0.1, items[10].ExchangeData.ExchangeRate)
+	assert.EqualValues(t, 32.1, items[10].ExchangeData.NativeAmount)
 	assert.True(t, items[10].IsWithdraw)
 	assert.False(t, items[10].IsDeposit)
 	assert.False(t, items[10].IsRemoteSend)
@@ -452,8 +480,21 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, transactionpb.AirdropType_UNKNOWN, items[10].AirdropType)
 	assert.True(t, items[10].IsMicroPayment)
 
+	assert.Equal(t, transactionpb.PaymentHistoryItem_SEND, items[11].PaymentType)
+	assert.Equal(t, kin.ToQuarks(123), items[11].ExchangeData.Quarks)
+	assert.EqualValues(t, currency_lib.KIN, items[11].ExchangeData.Currency)
+	assert.EqualValues(t, 1, items[11].ExchangeData.ExchangeRate)
+	assert.EqualValues(t, 123, items[11].ExchangeData.NativeAmount)
+	assert.True(t, items[11].IsWithdraw)
+	assert.False(t, items[11].IsDeposit)
+	assert.False(t, items[11].IsRemoteSend)
+	assert.False(t, items[11].IsReturned)
+	assert.False(t, items[11].IsAirdrop)
+	assert.Equal(t, transactionpb.AirdropType_UNKNOWN, items[11].AirdropType)
+	assert.True(t, items[11].IsMicroPayment)
+
 	items = receivingPhone.getPaymentHistory(t)
-	require.Len(t, items, 10)
+	require.Len(t, items, 11)
 
 	assert.Equal(t, transactionpb.PaymentHistoryItem_RECEIVE, items[0].PaymentType)
 	assert.Equal(t, kin.ToQuarks(42), items[0].ExchangeData.Quarks)
@@ -571,6 +612,32 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.False(t, items[8].IsAirdrop)
 	assert.Equal(t, transactionpb.AirdropType_UNKNOWN, items[8].AirdropType)
 	assert.True(t, items[8].IsMicroPayment)
+
+	assert.Equal(t, transactionpb.PaymentHistoryItem_RECEIVE, items[9].PaymentType)
+	assert.Equal(t, kin.ToQuarks(321), items[9].ExchangeData.Quarks)
+	assert.EqualValues(t, currency_lib.USD, items[9].ExchangeData.Currency)
+	assert.EqualValues(t, 0.1, items[9].ExchangeData.ExchangeRate)
+	assert.EqualValues(t, 32.1, items[9].ExchangeData.NativeAmount)
+	assert.False(t, items[9].IsWithdraw)
+	assert.True(t, items[9].IsDeposit)
+	assert.False(t, items[9].IsRemoteSend)
+	assert.False(t, items[9].IsReturned)
+	assert.False(t, items[9].IsAirdrop)
+	assert.Equal(t, transactionpb.AirdropType_UNKNOWN, items[9].AirdropType)
+	assert.True(t, items[9].IsMicroPayment)
+
+	assert.Equal(t, transactionpb.PaymentHistoryItem_RECEIVE, items[10].PaymentType)
+	assert.Equal(t, kin.ToQuarks(777), items[10].ExchangeData.Quarks)
+	assert.EqualValues(t, currency_lib.USD, items[10].ExchangeData.Currency)
+	assert.EqualValues(t, 0.1, items[10].ExchangeData.ExchangeRate)
+	assert.EqualValues(t, 77.7, items[10].ExchangeData.NativeAmount)
+	assert.False(t, items[10].IsWithdraw)
+	assert.True(t, items[10].IsDeposit)
+	assert.False(t, items[10].IsRemoteSend)
+	assert.False(t, items[10].IsReturned)
+	assert.False(t, items[10].IsAirdrop)
+	assert.Equal(t, transactionpb.AirdropType_UNKNOWN, items[10].AirdropType)
+	assert.True(t, items[10].IsMicroPayment)
 }
 
 func TestGetPaymentHistory_NoPayments(t *testing.T) {
