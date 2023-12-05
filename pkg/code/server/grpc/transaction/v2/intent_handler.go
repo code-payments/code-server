@@ -671,6 +671,9 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 
 		// Code->Code withdrawals must be sent to a deposit account. We allow the
 		// same owner, since the user might be funding a public withdrawal.
+		//
+		// Note: For relationship accounts used in payment requests, the relationship
+		//       has already been validated by the messaging service.
 		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY && destinationAccountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
 			return newIntentValidationError("destination account must be a deposit account")
 		}
