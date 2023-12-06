@@ -22,3 +22,7 @@ go.work
 
 # Build output directories
 build/
+
+# Visual Studio Code
+.vscode/
+
