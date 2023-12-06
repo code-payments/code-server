@@ -1109,6 +1109,23 @@ func TestSubmitIntent_SendPublicPayment_Validation_ManagedByCode(t *testing.T) {
 			submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
 			server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 		}
+
+		server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{})
+		defer cleanup()
+
+		server.generateAvailableNonces(t, 100)
+
+		domain := "getcode.com"
+
+		sendingPhone.openAccounts(t).requireSuccess(t)
+		sendingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+		server.fundAccount(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+		server.simulateTimelockAccountInState(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), state)
+
+		submitIntentCall := sendingPhone.publiclyWithdraw123KinToExternalWallet(t)
+		submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
+		server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 	}
 }
 
@@ -1415,6 +1432,23 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_ManagedByCode(t *testi
 			server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 		}
+
+		server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+		defer cleanup()
+
+		server.generateAvailableNonces(t, 100)
+
+		domain := "getcode.com"
+
+		receivingPhone.openAccounts(t).requireSuccess(t)
+		receivingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+		server.fundAccount(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+		server.simulateTimelockAccountInState(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), state)
+
+		submitIntentCall := receivingPhone.deposit777KinIntoOrganizerFromRelationshipAccount(t, domain)
+		submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
+		server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 	}
 }
 
