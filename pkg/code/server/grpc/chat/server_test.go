@@ -16,14 +16,14 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/testutil"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 // todo: This could use a refactor with some testing utilities
@@ -197,7 +197,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	assert.EqualValues(t, 0, getChatsResp.Chats[1].NumUnread)
 	assert.False(t, getChatsResp.Chats[1].IsMuted)
 	assert.True(t, getChatsResp.Chats[1].IsSubscribed)
-	assert.False(t, getChatsResp.Chats[1].CanMute)
+	assert.True(t, getChatsResp.Chats[1].CanMute)
 	assert.False(t, getChatsResp.Chats[1].CanUnsubscribe)
 	assert.True(t, getChatsResp.Chats[1].IsVerified)
 
@@ -516,7 +516,7 @@ func TestChatMuteState_CantMute(t *testing.T) {
 
 	owner := testutil.NewRandomAccount(t)
 
-	chatId := chat.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true)
+	chatId := chat.GetChatId(chat_util.TestCantMuteName, owner.PublicKey().ToBase58(), true)
 
 	env.sendInternalChatMessage(t, &chatpb.ChatMessage{
 		MessageId: &chatpb.ChatMessageId{
@@ -540,7 +540,7 @@ func TestChatMuteState_CantMute(t *testing.T) {
 				},
 			},
 		},
-	}, chat_util.CashTransactionsName, owner)
+	}, chat_util.TestCantMuteName, owner)
 
 	setMuteStateReq := &chatpb.SetMuteStateRequest{
 		Owner:   owner.ToProto(),
@@ -652,7 +652,7 @@ func TestChatSubscriptionState_CantUnsubscribe(t *testing.T) {
 
 	owner := testutil.NewRandomAccount(t)
 
-	chatId := chat.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true)
+	chatId := chat.GetChatId(chat_util.TestCantUnsubscribeName, owner.PublicKey().ToBase58(), true)
 
 	env.sendInternalChatMessage(t, &chatpb.ChatMessage{
 		MessageId: &chatpb.ChatMessageId{
@@ -676,7 +676,7 @@ func TestChatSubscriptionState_CantUnsubscribe(t *testing.T) {
 				},
 			},
 		},
-	}, chat_util.CashTransactionsName, owner)
+	}, chat_util.TestCantUnsubscribeName, owner)
 
 	setSubscriptionStateReq := &chatpb.SetSubscriptionStateRequest{
 		Owner:        owner.ToProto(),

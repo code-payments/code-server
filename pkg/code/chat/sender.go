@@ -15,12 +15,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
-const (
-	CashTransactionsName = "Cash Transactions"
-	CodeTeamName         = "Code Team"
-	PaymentsName         = "Payments"
-)
-
 // SendChatMessage sends a chat message to a receiving owner account.
 //
 // Note: This function is not responsible for push notifications. This method
