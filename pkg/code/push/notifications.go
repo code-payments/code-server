@@ -15,6 +15,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -54,6 +55,20 @@ func SendDepositPushNotification(
 	if err != nil {
 		log.WithError(err).Warn("invalid owner account")
 		return errors.Wrap(err, "invalid owner account")
+	}
+
+	// Legacy push notification still considers chat mute state
+	//
+	// todo: Proper migration to chat system
+	chatRecord, err := data.GetChatById(ctx, chat.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true))
+	switch err {
+	case nil:
+		if chatRecord.IsMuted {
+			return nil
+		}
+	case chat.ErrChatNotFound:
+	default:
+		return errors.Wrap(err, "error getting chat record")
 	}
 
 	titleKey := localization.PushTitleDepositReceived
@@ -102,6 +117,20 @@ func SendGiftCardReturnedPushNotification(
 	owner, err := common.NewAccountFromPublicKeyString(originalGiftCardIssuedIntent.InitiatorOwnerAccount)
 	if err != nil {
 		return errors.Wrap(err, "invalid owner")
+	}
+
+	// Legacy push notification still considers chat mute state
+	//
+	// todo: Proper migration to chat system
+	chatRecord, err := data.GetChatById(ctx, chat.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true))
+	switch err {
+	case nil:
+		if chatRecord.IsMuted {
+			return nil
+		}
+	case chat.ErrChatNotFound:
+	default:
+		return errors.Wrap(err, "error getting chat record")
 	}
 
 	titleKey := localization.PushTitleKinReturned
@@ -160,6 +189,21 @@ func SendMicroPaymentReceivedPushNotification(
 	default:
 		log.Warn("intent type doesn't support micro payments")
 		return nil
+	}
+
+	// Legacy push notification still considers chat mute state
+	//
+	// todo: Proper migration to chat system
+	// todo: fix domain-specific chats as part of the payments-with-relationship-accounts branch, since it's easier there
+	chatRecord, err := data.GetChatById(ctx, chat.GetChatId(chat_util.PaymentsName, destinationOwnerAccount.PublicKey().ToBase58(), false))
+	switch err {
+	case nil:
+		if chatRecord.IsMuted {
+			return nil
+		}
+	case chat.ErrChatNotFound:
+	default:
+		return errors.Wrap(err, "error getting chat record")
 	}
 
 	amountArg := getAmountArg(nativeAmount, currency)
