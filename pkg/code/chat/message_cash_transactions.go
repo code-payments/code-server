@@ -16,7 +16,8 @@ import (
 )
 
 // SendCashTransactionsExchangeMessage sends a message to the Cash Transactions
-// chat with exchange data content related to the submitted intent.
+// chat with exchange data content related to the submitted intent. Intents that
+// don't belong in the Cash Transactions chat will be ignored.
 //
 // Note: Tests covered in SubmitIntent history tests
 //
@@ -105,7 +106,14 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 
 	case intent.ExternalDeposit:
 		messageId = strings.Split(messageId, "-")[0]
-		verbByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+		destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.ExternalDepositMetadata.DestinationTokenAccount)
+		if err != nil {
+			return err
+		} else if destinationAccountInfoRecord.AccountType != commonpb.AccountType_RELATIONSHIP {
+			// Relationship accounts payments will show up in the verified
+			// merchant chat
+			verbByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+		}
 
 	default:
 		return nil
