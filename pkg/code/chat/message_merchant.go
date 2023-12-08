@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -18,19 +19,7 @@ import (
 //
 // Note: Tests covered in SubmitIntent history tests
 func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) error {
-	switch intentRecord.IntentType {
-	case intent.SendPrivatePayment:
-		if !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-			return nil
-		}
-	default:
-		return nil
-	}
-
-	paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentRecord.IntentId)
-	if err != nil {
-		return errors.Wrap(err, "error getting payment request record")
-	}
+	messageId := intentRecord.IntentId
 
 	// There are three possible chats for a merchant:
 	//  1. Verified chat with a verified identifier that server has validated
@@ -44,13 +33,6 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	chatTitle := PaymentsName
 	chatType := chat.ChatTypeInternal
 	isVerified := false
-	if paymentRequestRecord.Domain != nil {
-		chatTitle = *paymentRequestRecord.Domain
-		chatType = chat.ChatTypeExternalApp
-		isVerified = paymentRequestRecord.IsVerified
-	}
-
-	messageId := intentRecord.IntentId
 
 	exchangeData, ok := getExchangeDataFromIntent(intentRecord)
 	if !ok {
@@ -60,10 +42,55 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	verbByMessageReceiver := make(map[string]chatpb.ExchangeDataContent_Verb)
 	switch intentRecord.IntentType {
 	case intent.SendPrivatePayment:
-		verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_SPENT
-		if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
-			verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_PAID
+		if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+			paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentRecord.IntentId)
+			if err != nil {
+				return errors.Wrap(err, "error getting payment request record")
+			}
+
+			if paymentRequestRecord.Domain != nil {
+				chatTitle = *paymentRequestRecord.Domain
+				chatType = chat.ChatTypeExternalApp
+				isVerified = paymentRequestRecord.IsVerified
+			}
+
+			verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_SPENT
+			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
+				verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_PAID
+			}
+		} else if intentRecord.SendPrivatePaymentMetadata.IsWithdrawal {
+			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
+				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount)
+				if err != nil {
+					return err
+				} else if destinationAccountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
+					// Relationship accounts only exist against verified merchants,
+					// and will have merchant payments appear in the verified merchant
+					// chat.
+					chatTitle = *destinationAccountInfoRecord.RelationshipTo
+					isVerified = true
+					verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+				}
+			}
 		}
+	case intent.SendPublicPayment:
+		if intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+			if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) > 0 {
+				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
+				if err != nil {
+					return err
+				} else if destinationAccountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
+					// Relationship accounts only exist against verified merchants,
+					// and will have merchant payments appear in the verified merchant
+					// chat.
+					chatTitle = *destinationAccountInfoRecord.RelationshipTo
+					isVerified = true
+					verbByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+				}
+			}
+		}
+	default:
+		return nil
 	}
 
 	for account, verb := range verbByMessageReceiver {
