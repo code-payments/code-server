@@ -265,6 +265,10 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 	if err != nil {
 		return errors.Wrap(err, "error updating cash transactions chat")
 	}
+	err = chat_util.SendMerchantExchangeMessage(ctx, data, intentRecord)
+	if err != nil {
+		return errors.Wrap(err, "error updating merchant chat")
+	}
 
 	// For tracking in balances
 	externalDepositRecord := &deposit.Record{
