@@ -220,13 +220,13 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		return errors.Wrap(err, "error getting account info record")
 	}
 
-	// Mark anything other than primary account as synced and move on without
+	// Mark anything other than deposit accounts as synced and move on without
 	// saving anything. There's a potential someone could overutilize our treasury
 	// by depositing large sums into temporary or bucket accounts, which have
-	// more lenient checks ATM. We'll deal with these adhoc as they arise. It
-	// should be a rare case given anything other than primary isn't exposed to
-	// users.
-	if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
+	// more lenient checks ATM. We'll deal with these adhoc as they arise.
+	switch accountInfoRecord.AccountType {
+	case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
+	default:
 		syncedDepositCache.Insert(cacheKey, true, 1)
 		return nil
 	}

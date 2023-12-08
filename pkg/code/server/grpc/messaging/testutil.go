@@ -20,9 +20,6 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -33,6 +30,9 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 type testEnv struct {
@@ -539,7 +539,7 @@ func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *co
 }
 
 // todo: code duplication with fiat variant
-func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousKey *common.Account, usePrimaryAccount bool, disableDomainVerification bool) *sendMessageCallMetadata {
+func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousKey *common.Account, usePrimaryAccount, useRelationship, disableDomainVerification bool) *sendMessageCallMetadata {
 	authority, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
 	require.NoError(t, err)
 
@@ -557,6 +557,19 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 			TokenAccount:     destination.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_PRIMARY,
 			Index:            0,
+		}
+		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
+	} else if useRelationship {
+		accountInfoRecord := &account.Record{
+			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			TokenAccount:     destination.PublicKey().ToBase58(),
+			AccountType:      commonpb.AccountType_RELATIONSHIP,
+			Index:            0,
+			RelationshipTo:   pointer.String("getcode.com"),
+		}
+		if c.conf.simulateInvalidRelationship {
+			accountInfoRecord.RelationshipTo = pointer.String("example.com")
 		}
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
 	}
@@ -653,7 +666,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 }
 
 // todo: code duplication with kin variant
-func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvousKey *common.Account, usePrimaryAccount, disableDomainVerification bool) *sendMessageCallMetadata {
+func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvousKey *common.Account, usePrimaryAccount, useRelationship, disableDomainVerification bool) *sendMessageCallMetadata {
 	authority, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
 	require.NoError(t, err)
 
@@ -671,6 +684,19 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 			TokenAccount:     destination.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_PRIMARY,
 			Index:            0,
+		}
+		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
+	} else if useRelationship {
+		accountInfoRecord := &account.Record{
+			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			TokenAccount:     destination.PublicKey().ToBase58(),
+			AccountType:      commonpb.AccountType_RELATIONSHIP,
+			Index:            0,
+			RelationshipTo:   pointer.String("getcode.com"),
+		}
+		if c.conf.simulateInvalidRelationship {
+			accountInfoRecord.RelationshipTo = pointer.String("example.com")
 		}
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
 	}

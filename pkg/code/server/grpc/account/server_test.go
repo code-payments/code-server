@@ -202,11 +202,18 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 
 	bucketDerivedOwner := testutil.NewRandomAccount(t)
 	tempIncomingDerivedOwner := testutil.NewRandomAccount(t)
+	relationship1DerivedOwner := testutil.NewRandomAccount(t)
+	relationship2DerivedOwner := testutil.NewRandomAccount(t)
+
 	primaryAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
 	bucketAccountRecords := setupAccountRecords(t, env, ownerAccount, bucketDerivedOwner, 0, commonpb.AccountType_BUCKET_100_KIN)
+	relationship1AccountRecords := setupAccountRecords(t, env, ownerAccount, relationship1DerivedOwner, 0, commonpb.AccountType_RELATIONSHIP)
+	relationship2AccountRecords := setupAccountRecords(t, env, ownerAccount, relationship2DerivedOwner, 0, commonpb.AccountType_RELATIONSHIP)
 	setupAccountRecords(t, env, ownerAccount, tempIncomingDerivedOwner, 2, commonpb.AccountType_TEMPORARY_INCOMING)
 	setupCachedBalance(t, env, bucketAccountRecords, kin.ToQuarks(100))
 	setupCachedBalance(t, env, primaryAccountRecords, kin.ToQuarks(42))
+	setupCachedBalance(t, env, relationship1AccountRecords, kin.ToQuarks(999))
+	setupCachedBalance(t, env, relationship2AccountRecords, kin.ToQuarks(5))
 
 	otherOwnerAccount := testutil.NewRandomAccount(t)
 	setupAccountRecords(t, env, otherOwnerAccount, otherOwnerAccount, 0, commonpb.AccountType_PRIMARY)
@@ -216,12 +223,14 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 3)
+	assert.Len(t, resp.TokenAccountInfos, 5)
 
 	for _, authority := range []*common.Account{
 		ownerAccount,
 		bucketDerivedOwner,
 		tempIncomingDerivedOwner,
+		relationship1DerivedOwner,
+		relationship2DerivedOwner,
 	} {
 
 		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
@@ -243,10 +252,26 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Equal(t, commonpb.AccountType_BUCKET_100_KIN, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, kin.ToQuarks(100), accountInfo.Balance)
-		default:
+		case tempIncomingDerivedOwner.PublicKey().ToBase58():
 			assert.Equal(t, commonpb.AccountType_TEMPORARY_INCOMING, accountInfo.AccountType)
 			assert.EqualValues(t, 2, accountInfo.Index)
 			assert.EqualValues(t, 0, accountInfo.Balance)
+		case relationship1DerivedOwner.PublicKey().ToBase58():
+			assert.Equal(t, commonpb.AccountType_RELATIONSHIP, accountInfo.AccountType)
+			assert.EqualValues(t, 0, accountInfo.Index)
+			assert.EqualValues(t, kin.ToQuarks(999), accountInfo.Balance)
+		case relationship2DerivedOwner.PublicKey().ToBase58():
+			assert.Equal(t, commonpb.AccountType_RELATIONSHIP, accountInfo.AccountType)
+			assert.EqualValues(t, 0, accountInfo.Index)
+			assert.EqualValues(t, kin.ToQuarks(5), accountInfo.Balance)
+		default:
+			require.Fail(t, "unexpected authority")
+		}
+
+		if accountInfo.AccountType == commonpb.AccountType_RELATIONSHIP {
+			require.NotNil(t, accountInfo.Relationship)
+		} else {
+			assert.Nil(t, accountInfo.Relationship)
 		}
 
 		assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
@@ -523,6 +548,8 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		assert.Equal(t, giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
 
 		assert.False(t, accountInfo.MustRotate)
+
+		assert.Nil(t, accountInfo.Relationship)
 
 		accountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 		require.NoError(t, err)
@@ -923,6 +950,10 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 		AccountType: accountType,
 
 		Index: index,
+	}
+
+	if accountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
+		accountInfoRecord.RelationshipTo = pointer.String(fmt.Sprintf("app%d.com", rand.Int()))
 	}
 
 	return &common.AccountRecords{

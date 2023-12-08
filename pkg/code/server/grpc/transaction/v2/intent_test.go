@@ -40,7 +40,7 @@ func TestPrivacyV3Demonstration(t *testing.T) {
 	// Do a public withdraw from sender to receiver, where the sender funds
 	// their primary account from their organizer via a private withdraw.
 	sendingPhone.privatelyWithdraw777KinToCodeUser(t, sendingPhone).requireSuccess(t)
-	sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
+	sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone).requireSuccess(t)
 
 	// Simulate transfers from the treasury and subsequent updates to the merkle tree
 	server.simulateTreasuryPayments(t)
@@ -49,8 +49,7 @@ func TestPrivacyV3Demonstration(t *testing.T) {
 	assert.False(t, sendingPhone.checkWithServerForAnyOtherPrivacyUpgrades(t))
 	assert.False(t, receivingPhone.checkWithServerForAnyOtherPrivacyUpgrades(t))
 
-	// Simulate more transactions which can be a target for privacy upgrades,
-	// which exhausts the various types of other payments
+	// Simulate more transactions which can be a target for privacy upgrades
 	sendingPhone.publiclyWithdraw123KinToExternalWallet(t).requireSuccess(t)
 	sendingPhone.privatelyWithdraw123KinToExternalWallet(t).requireSuccess(t)
 	sendingPhone.privatelyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
@@ -291,6 +290,23 @@ func TestSubmitIntent_SendPrivatePayment_WithdrawToExternalWallet_HappyPath(t *t
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, nil)
 }
 
+func TestSubmitIntent_SendPrivatePayment_WithdrawToRelationshipAccountForMerchantPayment_HappyPath(t *testing.T) {
+	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 100)
+
+	domain := "getcode.com"
+
+	sendingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, domain)
+
+	submitIntentCall := sendingPhone.privatelyWithdraw321KinToCodeUserRelationshipAccount(t, receivingPhone, domain)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
+}
+
 func TestSubmitIntent_SendPrivatePayment_RemoteSend_HappyPath(t *testing.T) {
 	server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
@@ -343,8 +359,11 @@ func TestSubmitIntent_SendPrivatePayment_PaymentRequest_HappyPath(t *testing.T) 
 
 	server.generateAvailableNonces(t, 100)
 
+	domain := "getcode.com"
+
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
 
 	sendingPhone.conf.simulatePaymentRequest = true
 
@@ -355,6 +374,10 @@ func TestSubmitIntent_SendPrivatePayment_PaymentRequest_HappyPath(t *testing.T) 
 	submitIntentCall = sendingPhone.privatelyWithdraw777KinToCodeUser(t, receivingPhone)
 	submitIntentCall.requireSuccess(t)
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
+
+	submitIntentCall = sendingPhone.privatelyWithdraw321KinToCodeUserRelationshipAccount(t, receivingPhone, domain)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
 }
 
 func TestSubmitIntent_SendPrivatePayment_SelfPayment(t *testing.T) {
@@ -363,13 +386,20 @@ func TestSubmitIntent_SendPrivatePayment_SelfPayment(t *testing.T) {
 
 	server.generateAvailableNonces(t, 100)
 
+	domain := "getcode.com"
+
 	sendingPhone.openAccounts(t).requireSuccess(t)
+	sendingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
 
 	submitIntentCall := sendingPhone.send42KinToCodeUser(t, sendingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "payments within the same owner are not allowed")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	submitIntentCall = sendingPhone.privatelyWithdraw777KinToCodeUser(t, sendingPhone)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &sendingPhone)
+
+	submitIntentCall = sendingPhone.privatelyWithdraw321KinToCodeUserRelationshipAccount(t, sendingPhone, domain)
 	submitIntentCall.requireSuccess(t)
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &sendingPhone)
 }
@@ -541,7 +571,7 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateFlippingWithdrawFlag = true
 	submitIntentCall = sendingPhone.send42KinToCodeUser(t, receivingPhone)
-	submitIntentCall.assertInvalidIntentResponse(t, "destination account must be a primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "destination account must be a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
@@ -950,7 +980,7 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 }
 
-func TestSubmitIntent_SendPublicPayment_WithdrawToCodeUser_HappyPath(t *testing.T) {
+func TestSubmitIntent_SendPublicPayment_WithdrawToCodeUser_FromPrimaryToPrimary_HappyPath(t *testing.T) {
 	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
@@ -959,12 +989,32 @@ func TestSubmitIntent_SendPublicPayment_WithdrawToCodeUser_HappyPath(t *testing.
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
 
-	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.requireSuccess(t)
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
 }
 
-func TestSubmitIntent_SendPublicPayment_WithdrawToExternalWallet_HappyPath(t *testing.T) {
+func TestSubmitIntent_SendPublicPayment_WithdrawToCodeUser_FromRelationshipToRelationship_HappyPath(t *testing.T) {
+	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 100)
+
+	domain := "getcode.com"
+
+	sendingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.openAccounts(t).requireSuccess(t)
+	sendingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+	server.fundAccount(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(10_000))
+
+	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUserBetweenRelationshipAccounts(t, domain, receivingPhone)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
+}
+
+func TestSubmitIntent_SendPublicPayment_WithdrawToExternalWallet_FromPrimary_HappyPath(t *testing.T) {
 	server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
@@ -977,18 +1027,43 @@ func TestSubmitIntent_SendPublicPayment_WithdrawToExternalWallet_HappyPath(t *te
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, nil)
 }
 
+func TestSubmitIntent_SendPublicPayment_WithdrawToExternalWallet_FromRelationship_HappyPath(t *testing.T) {
+	server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 100)
+
+	domain := "getcode.com"
+
+	sendingPhone.openAccounts(t).requireSuccess(t)
+	sendingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+	server.fundAccount(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+
+	submitIntentCall := sendingPhone.publiclyWithdraw123KinToExternalWalletFromRelationshipAccount(t, domain)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, nil)
+}
+
 func TestSubmitIntent_SendPublicPayment_SelfPayment(t *testing.T) {
 	server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
 	server.generateAvailableNonces(t, 100)
 
+	domain := "getcode.com"
 	sendingPhone.openAccounts(t).requireSuccess(t)
+	sendingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
 
-	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUser(t, sendingPhone)
+	server.fundAccount(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+
+	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, sendingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "payments within the same owner are not allowed")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenRelationshipAccounts(t, domain, sendingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "payments within the same owner are not allowed")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 }
 
 func TestSubmitIntent_SendPublicPayment_AntispamGuard(t *testing.T) {
@@ -1033,8 +1108,24 @@ func TestSubmitIntent_SendPublicPayment_Validation_ManagedByCode(t *testing.T) {
 			submitIntentCall := sendingPhone.publiclyWithdraw123KinToExternalWallet(t)
 			submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
 			server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 		}
+
+		server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{})
+		defer cleanup()
+
+		server.generateAvailableNonces(t, 100)
+
+		domain := "getcode.com"
+
+		sendingPhone.openAccounts(t).requireSuccess(t)
+		sendingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+		server.fundAccount(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+		server.simulateTimelockAccountInState(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), state)
+
+		submitIntentCall := sendingPhone.publiclyWithdraw123KinToExternalWallet(t)
+		submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
+		server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 	}
 }
 
@@ -1049,7 +1140,7 @@ func TestSubmitIntent_SendPublicPayment_Validation_ExchangeData(t *testing.T) {
 
 	sendingPhone.conf.simulateInvalidExchangeRate = true
 
-	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertStaleStateResponse(t, "fiat exchange rate is stale")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1060,7 +1151,7 @@ func TestSubmitIntent_SendPublicPayment_Validation_ExchangeData(t *testing.T) {
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateInvalidNativeAmount = true
 
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "payment native amount and quark value mismatch")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1099,13 +1190,13 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateSendingTooLittle = true
-	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "must send 77700001 quarks to destination account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateSendingTooMuch = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "must send 77699999 quarks to destination account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1115,7 +1206,7 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateNotSendingToDestination = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "must send payment to destination account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1125,7 +1216,7 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateFlippingWithdrawFlag = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertGrpcError(t, codes.InvalidArgument)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1135,13 +1226,13 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateSendPublicPaymentPrivately = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "payment sent to destination must be a public transfer")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateSendPublicPaymentWithWithdraw = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "payment sent to destination must be a public transfer")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1150,20 +1241,26 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 	//
 
 	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateNotSendingFromSource = true
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "must send payment from source account")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateSendPublicPaymentFromBucketAccount = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
-	submitIntentCall.assertInvalidIntentResponse(t, "must send payment from primary account")
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "source account must be a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateUsingGiftCardAccount = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
-	submitIntentCall.assertInvalidIntentResponse(t, "must send payment from primary account")
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "source account must be a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateInvalidTokenAccountForNoPrivacyTransferAction = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "actions[0]: token must be")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1173,25 +1270,25 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulatePrivacyUpgradeActionInjected = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "expected 1 action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateRandomOpenAccountActionInjected = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "expected 1 action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateRandomCloseEmptyAccountActionInjected = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "expected 1 action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateRandomCloseDormantAccountActionInjected = true
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "expected 1 action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1202,7 +1299,7 @@ func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateFeePaid = true
 
-	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "intent doesn't require a fee payment")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
@@ -1244,7 +1341,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_FromRemoteSendGiftCardPublicRecei
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, receivingPhone, nil)
 }
 
-func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_HappyPath(t *testing.T) {
+func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_PrimaryAccount_HappyPath(t *testing.T) {
 	server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
@@ -1253,6 +1350,24 @@ func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_HappyPath(t *testing.
 	receivingPhone.openAccounts(t).requireSuccess(t)
 
 	submitIntentCall := receivingPhone.deposit777KinIntoOrganizer(t)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, receivingPhone, nil)
+}
+
+func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_RelationshipAccount_HappyPath(t *testing.T) {
+	server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 100)
+
+	domain := "getcode.com"
+
+	receivingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+	server.fundAccount(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+
+	submitIntentCall := receivingPhone.deposit777KinIntoOrganizerFromRelationshipAccount(t, domain)
 	submitIntentCall.requireSuccess(t)
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, receivingPhone, nil)
 }
@@ -1317,6 +1432,23 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_ManagedByCode(t *testi
 			server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 		}
+
+		server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+		defer cleanup()
+
+		server.generateAvailableNonces(t, 100)
+
+		domain := "getcode.com"
+
+		receivingPhone.openAccounts(t).requireSuccess(t)
+		receivingPhone.establishRelationshipWithMerchant(t, domain).requireSuccess(t)
+
+		server.fundAccount(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
+		server.simulateTimelockAccountInState(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), state)
+
+		submitIntentCall := receivingPhone.deposit777KinIntoOrganizerFromRelationshipAccount(t, domain)
+		submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
+		server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 	}
 }
 
@@ -1385,7 +1517,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulateFlippingDepositFlag = true
 	submitIntentCall = receivingPhone.receive42KinFromCodeUser(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "must receive from primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "must receive from a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
@@ -1411,7 +1543,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 
 	server.fundAccount(t, receivingPhone.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, 0), kin.ToQuarks(777))
 	submitIntentCall = receivingPhone.deposit777KinIntoOrganizer(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "must receive from primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "must receive from a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
@@ -1422,7 +1554,7 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	submitIntentCall = receivingPhone.deposit777KinIntoOrganizer(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "must receive from primary account")
+	submitIntentCall.assertInvalidIntentResponse(t, "must receive from a deposit account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//
@@ -1514,13 +1646,13 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulateUsingPrimaryAccountAsSource = true
 	submitIntentCall = receivingPhone.receive42KinFromCodeUser(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "actions[6]: primary account cannot send/receive kin")
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[6]: deposit account cannot send/receive kin")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
 	receivingPhone.conf.simulateUsingPrimaryAccountAsDestination = true
 	submitIntentCall = receivingPhone.deposit777KinIntoOrganizer(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: primary account cannot receive kin")
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: deposit account cannot receive kin")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	receivingPhone.resetConfig()
@@ -3321,7 +3453,7 @@ func TestGetIntentMetadata_HappyPath(t *testing.T) {
 
 		// SendPublicPayment intent
 
-		submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUser(t, receivingPhone)
+		submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 		submitIntentCall.requireSuccess(t)
 
 		resp = sendingPhone.getIntentMetadata(t, submitIntentCall.rendezvousKey, signAsOwner)

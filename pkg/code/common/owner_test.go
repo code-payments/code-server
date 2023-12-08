@@ -10,10 +10,10 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 func TestGetOwnerMetadata_User12Words(t *testing.T) {
@@ -129,6 +129,8 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 
 	authority1 := newRandomTestAccount(t)
 	authority2 := newRandomTestAccount(t)
+	authority3 := newRandomTestAccount(t)
+	authority4 := newRandomTestAccount(t)
 
 	for _, authorityAndType := range []struct {
 		account     *Account
@@ -152,21 +154,62 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
 	}
 
+	for _, authorityAndRelationship := range []struct {
+		account *Account
+		domain  string
+	}{
+		{authority3, "app1.com"},
+		{authority4, "app2.com"},
+	} {
+		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		require.NoError(t, err)
+
+		timelockRecord := timelockAccounts.ToDBRecord()
+		require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
+
+		accountInfoRecord := &account.Record{
+			OwnerAccount:     owner.PublicKey().ToBase58(),
+			AuthorityAccount: timelockRecord.VaultOwner,
+			TokenAccount:     timelockRecord.VaultAddress,
+			AccountType:      commonpb.AccountType_RELATIONSHIP,
+			RelationshipTo:   &authorityAndRelationship.domain,
+		}
+		require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
+	}
+
 	actual, err = GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	require.NoError(t, err)
-	require.Len(t, actual, 2)
+	require.Len(t, actual, 3)
 
 	records, ok := actual[commonpb.AccountType_BUCKET_1_KIN]
 	require.True(t, ok)
-	assert.Equal(t, records.General.AuthorityAccount, authority1.PublicKey().ToBase58())
-	assert.Equal(t, records.General.AccountType, commonpb.AccountType_BUCKET_1_KIN)
-	assert.Equal(t, records.Timelock.VaultOwner, authority1.PublicKey().ToBase58())
-	assert.Equal(t, records.General.TokenAccount, records.Timelock.VaultAddress)
+	require.Len(t, records, 1)
+	assert.Equal(t, records[0].General.AuthorityAccount, authority1.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_BUCKET_1_KIN)
+	assert.Equal(t, records[0].Timelock.VaultOwner, authority1.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
 
 	records, ok = actual[commonpb.AccountType_BUCKET_10_KIN]
 	require.True(t, ok)
-	assert.Equal(t, records.General.AuthorityAccount, authority2.PublicKey().ToBase58())
-	assert.Equal(t, records.General.AccountType, commonpb.AccountType_BUCKET_10_KIN)
-	assert.Equal(t, records.Timelock.VaultOwner, authority2.PublicKey().ToBase58())
-	assert.Equal(t, records.General.TokenAccount, records.Timelock.VaultAddress)
+	require.Len(t, records, 1)
+	assert.Equal(t, records[0].General.AuthorityAccount, authority2.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_BUCKET_10_KIN)
+	assert.Equal(t, records[0].Timelock.VaultOwner, authority2.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
+
+	records, ok = actual[commonpb.AccountType_RELATIONSHIP]
+	require.True(t, ok)
+	require.Len(t, records, 2)
+
+	assert.Equal(t, records[0].General.AuthorityAccount, authority3.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_RELATIONSHIP)
+	assert.Equal(t, records[0].Timelock.VaultOwner, authority3.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
+	assert.Equal(t, *records[0].General.RelationshipTo, "app1.com")
+
+	assert.Equal(t, records[1].General.AuthorityAccount, authority4.PublicKey().ToBase58())
+	assert.Equal(t, records[1].General.AccountType, commonpb.AccountType_RELATIONSHIP)
+	assert.Equal(t, records[1].Timelock.VaultOwner, authority4.PublicKey().ToBase58())
+	assert.Equal(t, records[1].General.TokenAccount, records[1].Timelock.VaultAddress)
+	assert.Equal(t, *records[1].General.RelationshipTo, "app2.com")
 }

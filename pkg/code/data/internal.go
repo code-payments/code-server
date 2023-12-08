@@ -130,7 +130,7 @@ type DatabaseData interface {
 	UpdateAccountInfo(ctx context.Context, record *account.Record) error
 	GetAccountInfoByTokenAddress(ctx context.Context, address string) (*account.Record, error)
 	GetAccountInfoByAuthorityAddress(ctx context.Context, address string) (*account.Record, error)
-	GetLatestAccountInfosByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType]*account.Record, error)
+	GetLatestAccountInfosByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*account.Record, error)
 	GetLatestAccountInfoByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error)
 	GetRelationshipAccountInfoByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error)
 	GetPrioritizedAccountInfosRequiringDepositSync(ctx context.Context, limit uint64) ([]*account.Record, error)
@@ -546,7 +546,7 @@ func (dp *DatabaseProvider) GetAccountInfoByTokenAddress(ctx context.Context, ad
 func (dp *DatabaseProvider) GetAccountInfoByAuthorityAddress(ctx context.Context, address string) (*account.Record, error) {
 	return dp.accounts.GetByAuthorityAddress(ctx, address)
 }
-func (dp *DatabaseProvider) GetLatestAccountInfosByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType]*account.Record, error) {
+func (dp *DatabaseProvider) GetLatestAccountInfosByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*account.Record, error) {
 	return dp.accounts.GetLatestByOwnerAddress(ctx, address)
 }
 func (dp *DatabaseProvider) GetLatestAccountInfoByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error) {

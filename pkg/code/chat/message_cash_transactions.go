@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -18,13 +19,16 @@ import (
 // chat with exchange data content related to the submitted intent.
 //
 // Note: Tests covered in SubmitIntent history tests
+//
+// todo: How are we handling relationship account flows?
 func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) error {
+	messageId := intentRecord.IntentId
+
 	exchangeData, ok := getExchangeDataFromIntent(intentRecord)
 	if !ok {
 		return nil
 	}
 
-	messageId := intentRecord.IntentId
 	verbByMessageReceiver := make(map[string]chatpb.ExchangeDataContent_Verb)
 	switch intentRecord.IntentType {
 	case intent.SendPrivatePayment:
@@ -39,7 +43,14 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 
 			verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_WITHDREW
 			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
-				verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount)
+				if err != nil {
+					return err
+				} else if destinationAccountInfoRecord.AccountType != commonpb.AccountType_RELATIONSHIP {
+					// Relationship accounts payments will show up in the verified
+					// merchant chat
+					verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+				}
 			}
 		} else if intentRecord.SendPrivatePaymentMetadata.IsRemoteSend {
 			verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_SENT
@@ -54,7 +65,14 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 		if intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
 			verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_WITHDREW
 			if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) > 0 {
-				verbByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
+				if err != nil {
+					return err
+				} else if destinationAccountInfoRecord.AccountType != commonpb.AccountType_RELATIONSHIP {
+					// Relationship accounts payments will show up in the verified
+					// merchant chat
+					verbByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
+				}
 			}
 		}
 

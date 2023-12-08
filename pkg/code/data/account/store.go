@@ -29,12 +29,7 @@ type Store interface {
 	GetByAuthorityAddress(ctx context.Context, address string) (*Record, error)
 
 	// GetLatestByOwnerAddress gets the latest accounts for an owner
-	//
-	// todo: This doesn't handle relationship accounts, and can't because of the return
-	//       structure. It's not a big deal right now, since all usages of latest accounts
-	//       are for those accounts possibly containing Kin, and relationship accounts have
-	//       no support for that atm.
-	GetLatestByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType]*Record, error)
+	GetLatestByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*Record, error)
 
 	// GetLatestByOwnerAddressAndType gets the latest account for an owner and account type
 	GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*Record, error)

@@ -4,16 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/account"
 )
 
 const (
@@ -193,26 +192,17 @@ func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) (
 	return res, nil
 }
 
-func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string) (map[commonpb.AccountType]*model, error) {
-	var models []*model
+func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
+	var res []*model
 
-	// todo: A better way to construct this query?
-	var query string
-	for _, accountType := range account.AllAccountTypes {
-		if len(query) != 0 {
-			query += "UNION\n"
-		}
-
-		query += fmt.Sprintf(`(SELECT id, owner_account, authority_account, token_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM `+tableName+`
-			WHERE owner_account = $1 AND account_type = %d
-			ORDER BY index DESC
-			LIMIT 1)
-		`, accountType)
-	}
+	query := `SELECT DISTINCT ON (account_type, relationship_to) id, owner_account, authority_account, token_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+		WHERE owner_account = $1
+		ORDER BY account_type, relationship_to, index DESC
+	`
 
 	err := db.SelectContext(
 		ctx,
-		&models,
+		&res,
 		query,
 		address,
 	)
@@ -220,19 +210,10 @@ func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string)
 		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
 	}
 
-	if len(models) == 0 {
+	if len(res) == 0 {
 		return nil, account.ErrAccountInfoNotFound
 	}
 
-	res := make(map[commonpb.AccountType]*model)
-	for _, model := range models {
-		_, ok := res[commonpb.AccountType(model.AccountType)]
-		if ok {
-			return nil, errors.New("got multiple accounts for the same type")
-		}
-
-		res[commonpb.AccountType(model.AccountType)] = model
-	}
 	return res, nil
 }
 

@@ -7,12 +7,12 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 var (
@@ -112,9 +112,11 @@ func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner
 	if hasLegacyPrimary2022Account && !legacyPrimary2022Records.IsManagedByCode(ctx) {
 		return OwnerManagementStateUnlocked, nil
 	}
-	for _, accountRecords := range recordsByType {
-		if !accountRecords.IsManagedByCode(ctx) {
-			return OwnerManagementStateUnlocked, nil
+	for _, batchAccountRecords := range recordsByType {
+		for _, accountRecords := range batchAccountRecords {
+			if !accountRecords.IsManagedByCode(ctx) {
+				return OwnerManagementStateUnlocked, nil
+			}
 		}
 	}
 
@@ -123,8 +125,8 @@ func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner
 
 // GetLatestTokenAccountRecordsForOwner gets DB records for the latest set of
 // token accounts for an owner account.
-func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[commonpb.AccountType]*AccountRecords, error) {
-	res := make(map[commonpb.AccountType]*AccountRecords)
+func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[commonpb.AccountType][]*AccountRecords, error) {
+	res := make(map[commonpb.AccountType][]*AccountRecords)
 
 	infoRecordsByType, err := data.GetLatestAccountInfosByOwnerAddress(ctx, owner.publicKey.ToBase58())
 	if err != account.ErrAccountInfoNotFound && err != nil {
@@ -136,8 +138,10 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 	}
 
 	var tokenAccounts []string
-	for _, infoRecord := range infoRecordsByType {
-		tokenAccounts = append(tokenAccounts, infoRecord.TokenAccount)
+	for _, infoRecords := range infoRecordsByType {
+		for _, infoRecord := range infoRecords {
+			tokenAccounts = append(tokenAccounts, infoRecord.TokenAccount)
+		}
 	}
 
 	timelockRecordsByVault, err := data.GetTimelockByVaultBatch(ctx, tokenAccounts...)
@@ -145,15 +149,17 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 		return nil, err
 	}
 
-	for _, generalRecord := range infoRecordsByType {
-		timelockRecord, ok := timelockRecordsByVault[generalRecord.TokenAccount]
-		if !ok {
-			return nil, errors.New("timelock record unexpectedly doesn't exist")
-		}
+	for _, generalRecords := range infoRecordsByType {
+		for _, generalRecord := range generalRecords {
+			timelockRecord, ok := timelockRecordsByVault[generalRecord.TokenAccount]
+			if !ok {
+				return nil, errors.New("timelock record unexpectedly doesn't exist")
+			}
 
-		res[generalRecord.AccountType] = &AccountRecords{
-			General:  generalRecord,
-			Timelock: timelockRecord,
+			res[generalRecord.AccountType] = append(res[generalRecord.AccountType], &AccountRecords{
+				General:  generalRecord,
+				Timelock: timelockRecord,
+			})
 		}
 	}
 

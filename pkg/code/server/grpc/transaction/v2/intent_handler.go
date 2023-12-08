@@ -382,6 +382,8 @@ type SendPrivatePaymentIntentHandler struct {
 	antispamGuard *antispam.Guard
 	amlGuard      *lawenforcement.AntiMoneyLaunderingGuard
 	maxmind       *maxminddb.Reader
+
+	cachedPaymentRequestRequest *paymentrequest.Record
 }
 
 func NewSendPrivatePaymentIntentHandler(
@@ -427,9 +429,10 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 	}
 
 	var isMicroPayment bool
-	_, err = h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
+	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
 	if err == nil {
 		isMicroPayment = true
+		h.cachedPaymentRequestRequest = paymentRequestRecord
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
@@ -501,9 +504,11 @@ func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, int
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
 	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
-	for _, records := range initiatorAccountsByType {
-		initiatorAccounts = append(initiatorAccounts, records)
-		initiatorAccountsByVault[records.General.TokenAccount] = records
+	for _, batchRecords := range initiatorAccountsByType {
+		for _, records := range batchRecords {
+			initiatorAccounts = append(initiatorAccounts, records)
+			initiatorAccountsByVault[records.General.TokenAccount] = records
+		}
 	}
 
 	//
@@ -587,7 +592,7 @@ func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, int
 func (h *SendPrivatePaymentIntentHandler) validateActions(
 	ctx context.Context,
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	intentRecord *intent.Record,
 	metadata *transactionpb.SendPrivatePaymentMetadata,
@@ -628,7 +633,7 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "must send %d quarks to destination account", expectedDestinationPayment)
 	}
 
-	tempOutgoing := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_OUTGOING].General.TokenAccount
+	tempOutgoing := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_OUTGOING][0].General.TokenAccount
 	tempOutgoingSimulation, ok := simResult.SimulationsByAccount[tempOutgoing]
 	if !ok || len(tempOutgoingSimulation.Transfers) == 0 {
 		return newIntentValidationErrorf("payment must be sent from temporary outgoing account %s", tempOutgoing)
@@ -667,10 +672,13 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 			return newIntentValidationError("remote send must be to a brand new gift card account")
 		}
 
-		// Code->Code withdrawals must be sent to a primary account. We allow the
+		// Code->Code withdrawals must be sent to a deposit account. We allow the
 		// same owner, since the user might be funding a public withdrawal.
-		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
-			return newIntentValidationError("destination account must be a primary account")
+		//
+		// Note: For relationship accounts used in payment requests, the relationship
+		//       has already been validated by the messaging service.
+		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY && destinationAccountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
+			return newIntentValidationError("destination account must be a deposit account")
 		}
 
 		if !metadata.IsWithdrawal {
@@ -725,11 +733,8 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	// Part 1.3: Validate destination account matches payment request, if it exists
 	//
 
-	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
-	if err == nil && paymentRequestRecord.DestinationTokenAccount != destination.PublicKey().ToBase58() {
-		return newIntentValidationErrorf("payment has a request to destination %s", paymentRequestRecord.DestinationTokenAccount)
-	} else if err != paymentrequest.ErrPaymentRequestNotFound && err != nil {
-		return err
+	if h.cachedPaymentRequestRequest != nil && h.cachedPaymentRequestRequest.DestinationTokenAccount != destination.PublicKey().ToBase58() {
+		return newIntentValidationErrorf("payment has a request to destination %s", h.cachedPaymentRequestRequest.DestinationTokenAccount)
 	}
 
 	//
@@ -961,6 +966,7 @@ func (h *SendPrivatePaymentIntentHandler) OnCommittedToDB(ctx context.Context, i
 			h.data,
 			h.pusher,
 			intentRecord,
+			h.cachedPaymentRequestRequest,
 		)
 	}
 
@@ -1032,9 +1038,11 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Contex
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
 	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
-	for _, records := range initiatorAccountsByType {
-		initiatorAccounts = append(initiatorAccounts, records)
-		initiatorAccountsByVault[records.General.TokenAccount] = records
+	for _, batchRecords := range initiatorAccountsByType {
+		for _, records := range batchRecords {
+			initiatorAccounts = append(initiatorAccounts, records)
+			initiatorAccountsByVault[records.General.TokenAccount] = records
+		}
 	}
 
 	//
@@ -1112,7 +1120,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Contex
 func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 	ctx context.Context,
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	metadata *transactionpb.ReceivePaymentsPrivatelyMetadata,
 	actions []*transactionpb.Action,
@@ -1145,8 +1153,8 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 	sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
 	if !ok {
 		return newIntentValidationError("source is not a latest owned account")
-	} else if metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-		return newIntentValidationError("must receive from primary account")
+	} else if metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY && sourceAccountInfo.General.AccountType != commonpb.AccountType_RELATIONSHIP {
+		return newIntentValidationError("must receive from a deposit account")
 	} else if !metadata.IsDeposit && sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
 		return newIntentValidationError("must receive from latest temporary incoming account")
 	}
@@ -1237,15 +1245,15 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 		switch accountRecords.General.AccountType {
 		case commonpb.AccountType_TEMPORARY_OUTGOING:
 			return newActionValidationError(simulation.Transfers[0].Action, "temporary outgoing account cannot send/receive kin")
-		case commonpb.AccountType_PRIMARY:
+		case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
 			if !metadata.IsDeposit {
-				return newActionValidationError(simulation.Transfers[0].Action, "primary account cannot send/receive kin")
+				return newActionValidationError(simulation.Transfers[0].Action, "deposit account cannot send/receive kin")
 			}
 
 			if metadata.IsDeposit {
 				incomingTransfers := simulation.GetIncomingTransfers()
 				if len(incomingTransfers) > 0 {
-					return newActionValidationError(incomingTransfers[0].Action, "primary account cannot receive kin")
+					return newActionValidationError(incomingTransfers[0].Action, "deposit account cannot receive kin")
 				}
 
 				publicTransfers := simulation.GetPublicTransfers()
@@ -1472,7 +1480,7 @@ func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, i
 	//
 
 	involvedAccounts := []*common.AccountRecords{
-		initiatorAccountsByType[commonpb.AccountType_PRIMARY],
+		initiatorAccountsByType[commonpb.AccountType_PRIMARY][0],
 		{
 			Timelock: legacyTimelockRecord,
 			General:  nil, // validateAllAccountsManagedByCode requires common.AccountRecords, but this isn't used and doesn't exist in the DB
@@ -1691,9 +1699,11 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
 	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
-	for _, records := range initiatorAccountsByType {
-		initiatorAccounts = append(initiatorAccounts, records)
-		initiatorAccountsByVault[records.General.TokenAccount] = records
+	for _, batchRecords := range initiatorAccountsByType {
+		for _, records := range batchRecords {
+			initiatorAccounts = append(initiatorAccounts, records)
+			initiatorAccountsByVault[records.General.TokenAccount] = records
+		}
 	}
 
 	//
@@ -1777,7 +1787,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 func (h *SendPublicPaymentIntentHandler) validateActions(
 	ctx context.Context,
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	intentRecord *intent.Record,
 	metadata *transactionpb.SendPublicPaymentMetadata,
@@ -1788,22 +1798,38 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return newIntentValidationError("expected 1 action")
 	}
 
+	var source *common.Account
+	var err error
+	if metadata.Source != nil {
+		source, err = common.NewAccountFromProto(metadata.Source)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Backwards compat for old clients using metadata without source. It was
+		// always assumed to be from the primary account
+		source, err = common.NewAccountFromPublicKeyString(initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General.TokenAccount)
+		if err != nil {
+			return err
+		}
+	}
+
 	destination, err := common.NewAccountFromProto(metadata.Destination)
 	if err != nil {
 		return err
 	}
 
-	// Part 1: Check the destination account itself is valid
+	// Part 1: Check the source and destination accounts are valid
 
 	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
 	switch err {
 	case nil:
-		// Code->Code public withdraws must be done to primary accounts
-		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
-			return newIntentValidationError("destination account must be a primary account")
+		// Code->Code public withdraws must be done against other deposit accounts
+		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY && destinationAccountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
+			return newIntentValidationError("destination account must be a deposit account")
 		}
 
-		// And that primary account cannot be yourself
+		// And that deposit account cannot be yourself
 		if destinationAccountInfo.OwnerAccount == initiatorOwnerAccount.PublicKey().ToBase58() {
 			return newIntentValidationError("payments within the same owner are not allowed")
 		}
@@ -1820,12 +1846,17 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return err
 	}
 
+	sourceAccountRecords, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+	if !ok || (sourceAccountRecords.General.AccountType != commonpb.AccountType_PRIMARY && sourceAccountRecords.General.AccountType != commonpb.AccountType_RELATIONSHIP) {
+		return newIntentValidationError("source account must be a deposit account")
+	}
+
 	//
 	// Part 2: Validate actions match intent metadata
 	//
 
 	//
-	// Part 2.1: Check destination account is paid exact quark amount from primary account
+	// Part 2.1: Check destination account is paid exact quark amount from the deposit account
 	//
 
 	destinationSimulation, ok := simResult.SimulationsByAccount[destination.PublicKey().ToBase58()]
@@ -1838,12 +1869,13 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2.2: Check that the user's primary account was used as the source of funds
+	// Part 2.2: Check that the user's deposit account was used as the source of funds
+	//           as specified in the metadata
 	//
 
-	sourceSimulation, ok := simResult.SimulationsByAccount[initiatorAccountsByType[commonpb.AccountType_PRIMARY].General.TokenAccount]
+	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
 	if !ok {
-		return newIntentValidationErrorf("must send payment from primary account %s", initiatorAccountsByType[commonpb.AccountType_PRIMARY].General.TokenAccount)
+		return newIntentValidationErrorf("must send payment from source account %s", source.PublicKey().ToBase58())
 	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.ExchangeData.Quarks) {
 		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must send %d quarks from source account", metadata.ExchangeData.Quarks)
 	}
@@ -2017,9 +2049,11 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
 	initiatorAccountsByVault := make(map[string]*common.AccountRecords)
-	for _, records := range initiatorAccountsByType {
-		initiatorAccounts = append(initiatorAccounts, records)
-		initiatorAccountsByVault[records.General.TokenAccount] = records
+	for _, batchRecords := range initiatorAccountsByType {
+		for _, records := range batchRecords {
+			initiatorAccounts = append(initiatorAccounts, records)
+			initiatorAccountsByVault[records.General.TokenAccount] = records
+		}
 	}
 
 	//
@@ -2097,7 +2131,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	ctx context.Context,
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	metadata *transactionpb.ReceivePaymentsPubliclyMetadata,
 	actions []*transactionpb.Action,
@@ -2118,7 +2152,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	}
 
 	// The destination account must be the latest temporary incoming account
-	destinationAccountInfo := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_INCOMING].General
+	destinationAccountInfo := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_INCOMING][0].General
 	destinationSimulation, ok := simResult.SimulationsByAccount[destinationAccountInfo.TokenAccount]
 	if !ok {
 		return newActionValidationError(actions[0], "must send payment to latest temp incoming account")
@@ -2467,7 +2501,7 @@ func validateMoneyMovementActionUserAccounts(
 
 		switch typedAction := action.Type.(type) {
 		case *transactionpb.Action_NoPrivacyTransfer:
-			// No privacy transfers are always come from the primary account
+			// No privacy transfers are always come from a deposit account
 
 			authority, err = common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Authority)
 			if err != nil {
@@ -2480,8 +2514,8 @@ func validateMoneyMovementActionUserAccounts(
 			}
 
 			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
-			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-				return newActionValidationError(action, "source account must be the primary account")
+			if !ok || (sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY && sourceAccountInfo.General.AccountType != commonpb.AccountType_RELATIONSHIP) {
+				return newActionValidationError(action, "source account must be a deposit account")
 			}
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			// No privacy withdraws are used in two ways depending on the intent:
@@ -2554,8 +2588,9 @@ func validateMoneyMovementActionUserAccounts(
 
 			if !sourceAccountInfo.General.IsBucket() &&
 				sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING &&
-				sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
-				return newActionValidationError(action, "source account must be the primary or latest temporary incoming account when not a bucket account")
+				sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY &&
+				sourceAccountInfo.General.AccountType != commonpb.AccountType_RELATIONSHIP {
+				return newActionValidationError(action, "source account must be a deposit or latest temporary incoming account when not a bucket account")
 			}
 
 			if !destinationAccountInfo.General.IsBucket() && destinationAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_OUTGOING {
@@ -2623,7 +2658,7 @@ func validateMoneyMovementActionUserAccounts(
 func validateNextTemporaryAccountOpened(
 	accountType commonpb.AccountType,
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	actions []*transactionpb.Action,
 ) error {
 	if accountType != commonpb.AccountType_TEMPORARY_INCOMING && accountType != commonpb.AccountType_TEMPORARY_OUTGOING {
@@ -2639,7 +2674,7 @@ func validateNextTemporaryAccountOpened(
 	if !ok {
 		return errors.New("primary account record missing")
 	}
-	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords.Timelock.VaultAddress)
+	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords[0].Timelock.VaultAddress)
 	if err != nil {
 		return err
 	}
@@ -2682,7 +2717,7 @@ func validateNextTemporaryAccountOpened(
 		return newActionValidationErrorf(openAction, "authority cannot be %s", initiatorOwnerAccount.PublicKey().ToBase58())
 	}
 
-	expectedIndex := prevTempAccountRecords.General.Index + 1
+	expectedIndex := prevTempAccountRecords[0].General.Index + 1
 	if openAction.GetOpenAccount().Index != expectedIndex {
 		return newActionValidationErrorf(openAction, "next derivation expected to be %d", expectedIndex)
 	}
@@ -2724,7 +2759,7 @@ func validateNextTemporaryAccountOpened(
 // Assumes only one gift card account is opened per intent
 func validateGiftCardAccountOpened(
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType]*common.AccountRecords,
+	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	expectedGiftCardVault *common.Account,
 	actions []*transactionpb.Action,
 ) error {
@@ -2732,7 +2767,7 @@ func validateGiftCardAccountOpened(
 	if !ok {
 		return errors.New("primary account record missing")
 	}
-	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords.Timelock.VaultAddress)
+	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords[0].Timelock.VaultAddress)
 	if err != nil {
 		return err
 	}

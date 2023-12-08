@@ -29,19 +29,6 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/database/query"
-	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	memory_push "github.com/code-payments/code-server/pkg/push/memory"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -68,6 +55,19 @@ import (
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
+	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/memo"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/solana/system"
+	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 // todo: Make working with different timelock versions easier
@@ -1228,27 +1228,27 @@ func (s serverTestEnv) assertLatestAccountRecordsSaved(t *testing.T, phone phone
 		timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
 		require.NoError(t, err)
 
-		assert.Equal(t, accountType, accountRecords.General.AccountType)
-		assert.Equal(t, phone.parentAccount.PublicKey().ToBase58(), accountRecords.General.OwnerAccount)
-		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords.General.AuthorityAccount)
-		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords.General.TokenAccount)
-		assert.EqualValues(t, index, accountRecords.General.Index)
-		assert.Nil(t, accountRecords.General.RelationshipTo)
-		assert.False(t, accountRecords.General.RequiresDepositSync)
-		assert.False(t, accountRecords.General.RequiresAutoReturnCheck)
+		assert.Equal(t, accountType, accountRecords[0].General.AccountType)
+		assert.Equal(t, phone.parentAccount.PublicKey().ToBase58(), accountRecords[0].General.OwnerAccount)
+		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords[0].General.AuthorityAccount)
+		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords[0].General.TokenAccount)
+		assert.EqualValues(t, index, accountRecords[0].General.Index)
+		assert.Nil(t, accountRecords[0].General.RelationshipTo)
+		assert.False(t, accountRecords[0].General.RequiresDepositSync)
+		assert.False(t, accountRecords[0].General.RequiresAutoReturnCheck)
 
-		assert.Equal(t, timelock_token_v1.DataVersion1, accountRecords.Timelock.DataVersion)
-		assert.Equal(t, timelockAccounts.State.PublicKey().ToBase58(), accountRecords.Timelock.Address)
-		assert.Equal(t, timelockAccounts.StateBump, accountRecords.Timelock.Bump)
-		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords.Timelock.VaultAddress)
-		assert.Equal(t, timelockAccounts.VaultBump, accountRecords.Timelock.VaultBump)
-		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords.Timelock.VaultOwner)
-		assert.Equal(t, timelock_token_v1.StateUnknown, accountRecords.Timelock.VaultState)
-		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords.Timelock.TimeAuthority)
-		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords.Timelock.CloseAuthority)
-		assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, accountRecords.Timelock.NumDaysLocked)
-		assert.Nil(t, accountRecords.Timelock.UnlockAt)
-		assert.EqualValues(t, 0, accountRecords.Timelock.Block)
+		assert.Equal(t, timelock_token_v1.DataVersion1, accountRecords[0].Timelock.DataVersion)
+		assert.Equal(t, timelockAccounts.State.PublicKey().ToBase58(), accountRecords[0].Timelock.Address)
+		assert.Equal(t, timelockAccounts.StateBump, accountRecords[0].Timelock.Bump)
+		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords[0].Timelock.VaultAddress)
+		assert.Equal(t, timelockAccounts.VaultBump, accountRecords[0].Timelock.VaultBump)
+		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords[0].Timelock.VaultOwner)
+		assert.Equal(t, timelock_token_v1.StateUnknown, accountRecords[0].Timelock.VaultState)
+		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords[0].Timelock.TimeAuthority)
+		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords[0].Timelock.CloseAuthority)
+		assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, accountRecords[0].Timelock.NumDaysLocked)
+		assert.Nil(t, accountRecords[0].Timelock.UnlockAt)
+		assert.EqualValues(t, 0, accountRecords[0].Timelock.Block)
 	}
 }
 
@@ -1803,6 +1803,7 @@ type phoneConf struct {
 
 	simulateSendingTooLittle        bool
 	simulateSendingTooMuch          bool
+	simulateNotSendingFromSource    bool
 	simulateNotSendingToDestination bool
 
 	simulateSendPrivatePaymentFromPreviousTempOutgoingAccount       bool
@@ -2453,6 +2454,53 @@ func (p *phoneTestEnv) publiclyWithdraw123KinToExternalWallet(t *testing.T) subm
 	metadata := &transactionpb.Metadata{
 		Type: &transactionpb.Metadata_SendPublicPayment{
 			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+				Destination: destination.ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "kin",
+					ExchangeRate: 1,
+					NativeAmount: 123,
+					Quarks:       kin.ToQuarks(123),
+				},
+				IsWithdrawal: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
+func (p *phoneTestEnv) publiclyWithdraw123KinToExternalWalletFromRelationshipAccount(t *testing.T, relationship string) submitIntentCallMetadata {
+	destination := testutil.NewRandomAccount(t)
+
+	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
+
+	actions := []*transactionpb.Action{
+		// Send full payment from primary to payment destination in a single transfer
+		{Type: &transactionpb.Action_NoPrivacyTransfer{
+			NoPrivacyTransfer: &transactionpb.NoPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: destination.ToProto(),
+				Amount:      kin.ToQuarks(123),
+			},
+		}},
+	}
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPublicPayment{
+			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
 				Destination: destination.ToProto(),
 				ExchangeData: &transactionpb.ExchangeData{
 					Currency:     "kin",
@@ -2791,7 +2839,71 @@ func (p *phoneTestEnv) deposit777KinIntoOrganizer(t *testing.T) submitIntentCall
 	}
 }
 
-func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUser(t *testing.T, receiver phoneTestEnv) submitIntentCallMetadata {
+func (p *phoneTestEnv) deposit777KinIntoOrganizerFromRelationshipAccount(t *testing.T, relationship string) submitIntentCallMetadata {
+	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
+
+	actions := []*transactionpb.Action{
+		// Receive from temporary incoming to bucketed accounts
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(7),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(70),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_100_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(700),
+			},
+		}},
+
+		// Re-organize bucket accounts (example)
+		{Type: &transactionpb.Action_TemporaryPrivacyExchange{
+			TemporaryPrivacyExchange: &transactionpb.TemporaryPrivacyExchangeAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(10),
+			},
+		}},
+	}
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_ReceivePaymentsPrivately{
+			ReceivePaymentsPrivately: &transactionpb.ReceivePaymentsPrivatelyMetadata{
+				Source:    getTimelockVault(t, sourceAuthority).ToProto(),
+				Quarks:    kin.ToQuarks(777),
+				IsDeposit: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
+func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t *testing.T, receiver phoneTestEnv) submitIntentCallMetadata {
 	destination := receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0)
 
 	actions := []*transactionpb.Action{
@@ -2809,7 +2921,53 @@ func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUser(t *testing.T, receiver p
 	metadata := &transactionpb.Metadata{
 		Type: &transactionpb.Metadata_SendPublicPayment{
 			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
 				Destination: destination.ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "usd",
+					ExchangeRate: 0.1,
+					NativeAmount: 77.7,
+					Quarks:       kin.ToQuarks(777),
+				},
+				IsWithdrawal: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
+func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUserBetweenRelationshipAccounts(t *testing.T, relationship string, receiver phoneTestEnv) submitIntentCallMetadata {
+	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
+	destinationAuthority := receiver.getAuthorityForRelationshipAccount(t, relationship)
+
+	actions := []*transactionpb.Action{
+		// Send full payment from primary to payment destination in a single transfer
+		{Type: &transactionpb.Action_NoPrivacyTransfer{
+			NoPrivacyTransfer: &transactionpb.NoPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: getTimelockVault(t, destinationAuthority).ToProto(),
+				Amount:      kin.ToQuarks(777),
+			},
+		}},
+	}
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPublicPayment{
+			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      getTimelockVault(t, sourceAuthority).ToProto(),
+				Destination: getTimelockVault(t, destinationAuthority).ToProto(),
 				ExchangeData: &transactionpb.ExchangeData{
 					Currency:     "usd",
 					ExchangeRate: 0.1,
@@ -2941,6 +3099,136 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 					ExchangeRate: 0.1,
 					NativeAmount: 77.7,
 					Quarks:       kin.ToQuarks(777),
+				},
+				IsWithdrawal: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	if !isSubmitIntentError(resp, err) {
+		p.currentTempOutgoingIndex = nextIndex
+		p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING] = nextDerivedAccount.value
+	}
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
+func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *testing.T, receiver phoneTestEnv, relationship string) submitIntentCallMetadata {
+	destination := getTimelockVault(t, receiver.getAuthorityForRelationshipAccount(t, relationship))
+
+	nextIndex := p.currentTempOutgoingIndex + 1
+	nextDerivedAccount := derivedAccount{
+		accountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+		index:       nextIndex,
+		value:       testutil.NewRandomAccount(t),
+	}
+	p.allDerivedAccounts = append(p.allDerivedAccounts, nextDerivedAccount)
+
+	actions := []*transactionpb.Action{
+		// Send bucketed amounts to temporary outgoing account
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_1_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(1),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(20),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_100_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_100_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(300),
+			},
+		}},
+	}
+
+	var feePayment uint64
+	if p.conf.simulatePaymentRequest {
+		feePayment = kin.ToQuarks(1) / 10 // 0.1 Kin
+		actions = append(actions, &transactionpb.Action{
+			// Pay any fees when applicable
+			Type: &transactionpb.Action_FeePayment{
+				FeePayment: &transactionpb.FeePaymentAction{
+					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+					Amount:    feePayment,
+				},
+			},
+		})
+	}
+
+	actions = append(
+		actions,
+		// Send full payment from temporary outgoing account to payment destination,
+		// minus any fees
+		&transactionpb.Action{Type: &transactionpb.Action_NoPrivacyWithdraw{
+			NoPrivacyWithdraw: &transactionpb.NoPrivacyWithdrawAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Destination: destination.ToProto(),
+				Amount:      kin.ToQuarks(321) - feePayment,
+				ShouldClose: true,
+			},
+		}},
+
+		// Re-organize bucket accounts (example)
+		&transactionpb.Action{Type: &transactionpb.Action_TemporaryPrivacyExchange{
+			TemporaryPrivacyExchange: &transactionpb.TemporaryPrivacyExchangeAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(10),
+			},
+		}},
+
+		// Rotate to new temporary outgoing account
+		&transactionpb.Action{Type: &transactionpb.Action_OpenAccount{
+			OpenAccount: &transactionpb.OpenAccountAction{
+				AccountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+				Owner:       p.parentAccount.ToProto(),
+				Authority:   nextDerivedAccount.value.ToProto(),
+				Token:       getTimelockVault(t, nextDerivedAccount.value).ToProto(),
+				Index:       nextIndex,
+			},
+		}},
+		&transactionpb.Action{Type: &transactionpb.Action_CloseDormantAccount{
+			CloseDormantAccount: &transactionpb.CloseDormantAccountAction{
+				AccountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+				Authority:   nextDerivedAccount.value.ToProto(),
+				Token:       getTimelockVault(t, nextDerivedAccount.value).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+			},
+		}},
+	)
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPrivatePayment{
+			SendPrivatePayment: &transactionpb.SendPrivatePaymentMetadata{
+				Destination: destination.ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "usd",
+					ExchangeRate: 0.1,
+					NativeAmount: 32.1,
+					Quarks:       kin.ToQuarks(321),
 				},
 				IsWithdrawal: true,
 			},
@@ -3785,14 +4073,21 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		}
 
 		if p.conf.simulateSendPublicPaymentFromBucketAccount {
+			metadata.GetSendPublicPayment().Source = p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 			actions[0].GetNoPrivacyTransfer().Authority = p.getAuthority(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 			actions[0].GetNoPrivacyTransfer().Source = p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 		}
 
 		if p.conf.simulateUsingGiftCardAccount {
 			giftCardAccount := p.directServerAccess.generateRandomUnclaimedGiftCard(t)
+			metadata.GetSendPublicPayment().Source = getTimelockVault(t, giftCardAccount).ToProto()
 			actions[0].GetNoPrivacyTransfer().Authority = giftCardAccount.ToProto()
 			actions[0].GetNoPrivacyTransfer().Source = getTimelockVault(t, giftCardAccount).ToProto()
+		}
+
+		if p.conf.simulateNotSendingFromSource {
+			actions[0].GetNoPrivacyTransfer().Authority = p.getAuthority(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
+			actions[0].GetNoPrivacyTransfer().Source = p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto()
 		}
 	case *transactionpb.Metadata_ReceivePaymentsPublicly:
 		if p.conf.simulateReceivingFromDesktop {
@@ -5227,6 +5522,10 @@ func (p *phoneTestEnv) getTimelockVault(t *testing.T, accountType commonpb.Accou
 }
 
 func (p *phoneTestEnv) getAuthority(t *testing.T, accountType commonpb.AccountType, index uint64) *common.Account {
+	if accountType == commonpb.AccountType_RELATIONSHIP {
+		require.Fail(t, "relationship account not supported in this function")
+	}
+
 	if accountType == commonpb.AccountType_PRIMARY {
 		return p.parentAccount
 	}
@@ -5234,6 +5533,10 @@ func (p *phoneTestEnv) getAuthority(t *testing.T, accountType commonpb.AccountTy
 }
 
 func (p *phoneTestEnv) getAuthorityForLatestAccount(t *testing.T, accountType commonpb.AccountType) (*common.Account, uint64) {
+	if accountType == commonpb.AccountType_RELATIONSHIP {
+		require.Fail(t, "relationship account not supported in this function")
+	}
+
 	if accountType == commonpb.AccountType_PRIMARY {
 		return p.parentAccount, 0
 	}
@@ -5248,7 +5551,23 @@ func (p *phoneTestEnv) getAuthorityForLatestAccount(t *testing.T, accountType co
 	return p.getDerivedAccount(t, accountType, index), index
 }
 
+func (p *phoneTestEnv) getAuthorityForRelationshipAccount(t *testing.T, relationship string) *common.Account {
+	for i := len(p.allDerivedAccounts) - 1; i >= 0; i-- {
+		if p.allDerivedAccounts[i].accountType == commonpb.AccountType_RELATIONSHIP && *p.allDerivedAccounts[i].relationshipTo == relationship {
+			return p.allDerivedAccounts[i].value
+		}
+	}
+
+	require.Fail(t, "relationship account not found")
+
+	return nil
+}
+
 func (p *phoneTestEnv) getDerivedAccount(t *testing.T, accountType commonpb.AccountType, index uint64) *common.Account {
+	if accountType == commonpb.AccountType_RELATIONSHIP {
+		require.Fail(t, "relationship account not supported in this function")
+	}
+
 	for i := len(p.allDerivedAccounts) - 1; i >= 0; i-- {
 		if p.allDerivedAccounts[i].accountType == accountType && p.allDerivedAccounts[i].index == index {
 			return p.allDerivedAccounts[i].value

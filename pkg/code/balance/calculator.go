@@ -8,11 +8,11 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/metrics"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	"github.com/code-payments/code-server/pkg/metrics"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 const (
@@ -393,7 +393,7 @@ func GetTotalBalance(ctx context.Context, data code_data.Provider, owner *common
 
 	var accountRecordsBatch []*common.AccountRecords
 	for _, accountRecords := range accountRecordsByType {
-		accountRecordsBatch = append(accountRecordsBatch, accountRecords)
+		accountRecordsBatch = append(accountRecordsBatch, accountRecords...)
 	}
 
 	balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(ctx, data, accountRecordsBatch...)
@@ -404,8 +404,10 @@ func GetTotalBalance(ctx context.Context, data code_data.Provider, owner *common
 	}
 
 	var total uint64
-	for _, records := range accountRecordsByType {
-		total += balanceByAccount[records.General.TokenAccount]
+	for _, batchRecords := range accountRecordsByType {
+		for _, records := range batchRecords {
+			total += balanceByAccount[records.General.TokenAccount]
+		}
 	}
 	return total, nil
 }
@@ -438,12 +440,12 @@ func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *comm
 
 	var accountRecordsBatch []*common.AccountRecords
 	for _, accountRecords := range accountRecordsByType {
-		switch accountRecords.General.AccountType {
-		case commonpb.AccountType_PRIMARY, commonpb.AccountType_LEGACY_PRIMARY_2022, commonpb.AccountType_REMOTE_SEND_GIFT_CARD:
+		switch accountRecords[0].General.AccountType {
+		case commonpb.AccountType_PRIMARY, commonpb.AccountType_LEGACY_PRIMARY_2022, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, commonpb.AccountType_RELATIONSHIP:
 			continue
 		}
 
-		accountRecordsBatch = append(accountRecordsBatch, accountRecords)
+		accountRecordsBatch = append(accountRecordsBatch, accountRecords...)
 	}
 
 	balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(ctx, data, accountRecordsBatch...)
@@ -454,8 +456,10 @@ func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *comm
 	}
 
 	var total uint64
-	for _, records := range accountRecordsByType {
-		total += balanceByAccount[records.General.TokenAccount]
+	for _, batchRecords := range accountRecordsByType {
+		for _, records := range batchRecords {
+			total += balanceByAccount[records.General.TokenAccount]
+		}
 	}
 	return total, nil
 }

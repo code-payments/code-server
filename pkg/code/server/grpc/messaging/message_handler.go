@@ -12,7 +12,6 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -22,6 +21,7 @@ import (
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/limit"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 )
 
 // MessageHandler provides message-specific in addition to the generic message
@@ -230,8 +230,18 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, requestorAccount.PublicKey().ToBase58())
 		switch err {
 		case nil:
-			if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-				return newMessageValidationError("requestor account must be a primary account for trials using a code account")
+			switch accountInfoRecord.AccountType {
+			case commonpb.AccountType_PRIMARY:
+			case commonpb.AccountType_RELATIONSHIP:
+				if typedMessage.Verifier == nil {
+					return newMessageValidationError("domain verification is required when requestor account is a relationship account")
+				}
+
+				if *accountInfoRecord.RelationshipTo != asciiBaseDomain {
+					return newMessageValidationErrorf("requestor account must have a relationship with %s", asciiBaseDomain)
+				}
+			default:
+				return newMessageValidationError("requestor account must be a code deposit account")
 			}
 		case account.ErrAccountInfoNotFound:
 			if !h.conf.disableBlockchainChecks.Get(ctx) {

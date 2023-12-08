@@ -121,6 +121,13 @@ func (s *transactionServer) GetPaymentHistory(ctx context.Context, req *transact
 				isDeposit = intentRecord.SendPrivatePaymentMetadata.IsWithdrawal
 			}
 
+			// Default to a receive if this is a micro payment within the same owner
+			if isMicroPayment && intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount == owner.PublicKey().ToBase58() {
+				paymentType = transactionpb.PaymentHistoryItem_RECEIVE
+				isWithdrawal = false
+				isDeposit = intentRecord.SendPrivatePaymentMetadata.IsWithdrawal
+			}
+
 			// Funds moving within the same owner don't get populated when they're
 			// used to support another payment flow that represents the history item
 			// (eg. public withdrawals with private top ups)
