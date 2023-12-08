@@ -70,6 +70,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					// and will have merchant payments appear in the verified merchant
 					// chat.
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
+					chatType = chat.ChatTypeExternalApp
 					isVerifiedChat = true
 					verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
 				}
@@ -86,6 +87,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					// and will have merchant payments appear in the verified merchant
 					// chat.
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
+					chatType = chat.ChatTypeExternalApp
 					isVerifiedChat = true
 					verbByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
 				}
@@ -101,6 +103,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			// and will have merchant payments appear in the verified merchant
 			// chat.
 			chatTitle = *destinationAccountInfoRecord.RelationshipTo
+			chatType = chat.ChatTypeExternalApp
 			isVerifiedChat = true
 			verbByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
 		}
