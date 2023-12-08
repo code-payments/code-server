@@ -260,17 +260,19 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Equal(t, commonpb.AccountType_RELATIONSHIP, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, kin.ToQuarks(999), accountInfo.Balance)
+			require.NotNil(t, accountInfo.Relationship)
+			assert.Equal(t, *relationship1AccountRecords.General.RelationshipTo, accountInfo.Relationship.GetDomain().Value)
 		case relationship2DerivedOwner.PublicKey().ToBase58():
 			assert.Equal(t, commonpb.AccountType_RELATIONSHIP, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, kin.ToQuarks(5), accountInfo.Balance)
+			require.NotNil(t, accountInfo.Relationship)
+			assert.Equal(t, *relationship2AccountRecords.General.RelationshipTo, accountInfo.Relationship.GetDomain().Value)
 		default:
 			require.Fail(t, "unexpected authority")
 		}
 
-		if accountInfo.AccountType == commonpb.AccountType_RELATIONSHIP {
-			require.NotNil(t, accountInfo.Relationship)
-		} else {
+		if accountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
 			assert.Nil(t, accountInfo.Relationship)
 		}
 
