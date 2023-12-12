@@ -33,6 +33,8 @@ const (
 	maxCheckAttemptsCode = 60202
 	// https://www.twilio.com/docs/api/errors/60203
 	maxSendAttemptsCode = 60203
+	// https://www.twilio.com/docs/api/errors/60220
+	useCaseVettingCode = 60220
 	// https://www.twilio.com/docs/api/errors/60410
 	fraudDetectionCode = 60410
 )
@@ -105,6 +107,7 @@ func (v *verifier) SendCode(ctx context.Context, phoneNumber string) (string, *p
 		err = checkInvalidToParameterError(err, phone.ErrInvalidNumber)
 		err = checkMaxSendAttemptsError(err, phone.ErrRateLimited)
 		err = checkFraudDetectionError(err, phone.ErrRateLimited)
+		err = checkUseCaseVettingError(err, phone.ErrRateLimited)
 		tracer.OnError(err)
 		return "", nil, err
 	}
@@ -316,6 +319,18 @@ func checkInvalidToParameterError(inError, outError error) error {
 
 	expectedMessage := strings.ToLower("Invalid parameter `To`")
 	if strings.Contains(strings.ToLower(twilioError.Message), expectedMessage) {
+		return outError
+	}
+	return inError
+}
+
+func checkUseCaseVettingError(inError, outError error) error {
+	twilioError, ok := inError.(*client.TwilioRestError)
+	if !ok {
+		return inError
+	}
+
+	if twilioError.Code == useCaseVettingCode {
 		return outError
 	}
 	return inError
