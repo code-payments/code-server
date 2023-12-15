@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/net/idna"
 
-	"github.com/code-payments/code-server/pkg/netutil"
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/netutil"
 )
 
 // DomainVerifier is a validation function to verify if a public key is owned by a domain.
@@ -85,5 +85,5 @@ func GetAsciiBaseDomain(domain string) (string, error) {
 	if len(parts) < 2 {
 		return "", errors.New("value must have base domain and tld")
 	}
-	return fmt.Sprintf("%s.%s", parts[len(parts)-2], parts[len(parts)-1]), nil
+	return strings.ToLower(fmt.Sprintf("%s.%s", parts[len(parts)-2], parts[len(parts)-1])), nil
 }
