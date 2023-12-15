@@ -104,12 +104,12 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	sendingPhone.conf.simulatePaymentRequest = true
 
 	// [Verified Merchant] sendingPhone   SPENT $77.7 USD of Kin
-	// [Verified Merchant] receivingPhone PAID  $77.7 USD of Kin
+	// [Verified Merchant] receivingPhone RECEIVED  $77.7 USD of Kin
 	sendingPhone.privatelyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
 	receivingPhone.deposit777KinIntoOrganizer(t).requireSuccess(t)
 
 	// [Verified Merchant] sendingPhone   SPENT $32.1 USD of Kin
-	// [Verified Merchant] receivingPhone PAID  $32.1 USD of Kin
+	// [Verified Merchant] receivingPhone RECEIVED  $32.1 USD of Kin
 	sendingPhone.privatelyWithdraw321KinToCodeUserRelationshipAccount(t, receivingPhone, merchantDomain).requireSuccess(t)
 
 	// [Verified Merchant] sendingPhone   SPENT 123 Kin
@@ -119,21 +119,21 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	receivingPhone.conf.simulatePaymentRequest = true
 	receivingPhone.conf.simulateUnverifiedPaymentRequest = true
 
-	// [Unverified Mechant] receivingPhone PAID $77.7 USD of Kin
+	// [Unverified Mechant] receivingPhone RECEIVED $77.7 USD of Kin
 	receivingPhone.privatelyWithdraw777KinToCodeUser(t, receivingPhone).requireSuccess(t)
 
 	sendingPhone.resetConfig()
 	receivingPhone.resetConfig()
 
 	// [Cash Transactions] sendingPhone   WITHDREW  $32.1 USD of Kin
-	// [Verified Merchant] receivingPhone DEPOSITED $32.1 USD of Kin
+	// [Verified Merchant] receivingPhone RECEIVED $32.1 USD of Kin
 	sendingPhone.publiclyWithdraw777KinToCodeUserBetweenRelationshipAccounts(t, merchantDomain, receivingPhone).requireSuccess(t)
 
 	// [Cash Transactions] sendingPhone   WITHDREW  $32.1 USD of Kin
-	// [Verified Merchant] receivingPhone DEPOSITED $32.1 USD of Kin
+	// [Verified Merchant] receivingPhone RECEIVED $32.1 USD of Kin
 	sendingPhone.privatelyWithdraw321KinToCodeUserRelationshipAccount(t, receivingPhone, merchantDomain).requireSuccess(t)
 
-	// [Verified Merchant] receivingPhone DEPOSITED 12,345 Kin
+	// [Verified Merchant] receivingPhone RECEIVED 12,345 Kin
 	server.simulateExternalDepositHistoryItem(t, receivingPhone.parentAccount, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, merchantDomain)), kin.ToQuarks(12_345))
 
 	//
@@ -339,7 +339,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[0])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
-	assert.Equal(t, chatpb.ExchangeDataContent_PAID, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.Equal(t, chatpb.ExchangeDataContent_RECEIVED, protoChatMessage.Content[0].GetExchangeData().Verb)
 	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
 	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 77.7, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
@@ -348,7 +348,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[1])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
-	assert.Equal(t, chatpb.ExchangeDataContent_PAID, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.Equal(t, chatpb.ExchangeDataContent_RECEIVED, protoChatMessage.Content[0].GetExchangeData().Verb)
 	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
 	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 32.1, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
@@ -357,7 +357,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[2])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
-	assert.Equal(t, chatpb.ExchangeDataContent_DEPOSITED, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.Equal(t, chatpb.ExchangeDataContent_RECEIVED, protoChatMessage.Content[0].GetExchangeData().Verb)
 	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
 	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 77.7, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
@@ -366,7 +366,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[3])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
-	assert.Equal(t, chatpb.ExchangeDataContent_DEPOSITED, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.Equal(t, chatpb.ExchangeDataContent_RECEIVED, protoChatMessage.Content[0].GetExchangeData().Verb)
 	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
 	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 32.1, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
@@ -375,7 +375,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[4])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
-	assert.Equal(t, chatpb.ExchangeDataContent_DEPOSITED, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.Equal(t, chatpb.ExchangeDataContent_RECEIVED, protoChatMessage.Content[0].GetExchangeData().Verb)
 	assert.EqualValues(t, currency_lib.KIN, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
 	assert.Equal(t, 1.0, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 12_345.0, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
@@ -388,7 +388,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[0])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
-	assert.Equal(t, chatpb.ExchangeDataContent_PAID, protoChatMessage.Content[0].GetExchangeData().Verb)
+	assert.Equal(t, chatpb.ExchangeDataContent_RECEIVED, protoChatMessage.Content[0].GetExchangeData().Verb)
 	assert.EqualValues(t, currency_lib.USD, protoChatMessage.Content[0].GetExchangeData().GetExact().Currency)
 	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 77.7, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
