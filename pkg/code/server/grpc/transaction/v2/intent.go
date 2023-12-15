@@ -22,6 +22,7 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/chat"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -33,6 +34,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
+	"github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -798,6 +800,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		}
 	}
 
+	var chatMessagesToPush []*chat.MessageWithOwner
+
 	// Save all of the required DB records in one transaction to complete the
 	// intent operation. It's very bad if we end up failing halfway through.
 	//
@@ -883,7 +887,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				log.WithError(err).Warn("failure updating cash transaction chat")
 				return err
 			}
-			err = chat_util.SendMerchantExchangeMessage(ctx, s.data, intentRecord)
+			chatMessagesToPush, err = chat_util.SendMerchantExchangeMessage(ctx, s.data, intentRecord)
 			if err != nil {
 				log.WithError(err).Warn("failure updating merchant chat")
 				return err
@@ -943,6 +947,21 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		err = intentHandler.(CreateIntentHandler).OnCommittedToDB(ctx, intentRecord)
 		if err != nil {
 			log.WithError(err).Warn("failure executing intent committed callback handler handler")
+		}
+
+		if len(chatMessagesToPush) > 0 {
+			go func() {
+				for _, chatMessageToPush := range chatMessagesToPush {
+					push.SendChatMessagePushNotification(
+						context.TODO(),
+						s.data,
+						s.pusher,
+						chatMessageToPush.Title,
+						chatMessageToPush.Owner,
+						chatMessageToPush.Message,
+					)
+				}
+			}()
 		}
 	}
 

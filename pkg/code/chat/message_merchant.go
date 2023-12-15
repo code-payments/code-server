@@ -15,12 +15,19 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
+type MessageWithOwner struct {
+	Owner   *common.Account
+	Title   string
+	Message *chatpb.ChatMessage
+}
+
 // SendMerchantExchangeMessage sends a message to the merchant's chat with
 // exchange data content related to the submitted intent. Intents that
-// don't belong in the merchant chat will be ignored.
+// don't belong in the merchant chat will be ignored. The set of chat messages
+// that should be pushed are returned.
 //
 // Note: Tests covered in SubmitIntent history tests
-func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) error {
+func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) ([]*MessageWithOwner, error) {
 	messageId := intentRecord.IntentId
 
 	// There are three possible chats for a merchant:
@@ -38,7 +45,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 
 	exchangeData, ok := getExchangeDataFromIntent(intentRecord)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	verbByMessageReceiver := make(map[string]chatpb.ExchangeDataContent_Verb)
@@ -47,7 +54,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 		if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
 			paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentRecord.IntentId)
 			if err != nil {
-				return errors.Wrap(err, "error getting payment request record")
+				return nil, errors.Wrap(err, "error getting payment request record")
 			}
 
 			if paymentRequestRecord.Domain != nil {
@@ -64,7 +71,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
 				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount)
 				if err != nil {
-					return err
+					return nil, err
 				} else if destinationAccountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
 					// Relationship accounts only exist against verified merchants,
 					// and will have merchant payments appear in the verified merchant
@@ -81,7 +88,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) > 0 {
 				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
 				if err != nil {
-					return err
+					return nil, err
 				} else if destinationAccountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
 					// Relationship accounts only exist against verified merchants,
 					// and will have merchant payments appear in the verified merchant
@@ -97,7 +104,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 		messageId = strings.Split(messageId, "-")[0]
 		destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.ExternalDepositMetadata.DestinationTokenAccount)
 		if err != nil {
-			return err
+			return nil, err
 		} else if destinationAccountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
 			// Relationship accounts only exist against verified merchants,
 			// and will have merchant payments appear in the verified merchant
@@ -108,13 +115,14 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			verbByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_DEPOSITED
 		}
 	default:
-		return nil
+		return nil, nil
 	}
 
+	var messagesToPush []*MessageWithOwner
 	for account, verb := range verbByMessageReceiver {
 		receiver, err := common.NewAccountFromPublicKeyString(account)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		content := []*chatpb.Content{
@@ -131,10 +139,10 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 		}
 		protoMessage, err := newProtoChatMessage(messageId, content, intentRecord.CreatedAt)
 		if err != nil {
-			return errors.Wrap(err, "error creating proto chat message")
+			return nil, errors.Wrap(err, "error creating proto chat message")
 		}
 
-		_, err = SendChatMessage(
+		canPush, err := SendChatMessage(
 			ctx,
 			data,
 			chatTitle,
@@ -142,11 +150,19 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			isVerifiedChat,
 			receiver,
 			protoMessage,
-			true,
+			verb != chatpb.ExchangeDataContent_PAID || !isVerifiedChat,
 		)
 		if err != nil && err != chat.ErrMessageAlreadyExists {
-			return errors.Wrap(err, "error persisting chat message")
+			return nil, errors.Wrap(err, "error persisting chat message")
+		}
+
+		if canPush {
+			messagesToPush = append(messagesToPush, &MessageWithOwner{
+				Owner:   receiver,
+				Title:   chatTitle,
+				Message: protoMessage,
+			})
 		}
 	}
-	return nil
+	return messagesToPush, nil
 }

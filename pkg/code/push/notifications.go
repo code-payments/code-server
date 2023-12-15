@@ -16,10 +16,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/localization"
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
@@ -150,103 +147,6 @@ func SendGiftCardReturnedPushNotification(
 		titleKey,
 		bodyKey,
 		amountArg,
-	)
-}
-
-// SendMicroPaymentReceivedPushNotification sends a push to the destination when
-// someone pays for content through a micro payment.
-func SendMicroPaymentReceivedPushNotification(
-	ctx context.Context,
-	data code_data.Provider,
-	pusher push_lib.Provider,
-	intentRecord *intent.Record,
-	paymentRequestRecord *paymentrequest.Record,
-) error {
-	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"method": "SendMicroPaymentReceivedPushNotification",
-		"intent": intentRecord.IntentId,
-	})
-
-	var destinationOwnerAccount *common.Account
-	var destinationTokenAccount *common.Account
-	var nativeAmount float64
-	var currency currency_lib.Code
-	var err error
-	switch intentRecord.IntentType {
-	case intent.SendPrivatePayment:
-		if !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-			log.Warn("intent isn't a micro payment")
-			return nil
-		}
-
-		if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) == 0 {
-			return nil
-		}
-
-		destinationTokenAccount, err = common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount)
-		if err != nil {
-			log.WithError(err).Warn("invalid destination token account")
-			return err
-		}
-
-		destinationOwnerAccount, err = common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("invalid destination owner account")
-			return err
-		}
-
-		nativeAmount = intentRecord.SendPrivatePaymentMetadata.NativeAmount
-		currency = intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-	default:
-		log.Warn("intent type doesn't support micro payments")
-		return nil
-	}
-
-	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, destinationTokenAccount.PublicKey().ToBase58())
-	if err != nil {
-		log.WithError(err).Warn("failure getting account info record")
-		return errors.Wrap(err, "error getting account info record")
-	}
-
-	var chatId chat.ChatId
-	if accountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP {
-		// Relationship accounts can only be paid via micro payment through a
-		// verified flow
-		chatId = chat.GetChatId(*accountInfoRecord.RelationshipTo, destinationOwnerAccount.PublicKey().ToBase58(), true)
-	} else {
-		chatId = chat.GetChatId(chat_util.PaymentsName, destinationOwnerAccount.PublicKey().ToBase58(), false)
-	}
-
-	// Legacy push notification still considers chat mute state
-	//
-	// todo: Proper migration to chat system
-	chatRecord, err := data.GetChatById(ctx, chatId)
-	switch err {
-	case nil:
-		if chatRecord.IsMuted {
-			return nil
-		}
-	case chat.ErrChatNotFound:
-	default:
-		log.WithError(err).Warn("failure getting chat record")
-		return errors.Wrap(err, "error getting chat record")
-	}
-
-	amountArg := getAmountArg(nativeAmount, currency)
-
-	// todo: localized keys
-	title := "Payment Received"
-	body := fmt.Sprintf("Someone bought your content for %s", amountArg)
-	if paymentRequestRecord.IsVerified && paymentRequestRecord.Domain != nil {
-		body = fmt.Sprintf("%s on %s", body, *paymentRequestRecord.Domain)
-	}
-	return sendBasicPushNotificationToOwner(
-		ctx,
-		data,
-		pusher,
-		destinationOwnerAccount,
-		title,
-		body,
 	)
 }
 

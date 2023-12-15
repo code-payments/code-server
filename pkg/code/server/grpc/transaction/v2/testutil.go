@@ -374,7 +374,8 @@ func (s *serverTestEnv) simulateExternalDepositHistoryItem(t *testing.T, owner, 
 	require.NoError(t, s.data.SaveIntent(s.ctx, intentRecord))
 
 	require.NoError(t, chat_util.SendCashTransactionsExchangeMessage(s.ctx, s.data, intentRecord))
-	require.NoError(t, chat_util.SendMerchantExchangeMessage(s.ctx, s.data, intentRecord))
+	_, err := chat_util.SendMerchantExchangeMessage(s.ctx, s.data, intentRecord)
+	require.NoError(t, err)
 }
 
 func (s *serverTestEnv) simulateAllCommitmentsUpgraded(t *testing.T) {

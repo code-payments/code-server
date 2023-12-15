@@ -961,15 +961,6 @@ func (h *SendPrivatePaymentIntentHandler) OnSaveToDB(ctx context.Context, intent
 }
 
 func (h *SendPrivatePaymentIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
-	if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-		go bestEffortMicroPaymentPostProcessingJob(
-			h.data,
-			h.pusher,
-			intentRecord,
-			h.cachedPaymentRequestRequest,
-		)
-	}
-
 	return nil
 }
 
