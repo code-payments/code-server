@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,6 +48,47 @@ func TestGetAsciiBaseDomain(t *testing.T) {
 		},
 	} {
 		actual, err := GetAsciiBaseDomain(tc.input)
+		if tc.isError {
+			assert.Error(t, err)
+		} else {
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, actual)
+		}
+	}
+}
+
+func TestGetDomainDisplayValue(t *testing.T) {
+	for _, tc := range []struct {
+		input    string
+		expected string
+		isError  bool
+	}{
+		{
+			input:    "app.getcode.com",
+			expected: "App.getcode.com",
+		},
+		{
+			input:    "getcode.com",
+			expected: "Getcode.com",
+		},
+		{
+			input:    "UPPERCASE.com",
+			expected: "Uppercase.com",
+		},
+		{
+			input:    "xn--bcher-kva.com",
+			expected: "Bücher.com",
+		},
+		{
+			input:    "xn--cher-zra.com",
+			expected: "Ücher.com",
+		},
+		{
+			input:   "localhost",
+			isError: true,
+		},
+	} {
+		actual, err := GetDomainDisplayName(tc.input)
 		if tc.isError {
 			assert.Error(t, err)
 		} else {

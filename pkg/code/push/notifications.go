@@ -17,6 +17,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
@@ -168,6 +169,13 @@ func SendChatMessagePushNotification(
 	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
 	if ok {
 		chatTitle = chatProperties.TitleLocalizationKey
+	} else {
+		domainDisplayName, err := thirdparty.GetDomainDisplayName(chatTitle)
+		if err == nil {
+			chatTitle = domainDisplayName
+		} else {
+			log.WithError(err).Warn("failure getting domain display name")
+		}
 	}
 
 	// Best-effort try to update the badge count before pushing message content

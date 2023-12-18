@@ -10,6 +10,8 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/idna"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/netutil"
@@ -86,4 +88,22 @@ func GetAsciiBaseDomain(domain string) (string, error) {
 		return "", errors.New("value must have base domain and tld")
 	}
 	return strings.ToLower(fmt.Sprintf("%s.%s", parts[len(parts)-2], parts[len(parts)-1])), nil
+}
+
+// GetDomainDisplayName gets the display version of a domain within
+// UI elements of the Code app.
+func GetDomainDisplayName(domain string) (string, error) {
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return "", errors.New("value must have base domain and tld")
+	}
+
+	displayName, err := idna.Display.ToUnicode(domain)
+	if err != nil {
+		return "", errors.Wrap(err, "error converting string to unicode")
+	}
+
+	displayName = cases.Title(language.English, cases.NoLower).String(displayName)
+
+	return displayName, nil
 }
