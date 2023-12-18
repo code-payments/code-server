@@ -142,12 +142,6 @@ func (s *Server) testVerifiedDomainRequestHandler(path string) func(w http.Respo
 
 		ctx := r.Context()
 
-		// Endpoint is disabled
-		if true {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusBadRequest)
 			return
