@@ -887,7 +887,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				log.WithError(err).Warn("failure updating cash transaction chat")
 				return err
 			}
-			chatMessagesToPush, err = chat_util.SendMerchantExchangeMessage(ctx, s.data, intentRecord)
+			chatMessagesToPush, err = chat_util.SendMerchantExchangeMessage(ctx, s.data, intentRecord, actionRecords)
 			if err != nil {
 				log.WithError(err).Warn("failure updating merchant chat")
 				return err

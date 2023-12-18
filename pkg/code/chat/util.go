@@ -1,19 +1,20 @@
 package chat
 
 import (
-	"crypto/rand"
 	"time"
 
 	"github.com/mr-tron/base58/base58"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
 func newProtoChatMessage(
@@ -95,8 +96,35 @@ func getExchangeDataFromIntent(intentRecord *intent.Record) (*transactionpb.Exch
 	return nil, false
 }
 
-func randomMessageId() string {
-	buffer := make([]byte, 32)
-	rand.Read(buffer)
-	return base58.Encode(buffer)
+func getExchangeDataMinusFees(exchangeData *transactionpb.ExchangeData, intentRecord *intent.Record, actionRecords []*action.Record) *transactionpb.ExchangeData {
+	cloned := proto.Clone(exchangeData).(*transactionpb.ExchangeData)
+
+	if intentRecord.IntentType != intent.SendPrivatePayment {
+		return cloned
+	}
+
+	if !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		return cloned
+	}
+
+	var thirdPartyPaymentAction *action.Record
+	for _, actionRecord := range actionRecords {
+		if actionRecord.ActionType != action.NoPrivacyWithdraw {
+			continue
+		}
+
+		if *actionRecord.Destination == intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount {
+			thirdPartyPaymentAction = actionRecord
+			break
+		}
+	}
+
+	// Should never happen
+	if thirdPartyPaymentAction == nil {
+		return cloned
+	}
+
+	cloned.Quarks = *thirdPartyPaymentAction.Quantity
+	cloned.NativeAmount = cloned.ExchangeRate * float64(cloned.Quarks) / float64(kin.QuarksPerKin)
+	return cloned
 }
