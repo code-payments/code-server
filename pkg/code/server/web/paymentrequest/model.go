@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
@@ -121,12 +122,56 @@ func (r *trustedPaymentRequest) ToKikCodePayload() *kikcode.Payload {
 	return r.kikCodePayload
 }
 
-func (r *trustedPaymentRequest) ToProtoMessage() *messagingpb.Message {
-	return getRequestToReceiveBillMessage(
-		r.currency,
-		r.nativeAmount,
-		r.destination,
-	)
+func (r *trustedPaymentRequest) ToProtoMessageWithVerifidDomain(domain *string, domainVerifier *common.Account) *messagingpb.Message {
+	var msg *messagingpb.RequestToReceiveBill
+	if r.currency == currency_lib.KIN {
+		quarks := kin.ToQuarks(uint64(r.nativeAmount))
+		if int(100.0*r.nativeAmount)%100.0 != 0 {
+			quarks += kin.ToQuarks(1)
+		}
+
+		msg = &messagingpb.RequestToReceiveBill{
+			ExchangeData: &messagingpb.RequestToReceiveBill_Exact{
+				Exact: &transactionpb.ExchangeData{
+					Currency:     string(r.currency),
+					ExchangeRate: 1.0,
+					NativeAmount: r.nativeAmount,
+					Quarks:       quarks,
+				},
+			},
+		}
+	} else {
+		msg = &messagingpb.RequestToReceiveBill{
+			ExchangeData: &messagingpb.RequestToReceiveBill_Partial{
+				Partial: &transactionpb.ExchangeDataWithoutRate{
+					Currency:     string(r.currency),
+					NativeAmount: r.nativeAmount,
+				},
+			},
+		}
+	}
+
+	msg.RequestorAccount = r.destination.ToProto()
+
+	if domain != nil {
+		msg.Domain = &commonpb.Domain{
+			Value: *domain,
+		}
+
+		if domainVerifier != nil {
+			msg.Verifier = domainVerifier.ToProto()
+			msg.RendezvousKey = &messagingpb.RendezvousKey{
+				Value: r.privateRendezvousKey.ToProto().Value,
+			}
+			msg.Signature, _ = signProtoMessage(msg, domainVerifier)
+		}
+	}
+
+	return &messagingpb.Message{
+		Kind: &messagingpb.Message_RequestToReceiveBill{
+			RequestToReceiveBill: msg,
+		},
+	}
 }
 
 func (r *trustedPaymentRequest) GetIdempotencyKey() kikcode.IdempotencyKey {
@@ -273,49 +318,6 @@ func (r *trustlessPaymentRequest) ToProtoMessage() *messagingpb.Message {
 	return &messagingpb.Message{
 		Kind: &messagingpb.Message_RequestToReceiveBill{
 			RequestToReceiveBill: r.originalProtoMessage,
-		},
-	}
-}
-
-func getRequestToReceiveBillMessage(
-	currency currency_lib.Code,
-	nativeAmount float64,
-	destination *common.Account,
-) *messagingpb.Message {
-	if currency == currency_lib.KIN {
-		quarks := kin.ToQuarks(uint64(nativeAmount))
-		if int(100.0*nativeAmount)%100.0 != 0 {
-			quarks += kin.ToQuarks(1)
-		}
-
-		return &messagingpb.Message{
-			Kind: &messagingpb.Message_RequestToReceiveBill{
-				RequestToReceiveBill: &messagingpb.RequestToReceiveBill{
-					RequestorAccount: destination.ToProto(),
-					ExchangeData: &messagingpb.RequestToReceiveBill_Exact{
-						Exact: &transactionpb.ExchangeData{
-							Currency:     string(currency),
-							ExchangeRate: 1.0,
-							NativeAmount: nativeAmount,
-							Quarks:       quarks,
-						},
-					},
-				},
-			},
-		}
-	}
-
-	return &messagingpb.Message{
-		Kind: &messagingpb.Message_RequestToReceiveBill{
-			RequestToReceiveBill: &messagingpb.RequestToReceiveBill{
-				RequestorAccount: destination.ToProto(),
-				ExchangeData: &messagingpb.RequestToReceiveBill_Partial{
-					Partial: &transactionpb.ExchangeDataWithoutRate{
-						Currency:     string(currency),
-						NativeAmount: nativeAmount,
-					},
-				},
-			},
 		},
 	}
 }

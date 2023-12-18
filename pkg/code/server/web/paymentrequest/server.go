@@ -19,11 +19,11 @@ import (
 )
 
 const (
-	v1PathPrefix       = "/v1"
-	v1CreateIntentPath = v1PathPrefix + "/createIntent"
-	v1GetStatusPath    = v1PathPrefix + "/getStatus"
-	v1RequestPath      = v1PathPrefix + "/request"
-	v1TestWebhookpath  = v1PathPrefix + "/testWebhook"
+	v1PathPrefix                    = "/v1"
+	v1CreateIntentPath              = v1PathPrefix + "/createIntent"
+	v1GetStatusPath                 = v1PathPrefix + "/getStatus"
+	v1TestVerifiedDomainRequestPath = v1PathPrefix + "/testVerifiedDomainRequest"
+	v1TestWebhookpath               = v1PathPrefix + "/testWebhook"
 
 	intentHeaderName      = "x-code-intent"
 	idempotencyHeaderName = "x-code-idempotency"
@@ -49,16 +49,18 @@ type Assets struct {
 }
 
 type Server struct {
-	log    *logrus.Entry
-	cc     *grpc.ClientConn
-	assets *Assets
+	log                   *logrus.Entry
+	cc                    *grpc.ClientConn
+	assets                *Assets
+	getcodeDomainVerifier *common.Account
 }
 
-func NewPaymentRequestServer(cc *grpc.ClientConn, assets *Assets) *Server {
+func NewPaymentRequestServer(cc *grpc.ClientConn, assets *Assets, getcodeDomainVerifier *common.Account) *Server {
 	return &Server{
-		log:    logrus.StandardLogger().WithField("type", "paymentrequest/server"),
-		cc:     cc,
-		assets: assets,
+		log:                   logrus.StandardLogger().WithField("type", "paymentrequest/server"),
+		cc:                    cc,
+		assets:                assets,
+		getcodeDomainVerifier: getcodeDomainVerifier,
 	}
 }
 
@@ -134,7 +136,7 @@ func (s *Server) getStatusHandler(path string) func(w http.ResponseWriter, r *ht
 	}
 }
 
-func (s *Server) requestHandler(path string) func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) testVerifiedDomainRequestHandler(path string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := s.log.WithField("path", path)
 
@@ -163,7 +165,7 @@ func (s *Server) requestHandler(path string) func(w http.ResponseWriter, r *http
 
 		log = log.WithField("intent", intentId.PublicKey().ToBase58())
 
-		err = s.createTrustedPaymentRequest(ctx, model)
+		err = s.createTestGetcodeTrustedPaymentRequest(ctx, model)
 		if err != nil {
 			log.WithError(err).Warn("failure creating payment request")
 			HandleGrpcErrorInWebContext(w, err)
@@ -224,9 +226,9 @@ func (s *Server) testWebhookHandler(path string) func(w http.ResponseWriter, r *
 
 func (s *Server) GetHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
-		v1CreateIntentPath: s.createIntentHandler(v1CreateIntentPath),
-		v1GetStatusPath:    s.getStatusHandler(v1GetStatusPath),
-		v1RequestPath:      s.requestHandler(v1RequestPath),
-		v1TestWebhookpath:  s.testWebhookHandler(v1TestWebhookpath),
+		v1CreateIntentPath:              s.createIntentHandler(v1CreateIntentPath),
+		v1GetStatusPath:                 s.getStatusHandler(v1GetStatusPath),
+		v1TestVerifiedDomainRequestPath: s.testVerifiedDomainRequestHandler(v1TestVerifiedDomainRequestPath),
+		v1TestWebhookpath:               s.testWebhookHandler(v1TestWebhookpath),
 	}
 }

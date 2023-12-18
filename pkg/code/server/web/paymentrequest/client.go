@@ -11,22 +11,22 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	micropaymentpb "github.com/code-payments/code-protobuf-api/generated/go/micropayment/v1"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 const (
 	testWebhookEndpoint = "https://api.getcode.com/v1/testWebhook"
 )
 
-func (s *Server) createTrustedPaymentRequest(ctx context.Context, paymentRequest *trustedPaymentRequest) (err error) {
+func (s *Server) createTestGetcodeTrustedPaymentRequest(ctx context.Context, paymentRequest *trustedPaymentRequest) (err error) {
 	rendezvousKey := paymentRequest.GetPrivateRendezvousKey()
 
 	sendMessageReq := &messagingpb.SendMessageRequest{
 		RendezvousKey: &messagingpb.RendezvousKey{
 			Value: rendezvousKey.PublicKey().ToBytes(),
 		},
-		Message: paymentRequest.ToProtoMessage(),
+		Message: paymentRequest.ToProtoMessageWithVerifidDomain(pointer.String("app.getcode.com"), s.getcodeDomainVerifier),
 	}
 
 	// This is obviously the worst part about a trusted payment request. Server can
