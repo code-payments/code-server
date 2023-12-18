@@ -8,9 +8,11 @@ import (
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
@@ -27,7 +29,7 @@ type MessageWithOwner struct {
 // that should be pushed are returned.
 //
 // Note: Tests covered in SubmitIntent history tests
-func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) ([]*MessageWithOwner, error) {
+func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record, actionRecords []*action.Record) ([]*MessageWithOwner, error) {
 	messageId := intentRecord.IntentId
 
 	// There are three possible chats for a merchant:
@@ -47,8 +49,13 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	if !ok {
 		return nil, nil
 	}
+	exchangeDataMinusFees := getExchangeDataMinusFees(exchangeData, intentRecord, actionRecords)
 
-	verbByMessageReceiver := make(map[string]chatpb.ExchangeDataContent_Verb)
+	type verbAndExchangeData struct {
+		verb         chatpb.ExchangeDataContent_Verb
+		exchangeData *transactionpb.ExchangeData
+	}
+	verbAndExchangeDataByMessageReceiver := make(map[string]*verbAndExchangeData)
 	switch intentRecord.IntentType {
 	case intent.SendPrivatePayment:
 		if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
@@ -63,9 +70,15 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 				isVerifiedChat = paymentRequestRecord.IsVerified
 			}
 
-			verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_SPENT
+			verbAndExchangeDataByMessageReceiver[intentRecord.InitiatorOwnerAccount] = &verbAndExchangeData{
+				verb:         chatpb.ExchangeDataContent_SPENT,
+				exchangeData: exchangeData,
+			}
 			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
-				verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_RECEIVED
+				verbAndExchangeDataByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
+					verb:         chatpb.ExchangeDataContent_RECEIVED,
+					exchangeData: exchangeDataMinusFees,
+				}
 			}
 		} else if intentRecord.SendPrivatePaymentMetadata.IsWithdrawal {
 			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
@@ -79,7 +92,10 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
 					chatType = chat.ChatTypeExternalApp
 					isVerifiedChat = true
-					verbByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_RECEIVED
+					verbAndExchangeDataByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
+						verb:         chatpb.ExchangeDataContent_RECEIVED,
+						exchangeData: exchangeData,
+					}
 				}
 			}
 		}
@@ -96,7 +112,10 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
 					chatType = chat.ChatTypeExternalApp
 					isVerifiedChat = true
-					verbByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_RECEIVED
+					verbAndExchangeDataByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
+						verb:         chatpb.ExchangeDataContent_RECEIVED,
+						exchangeData: exchangeData,
+					}
 				}
 			}
 		}
@@ -112,14 +131,17 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			chatTitle = *destinationAccountInfoRecord.RelationshipTo
 			chatType = chat.ChatTypeExternalApp
 			isVerifiedChat = true
-			verbByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = chatpb.ExchangeDataContent_RECEIVED
+			verbAndExchangeDataByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
+				verb:         chatpb.ExchangeDataContent_RECEIVED,
+				exchangeData: exchangeData,
+			}
 		}
 	default:
 		return nil, nil
 	}
 
 	var messagesToPush []*MessageWithOwner
-	for account, verb := range verbByMessageReceiver {
+	for account, verbAndExchangeData := range verbAndExchangeDataByMessageReceiver {
 		receiver, err := common.NewAccountFromPublicKeyString(account)
 		if err != nil {
 			return nil, err
@@ -129,9 +151,9 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			{
 				Type: &chatpb.Content_ExchangeData{
 					ExchangeData: &chatpb.ExchangeDataContent{
-						Verb: verb,
+						Verb: verbAndExchangeData.verb,
 						ExchangeData: &chatpb.ExchangeDataContent_Exact{
-							Exact: exchangeData,
+							Exact: verbAndExchangeData.exchangeData,
 						},
 					},
 				},
@@ -150,7 +172,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			isVerifiedChat,
 			receiver,
 			protoMessage,
-			verb != chatpb.ExchangeDataContent_RECEIVED || !isVerifiedChat,
+			verbAndExchangeData.verb != chatpb.ExchangeDataContent_RECEIVED || !isVerifiedChat,
 		)
 		if err != nil && err != chat.ErrMessageAlreadyExists {
 			return nil, errors.Wrap(err, "error persisting chat message")
