@@ -15,13 +15,13 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/code/limit"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kikcode"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/netutil"
 	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/limit"
 )
 
 type trustedPaymentRequest struct {
@@ -138,35 +138,23 @@ func (r *trustedPaymentRequest) GetPrivateRendezvousKey() *common.Account {
 }
 
 type trustlessPaymentRequest struct {
-	currency     currency_lib.Code
-	nativeAmount float64
-	destination  *common.Account
-
-	publicRendezvousKey *common.Account
-	clientSignature     solana.Signature // For a messagingpb.RequestToReceiveBill
-
-	webhookUrl *string
+	originalProtoMessage *messagingpb.RequestToReceiveBill
+	publicRendezvousKey  *common.Account
+	clientSignature      solana.Signature // For a messagingpb.RequestToReceiveBill
+	webhookUrl           *string
 }
 
 func newTrustlessPaymentRequest(
-	currency currency_lib.Code,
-	nativeAmount float64,
-	destination *common.Account,
-
+	originalProtoMessage *messagingpb.RequestToReceiveBill,
 	publicRendezvousKey *common.Account,
 	clientSignature solana.Signature,
-
 	webhookUrl *string,
 ) (*trustlessPaymentRequest, error) {
 	return &trustlessPaymentRequest{
-		currency:     currency,
-		nativeAmount: nativeAmount,
-		destination:  destination,
-
-		publicRendezvousKey: publicRendezvousKey,
-		clientSignature:     clientSignature,
-
-		webhookUrl: webhookUrl,
+		originalProtoMessage: originalProtoMessage,
+		publicRendezvousKey:  publicRendezvousKey,
+		clientSignature:      clientSignature,
+		webhookUrl:           webhookUrl,
 	}, nil
 }
 
@@ -193,15 +181,15 @@ func newTrustlessPaymentRequestFromHttpContext(r *http.Request) (*trustlessPayme
 		return nil, errors.New("intent is not a public key")
 	}
 
-	var messageProto messagingpb.RequestToReceiveBill
+	var protoMesage messagingpb.RequestToReceiveBill
 	messageBytes, err := base64.RawURLEncoding.DecodeString(httpRequestBody.Message)
 	if err != nil {
 		return nil, errors.New("message not valid base64")
 	}
-	err = proto.Unmarshal(messageBytes, &messageProto)
+	err = proto.Unmarshal(messageBytes, &protoMesage)
 	if err != nil {
 		return nil, errors.New("message bytes is not a RequestToReceiveBill")
-	} else if err := messageProto.Validate(); err != nil {
+	} else if err := protoMesage.Validate(); err != nil {
 		return nil, errors.Wrap(err, "message failed proto validation")
 	}
 
@@ -212,14 +200,14 @@ func newTrustlessPaymentRequestFromHttpContext(r *http.Request) (*trustlessPayme
 	}
 	copy(signature[:], decodedSignature)
 
-	destination, err := common.NewAccountFromProto(messageProto.RequestorAccount)
+	_, err = common.NewAccountFromProto(protoMesage.RequestorAccount)
 	if err != nil {
 		return nil, errors.New("destination is not a public key")
 	}
 
 	var currency currency_lib.Code
 	var amount float64
-	switch typed := messageProto.ExchangeData.(type) {
+	switch typed := protoMesage.ExchangeData.(type) {
 	case *messagingpb.RequestToReceiveBill_Exact:
 		currency = currency_lib.Code(strings.ToLower(typed.Exact.Currency))
 		amount = float64(kin.FromQuarks(typed.Exact.Quarks)) // Because of minimum bucket sizes
@@ -255,6 +243,9 @@ func newTrustlessPaymentRequestFromHttpContext(r *http.Request) (*trustlessPayme
 		return nil, errors.Errorf("%s currency has a minimum amount of %.2f", currency, limits.Min)
 	}
 
+	// todo: Validate domain fields with user-friendly error messaging. The
+	//       messaging service will do this for now, and will be translated.
+
 	if httpRequestBody.Webhook != nil {
 		err = netutil.ValidateHttpUrl(*httpRequestBody.Webhook, true, false)
 		if err != nil {
@@ -263,13 +254,9 @@ func newTrustlessPaymentRequestFromHttpContext(r *http.Request) (*trustlessPayme
 	}
 
 	return newTrustlessPaymentRequest(
-		currency,
-		amount,
-		destination,
-
+		&protoMesage,
 		rendezvousKey,
 		signature,
-
 		httpRequestBody.Webhook,
 	)
 }
@@ -283,11 +270,11 @@ func (r *trustlessPaymentRequest) GetClientSignature() solana.Signature {
 }
 
 func (r *trustlessPaymentRequest) ToProtoMessage() *messagingpb.Message {
-	return getRequestToReceiveBillMessage(
-		r.currency,
-		r.nativeAmount,
-		r.destination,
-	)
+	return &messagingpb.Message{
+		Kind: &messagingpb.Message_RequestToReceiveBill{
+			RequestToReceiveBill: r.originalProtoMessage,
+		},
+	}
 }
 
 func getRequestToReceiveBillMessage(
