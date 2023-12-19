@@ -3,6 +3,7 @@ package messaging
 import (
 	"bytes"
 	"context"
+	"math"
 	"time"
 
 	"github.com/mr-tron/base58"
@@ -22,6 +23,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/limit"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
 )
 
 // MessageHandler provides message-specific in addition to the generic message
@@ -138,14 +140,21 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		quarks = &typed.Exact.Quarks
 
 		if currency != currency_lib.KIN {
-			return newMessageValidationError("exact exchange data only supports kin currency")
+			return newMessageValidationError("exact exchange data is reserved for kin only")
+		}
+
+		if nativeAmount != math.Trunc(nativeAmount) {
+			return newMessageValidationError("native amount can't include fractional kin")
+		}
+		if *quarks%kin.QuarksPerKin != 0 {
+			return newMessageValidationError("quark amount can't include fractional kin")
 		}
 	case *messagingpb.RequestToReceiveBill_Partial:
 		currency = currency_lib.Code(typed.Partial.Currency)
 		nativeAmount = typed.Partial.NativeAmount
 
 		if currency == currency_lib.KIN {
-			return newMessageValidationError("partial exchange data only supports fiat currencies")
+			return newMessageValidationError("partial exchange data is reserved for fiat currencies")
 		}
 	default:
 		return newMessageValidationError("exchange data is nil")
