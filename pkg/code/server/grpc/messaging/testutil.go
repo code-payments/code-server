@@ -234,11 +234,13 @@ type clientConf struct {
 
 	// Simulations for invalid exchange data
 
-	simulateInvalidCurrency     bool
-	simulateInvalidExchangeRate bool
-	simulateInvalidNativeAmount bool
-	simulateSmallNativeAmount   bool
-	simulateLargeNativeAmount   bool
+	simulateInvalidCurrency        bool
+	simulateInvalidExchangeRate    bool
+	simulateInvalidNativeAmount    bool
+	simulateSmallNativeAmount      bool
+	simulateLargeNativeAmount      bool
+	simulateFractionalNativeAmount bool
+	simulateFractionalQuarkAmount  bool
 
 	// Simulations for invalid relationships
 
@@ -588,16 +590,16 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 	exchangeData := &transactionpb.ExchangeData{
 		Currency:     "kin",
 		ExchangeRate: 1.0,
-		NativeAmount: 10_000,
-		Quarks:       kin.ToQuarks(10_000),
+		NativeAmount: 10_001,
+		Quarks:       kin.ToQuarks(10_001),
 	}
 
 	if c.conf.simulateInvalidCurrency {
 		exchangeData.Currency = "usd"
 	}
 	if c.conf.simulateInvalidExchangeRate {
-		exchangeData.ExchangeRate *= 1.5
-		exchangeData.NativeAmount *= 1.5
+		exchangeData.ExchangeRate *= 2.0
+		exchangeData.NativeAmount *= 2.0
 	}
 	if c.conf.simulateInvalidNativeAmount {
 		exchangeData.NativeAmount += 2
@@ -607,8 +609,14 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 		exchangeData.Quarks = kin.ToQuarks(1)
 	}
 	if c.conf.simulateLargeNativeAmount {
-		exchangeData.NativeAmount = 100001
-		exchangeData.Quarks = kin.ToQuarks(100001)
+		exchangeData.NativeAmount = 100_001
+		exchangeData.Quarks = kin.ToQuarks(100_001)
+	}
+	if c.conf.simulateFractionalNativeAmount {
+		exchangeData.NativeAmount += 0.1
+	}
+	if c.conf.simulateFractionalQuarkAmount {
+		exchangeData.Quarks += kin.QuarksPerKin / 10
 	}
 
 	msg := &messagingpb.RequestToReceiveBill{

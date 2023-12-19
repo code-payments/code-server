@@ -226,6 +226,7 @@ func newTrustlessPaymentRequestFromHttpContext(r *http.Request) (*trustlessPayme
 		return nil, errors.New("intent is not a public key")
 	}
 
+	// Validation occurs at the messaging service
 	var protoMesage messagingpb.RequestToReceiveBill
 	messageBytes, err := base64.RawURLEncoding.DecodeString(httpRequestBody.Message)
 	if err != nil {
@@ -244,52 +245,6 @@ func newTrustlessPaymentRequestFromHttpContext(r *http.Request) (*trustlessPayme
 		return nil, errors.New("signature is invalid")
 	}
 	copy(signature[:], decodedSignature)
-
-	_, err = common.NewAccountFromProto(protoMesage.RequestorAccount)
-	if err != nil {
-		return nil, errors.New("destination is not a public key")
-	}
-
-	var currency currency_lib.Code
-	var amount float64
-	switch typed := protoMesage.ExchangeData.(type) {
-	case *messagingpb.RequestToReceiveBill_Exact:
-		currency = currency_lib.Code(strings.ToLower(typed.Exact.Currency))
-		amount = float64(kin.FromQuarks(typed.Exact.Quarks)) // Because of minimum bucket sizes
-
-		if currency != currency_lib.KIN {
-			return nil, errors.New("exact exchange data is reserved for kin only")
-		}
-
-		if typed.Exact.ExchangeRate != 1.0 {
-			return nil, errors.New("kin exchange rate must be 1.0")
-		} else if kin.ToQuarks(uint64(amount)) != typed.Exact.Quarks {
-			return nil, errors.New("kin amount cannot be fractional")
-		} else if amount != typed.Exact.NativeAmount {
-			return nil, errors.New("kin amount doesn't match quarks")
-		}
-	case *messagingpb.RequestToReceiveBill_Partial:
-		currency = currency_lib.Code(strings.ToLower(typed.Partial.Currency))
-		amount = typed.Partial.NativeAmount
-
-		if currency == currency_lib.KIN {
-			return nil, errors.New("partial exchange data is reserved for fiat currencies")
-		}
-	default:
-		return nil, errors.New("exchange data not provided")
-	}
-
-	limits, ok := limit.MicroPaymentLimits[currency]
-	if !ok {
-		return nil, errors.Errorf("%s currency is not currently supported", currency)
-	} else if amount > limits.Max {
-		return nil, errors.Errorf("%s currency has a maximum amount of %.2f", currency, limits.Max)
-	} else if amount < limits.Min {
-		return nil, errors.Errorf("%s currency has a minimum amount of %.2f", currency, limits.Min)
-	}
-
-	// todo: Validate domain fields with user-friendly error messaging. The
-	//       messaging service will do this for now, and will be translated.
 
 	if httpRequestBody.Webhook != nil {
 		err = netutil.ValidateHttpUrl(*httpRequestBody.Webhook, true, false)

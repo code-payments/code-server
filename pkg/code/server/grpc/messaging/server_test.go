@@ -421,9 +421,23 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	env.server1.assertPaymentRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
+	env.client1.conf.simulateFractionalNativeAmount = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall.assertInvalidMessageError(t, "native amount can't include fractional kin")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertPaymentRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateFractionalQuarkAmount = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall.assertInvalidMessageError(t, "quark amount can't include fractional kin")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertPaymentRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
 	env.client1.conf.simulateInvalidCurrency = true
 	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
-	sendMessageCall.assertInvalidMessageError(t, "exact exchange data only supports kin currency")
+	sendMessageCall.assertInvalidMessageError(t, "exact exchange data is reserved for kin only")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertPaymentRequestRecordNotSaved(t, rendezvousKey)
 
@@ -519,7 +533,7 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidCurrency = true
 	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, true)
-	sendMessageCall.assertInvalidMessageError(t, "partial exchange data only supports fiat currencies")
+	sendMessageCall.assertInvalidMessageError(t, "partial exchange data is reserved for fiat currencies")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertPaymentRequestRecordNotSaved(t, rendezvousKey)
 
