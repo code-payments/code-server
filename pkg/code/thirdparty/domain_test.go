@@ -35,6 +35,18 @@ func TestGetAsciiBaseDomain(t *testing.T) {
 			expected: "xn--bcher-kva.com",
 		},
 		{
+			input:    "💩.domain.com",
+			expected: "domain.com",
+		},
+		{
+			input:    "google-énçøded.com",
+			expected: "xn--google-nded-t9ay6s.com",
+		},
+		{
+			input:    "subdomain.💩.io",
+			expected: "xn--ls8h.io",
+		},
+		{
 			input:   "localhost",
 			isError: true,
 		},
@@ -82,6 +94,14 @@ func TestGetDomainDisplayValue(t *testing.T) {
 		{
 			input:    "xn--cher-zra.com",
 			expected: "Ücher.com",
+		},
+		{
+			input:    "xn--google-nded-t9ay6s.com",
+			expected: "Google-Énçøded.com",
+		},
+		{
+			input:    "xn--ls8h.io",
+			expected: "💩.io",
 		},
 		{
 			input:   "localhost",

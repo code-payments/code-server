@@ -103,7 +103,16 @@ func GetDomainDisplayName(domain string) (string, error) {
 		return "", errors.Wrap(err, "error converting string to unicode")
 	}
 
-	displayName = cases.Title(language.English, cases.NoLower).String(displayName)
+	parts = strings.Split(displayName, ".")
+
+	domainWithoutTld := strings.Join(parts[:len(parts)-1], ".")
+	tld := parts[len(parts)-1]
+
+	displayName = fmt.Sprintf(
+		"%s.%s",
+		cases.Title(language.English, cases.NoLower).String(domainWithoutTld),
+		tld,
+	)
 
 	return displayName, nil
 }
