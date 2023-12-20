@@ -105,12 +105,12 @@ func GetDomainDisplayName(domain string) (string, error) {
 
 	parts = strings.Split(displayName, ".")
 
-	domainWithTld := strings.Join(parts[:len(parts)-1], ".")
+	domainWithoutTld := strings.Join(parts[:len(parts)-1], ".")
 	tld := parts[len(parts)-1]
 
 	displayName = fmt.Sprintf(
 		"%s.%s",
-		cases.Title(language.English, cases.NoLower).String(domainWithTld),
+		cases.Title(language.English, cases.NoLower).String(domainWithoutTld),
 		tld,
 	)
 
