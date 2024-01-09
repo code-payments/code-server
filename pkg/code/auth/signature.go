@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 
+	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -45,13 +47,12 @@ func (v *RPCSignatureVerifier) Authenticate(ctx context.Context, owner *common.A
 		"owner_account": owner.PublicKey().ToBase58(),
 	})
 
-	messageBytes, err := proto.Marshal(message)
+	isSignatureValid, err := v.isSignatureVerifiedProtoMessage(owner, message, signature)
 	if err != nil {
-		log.WithError(err).Warn("failure marshalling message")
+		log.WithError(err).Warn("failure verifying signature")
 		return status.Error(codes.Internal, "")
 	}
 
-	isSignatureValid := ed25519.Verify(owner.PublicKey().ToBytes(), messageBytes, signature.Value)
 	if !isSignatureValid {
 		return status.Error(codes.Unauthenticated, "")
 	}
@@ -69,13 +70,12 @@ func (v *RPCSignatureVerifier) AuthorizeDataAccess(ctx context.Context, dataCont
 		"owner_account":  owner.PublicKey().ToBase58(),
 	})
 
-	messageBytes, err := proto.Marshal(message)
+	isSignatureValid, err := v.isSignatureVerifiedProtoMessage(owner, message, signature)
 	if err != nil {
-		log.WithError(err).Warn("failure marshalling message")
+		log.WithError(err).Warn("failure verifying signature")
 		return status.Error(codes.Internal, "")
 	}
 
-	isSignatureValid := ed25519.Verify(owner.PublicKey().ToBytes(), messageBytes, signature.Value)
 	if !isSignatureValid {
 		return status.Error(codes.Unauthenticated, "")
 	}
@@ -90,4 +90,38 @@ func (v *RPCSignatureVerifier) AuthorizeDataAccess(ctx context.Context, dataCont
 		return status.Error(codes.PermissionDenied, "")
 	}
 	return nil
+}
+
+// marshalStrategy is a strategy for marshalling protobuf messages for signature
+// verification
+type marshalStrategy func(proto.Message) ([]byte, error)
+
+// defaultMarshalStrategies are the default marshal strategies
+var defaultMarshalStrategies = []marshalStrategy{
+	forceConsistentMarshal,
+	proto.Marshal, // todo: deprecate this option
+}
+
+func (v *RPCSignatureVerifier) isSignatureVerifiedProtoMessage(owner *common.Account, message proto.Message, signature *commonpb.Signature) (bool, error) {
+	for _, marshalStrategy := range defaultMarshalStrategies {
+		messageBytes, err := marshalStrategy(message)
+		if err != nil {
+			return false, err
+		}
+
+		isSignatureValid := ed25519.Verify(owner.PublicKey().ToBytes(), messageBytes, signature.Value)
+		if isSignatureValid {
+			return true, nil
+		}
+	}
+
+	encoded, err := proto.Marshal(message)
+	if err == nil {
+		v.log.WithFields(logrus.Fields{
+			"proto_message": base64.StdEncoding.EncodeToString(encoded),
+			"signature":     base58.Encode(signature.Value),
+		}).Info("proto message is not signature verified")
+	}
+
+	return false, nil
 }
