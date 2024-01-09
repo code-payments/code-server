@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 
+	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
@@ -132,7 +133,12 @@ func (s *Server) createPaymentRequest(
 	return nil
 }
 
-func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) (string, error) {
+type intentStatus struct {
+	Status string
+	UserId *string
+}
+
+func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) (*intentStatus, error) {
 	microPaymentClient := micropaymentpb.NewMicroPaymentClient(s.cc)
 
 	getStatusReq := &micropaymentpb.GetStatusRequest{
@@ -143,15 +149,24 @@ func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) 
 
 	getStatusResp, err := microPaymentClient.GetStatus(ctx, getStatusReq)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+
+	res := intentStatus{
+		Status: "UNKNOWN",
 	}
 
 	if getStatusResp.IntentSubmitted {
-		return "SUBMITTED", nil
+		res.Status = "SUBMITTED"
 	} else if getStatusResp.Exists {
-		return "PENDING", nil
+		res.Status = "PENDING"
 	}
-	return "UNKNOWN", nil
+
+	if getStatusResp.UserId != nil {
+		res.UserId = pointer.String(base58.Encode(getStatusResp.UserId.Value))
+	}
+
+	return &res, nil
 }
 
 func signProtoMessage(msg proto.Message, account *common.Account) (*commonpb.Signature, error) {
