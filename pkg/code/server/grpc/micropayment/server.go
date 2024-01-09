@@ -18,10 +18,6 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	micropaymentpb "github.com/code-payments/code-protobuf-api/generated/go/micropayment/v1"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/grpc/client"
-	"github.com/code-payments/code-server/pkg/netutil"
-	"github.com/code-payments/code-server/pkg/retry"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -31,6 +27,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/paywall"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	"github.com/code-payments/code-server/pkg/code/limit"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/grpc/client"
+	"github.com/code-payments/code-server/pkg/netutil"
+	"github.com/code-payments/code-server/pkg/retry"
 )
 
 const (
@@ -71,7 +71,7 @@ func (s *microPaymentServer) GetStatus(ctx context.Context, req *micropaymentpb.
 		IntentSubmitted: false,
 	}
 
-	_, err := s.data.GetPaymentRequest(ctx, intentId)
+	paymentRequestRecord, err := s.data.GetPaymentRequest(ctx, intentId)
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return resp, nil
 	} else if err != nil {
@@ -104,13 +104,31 @@ func (s *microPaymentServer) GetStatus(ctx context.Context, req *micropaymentpb.
 	}
 
 	intentRecord, err := s.data.GetIntent(ctx, intentId)
-	if err == intent.ErrIntentNotFound {
-		return resp, nil
-	} else if err != nil {
+	switch err {
+	case nil:
+		resp.IntentSubmitted = intentRecord.State != intent.StateRevoked
+	case intent.ErrIntentNotFound:
+	default:
 		log.WithError(err).Warn("failure getting intent record")
 		return nil, status.Error(codes.Internal, "")
 	}
-	resp.IntentSubmitted = intentRecord.State != intent.StateRevoked
+
+	if resp.IntentSubmitted && paymentRequestRecord.Domain != nil && paymentRequestRecord.IsVerified {
+		relationshipRecord, err := s.data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *paymentRequestRecord.Domain)
+		switch err {
+		case nil:
+			userId, err := common.NewAccountFromPublicKeyString(relationshipRecord.AuthorityAccount)
+			if err != nil {
+				log.WithError(err).Warn("invalid relationship authority account")
+				return nil, status.Error(codes.Internal, "")
+			}
+			resp.UserId = userId.ToProto()
+		case account.ErrAccountInfoNotFound:
+		default:
+			log.WithError(err).Warn("failure getting relationship account record")
+			return nil, status.Error(codes.Internal, "")
+		}
+	}
 
 	return resp, nil
 }
