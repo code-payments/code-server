@@ -801,8 +801,6 @@ func (c *clientEnv) sendRequestToLoginMessage(t *testing.T, rendezvousKey *commo
 		Domain: &commonpb.Domain{
 			Value: "app.getcode.com",
 		},
-		Nonce:     testutil.NewRandomAccount(t).ToProto(),
-		Timestamp: timestamppb.Now(),
 		RendezvousKey: &messagingpb.RendezvousKey{
 			Value: rendezvousKey.PublicKey().ToBytes(),
 		},
@@ -868,8 +866,6 @@ func (c *clientEnv) sendLoginAttemptMessage(t *testing.T, rendezvousKey *common.
 		Domain: &commonpb.Domain{
 			Value: "app.getcode.com",
 		},
-		Nonce:     testutil.NewRandomAccount(t).ToProto(),
-		Timestamp: timestamppb.Now(),
 		RendezvousKey: &messagingpb.RendezvousKey{
 			Value: rendezvousKey.PublicKey().ToBytes(),
 		},
