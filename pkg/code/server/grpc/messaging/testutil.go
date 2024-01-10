@@ -250,6 +250,7 @@ type clientConf struct {
 
 	// Simulations for invalid signatures
 
+	simulateInvalidRequestSignature bool
 	simulateInvalidMessageSignature bool
 
 	// Simulations for invalid rendezvous keys
@@ -907,8 +908,13 @@ func (c *clientEnv) sendMessage(t *testing.T, req *messagingpb.SendMessageReques
 	messageBytes, err := proto.Marshal(req.Message)
 	require.NoError(t, err)
 
+	signer := rendezvousKey
+	if c.conf.simulateInvalidRequestSignature {
+		signer = testutil.NewRandomAccount(t)
+	}
+
 	req.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(rendezvousKey.PrivateKey().ToBytes(), messageBytes),
+		Value: ed25519.Sign(signer.PrivateKey().ToBytes(), messageBytes),
 	}
 
 	resp, err := c.client.SendMessage(c.ctx, req)

@@ -747,6 +747,18 @@ func TestSendMessage_LoginAttempt_Validation(t *testing.T) {
 	env.server1.assertNoMessages(t, rendezvousKey)
 }
 
+func TestSendMessage_InvalidRendezvousKeySignature(t *testing.T) {
+	env, cleanup := setup(t, false)
+	defer cleanup()
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+
+	env.client1.conf.simulateInvalidRequestSignature = true
+	sendMessageCall := env.client1.sendRequestToGrabBillMessage(t, testutil.NewRandomAccount(t))
+	sendMessageCall.assertUnauthenticatedError(t, "")
+	env.server1.assertNoMessages(t, rendezvousKey)
+}
+
 func TestMessagePolling_HappyPath(t *testing.T) {
 	env, cleanup := setup(t, false)
 	defer cleanup()
