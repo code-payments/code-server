@@ -2,7 +2,6 @@ package messaging
 
 import (
 	"context"
-	"crypto/ed25519"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -717,15 +716,8 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 		return nil, status.Error(codes.InvalidArgument, "message.kind must be set")
 	}
 
-	orignalMessageBytes, err := proto.Marshal(req.Message)
-	if err != nil {
-		log.WithError(err).Warn("Failed to marshal message")
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	isValid := ed25519.Verify(req.RendezvousKey.Value, orignalMessageBytes, req.Signature.Value)
-	if !isValid {
-		return nil, status.Error(codes.Unauthenticated, "invalid signature")
+	if err := s.rpcSignatureVerifier.Authenticate(ctx, rendezvousAccount, req.Message, req.Signature); err != nil {
+		return nil, err
 	}
 
 	err = messageHandler.Validate(ctx, rendezvousAccount, req.Message)
