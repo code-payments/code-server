@@ -118,8 +118,9 @@ func (v *RPCSignatureVerifier) isSignatureVerifiedProtoMessage(owner *common.Acc
 	encoded, err := proto.Marshal(message)
 	if err == nil {
 		v.log.WithFields(logrus.Fields{
-			"proto_message": base64.StdEncoding.EncodeToString(encoded),
-			"signature":     base58.Encode(signature.Value),
+			"proto_message_type": message.ProtoReflect().Descriptor().FullName(),
+			"proto_message":      base64.StdEncoding.EncodeToString(encoded),
+			"signature":          base58.Encode(signature.Value),
 		}).Info("proto message is not signature verified")
 	}
 
