@@ -33,12 +33,20 @@ func VerifyDomainNameOwnership(ctx context.Context, owner *common.Account, domai
 		PublicKeys []string `json:"public_keys,omitempty"`
 	}
 
-	asciiBaseDomain, err := GetAsciiBaseDomain(domain)
-	if err != nil {
-		return false, err
-	}
+	var asciiBaseDomain string
+	var err error
 	if domain == "app.getcode.com" {
 		asciiBaseDomain = "app.getcode.com" // Temporary testing hack
+	} else {
+		// Subdomains are not currently used, so explicitly deny for now
+		if len(strings.Split(domain, ".")) > 2 {
+			return false, errors.New("subdomains cannot be verified")
+		}
+
+		asciiBaseDomain, err = GetAsciiBaseDomain(domain)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	wellKnownUrl := fmt.Sprintf("https://%s%s", asciiBaseDomain, "/.well-known/code-payments.json")
