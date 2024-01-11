@@ -606,7 +606,7 @@ func verifyThirdPartyDomain(ctx context.Context, verifier thirdparty.DomainVerif
 
 	ownsDomain, err := verifier(ctx, owner, domain.Value)
 	if err != nil {
-		return newMessageValidationErrorf("error veryfing domain ownership: %s", err.Error())
+		return newMessageAuthenticationErrorf("error veryfing domain ownership: %s", err.Error())
 	} else if !ownsDomain {
 		return newMessageAuthorizationErrorf("%s does not own domain %s", owner.PublicKey().ToBase58(), asciiBaseDomain)
 	}
