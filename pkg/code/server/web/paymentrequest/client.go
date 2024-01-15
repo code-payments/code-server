@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 
-	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
@@ -135,7 +134,6 @@ func (s *Server) createPaymentRequest(
 
 type intentStatus struct {
 	Status string
-	UserId *string
 }
 
 func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) (*intentStatus, error) {
@@ -160,10 +158,6 @@ func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) 
 		res.Status = "SUBMITTED"
 	} else if getStatusResp.Exists {
 		res.Status = "PENDING"
-	}
-
-	if getStatusResp.UserId != nil {
-		res.UserId = pointer.String(base58.Encode(getStatusResp.UserId.Value))
 	}
 
 	return &res, nil

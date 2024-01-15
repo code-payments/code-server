@@ -127,9 +127,6 @@ func (s *Server) getStatusHandler(path string) func(w http.ResponseWriter, r *ht
 
 			respBody := NewGenericApiSuccessResponseBody()
 			respBody["status"] = status.Status
-			if status.UserId != nil {
-				respBody["user"] = *status.UserId
-			}
 			return http.StatusOK, respBody
 		}()
 
