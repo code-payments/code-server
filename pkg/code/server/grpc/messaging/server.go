@@ -701,9 +701,9 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 	case *messagingpb.Message_LoginAttempt:
 		log = log.WithField("message_type", "login_attempt")
 		messageHandler = NewLoginAttemptMessageHandler(s.data, s.rpcSignatureVerifier)
-	case *messagingpb.Message_LoginRejected:
-		log = log.WithField("message_type", "login_rejected")
-		messageHandler = NewLoginRejectedMessageHandler()
+	case *messagingpb.Message_ClientRejectedLogin:
+		log = log.WithField("message_type", "client_rejected_login")
+		messageHandler = NewClientRejectedLoginMessageHandler()
 
 	//
 	// Section: Airdrops

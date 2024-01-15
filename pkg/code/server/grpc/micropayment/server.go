@@ -71,7 +71,7 @@ func (s *microPaymentServer) GetStatus(ctx context.Context, req *micropaymentpb.
 		IntentSubmitted: false,
 	}
 
-	paymentRequestRecord, err := s.data.GetPaymentRequest(ctx, intentId)
+	_, err := s.data.GetPaymentRequest(ctx, intentId)
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return resp, nil
 	} else if err != nil {
@@ -111,23 +111,6 @@ func (s *microPaymentServer) GetStatus(ctx context.Context, req *micropaymentpb.
 	default:
 		log.WithError(err).Warn("failure getting intent record")
 		return nil, status.Error(codes.Internal, "")
-	}
-
-	if resp.IntentSubmitted && paymentRequestRecord.Domain != nil && paymentRequestRecord.IsVerified {
-		relationshipRecord, err := s.data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *paymentRequestRecord.Domain)
-		switch err {
-		case nil:
-			userId, err := common.NewAccountFromPublicKeyString(relationshipRecord.AuthorityAccount)
-			if err != nil {
-				log.WithError(err).Warn("invalid relationship authority account")
-				return nil, status.Error(codes.Internal, "")
-			}
-			resp.UserId = userId.ToProto()
-		case account.ErrAccountInfoNotFound:
-		default:
-			log.WithError(err).Warn("failure getting relationship account record")
-			return nil, status.Error(codes.Internal, "")
-		}
 	}
 
 	return resp, nil

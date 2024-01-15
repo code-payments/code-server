@@ -554,15 +554,15 @@ func (h *LoginAttemptMessageHandler) OnSuccess(ctx context.Context) error {
 	return nil
 }
 
-type LoginRejectedMessageHandler struct {
+type ClientRejectedLoginMessageHandler struct {
 }
 
-func NewLoginRejectedMessageHandler() MessageHandler {
-	return &LoginRejectedMessageHandler{}
+func NewClientRejectedLoginMessageHandler() MessageHandler {
+	return &ClientRejectedLoginMessageHandler{}
 }
 
-func (h *LoginRejectedMessageHandler) Validate(ctx context.Context, rendezvous *common.Account, untypedMessage *messagingpb.Message) error {
-	typedMessage := untypedMessage.GetLoginRejected()
+func (h *ClientRejectedLoginMessageHandler) Validate(ctx context.Context, rendezvous *common.Account, untypedMessage *messagingpb.Message) error {
+	typedMessage := untypedMessage.GetClientRejectedLogin()
 	if typedMessage == nil {
 		return errors.New("invalid message type")
 	}
@@ -570,11 +570,11 @@ func (h *LoginRejectedMessageHandler) Validate(ctx context.Context, rendezvous *
 	return nil
 }
 
-func (h *LoginRejectedMessageHandler) RequiresActiveStream() (bool, time.Duration) {
+func (h *ClientRejectedLoginMessageHandler) RequiresActiveStream() (bool, time.Duration) {
 	return false, 0 * time.Minute
 }
 
-func (h *LoginRejectedMessageHandler) OnSuccess(ctx context.Context) error {
+func (h *ClientRejectedLoginMessageHandler) OnSuccess(ctx context.Context) error {
 	return nil
 }
 

@@ -29,7 +29,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -129,81 +128,6 @@ func TestGetStatus_Flags_HappyPath(t *testing.T) {
 	assert.True(t, resp.Exists)
 	assert.True(t, resp.CodeScanned)
 	assert.True(t, resp.IntentSubmitted)
-}
-
-func TestGetStatus_UserId_HappyPath(t *testing.T) {
-	for _, isVerified := range []bool{true, false} {
-		env, cleanup := setup(t)
-		defer cleanup()
-
-		intentId := testutil.NewRandomAccount(t)
-
-		req := &micropaymentpb.GetStatusRequest{
-			IntentId: &commonpb.IntentId{
-				Value: intentId.ToProto().Value,
-			},
-		}
-
-		paymentRequestRecord := &paymentrequest.Record{
-			Intent: intentId.PublicKey().ToBase58(),
-
-			DestinationTokenAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
-
-			ExchangeCurrency: currency_lib.USD,
-			NativeAmount:     1.0,
-
-			Domain:     pointer.String("example.com"),
-			IsVerified: isVerified,
-		}
-		require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
-
-		intentRecord := &intent.Record{
-			IntentId: intentId.PublicKey().ToBase58(),
-
-			IntentType: intent.SendPrivatePayment,
-
-			SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
-				ExchangeCurrency: paymentRequestRecord.ExchangeCurrency,
-				NativeAmount:     paymentRequestRecord.NativeAmount,
-				ExchangeRate:     0.1,
-				Quantity:         kin.ToQuarks(10),
-				UsdMarketValue:   paymentRequestRecord.NativeAmount,
-
-				DestinationTokenAccount: paymentRequestRecord.DestinationTokenAccount,
-
-				IsWithdrawal: true,
-			},
-
-			InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-
-			State: intent.StatePending,
-		}
-		require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
-
-		resp, err := env.client.GetStatus(env.ctx, req)
-		require.NoError(t, err)
-		assert.Nil(t, resp.UserId)
-
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     intentRecord.InitiatorOwnerAccount,
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-
-			AccountType:    commonpb.AccountType_RELATIONSHIP,
-			RelationshipTo: paymentRequestRecord.Domain,
-		}
-		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
-
-		resp, err = env.client.GetStatus(env.ctx, req)
-		require.NoError(t, err)
-
-		if isVerified {
-			require.NotNil(t, resp.UserId)
-			assert.Equal(t, accountInfoRecord.AuthorityAccount, base58.Encode(resp.UserId.Value))
-		} else {
-			assert.Nil(t, resp.UserId)
-		}
-	}
 }
 
 func TestRegisterWebhook_HappyPath(t *testing.T) {
