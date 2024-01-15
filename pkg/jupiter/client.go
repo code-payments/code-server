@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/mr-tron/base58"
@@ -38,8 +39,13 @@ func NewClient(baseUrl string) *Client {
 }
 
 type Quote struct {
-	value                 string
+	jsonString            string
+	estimatedSwapAmount   uint64
 	useLegacyInstructions bool
+}
+
+func (q *Quote) GetEstimatedSwapAmount() uint64 {
+	return q.estimatedSwapAmount
 }
 
 // GetQuote gets an optimal route for performing a swap
@@ -50,10 +56,11 @@ func (c *Client) GetQuote(
 	quarksToSwap uint64,
 	slippageBps uint32,
 	forceDirectRoute bool,
+	maxAccounts uint8,
 	useLegacyInstruction bool,
 ) (*Quote, error) {
 	url := fmt.Sprintf(
-		"%s%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d&onlyDirectRoutes=%v&asLegacyTransaction=%v",
+		"%s%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d&onlyDirectRoutes=%v&maxAccounts=%d&asLegacyTransaction=%v",
 		c.baseUrl,
 		quoteEndpointName,
 		inputMint,
@@ -61,6 +68,7 @@ func (c *Client) GetQuote(
 		quarksToSwap,
 		slippageBps,
 		forceDirectRoute,
+		maxAccounts,
 		useLegacyInstruction,
 	)
 
@@ -70,17 +78,29 @@ func (c *Client) GetQuote(
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "error reading response body")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.Errorf("received http status %d: %s", resp.StatusCode, string(body))
+		return nil, errors.Errorf("received http status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var parsed jsonQuote
+	err = json.Unmarshal(respBody, &parsed)
+	if err != nil {
+		return nil, errors.Wrap(err, "error unmarshalling json response")
+	}
+
+	estimatedSwapAmount, err := strconv.ParseUint(parsed.OtherAmountThreshold, 10, 64)
+	if err != nil {
+		return nil, errors.Wrap(err, "error parsing estimated swap amount")
 	}
 
 	return &Quote{
-		value:                 string(body),
+		jsonString:            string(respBody),
+		estimatedSwapAmount:   estimatedSwapAmount,
 		useLegacyInstructions: useLegacyInstruction,
 	}, nil
 }
@@ -109,7 +129,7 @@ func (c *Client) GetSwapInstructions(
 	// todo: struct this
 	reqBody := fmt.Sprintf(
 		`{"quoteResponse": %s, "userPublicKey": "%s", "destinationTokenAccount": "%s", "computeUnitPriceMicroLamports": %d, "asLegacyTransaction": %v}`,
-		quote.value,
+		quote.jsonString,
 		owner,
 		destinationTokenAccount,
 		pricePerComputeUnit,
@@ -212,6 +232,10 @@ func (i *jsonInstruction) ToSolanaInstruction() (*solana.Instruction, error) {
 		Accounts: accountMetas,
 		Data:     decodedData,
 	}, nil
+}
+
+type jsonQuote struct {
+	OtherAmountThreshold string `json:"otherAmountThreshold"`
 }
 
 type jsonInstructionAccount struct {
