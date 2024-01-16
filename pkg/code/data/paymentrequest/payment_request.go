@@ -7,7 +7,9 @@ import (
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
-// todo: refactor model to something similar to intent
+// Currently, the model supports payment, login, or both.
+//
+// todo: Refactor to a structure similar to intent as we add more request use cases.
 type Record struct {
 	Id uint64
 

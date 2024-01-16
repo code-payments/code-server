@@ -1,6 +1,8 @@
 package paymentrequest
 
-// todo: refactor this package to a generic "request" model, similar to intent
+// todo: Refactor this package to a generic "request" model, similar to intent.
+//       This package started with the payments use case, but is quickly evolving
+//       beyond that. Naming is skewed towards payments here until refactor.
 
 import (
 	"context"
