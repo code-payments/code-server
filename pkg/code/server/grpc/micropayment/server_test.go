@@ -350,7 +350,7 @@ func TestCodify_HappyPath(t *testing.T) {
 		PrimaryAccount: destination.ToProto(),
 		Currency:       "usd",
 		NativeAmount:   0.25,
-		Url:            "http://tedlivingston.substack.com/p/moving-forward",
+		Url:            "http://getcode.com",
 	}
 
 	reqBytes, err := proto.Marshal(codifyReq)
@@ -406,7 +406,7 @@ func TestCodify_AccountValidation(t *testing.T) {
 		PrimaryAccount: destination.ToProto(),
 		Currency:       "usd",
 		NativeAmount:   0.25,
-		Url:            "http://tedlivingston.substack.com/p/moving-forward",
+		Url:            "http://getcode.com",
 	}
 
 	reqBytes, err := proto.Marshal(codifyReq)
@@ -449,7 +449,7 @@ func TestCodify_UrlValidation(t *testing.T) {
 
 	for _, invalidUrl := range append(
 		baseInvalidUrlsToTest,
-		"http://tedlivingston.substack.com/p/not-found",
+		"http://getcode.com/not-found",
 	) {
 		owner := testutil.NewRandomAccount(t)
 		codifyReq := &micropaymentpb.CodifyRequest{
@@ -499,7 +499,7 @@ func TestCodify_AmountValidation(t *testing.T) {
 			PrimaryAccount: destination.ToProto(),
 			Currency:       "usd",
 			NativeAmount:   amount,
-			Url:            "http://tedlivingston.substack.com/p/moving-forward",
+			Url:            "http://getcode.com",
 		}
 
 		reqBytes, err := proto.Marshal(codifyReq)
@@ -536,7 +536,7 @@ func TestCodify_CurrencyValidation(t *testing.T) {
 		PrimaryAccount: destination.ToProto(),
 		Currency:       "btc",
 		NativeAmount:   1,
-		Url:            "http://tedlivingston.substack.com/p/moving-forward",
+		Url:            "http://getcode.com",
 	}
 
 	reqBytes, err := proto.Marshal(codifyReq)
