@@ -374,3 +374,11 @@ func (s *identityServer) GetUser(ctx context.Context, req *userpb.GetUserRequest
 		EligibleAirdrops:    eligibleAirdrops,
 	}, nil
 }
+
+func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.LoginToThirdPartyAppRequest) (*userpb.LoginToThirdPartyAppResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *userpb.GetLoginForThirdPartyAppRequest) (*userpb.GetLoginForThirdPartyAppResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}

@@ -181,7 +181,7 @@ func TestRegisterWebhook_NoPaymentRequest(t *testing.T) {
 
 	registerResp, err := env.client.RegisterWebhook(env.ctx, registerReq)
 	require.NoError(t, err)
-	assert.Equal(t, micropaymentpb.RegisterWebhookResponse_PAYMENT_REQUEST_NOT_FOUND, registerResp.Result)
+	assert.Equal(t, micropaymentpb.RegisterWebhookResponse_REQUEST_NOT_FOUND, registerResp.Result)
 
 	_, err = env.data.GetWebhook(env.ctx, intentId.PublicKey().ToBase58())
 	assert.Equal(t, webhook.ErrNotFound, err)

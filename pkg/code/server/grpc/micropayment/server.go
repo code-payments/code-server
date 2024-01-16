@@ -146,7 +146,7 @@ func (s *microPaymentServer) RegisterWebhook(ctx context.Context, req *micropaym
 	_, err = s.data.GetPaymentRequest(ctx, intentId)
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return &micropaymentpb.RegisterWebhookResponse{
-			Result: micropaymentpb.RegisterWebhookResponse_PAYMENT_REQUEST_NOT_FOUND,
+			Result: micropaymentpb.RegisterWebhookResponse_REQUEST_NOT_FOUND,
 		}, nil
 	} else if err != nil {
 		log.WithError(err).Warn("failure checking payment request status")
