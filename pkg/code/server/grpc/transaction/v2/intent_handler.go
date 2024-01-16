@@ -186,7 +186,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	// Part 1: Intent ID validation
 	//
 
-	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
 	if err != nil {
 		return err
 	}
@@ -432,7 +432,7 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
 	if err == nil {
 		if !paymentRequestRecord.RequiresPayment() {
-			return newIntentValidationError("request does not require payment")
+			return newIntentValidationError("request doesn't require payment")
 		}
 
 		isMicroPayment = true
@@ -1044,7 +1044,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Contex
 	// Part 1: Intent ID validation
 	//
 
-	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
 	if err != nil {
 		return err
 	}
@@ -1426,7 +1426,7 @@ func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, i
 	// Part 1: Intent ID validation
 	//
 
-	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
 	if err != nil {
 		return err
 	}
@@ -1705,7 +1705,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 1: Intent ID validation
 	//
 
-	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
 	if err != nil {
 		return err
 	}
@@ -2055,7 +2055,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	// Part 1: Intent ID validation
 	//
 
-	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
 	if err != nil {
 		return err
 	}
@@ -2302,7 +2302,7 @@ func (h *EstablishRelationshipIntentHandler) AllowCreation(ctx context.Context, 
 	// Part 1: Intent ID validation
 	//
 
-	err = validateIntentIdIsNotPaymentRequest(ctx, h.data, intentRecord.IntentId)
+	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
 	if err != nil {
 		return err
 	}
@@ -3104,10 +3104,10 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 	return nil
 }
 
-func validateIntentIdIsNotPaymentRequest(ctx context.Context, data code_data.Provider, intentId string) error {
+func validateIntentIdIsNotRequest(ctx context.Context, data code_data.Provider, intentId string) error {
 	_, err := data.GetPaymentRequest(ctx, intentId)
 	if err == nil {
-		return newIntentDeniedError("intent id is reserved for a payment request")
+		return newIntentDeniedError("intent id is reserved for a request")
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}

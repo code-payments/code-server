@@ -3117,37 +3117,37 @@ func TestSubmitIntent_PaymentRequest_Validation(t *testing.T) {
 	phone1.resetConfig()
 	phone1.conf.simulatePaymentRequest = true
 	submitIntentCall := phone1.openAccounts(t)
-	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a payment request")
+	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a request")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	phone1.resetConfig()
 	phone1.conf.simulatePaymentRequest = true
 	submitIntentCall = phone1.receive42KinPrivatelyIntoOrganizer(t)
-	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a payment request")
+	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a request")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	phone1.resetConfig()
 	phone1.conf.simulatePaymentRequest = true
 	submitIntentCall = phone1.migrateToPrivacy2022(t, kin.ToQuarks(42))
-	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a payment request")
+	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a request")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	phone1.resetConfig()
 	phone1.conf.simulatePaymentRequest = true
 	submitIntentCall = phone1.receive42KinFromGiftCard(t, giftCardAccount, false)
-	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a payment request")
+	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a request")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	phone1.resetConfig()
 	phone1.conf.simulatePaymentRequest = true
 	submitIntentCall = phone1.publiclyWithdraw123KinToExternalWallet(t)
-	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a payment request")
+	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a request")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	phone1.resetConfig()
 	phone1.conf.simulatePaymentRequest = true
 	submitIntentCall = phone1.establishRelationshipWithMerchant(t, "getcode.com")
-	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a payment request")
+	submitIntentCall.assertDeniedResponse(t, "intent id is reserved for a request")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//
@@ -3208,6 +3208,16 @@ func TestSubmitIntent_PaymentRequest_Validation(t *testing.T) {
 	phone1.conf.simulateLargeFee = true
 	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
 	submitIntentCall.assertInvalidIntentResponse(t, "fee payment must be $0.01 USD")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	//
+	// Part 3: Client attempts to pay a login request
+	//
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateLoginRequest = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "request doesn't require payment")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 }
 

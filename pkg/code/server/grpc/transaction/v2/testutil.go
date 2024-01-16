@@ -1963,9 +1963,10 @@ type phoneConf struct {
 	simulateUpgradeToNonExistantIntentId bool
 
 	//
-	// Simulation for payment requests
+	// Simulation for requests
 	//
 	simulatePaymentRequest                        bool
+	simulateLoginRequest                          bool
 	simulateUnverifiedPaymentRequest              bool
 	simulateInvalidPaymentRequestDestination      bool
 	simulateInvalidPaymentRequestExchangeCurrency bool
@@ -4611,6 +4612,12 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			IsVerified: true,
 
 			CreatedAt: time.Now(),
+		}
+		if p.conf.simulateLoginRequest {
+			// Simulate a login request by downgrading the payment request to having no payment
+			paymentRequestRecord.DestinationTokenAccount = nil
+			paymentRequestRecord.ExchangeCurrency = nil
+			paymentRequestRecord.NativeAmount = nil
 		}
 		if p.conf.simulateUnverifiedPaymentRequest {
 			paymentRequestRecord.IsVerified = false
