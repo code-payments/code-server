@@ -1,5 +1,7 @@
 package paymentrequest
 
+// todo: refactor this package to a generic "request" model, similar to intent
+
 import (
 	"context"
 	"errors"

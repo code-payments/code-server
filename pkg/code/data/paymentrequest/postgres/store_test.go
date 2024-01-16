@@ -24,10 +24,9 @@ const (
 
 			intent TEXT NOT NULL UNIQUE,
 
-			destination_token_account TEXT NOT NULL,
-
-			exchange_currency VARCHAR(3) NOT NULL,
-			native_amount NUMERIC(18, 9) NOT NULL,
+			destination_token_account TEXT NULL,
+			exchange_currency VARCHAR(3) NULL,
+			native_amount NUMERIC(18, 9) NULL,
 			exchange_rate NUMERIC(18, 9) NULL,
 			quantity BIGINT NULL CHECK (quantity >= 0),
 

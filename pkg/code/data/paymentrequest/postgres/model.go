@@ -7,10 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 )
 
 const (
@@ -22,12 +21,11 @@ type model struct {
 
 	Intent string `db:"intent"`
 
-	DestinationTokenAccount string `db:"destination_token_account"`
-
-	ExchangeCurrency string          `db:"exchange_currency"`
-	NativeAmount     float64         `db:"native_amount"`
-	ExchangeRate     sql.NullFloat64 `db:"exchange_rate"`
-	Quantity         sql.NullInt64   `db:"quantity"`
+	DestinationTokenAccount sql.NullString  `db:"destination_token_account"`
+	ExchangeCurrency        sql.NullString  `db:"exchange_currency"`
+	NativeAmount            sql.NullFloat64 `db:"native_amount"`
+	ExchangeRate            sql.NullFloat64 `db:"exchange_rate"`
+	Quantity                sql.NullInt64   `db:"quantity"`
 
 	Domain     sql.NullString `db:"domain"`
 	IsVerified bool           `db:"is_verified"`
@@ -45,11 +43,20 @@ func toModel(obj *paymentrequest.Record) (*model, error) {
 	}
 
 	return &model{
-		Id:                      sql.NullInt64{Int64: int64(obj.Id), Valid: true},
-		Intent:                  obj.Intent,
-		DestinationTokenAccount: obj.DestinationTokenAccount,
-		ExchangeCurrency:        string(obj.ExchangeCurrency),
-		NativeAmount:            obj.NativeAmount,
+		Id:     sql.NullInt64{Int64: int64(obj.Id), Valid: true},
+		Intent: obj.Intent,
+		DestinationTokenAccount: sql.NullString{
+			Valid:  obj.DestinationTokenAccount != nil,
+			String: *pointer.StringOrDefault(obj.DestinationTokenAccount, ""),
+		},
+		ExchangeCurrency: sql.NullString{
+			Valid:  obj.ExchangeCurrency != nil,
+			String: *pointer.StringOrDefault(obj.ExchangeCurrency, ""),
+		},
+		NativeAmount: sql.NullFloat64{
+			Valid:   obj.NativeAmount != nil,
+			Float64: *pointer.Float64OrDefault(obj.NativeAmount, 0),
+		},
 		ExchangeRate: sql.NullFloat64{
 			Valid:   obj.ExchangeRate != nil,
 			Float64: *pointer.Float64OrDefault(obj.ExchangeRate, 0),
@@ -71,9 +78,9 @@ func fromModel(obj *model) *paymentrequest.Record {
 	return &paymentrequest.Record{
 		Id:                      uint64(obj.Id.Int64),
 		Intent:                  obj.Intent,
-		DestinationTokenAccount: obj.DestinationTokenAccount,
-		ExchangeCurrency:        currency.Code(obj.ExchangeCurrency),
-		NativeAmount:            obj.NativeAmount,
+		DestinationTokenAccount: pointer.StringIfValid(obj.DestinationTokenAccount.Valid, obj.DestinationTokenAccount.String),
+		ExchangeCurrency:        pointer.StringIfValid(obj.ExchangeCurrency.Valid, obj.ExchangeCurrency.String),
+		NativeAmount:            pointer.Float64IfValid(obj.NativeAmount.Valid, obj.NativeAmount.Float64),
 		ExchangeRate:            pointer.Float64IfValid(obj.ExchangeRate.Valid, obj.ExchangeRate.Float64),
 		Quantity:                pointer.Uint64IfValid(obj.Quantity.Valid, uint64(obj.Quantity.Int64)),
 		Domain:                  pointer.StringIfValid(obj.Domain.Valid, obj.Domain.String),

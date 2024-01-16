@@ -4,22 +4,23 @@ import (
 	"errors"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
+// todo: refactor model to something similar to intent
 type Record struct {
 	Id uint64
 
 	Intent string
 
-	DestinationTokenAccount string
+	// Payment fields
+	DestinationTokenAccount *string
+	ExchangeCurrency        *string
+	NativeAmount            *float64
+	ExchangeRate            *float64
+	Quantity                *uint64
 
-	ExchangeCurrency currency.Code
-	NativeAmount     float64
-	ExchangeRate     *float64
-	Quantity         *uint64
-
+	// Login fields
 	Domain     *string
 	IsVerified bool
 
@@ -31,16 +32,20 @@ func (r *Record) Validate() error {
 		return errors.New("intent id is required")
 	}
 
-	if len(r.DestinationTokenAccount) == 0 {
-		return errors.New("destination token account is required")
+	if r.DestinationTokenAccount != nil && len(*r.DestinationTokenAccount) == 0 {
+		return errors.New("destination token account is required when provided")
 	}
 
-	if len(r.ExchangeCurrency) == 0 {
-		return errors.New("exchange currency is required")
+	if r.ExchangeCurrency != nil && len(*r.ExchangeCurrency) == 0 {
+		return errors.New("exchange currency is required when provided")
 	}
 
-	if r.NativeAmount == 0 {
-		return errors.New("native amount cannot be zero")
+	if r.NativeAmount != nil && *r.NativeAmount == 0 {
+		return errors.New("native amount cannot be zero when provided")
+	}
+
+	if (r.DestinationTokenAccount == nil) != (r.ExchangeCurrency == nil) != (r.NativeAmount == nil) {
+		return errors.New("destination token account, exchange currency and native amount presence must match")
 	}
 
 	if r.ExchangeRate != nil && *r.ExchangeRate == 0 {
@@ -63,6 +68,10 @@ func (r *Record) Validate() error {
 		return errors.New("cannot be verified when domain is missing")
 	}
 
+	if !r.RequiresPayment() && !r.HasLogin() {
+		return errors.New("request must have payment and/or login")
+	}
+
 	return nil
 }
 
@@ -72,12 +81,11 @@ func (r *Record) Clone() Record {
 
 		Intent: r.Intent,
 
-		DestinationTokenAccount: r.DestinationTokenAccount,
-
-		ExchangeCurrency: r.ExchangeCurrency,
-		NativeAmount:     r.NativeAmount,
-		ExchangeRate:     pointer.Float64Copy(r.ExchangeRate),
-		Quantity:         pointer.Uint64Copy(r.Quantity),
+		DestinationTokenAccount: pointer.StringCopy(r.DestinationTokenAccount),
+		ExchangeCurrency:        pointer.StringCopy(r.ExchangeCurrency),
+		NativeAmount:            pointer.Float64Copy(r.NativeAmount),
+		ExchangeRate:            pointer.Float64Copy(r.ExchangeRate),
+		Quantity:                pointer.Uint64Copy(r.Quantity),
 
 		Domain:     pointer.StringCopy(r.Domain),
 		IsVerified: r.IsVerified,
@@ -91,10 +99,9 @@ func (r *Record) CopyTo(dst *Record) {
 
 	dst.Intent = r.Intent
 
-	dst.DestinationTokenAccount = r.DestinationTokenAccount
-
-	dst.ExchangeCurrency = r.ExchangeCurrency
-	dst.NativeAmount = r.NativeAmount
+	dst.DestinationTokenAccount = pointer.StringCopy(r.DestinationTokenAccount)
+	dst.ExchangeCurrency = pointer.StringCopy(r.ExchangeCurrency)
+	dst.NativeAmount = pointer.Float64Copy(r.NativeAmount)
 	dst.ExchangeRate = pointer.Float64Copy(r.ExchangeRate)
 	dst.Quantity = pointer.Uint64Copy(r.Quantity)
 
@@ -102,4 +109,12 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IsVerified = r.IsVerified
 
 	dst.CreatedAt = r.CreatedAt
+}
+
+func (r *Record) RequiresPayment() bool {
+	return len(*r.DestinationTokenAccount) > 0
+}
+
+func (r *Record) HasLogin() bool {
+	return r.Domain != nil && r.IsVerified
 }

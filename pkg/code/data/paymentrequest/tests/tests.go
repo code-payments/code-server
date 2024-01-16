@@ -2,15 +2,16 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 )
 
 func RunTests(t *testing.T, s paymentrequest.Store, teardown func()) {
@@ -33,9 +34,9 @@ func testRoundTrip(t *testing.T, s paymentrequest.Store) {
 
 		expected := &paymentrequest.Record{
 			Intent:                  "test_intent",
-			DestinationTokenAccount: "destination",
-			ExchangeCurrency:        "usd",
-			NativeAmount:            2.46,
+			DestinationTokenAccount: pointer.String("destination"),
+			ExchangeCurrency:        pointer.String("usd"),
+			NativeAmount:            pointer.Float64(2.46),
 			ExchangeRate:            pointer.Float64(1.23),
 			Quantity:                pointer.Uint64(kin.ToQuarks(2)),
 			Domain:                  pointer.String("example.com"),
@@ -57,10 +58,12 @@ func testRoundTrip(t *testing.T, s paymentrequest.Store) {
 }
 
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *paymentrequest.Record) {
+	fmt.Println(obj1)
+	fmt.Println(obj2)
 	assert.Equal(t, obj1.Intent, obj2.Intent)
-	assert.Equal(t, obj1.DestinationTokenAccount, obj2.DestinationTokenAccount)
-	assert.Equal(t, obj1.ExchangeCurrency, obj2.ExchangeCurrency)
-	assert.Equal(t, obj1.NativeAmount, obj2.NativeAmount)
+	assert.EqualValues(t, obj1.DestinationTokenAccount, obj2.DestinationTokenAccount)
+	assert.EqualValues(t, obj1.ExchangeCurrency, obj2.ExchangeCurrency)
+	assert.EqualValues(t, obj1.NativeAmount, obj2.NativeAmount)
 	assert.EqualValues(t, obj1.ExchangeRate, obj2.ExchangeRate)
 	assert.EqualValues(t, obj1.Quantity, obj2.Quantity)
 	assert.EqualValues(t, obj1.Domain, obj2.Domain)
