@@ -1,16 +1,11 @@
-package paymentrequest
+package request
 
 import (
-	"bytes"
-	"crypto/ed25519"
-	"encoding/base64"
 	"errors"
 	"image"
 	"image/png"
-	"io"
 	"net/http"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang/freetype/truetype"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -18,24 +13,15 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 )
 
-// todo: Migrate this to a more generic "request" package, similar to what's required for paymentrequest store
-
 const (
-	v1PathPrefix                    = "/v1"
-	v1CreateIntentPath              = v1PathPrefix + "/createIntent"
-	v1GetStatusPath                 = v1PathPrefix + "/getStatus"
-	v1GetUserIdPath                 = v1PathPrefix + "/getUserId"
-	v1TestVerifiedDomainRequestPath = v1PathPrefix + "/testVerifiedDomainRequest"
-	v1TestWebhookpath               = v1PathPrefix + "/testWebhook"
-
-	intentHeaderName      = "x-code-intent"
-	idempotencyHeaderName = "x-code-idempotency"
+	v1PathPrefix       = "/v1"
+	v1CreateIntentPath = v1PathPrefix + "/createIntent"
+	v1GetStatusPath    = v1PathPrefix + "/getStatus"
+	v1GetUserIdPath    = v1PathPrefix + "/getUserId"
 
 	contentTypeHeaderName      = "content-type"
 	jsonContentTypeHeaderValue = "application/json"
 	pngContentTypeHeaderValue  = "image/png"
-
-	codePublicKey = "codeHy87wGD5oMRLG75qKqsSi1vWE3oxNyYmXo5F9YR"
 )
 
 var (
@@ -58,9 +44,9 @@ type Server struct {
 	getcodeDomainVerifier *common.Account
 }
 
-func NewPaymentRequestServer(cc *grpc.ClientConn, assets *Assets, getcodeDomainVerifier *common.Account) *Server {
+func NewRequestServer(cc *grpc.ClientConn, assets *Assets, getcodeDomainVerifier *common.Account) *Server {
 	return &Server{
-		log:                   logrus.StandardLogger().WithField("type", "paymentrequest/server"),
+		log:                   logrus.StandardLogger().WithField("type", "request/server"),
 		cc:                    cc,
 		assets:                assets,
 		getcodeDomainVerifier: getcodeDomainVerifier,
@@ -78,12 +64,12 @@ func (s *Server) createIntentHandler(path string) func(w http.ResponseWriter, r 
 				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("http post expected"))
 			}
 
-			model, err := newTrustlessPaymentRequestFromHttpContext(r)
+			model, err := newTrustlessRequestFromHttpContext(r)
 			if err != nil {
 				return http.StatusBadRequest, NewGenericApiFailureResponseBody(err)
 			}
 
-			err = s.createTrustlessPaymentRequest(ctx, model)
+			err = s.createTrustlessRequest(ctx, model)
 			if err != nil {
 				log.WithError(err).Warn("failure creating request")
 				statusCode, err := HandleGrpcErrorInWebContext(w, err)
@@ -176,94 +162,10 @@ func (s *Server) getUserIdHandler(path string) func(w http.ResponseWriter, r *ht
 	}
 }
 
-func (s *Server) testVerifiedDomainRequestHandler(path string) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log := s.log.WithField("path", path)
-
-		ctx := r.Context()
-
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		model, err := newTrustedPaymentRequestFromHttpContext(r)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		intentId := model.GetPrivateRendezvousKey()
-		idempotencyKey := model.GetIdempotencyKey()
-
-		log = log.WithField("intent", intentId.PublicKey().ToBase58())
-
-		err = s.createTestGetcodeTrustedPaymentRequest(ctx, model)
-		if err != nil {
-			log.WithError(err).Warn("failure creating payment request")
-			HandleGrpcErrorInWebContext(w, err)
-			return
-		}
-
-		image, err := s.drawRequestCard(model)
-		if err != nil {
-			log.WithError(err).Warn("failure drawing request card")
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		buf := new(bytes.Buffer)
-		err = pngEncoder.Encode(buf, image)
-		if err != nil {
-			log.WithError(err).Warn("failure encoding png image")
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(contentTypeHeaderName, pngContentTypeHeaderValue)
-		w.Header().Add(intentHeaderName, intentId.PublicKey().ToBase58())
-		w.Header().Add(idempotencyHeaderName, base64.URLEncoding.EncodeToString(idempotencyKey[:]))
-		w.Write(buf.Bytes())
-	}
-}
-
-func (s *Server) testWebhookHandler(path string) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log := s.log.WithField("path", path)
-
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.WithError(err).Warn("failure reading http body")
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		parsed, err := jwt.ParseWithClaims(string(body), jwt.MapClaims{}, func(_ *jwt.Token) (interface{}, error) {
-			code, _ := common.NewAccountFromPublicKeyString(codePublicKey)
-			return ed25519.PublicKey(code.PublicKey().ToBytes()), nil
-		})
-		if err != nil {
-			log.WithError(err).Warn("failure parsing jwt")
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		log.WithField("payload", parsed.Claims).Info("webhook received")
-	}
-}
-
 func (s *Server) GetHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
-		v1CreateIntentPath:              s.createIntentHandler(v1CreateIntentPath),
-		v1GetStatusPath:                 s.getStatusHandler(v1GetStatusPath),
-		v1GetUserIdPath:                 s.getUserIdHandler(v1GetUserIdPath),
-		v1TestVerifiedDomainRequestPath: s.testVerifiedDomainRequestHandler(v1TestVerifiedDomainRequestPath),
-		v1TestWebhookpath:               s.testWebhookHandler(v1TestWebhookpath),
+		v1CreateIntentPath: s.createIntentHandler(v1CreateIntentPath),
+		v1GetStatusPath:    s.getStatusHandler(v1GetStatusPath),
+		v1GetUserIdPath:    s.getUserIdHandler(v1GetUserIdPath),
 	}
 }

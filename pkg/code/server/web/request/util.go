@@ -1,4 +1,4 @@
-package paymentrequest
+package request
 
 // todo: put all of this somewhere more common
 
