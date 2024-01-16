@@ -172,7 +172,27 @@ func (s *serverEnv) assertPaymentRequestRecordSaved(t *testing.T, rendezvousKey 
 	}
 }
 
-func (s *serverEnv) assertPaymentRequestRecordNotSaved(t *testing.T, rendezvousKey *common.Account) {
+func (s *serverEnv) assertLoginRequestRecordSaved(t *testing.T, rendezvousKey *common.Account, msg *messagingpb.RequestToLogin) {
+	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(msg.Domain.Value)
+	require.NoError(t, err)
+
+	paymentRequestRecord, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+	require.NoError(t, err)
+
+	assert.Equal(t, paymentRequestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
+
+	require.NotNil(t, paymentRequestRecord.Domain)
+	assert.Equal(t, asciiBaseDomain, *paymentRequestRecord.Domain)
+	assert.True(t, paymentRequestRecord.IsVerified)
+
+	assert.Nil(t, paymentRequestRecord.DestinationTokenAccount)
+	assert.Nil(t, paymentRequestRecord.ExchangeCurrency)
+	assert.Nil(t, paymentRequestRecord.NativeAmount)
+	assert.Nil(t, paymentRequestRecord.ExchangeRate)
+	assert.Nil(t, paymentRequestRecord.Quantity)
+}
+
+func (s *serverEnv) assertRequestRecordNotSaved(t *testing.T, rendezvousKey *common.Account) {
 	_, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	assert.Equal(t, paymentrequest.ErrPaymentRequestNotFound, err)
 }
