@@ -26,6 +26,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
+	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	transaction_server "github.com/code-payments/code-server/pkg/code/server/grpc/transaction/v2"
 	"github.com/code-payments/code-server/pkg/currency"
 	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
@@ -52,7 +53,12 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 
 	antispamGuard := antispam.NewGuard(env.data, memory_device_verifier.NewMemoryDeviceVerifier(), nil)
 
-	s := NewIdentityServer(env.data, auth.NewRPCSignatureVerifier(env.data), antispamGuard, nil)
+	s := NewIdentityServer(
+		env.data,
+		auth.NewRPCSignatureVerifier(env.data),
+		antispamGuard,
+		messaging.NewMessagingClient(env.data),
+	)
 	env.server = s.(*identityServer)
 	env.server.limiter = newLimiter(func(r float64) rate.Limiter {
 		return rate.NewLocalRateLimiter(xrate.Limit(r))

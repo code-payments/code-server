@@ -189,7 +189,7 @@ func (e *testEnv) setupIntentRecord(t *testing.T, webhookRecord *webhook.Record)
 		Domain:     pointer.String("example.com"),
 		IsVerified: true,
 	}
-	require.NoError(t, e.data.CreatePaymentRequest(e.ctx, paymentRequestRecord))
+	require.NoError(t, e.data.CreateRequest(e.ctx, paymentRequestRecord))
 
 	return intentRecord
 }

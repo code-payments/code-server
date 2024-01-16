@@ -71,11 +71,11 @@ func (s *microPaymentServer) GetStatus(ctx context.Context, req *micropaymentpb.
 		IntentSubmitted: false,
 	}
 
-	_, err := s.data.GetPaymentRequest(ctx, intentId)
+	_, err := s.data.GetRequest(ctx, intentId)
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return resp, nil
 	} else if err != nil {
-		log.WithError(err).Warn("failure getting payment request record")
+		log.WithError(err).Warn("failure getting request record")
 		return nil, status.Error(codes.Internal, "")
 	}
 	resp.Exists = true
@@ -143,13 +143,13 @@ func (s *microPaymentServer) RegisterWebhook(ctx context.Context, req *micropaym
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	_, err = s.data.GetPaymentRequest(ctx, intentId)
+	_, err = s.data.GetRequest(ctx, intentId)
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return &micropaymentpb.RegisterWebhookResponse{
 			Result: micropaymentpb.RegisterWebhookResponse_REQUEST_NOT_FOUND,
 		}, nil
 	} else if err != nil {
-		log.WithError(err).Warn("failure checking payment request status")
+		log.WithError(err).Warn("failure checking request status")
 		return nil, status.Error(codes.Internal, "")
 	}
 

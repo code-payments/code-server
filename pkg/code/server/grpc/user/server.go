@@ -411,7 +411,7 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 		return nil, err
 	}
 
-	requestRecord, err := s.data.GetPaymentRequest(ctx, intentId.PublicKey().ToBase58())
+	requestRecord, err := s.data.GetRequest(ctx, intentId.PublicKey().ToBase58())
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return &userpb.LoginToThirdPartyAppResponse{
 			Result: userpb.LoginToThirdPartyAppResponse_REQUEST_NOT_FOUND,
@@ -497,7 +497,8 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 					IntentId: &commonpb.IntentId{
 						Value: intentId.ToProto().Value,
 					},
-					// todo: This message will fail validation until we make an API change
+					// Metadata is hidden, since the details of who logged in should
+					// be gated behind an authenticated RPC
 					Metadata: nil,
 				},
 			},
@@ -529,7 +530,7 @@ func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *user
 	}
 	log = log.WithField("intent", intentId.PublicKey().ToBase58())
 
-	requestRecord, err := s.data.GetPaymentRequest(ctx, intentId.PublicKey().ToBase58())
+	requestRecord, err := s.data.GetRequest(ctx, intentId.PublicKey().ToBase58())
 	if err == paymentrequest.ErrPaymentRequestNotFound {
 		return &userpb.GetLoginForThirdPartyAppResponse{
 			Result: userpb.GetLoginForThirdPartyAppResponse_REQUEST_NOT_FOUND,

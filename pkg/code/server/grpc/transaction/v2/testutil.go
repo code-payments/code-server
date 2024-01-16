@@ -4635,7 +4635,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			paymentRequestRecord.NativeAmount = pointer.Float64(*paymentRequestRecord.NativeAmount + 0.01)
 		}
 
-		require.NoError(t, p.directServerAccess.data.CreatePaymentRequest(p.directServerAccess.ctx, paymentRequestRecord))
+		require.NoError(t, p.directServerAccess.data.CreateRequest(p.directServerAccess.ctx, paymentRequestRecord))
 
 		if p.conf.simulateNoFeesPaid {
 			for i, action := range actions {

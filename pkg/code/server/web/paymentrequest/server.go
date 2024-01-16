@@ -85,7 +85,7 @@ func (s *Server) createIntentHandler(path string) func(w http.ResponseWriter, r 
 
 			err = s.createTrustlessPaymentRequest(ctx, model)
 			if err != nil {
-				log.WithError(err).Warn("failure creating payment request")
+				log.WithError(err).Warn("failure creating request")
 				statusCode, err := HandleGrpcErrorInWebContext(w, err)
 				return statusCode, NewGenericApiFailureResponseBody(err)
 			}

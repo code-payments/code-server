@@ -336,10 +336,10 @@ type DatabaseData interface {
 	GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error)
 	DeleteRendezvous(ctx context.Context, key string) error
 
-	// Payment Request
+	// Requests
 	// --------------------------------------------------------------------------------
-	CreatePaymentRequest(ctx context.Context, record *paymentrequest.Record) error
-	GetPaymentRequest(ctx context.Context, intentId string) (*paymentrequest.Record, error)
+	CreateRequest(ctx context.Context, record *paymentrequest.Record) error
+	GetRequest(ctx context.Context, intentId string) (*paymentrequest.Record, error)
 
 	// Paywall
 	// --------------------------------------------------------------------------------
@@ -1285,10 +1285,10 @@ func (dp *DatabaseProvider) DeleteRendezvous(ctx context.Context, key string) er
 
 // Payment Request
 // --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) CreatePaymentRequest(ctx context.Context, record *paymentrequest.Record) error {
+func (dp *DatabaseProvider) CreateRequest(ctx context.Context, record *paymentrequest.Record) error {
 	return dp.paymentRequest.Put(ctx, record)
 }
-func (dp *DatabaseProvider) GetPaymentRequest(ctx context.Context, intentId string) (*paymentrequest.Record, error) {
+func (dp *DatabaseProvider) GetRequest(ctx context.Context, intentId string) (*paymentrequest.Record, error) {
 	return dp.paymentRequest.Get(ctx, intentId)
 }
 

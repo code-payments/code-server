@@ -28,9 +28,9 @@ func intentSubmittedJsonPayloadProvider(ctx context.Context, data code_data.Prov
 
 	kvs := make(map[string]interface{})
 
-	paymentRequestRecord, err := data.GetPaymentRequest(ctx, webhookRecord.WebhookId)
+	requestRecord, err := data.GetRequest(ctx, webhookRecord.WebhookId)
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting payment request record")
+		return nil, errors.Wrap(err, "error getting request record")
 	}
 
 	intentRecord, err := data.GetIntent(ctx, webhookRecord.WebhookId)
@@ -40,7 +40,7 @@ func intentSubmittedJsonPayloadProvider(ctx context.Context, data code_data.Prov
 		return nil, errors.New("intent is revoked")
 	}
 
-	if paymentRequestRecord.RequiresPayment() {
+	if requestRecord.RequiresPayment() {
 		var currency currency_lib.Code
 		var amount float64
 		var exchangeRate float64
@@ -94,8 +94,8 @@ func intentSubmittedJsonPayloadProvider(ctx context.Context, data code_data.Prov
 		}
 	}
 
-	if paymentRequestRecord.HasLogin() {
-		relationshipAccountInfoRecord, err := data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *paymentRequestRecord.Domain)
+	if requestRecord.HasLogin() {
+		relationshipAccountInfoRecord, err := data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *requestRecord.Domain)
 		if err == nil {
 			kvs["user"] = relationshipAccountInfoRecord.AuthorityAccount
 		} else if err != account.ErrAccountInfoNotFound {

@@ -429,14 +429,14 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 	}
 
 	var isMicroPayment bool
-	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
+	requestRecord, err := h.data.GetRequest(ctx, intentRecord.IntentId)
 	if err == nil {
-		if !paymentRequestRecord.RequiresPayment() {
+		if !requestRecord.RequiresPayment() {
 			return newIntentValidationError("request doesn't require payment")
 		}
 
 		isMicroPayment = true
-		h.cachedPaymentRequestRequest = paymentRequestRecord
+		h.cachedPaymentRequestRequest = requestRecord
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
@@ -2890,19 +2890,19 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 	// If there's a payment request record, then validate exchange data client
 	// provided matches exactly. The payment request record should already have
 	// validated exchange data before it was created.
-	paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentId)
+	requestRecord, err := data.GetRequest(ctx, intentId)
 	if err == nil {
-		if !paymentRequestRecord.RequiresPayment() {
+		if !requestRecord.RequiresPayment() {
 			return newIntentValidationError("request does not require payment")
 		}
 
-		if proto.Currency != string(*paymentRequestRecord.ExchangeCurrency) {
-			return newIntentValidationErrorf("payment has a request for %s currency", *paymentRequestRecord.ExchangeCurrency)
+		if proto.Currency != string(*requestRecord.ExchangeCurrency) {
+			return newIntentValidationErrorf("payment has a request for %s currency", *requestRecord.ExchangeCurrency)
 		}
 
-		absNativeAmountDiff := math.Abs(proto.NativeAmount - *paymentRequestRecord.NativeAmount)
+		absNativeAmountDiff := math.Abs(proto.NativeAmount - *requestRecord.NativeAmount)
 		if absNativeAmountDiff > 0.0001 {
-			return newIntentValidationErrorf("payment has a request for %.2f native amount", *paymentRequestRecord.NativeAmount)
+			return newIntentValidationErrorf("payment has a request for %.2f native amount", *requestRecord.NativeAmount)
 		}
 
 		// No need to validate exchange details in the payment request. Only Kin has
@@ -3105,7 +3105,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 }
 
 func validateIntentIdIsNotRequest(ctx context.Context, data code_data.Provider, intentId string) error {
-	_, err := data.GetPaymentRequest(ctx, intentId)
+	_, err := data.GetRequest(ctx, intentId)
 	if err == nil {
 		return newIntentDeniedError("intent id is reserved for a request")
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {

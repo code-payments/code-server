@@ -139,36 +139,36 @@ func (s *serverEnv) assertPaymentRequestRecordSaved(t *testing.T, rendezvousKey 
 		require.NoError(t, err)
 	}
 
-	paymentRequestRecord, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+	requestRecord, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	require.NoError(t, err)
 
-	assert.Equal(t, paymentRequestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
-	assert.Equal(t, base58.Encode(msg.RequestorAccount.Value), *paymentRequestRecord.DestinationTokenAccount)
+	assert.Equal(t, requestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
+	assert.Equal(t, base58.Encode(msg.RequestorAccount.Value), *requestRecord.DestinationTokenAccount)
 
 	switch typed := msg.ExchangeData.(type) {
 	case *messagingpb.RequestToReceiveBill_Exact:
-		assert.EqualValues(t, typed.Exact.Currency, *paymentRequestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Exact.NativeAmount, *paymentRequestRecord.NativeAmount)
-		require.NotNil(t, paymentRequestRecord.ExchangeRate)
-		assert.Equal(t, typed.Exact.ExchangeRate, *paymentRequestRecord.ExchangeRate)
-		require.NotNil(t, paymentRequestRecord.Quantity)
-		assert.Equal(t, typed.Exact.Quarks, *paymentRequestRecord.Quantity)
+		assert.EqualValues(t, typed.Exact.Currency, *requestRecord.ExchangeCurrency)
+		assert.Equal(t, typed.Exact.NativeAmount, *requestRecord.NativeAmount)
+		require.NotNil(t, requestRecord.ExchangeRate)
+		assert.Equal(t, typed.Exact.ExchangeRate, *requestRecord.ExchangeRate)
+		require.NotNil(t, requestRecord.Quantity)
+		assert.Equal(t, typed.Exact.Quarks, *requestRecord.Quantity)
 	case *messagingpb.RequestToReceiveBill_Partial:
-		assert.EqualValues(t, typed.Partial.Currency, *paymentRequestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Partial.NativeAmount, *paymentRequestRecord.NativeAmount)
-		assert.Nil(t, paymentRequestRecord.ExchangeRate)
-		assert.Nil(t, paymentRequestRecord.Quantity)
+		assert.EqualValues(t, typed.Partial.Currency, *requestRecord.ExchangeCurrency)
+		assert.Equal(t, typed.Partial.NativeAmount, *requestRecord.NativeAmount)
+		assert.Nil(t, requestRecord.ExchangeRate)
+		assert.Nil(t, requestRecord.Quantity)
 	default:
 		require.Fail(t, "unhandled exchange data type")
 	}
 
 	if len(asciiBaseDomain) == 0 {
-		assert.Nil(t, paymentRequestRecord.Domain)
-		assert.False(t, paymentRequestRecord.IsVerified)
+		assert.Nil(t, requestRecord.Domain)
+		assert.False(t, requestRecord.IsVerified)
 	} else {
-		require.NotNil(t, paymentRequestRecord.Domain)
-		assert.Equal(t, asciiBaseDomain, *paymentRequestRecord.Domain)
-		assert.Equal(t, msg.Verifier != nil, paymentRequestRecord.IsVerified)
+		require.NotNil(t, requestRecord.Domain)
+		assert.Equal(t, asciiBaseDomain, *requestRecord.Domain)
+		assert.Equal(t, msg.Verifier != nil, requestRecord.IsVerified)
 	}
 }
 
@@ -176,24 +176,24 @@ func (s *serverEnv) assertLoginRequestRecordSaved(t *testing.T, rendezvousKey *c
 	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(msg.Domain.Value)
 	require.NoError(t, err)
 
-	paymentRequestRecord, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+	requestRecord, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	require.NoError(t, err)
 
-	assert.Equal(t, paymentRequestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
+	assert.Equal(t, requestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
 
-	require.NotNil(t, paymentRequestRecord.Domain)
-	assert.Equal(t, asciiBaseDomain, *paymentRequestRecord.Domain)
-	assert.True(t, paymentRequestRecord.IsVerified)
+	require.NotNil(t, requestRecord.Domain)
+	assert.Equal(t, asciiBaseDomain, *requestRecord.Domain)
+	assert.True(t, requestRecord.IsVerified)
 
-	assert.Nil(t, paymentRequestRecord.DestinationTokenAccount)
-	assert.Nil(t, paymentRequestRecord.ExchangeCurrency)
-	assert.Nil(t, paymentRequestRecord.NativeAmount)
-	assert.Nil(t, paymentRequestRecord.ExchangeRate)
-	assert.Nil(t, paymentRequestRecord.Quantity)
+	assert.Nil(t, requestRecord.DestinationTokenAccount)
+	assert.Nil(t, requestRecord.ExchangeCurrency)
+	assert.Nil(t, requestRecord.NativeAmount)
+	assert.Nil(t, requestRecord.ExchangeRate)
+	assert.Nil(t, requestRecord.Quantity)
 }
 
 func (s *serverEnv) assertRequestRecordNotSaved(t *testing.T, rendezvousKey *common.Account) {
-	_, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+	_, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	assert.Equal(t, paymentrequest.ErrPaymentRequestNotFound, err)
 }
 

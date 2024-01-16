@@ -109,7 +109,7 @@ func TestGetStatus_Flags_HappyPath(t *testing.T) {
 		assert.False(t, resp.IntentSubmitted)
 
 		tc.requestRecord.Intent = intentId.PublicKey().ToBase58()
-		require.NoError(t, env.data.CreatePaymentRequest(env.ctx, tc.requestRecord))
+		require.NoError(t, env.data.CreateRequest(env.ctx, tc.requestRecord))
 
 		resp, err = env.client.GetStatus(env.ctx, req)
 		require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestRegisterWebhook_HappyPath(t *testing.T) {
 		intentId := testutil.NewRandomAccount(t)
 
 		requestRecord.Intent = intentId.PublicKey().ToBase58()
-		require.NoError(t, env.data.CreatePaymentRequest(env.ctx, requestRecord))
+		require.NoError(t, env.data.CreateRequest(env.ctx, requestRecord))
 
 		registerReq := &micropaymentpb.RegisterWebhookRequest{
 			IntentId: &commonpb.IntentId{
@@ -265,7 +265,7 @@ func TestRegisterWebhook_AlreadyRegistered(t *testing.T) {
 		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
 		NativeAmount:            pointer.Float64(1.0),
 	}
-	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
+	require.NoError(t, env.data.CreateRequest(env.ctx, paymentRequestRecord))
 
 	for i := 0; i < 5; i++ {
 		registerReq := &micropaymentpb.RegisterWebhookRequest{
@@ -307,7 +307,7 @@ func TestRegisterWebhook_UrlValidation(t *testing.T) {
 		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
 		NativeAmount:            pointer.Float64(1.0),
 	}
-	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
+	require.NoError(t, env.data.CreateRequest(env.ctx, paymentRequestRecord))
 
 	for _, invalidUrl := range baseInvalidUrlsToTest {
 		registerReq := &micropaymentpb.RegisterWebhookRequest{
