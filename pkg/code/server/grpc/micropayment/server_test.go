@@ -42,67 +42,17 @@ var (
 )
 
 func TestGetStatus_Flags_HappyPath(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	intentId := testutil.NewRandomAccount(t)
-
-	req := &micropaymentpb.GetStatusRequest{
-		IntentId: &commonpb.IntentId{
-			Value: intentId.ToProto().Value,
-		},
-	}
-	resp, err := env.client.GetStatus(env.ctx, req)
-	require.NoError(t, err)
-	assert.False(t, resp.Exists)
-	assert.False(t, resp.CodeScanned)
-	assert.False(t, resp.IntentSubmitted)
-
 	paymentRequestRecord := &paymentrequest.Record{
-		Intent: intentId.PublicKey().ToBase58(),
-
 		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
 		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
 		NativeAmount:            pointer.Float64(1.0),
 	}
-	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
-
-	resp, err = env.client.GetStatus(env.ctx, req)
-	require.NoError(t, err)
-	assert.True(t, resp.Exists)
-	assert.False(t, resp.CodeScanned)
-	assert.False(t, resp.IntentSubmitted)
-
-	messageId, err := uuid.NewRandom()
-	require.NoError(t, err)
-	codeScannedMessage := &messagingpb.Message{
-		Id: &messagingpb.MessageId{
-			Value: messageId[:],
-		},
-		Kind: &messagingpb.Message_CodeScanned{
-			CodeScanned: &messagingpb.CodeScanned{
-				Timestamp: timestamppb.Now(),
-			},
-		},
+	loginRequestRecord := &paymentrequest.Record{
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
 	}
-	messageBytes, err := proto.Marshal(codeScannedMessage)
-	require.NoError(t, err)
-	messagingRecord := &messaging.Record{
-		Account:   intentId.PublicKey().ToBase58(),
-		MessageID: messageId,
-		Message:   messageBytes,
-	}
-	require.NoError(t, env.data.CreateMessage(env.ctx, messagingRecord))
 
-	resp, err = env.client.GetStatus(env.ctx, req)
-	require.NoError(t, err)
-	assert.True(t, resp.Exists)
-	assert.True(t, resp.CodeScanned)
-	assert.False(t, resp.IntentSubmitted)
-
-	intentRecord := &intent.Record{
-		IntentId: intentId.PublicKey().ToBase58(),
-
+	paymentIntentRecord := &intent.Record{
 		IntentType: intent.SendPrivatePayment,
 
 		SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
@@ -121,49 +71,133 @@ func TestGetStatus_Flags_HappyPath(t *testing.T) {
 
 		State: intent.StatePending,
 	}
-	require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
 
-	resp, err = env.client.GetStatus(env.ctx, req)
-	require.NoError(t, err)
-	assert.True(t, resp.Exists)
-	assert.True(t, resp.CodeScanned)
-	assert.True(t, resp.IntentSubmitted)
+	loginIntentRecord := &intent.Record{
+		IntentType: intent.Login,
+
+		LoginMetadata: &intent.LoginMetadata{
+			RelationshipTo: "example.com",
+			UserId:         testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		},
+
+		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+		State: intent.StateConfirmed,
+	}
+
+	for _, tc := range []struct {
+		requestRecord *paymentrequest.Record
+		intentRecord  *intent.Record
+	}{
+		{paymentRequestRecord, paymentIntentRecord},
+		{loginRequestRecord, loginIntentRecord},
+	} {
+		env, cleanup := setup(t)
+		defer cleanup()
+
+		intentId := testutil.NewRandomAccount(t)
+
+		req := &micropaymentpb.GetStatusRequest{
+			IntentId: &commonpb.IntentId{
+				Value: intentId.ToProto().Value,
+			},
+		}
+		resp, err := env.client.GetStatus(env.ctx, req)
+		require.NoError(t, err)
+		assert.False(t, resp.Exists)
+		assert.False(t, resp.CodeScanned)
+		assert.False(t, resp.IntentSubmitted)
+
+		tc.requestRecord.Intent = intentId.PublicKey().ToBase58()
+		require.NoError(t, env.data.CreatePaymentRequest(env.ctx, tc.requestRecord))
+
+		resp, err = env.client.GetStatus(env.ctx, req)
+		require.NoError(t, err)
+		assert.True(t, resp.Exists)
+		assert.False(t, resp.CodeScanned)
+		assert.False(t, resp.IntentSubmitted)
+
+		messageId, err := uuid.NewRandom()
+		require.NoError(t, err)
+		codeScannedMessage := &messagingpb.Message{
+			Id: &messagingpb.MessageId{
+				Value: messageId[:],
+			},
+			Kind: &messagingpb.Message_CodeScanned{
+				CodeScanned: &messagingpb.CodeScanned{
+					Timestamp: timestamppb.Now(),
+				},
+			},
+		}
+		messageBytes, err := proto.Marshal(codeScannedMessage)
+		require.NoError(t, err)
+		messagingRecord := &messaging.Record{
+			Account:   intentId.PublicKey().ToBase58(),
+			MessageID: messageId,
+			Message:   messageBytes,
+		}
+		require.NoError(t, env.data.CreateMessage(env.ctx, messagingRecord))
+
+		resp, err = env.client.GetStatus(env.ctx, req)
+		require.NoError(t, err)
+		assert.True(t, resp.Exists)
+		assert.True(t, resp.CodeScanned)
+		assert.False(t, resp.IntentSubmitted)
+
+		tc.intentRecord.IntentId = intentId.PublicKey().ToBase58()
+		require.NoError(t, env.data.SaveIntent(env.ctx, tc.intentRecord))
+
+		resp, err = env.client.GetStatus(env.ctx, req)
+		require.NoError(t, err)
+		assert.True(t, resp.Exists)
+		assert.True(t, resp.CodeScanned)
+		assert.True(t, resp.IntentSubmitted)
+	}
 }
 
 func TestRegisterWebhook_HappyPath(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	intentId := testutil.NewRandomAccount(t)
-
 	paymentRequestRecord := &paymentrequest.Record{
-		Intent: intentId.PublicKey().ToBase58(),
-
 		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
 		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
 		NativeAmount:            pointer.Float64(1.0),
 	}
-	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
-
-	registerReq := &micropaymentpb.RegisterWebhookRequest{
-		IntentId: &commonpb.IntentId{
-			Value: intentId.ToProto().Value,
-		},
-		Url: "https://getcode.com/webhook",
+	loginRequestRecord := &paymentrequest.Record{
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
 	}
 
-	registerResp, err := env.client.RegisterWebhook(env.ctx, registerReq)
-	require.NoError(t, err)
-	assert.Equal(t, micropaymentpb.RegisterWebhookResponse_OK, registerResp.Result)
+	for _, requestRecord := range []*paymentrequest.Record{
+		paymentRequestRecord,
+		loginRequestRecord,
+	} {
+		env, cleanup := setup(t)
+		defer cleanup()
 
-	webhookRecord, err := env.data.GetWebhook(env.ctx, intentId.PublicKey().ToBase58())
-	require.NoError(t, err)
-	assert.Equal(t, intentId.PublicKey().ToBase58(), webhookRecord.WebhookId)
-	assert.Equal(t, registerReq.Url, webhookRecord.Url)
-	assert.Equal(t, webhook.TypeIntentSubmitted, webhookRecord.Type)
-	assert.EqualValues(t, 0, webhookRecord.Attempts)
-	assert.EqualValues(t, webhook.StateUnknown, webhookRecord.State)
-	assert.Nil(t, webhookRecord.NextAttemptAt)
+		intentId := testutil.NewRandomAccount(t)
+
+		requestRecord.Intent = intentId.PublicKey().ToBase58()
+		require.NoError(t, env.data.CreatePaymentRequest(env.ctx, requestRecord))
+
+		registerReq := &micropaymentpb.RegisterWebhookRequest{
+			IntentId: &commonpb.IntentId{
+				Value: intentId.ToProto().Value,
+			},
+			Url: "https://getcode.com/webhook",
+		}
+
+		registerResp, err := env.client.RegisterWebhook(env.ctx, registerReq)
+		require.NoError(t, err)
+		assert.Equal(t, micropaymentpb.RegisterWebhookResponse_OK, registerResp.Result)
+
+		webhookRecord, err := env.data.GetWebhook(env.ctx, intentId.PublicKey().ToBase58())
+		require.NoError(t, err)
+		assert.Equal(t, intentId.PublicKey().ToBase58(), webhookRecord.WebhookId)
+		assert.Equal(t, registerReq.Url, webhookRecord.Url)
+		assert.Equal(t, webhook.TypeIntentSubmitted, webhookRecord.Type)
+		assert.EqualValues(t, 0, webhookRecord.Attempts)
+		assert.EqualValues(t, webhook.StateUnknown, webhookRecord.State)
+		assert.Nil(t, webhookRecord.NextAttemptAt)
+	}
 }
 
 func TestRegisterWebhook_NoPaymentRequest(t *testing.T) {
