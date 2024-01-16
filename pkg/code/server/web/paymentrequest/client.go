@@ -15,8 +15,9 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
 )
+
+// todo: Migrate to a generic HTTP -> gRPC with signed proto strategy
 
 const (
 	testWebhookEndpoint = "https://api.getcode.com/v1/testWebhook"
@@ -166,29 +167,19 @@ func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) 
 	return &res, nil
 }
 
-type getUserResp struct {
+type getUserIdResp struct {
 	User string
 }
 
-func (s *Server) getUser(ctx context.Context, intentId, verifier *common.Account, signature solana.Signature) (*getUserResp, error) {
+func (s *Server) getUserId(ctx context.Context, protoReq *userpb.GetLoginForThirdPartyAppRequest) (*getUserIdResp, error) {
 	userIdentityClient := userpb.NewIdentityClient(s.cc)
 
-	getLoginReq := &userpb.GetLoginForThirdPartyAppRequest{
-		IntentId: &commonpb.IntentId{
-			Value: intentId.PublicKey().ToBytes(),
-		},
-		Verifier: verifier.ToProto(),
-		Signature: &commonpb.Signature{
-			Value: signature[:],
-		},
-	}
-
-	getLoginResp, err := userIdentityClient.GetLoginForThirdPartyApp(ctx, getLoginReq)
+	getLoginResp, err := userIdentityClient.GetLoginForThirdPartyApp(ctx, protoReq)
 	if err != nil {
 		return nil, err
 	}
 
-	res := &getUserResp{}
+	res := &getUserIdResp{}
 	if getLoginResp.Result == userpb.GetLoginForThirdPartyAppResponse_OK && getLoginResp.UserId != nil {
 		res.User = base58.Encode(getLoginResp.UserId.Value)
 	}

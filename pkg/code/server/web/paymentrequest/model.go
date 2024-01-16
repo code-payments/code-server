@@ -15,6 +15,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+	userpb "github.com/code-payments/code-protobuf-api/generated/go/user/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/limit"
@@ -24,6 +25,8 @@ import (
 	"github.com/code-payments/code-server/pkg/netutil"
 	"github.com/code-payments/code-server/pkg/solana"
 )
+
+// todo: Migrate to a generic HTTP -> gRPC with signed proto strategy
 
 type trustedPaymentRequest struct {
 	currency     currency_lib.Code
@@ -275,4 +278,50 @@ func (r *trustlessPaymentRequest) ToProtoMessage() *messagingpb.Message {
 			RequestToReceiveBill: r.originalProtoMessage,
 		},
 	}
+}
+
+func newGetLoggedInUserIdRequestFromHttpContext(r *http.Request) (*userpb.GetLoginForThirdPartyAppRequest, error) {
+	httpRequestBody := struct {
+		Intent    string `json:"intent"`
+		Message   string `json:"message"`
+		Signature string `json:"signature"`
+	}{}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(body, &httpRequestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	intentId, err := common.NewAccountFromPublicKeyString(httpRequestBody.Intent)
+	if err != nil {
+		return nil, errors.New("intent is not a public key")
+	}
+
+	var protoRequest userpb.GetLoginForThirdPartyAppRequest
+	decoded, err := base64.RawURLEncoding.DecodeString(httpRequestBody.Message)
+	if err != nil {
+		return nil, errors.New("message not valid base64")
+	}
+	err = proto.Unmarshal(decoded, &protoRequest)
+	if err != nil {
+		return nil, errors.New("message bytes is not a GetLoginForThirdPartyAppRequest")
+	} else if err := protoRequest.Validate(); err != nil {
+		return nil, errors.Wrap(err, "message failed proto validation")
+	}
+
+	var signature solana.Signature
+	decodedSignature, err := base58.Decode(httpRequestBody.Signature)
+	if err != nil || len(decodedSignature) != len(signature) {
+		return nil, errors.New("signature is invalid")
+	}
+	copy(signature[:], decodedSignature)
+
+	protoRequest.IntentId = &commonpb.IntentId{Value: intentId.ToProto().Value}
+	protoRequest.Signature = &commonpb.Signature{Value: decodedSignature}
+	return &protoRequest, nil
 }
