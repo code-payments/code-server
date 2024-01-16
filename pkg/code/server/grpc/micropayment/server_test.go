@@ -29,6 +29,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -60,10 +61,9 @@ func TestGetStatus_Flags_HappyPath(t *testing.T) {
 	paymentRequestRecord := &paymentrequest.Record{
 		Intent: intentId.PublicKey().ToBase58(),
 
-		DestinationTokenAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
-
-		ExchangeCurrency: currency_lib.USD,
-		NativeAmount:     1.0,
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
 	}
 	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
 
@@ -106,13 +106,13 @@ func TestGetStatus_Flags_HappyPath(t *testing.T) {
 		IntentType: intent.SendPrivatePayment,
 
 		SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
-			ExchangeCurrency: paymentRequestRecord.ExchangeCurrency,
-			NativeAmount:     paymentRequestRecord.NativeAmount,
+			ExchangeCurrency: currency_lib.Code(*paymentRequestRecord.ExchangeCurrency),
+			NativeAmount:     *paymentRequestRecord.NativeAmount,
 			ExchangeRate:     0.1,
 			Quantity:         kin.ToQuarks(10),
-			UsdMarketValue:   paymentRequestRecord.NativeAmount,
+			UsdMarketValue:   *paymentRequestRecord.NativeAmount,
 
-			DestinationTokenAccount: paymentRequestRecord.DestinationTokenAccount,
+			DestinationTokenAccount: *paymentRequestRecord.DestinationTokenAccount,
 
 			IsWithdrawal: true,
 		},
@@ -139,10 +139,9 @@ func TestRegisterWebhook_HappyPath(t *testing.T) {
 	paymentRequestRecord := &paymentrequest.Record{
 		Intent: intentId.PublicKey().ToBase58(),
 
-		DestinationTokenAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
-
-		ExchangeCurrency: currency_lib.USD,
-		NativeAmount:     1.0,
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
 	}
 	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
 
@@ -228,10 +227,9 @@ func TestRegisterWebhook_AlreadyRegistered(t *testing.T) {
 	paymentRequestRecord := &paymentrequest.Record{
 		Intent: intentId.PublicKey().ToBase58(),
 
-		DestinationTokenAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
-
-		ExchangeCurrency: currency_lib.USD,
-		NativeAmount:     1.0,
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
 	}
 	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
 
@@ -271,10 +269,9 @@ func TestRegisterWebhook_UrlValidation(t *testing.T) {
 	paymentRequestRecord := &paymentrequest.Record{
 		Intent: intentId.PublicKey().ToBase58(),
 
-		DestinationTokenAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
-
-		ExchangeCurrency: currency_lib.USD,
-		NativeAmount:     1.0,
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
 	}
 	require.NoError(t, env.data.CreatePaymentRequest(env.ctx, paymentRequestRecord))
 

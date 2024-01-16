@@ -24,6 +24,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 // MessageHandler provides message-specific in addition to the generic message
@@ -192,15 +193,19 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		//           while guaranteeing consistency without changing the intent.
 		//
 
-		if existingPaymentRequestRecord.DestinationTokenAccount != requestorAccount.PublicKey().ToBase58() {
+		if !existingPaymentRequestRecord.RequiresPayment() {
+			return newMessageValidationError("original request doesn't require payment")
+		}
+
+		if *existingPaymentRequestRecord.DestinationTokenAccount != requestorAccount.PublicKey().ToBase58() {
 			return newMessageValidationError("destination mismatches original request")
 		}
 
-		if existingPaymentRequestRecord.ExchangeCurrency != currency {
+		if *existingPaymentRequestRecord.ExchangeCurrency != string(currency) {
 			return newMessageValidationError("exchange currency mismatches original request")
 		}
 
-		if existingPaymentRequestRecord.NativeAmount != nativeAmount {
+		if *existingPaymentRequestRecord.NativeAmount != nativeAmount {
 			return newMessageValidationError("native amount mismatches original request")
 		}
 
@@ -356,12 +361,11 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		h.paymentRecordRecordToSave = &paymentrequest.Record{
 			Intent: rendezvous.PublicKey().ToBase58(),
 
-			DestinationTokenAccount: requestorAccount.PublicKey().ToBase58(),
-
-			ExchangeCurrency: currency,
-			NativeAmount:     nativeAmount,
-			ExchangeRate:     exchangeRate,
-			Quantity:         quarks,
+			DestinationTokenAccount: pointer.String(requestorAccount.PublicKey().ToBase58()),
+			ExchangeCurrency:        pointer.String(string(currency)),
+			NativeAmount:            pointer.Float64(nativeAmount),
+			ExchangeRate:            exchangeRate,
+			Quantity:                quarks,
 
 			CreatedAt: time.Now(),
 		}

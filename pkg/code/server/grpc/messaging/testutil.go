@@ -143,19 +143,19 @@ func (s *serverEnv) assertPaymentRequestRecordSaved(t *testing.T, rendezvousKey 
 	require.NoError(t, err)
 
 	assert.Equal(t, paymentRequestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
-	assert.Equal(t, paymentRequestRecord.DestinationTokenAccount, base58.Encode(msg.RequestorAccount.Value))
+	assert.Equal(t, base58.Encode(msg.RequestorAccount.Value), *paymentRequestRecord.DestinationTokenAccount)
 
 	switch typed := msg.ExchangeData.(type) {
 	case *messagingpb.RequestToReceiveBill_Exact:
-		assert.EqualValues(t, typed.Exact.Currency, paymentRequestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Exact.NativeAmount, paymentRequestRecord.NativeAmount)
+		assert.EqualValues(t, typed.Exact.Currency, *paymentRequestRecord.ExchangeCurrency)
+		assert.Equal(t, typed.Exact.NativeAmount, *paymentRequestRecord.NativeAmount)
 		require.NotNil(t, paymentRequestRecord.ExchangeRate)
 		assert.Equal(t, typed.Exact.ExchangeRate, *paymentRequestRecord.ExchangeRate)
 		require.NotNil(t, paymentRequestRecord.Quantity)
 		assert.Equal(t, typed.Exact.Quarks, *paymentRequestRecord.Quantity)
 	case *messagingpb.RequestToReceiveBill_Partial:
-		assert.EqualValues(t, typed.Partial.Currency, paymentRequestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Partial.NativeAmount, paymentRequestRecord.NativeAmount)
+		assert.EqualValues(t, typed.Partial.Currency, *paymentRequestRecord.ExchangeCurrency)
+		assert.Equal(t, typed.Partial.NativeAmount, *paymentRequestRecord.NativeAmount)
 		assert.Nil(t, paymentRequestRecord.ExchangeRate)
 		assert.Nil(t, paymentRequestRecord.Quantity)
 	default:

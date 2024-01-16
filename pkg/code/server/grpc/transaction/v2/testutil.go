@@ -4603,10 +4603,9 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		paymentRequestRecord := &paymentrequest.Record{
 			Intent: intentId,
 
-			DestinationTokenAccount: base58.Encode(destinationTokenAccount.Value),
-
-			ExchangeCurrency: currency_lib.Code(exchangeData.Currency),
-			NativeAmount:     exchangeData.NativeAmount,
+			DestinationTokenAccount: pointer.String(base58.Encode(destinationTokenAccount.Value)),
+			ExchangeCurrency:        &exchangeData.Currency,
+			NativeAmount:            &exchangeData.NativeAmount,
 
 			Domain:     pointer.String("example.com"),
 			IsVerified: true,
@@ -4620,13 +4619,13 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		// Update the payment request to something else if we need to test the
 		// client submitting something different than the expectation
 		if p.conf.simulateInvalidPaymentRequestDestination {
-			paymentRequestRecord.DestinationTokenAccount = testutil.NewRandomAccount(t).PublicKey().ToBase58()
+			paymentRequestRecord.DestinationTokenAccount = pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58())
 		}
 		if p.conf.simulateInvalidPaymentRequestExchangeCurrency {
-			paymentRequestRecord.ExchangeCurrency = currency_lib.AED
+			paymentRequestRecord.ExchangeCurrency = pointer.String(string(currency_lib.AED))
 		}
 		if p.conf.simulateInvalidPaymentRequestNativeAmount {
-			paymentRequestRecord.NativeAmount += 0.01
+			paymentRequestRecord.NativeAmount = pointer.Float64(*paymentRequestRecord.NativeAmount + 0.01)
 		}
 
 		require.NoError(t, p.directServerAccess.data.CreatePaymentRequest(p.directServerAccess.ctx, paymentRequestRecord))

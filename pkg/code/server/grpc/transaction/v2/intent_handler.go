@@ -431,6 +431,10 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 	var isMicroPayment bool
 	paymentRequestRecord, err := h.data.GetPaymentRequest(ctx, intentRecord.IntentId)
 	if err == nil {
+		if !paymentRequestRecord.RequiresPayment() {
+			return newIntentValidationError("request does not require payment")
+		}
+
 		isMicroPayment = true
 		h.cachedPaymentRequestRequest = paymentRequestRecord
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
@@ -733,8 +737,8 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	// Part 1.3: Validate destination account matches payment request, if it exists
 	//
 
-	if h.cachedPaymentRequestRequest != nil && h.cachedPaymentRequestRequest.DestinationTokenAccount != destination.PublicKey().ToBase58() {
-		return newIntentValidationErrorf("payment has a request to destination %s", h.cachedPaymentRequestRequest.DestinationTokenAccount)
+	if h.cachedPaymentRequestRequest != nil && *h.cachedPaymentRequestRequest.DestinationTokenAccount != destination.PublicKey().ToBase58() {
+		return newIntentValidationErrorf("payment has a request to destination %s", *h.cachedPaymentRequestRequest.DestinationTokenAccount)
 	}
 
 	//
@@ -2888,13 +2892,17 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 	// validated exchange data before it was created.
 	paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentId)
 	if err == nil {
-		if proto.Currency != string(paymentRequestRecord.ExchangeCurrency) {
-			return newIntentValidationErrorf("payment has a request for %s currency", paymentRequestRecord.ExchangeCurrency)
+		if !paymentRequestRecord.RequiresPayment() {
+			return newIntentValidationError("request does not require payment")
 		}
 
-		absNativeAmountDiff := math.Abs(proto.NativeAmount - paymentRequestRecord.NativeAmount)
+		if proto.Currency != string(*paymentRequestRecord.ExchangeCurrency) {
+			return newIntentValidationErrorf("payment has a request for %s currency", *paymentRequestRecord.ExchangeCurrency)
+		}
+
+		absNativeAmountDiff := math.Abs(proto.NativeAmount - *paymentRequestRecord.NativeAmount)
 		if absNativeAmountDiff > 0.0001 {
-			return newIntentValidationErrorf("payment has a request for %.2f native amount", paymentRequestRecord.NativeAmount)
+			return newIntentValidationErrorf("payment has a request for %.2f native amount", *paymentRequestRecord.NativeAmount)
 		}
 
 		// No need to validate exchange details in the payment request. Only Kin has
