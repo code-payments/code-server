@@ -443,12 +443,17 @@ func (h *CodeScannedMessageHandler) OnSuccess(ctx context.Context) error {
 }
 
 type RequestToLoginMessageHandler struct {
+	data                 code_data.Provider
 	rpcSignatureVerifier *auth.RPCSignatureVerifier
 	domainVerifier       thirdparty.DomainVerifier
+
+	recordAlreadyExists       bool
+	paymentRecordRecordToSave *paymentrequest.Record
 }
 
-func NewRequestToLoginMessageHandler(rpcSignatureVerifier *auth.RPCSignatureVerifier, domainVerifier thirdparty.DomainVerifier) MessageHandler {
+func NewRequestToLoginMessageHandler(data code_data.Provider, rpcSignatureVerifier *auth.RPCSignatureVerifier, domainVerifier thirdparty.DomainVerifier) MessageHandler {
 	return &RequestToLoginMessageHandler{
+		data:                 data,
 		rpcSignatureVerifier: rpcSignatureVerifier,
 		domainVerifier:       domainVerifier,
 	}
@@ -472,13 +477,70 @@ func (h *RequestToLoginMessageHandler) Validate(ctx context.Context, rendezvous 
 	}
 	typedMessage.Signature = signature
 
+	//
+	// Part 1: Validate the intent doesn't exist
+	//
+
+	_, err = h.data.GetIntent(ctx, rendezvous.PublicKey().ToBase58())
+	if err == nil {
+		return newMessageValidationError("client submitted intent")
+	} else if err != intent.ErrIntentNotFound {
+		return err
+	}
+
+	//
+	// Part 2: Validate the request metadata
+	//
+
+	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(typedMessage.Domain.Value)
+	if err != nil {
+		return newMessageValidationErrorf("domain is invalid: %s", err.Error())
+	}
+
 	if !bytes.Equal(rendezvous.PublicKey().ToBytes(), typedMessage.RendezvousKey.Value) {
 		return newMessageValidationError("rendezvous key mismatch")
 	}
 
+	existingPaymentRequestRecord, err := h.data.GetPaymentRequest(ctx, rendezvous.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		if existingPaymentRequestRecord.RequiresPayment() {
+			return newMessageValidationError("original request requires payment")
+		}
+
+		if *existingPaymentRequestRecord.Domain != asciiBaseDomain {
+			return newMessageValidationError("domain mismatches original request")
+		}
+
+		h.recordAlreadyExists = true
+	case paymentrequest.ErrPaymentRequestNotFound:
+	default:
+		return err
+	}
+
+	//
+	// Part 3: Domain validation
+	//
+
 	err = verifyThirdPartyDomain(ctx, h.domainVerifier, owner, typedMessage.Domain)
 	if err != nil {
 		return err
+	}
+
+	//
+	// Part 4: Create the validated payment request DB record to store later,
+	//         if it doesn't already exist
+	//
+
+	if !h.recordAlreadyExists {
+		h.paymentRecordRecordToSave = &paymentrequest.Record{
+			Intent: rendezvous.PublicKey().ToBase58(),
+
+			Domain:     &asciiBaseDomain,
+			IsVerified: true,
+
+			CreatedAt: time.Now(),
+		}
 	}
 
 	return nil
@@ -489,7 +551,10 @@ func (h *RequestToLoginMessageHandler) RequiresActiveStream() (bool, time.Durati
 }
 
 func (h *RequestToLoginMessageHandler) OnSuccess(ctx context.Context) error {
-	return nil
+	if h.recordAlreadyExists {
+		return nil
+	}
+	return h.data.CreatePaymentRequest(ctx, h.paymentRecordRecordToSave)
 }
 
 type ClientRejectedLoginMessageHandler struct {

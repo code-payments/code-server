@@ -44,8 +44,12 @@ func (r *Record) Validate() error {
 		return errors.New("native amount cannot be zero when provided")
 	}
 
-	if (r.DestinationTokenAccount == nil) != (r.ExchangeCurrency == nil) != (r.NativeAmount == nil) {
-		return errors.New("destination token account, exchange currency and native amount presence must match")
+	if (r.DestinationTokenAccount == nil) != (r.NativeAmount == nil) {
+		return errors.New("destination token account and native amount presence must match")
+	}
+
+	if (r.NativeAmount == nil) != (r.ExchangeCurrency == nil) {
+		return errors.New("exchange currency and native amount presence must match")
 	}
 
 	if r.ExchangeRate != nil && *r.ExchangeRate == 0 {
@@ -112,7 +116,7 @@ func (r *Record) CopyTo(dst *Record) {
 }
 
 func (r *Record) RequiresPayment() bool {
-	return len(*r.DestinationTokenAccount) > 0
+	return r.DestinationTokenAccount != nil
 }
 
 func (r *Record) HasLogin() bool {

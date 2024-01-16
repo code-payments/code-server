@@ -52,7 +52,7 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 
 	antispamGuard := antispam.NewGuard(env.data, memory_device_verifier.NewMemoryDeviceVerifier(), nil)
 
-	s := NewIdentityServer(env.data, auth.NewRPCSignatureVerifier(env.data), antispamGuard)
+	s := NewIdentityServer(env.data, auth.NewRPCSignatureVerifier(env.data), antispamGuard, nil)
 	env.server = s.(*identityServer)
 	env.server.limiter = newLimiter(func(r float64) rate.Limiter {
 		return rate.NewLocalRateLimiter(xrate.Limit(r))
