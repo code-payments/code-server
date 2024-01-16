@@ -12,16 +12,19 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang/freetype/truetype"
+	"github.com/mr-tron/base58/base58"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 const (
 	v1PathPrefix                    = "/v1"
 	v1CreateIntentPath              = v1PathPrefix + "/createIntent"
 	v1GetStatusPath                 = v1PathPrefix + "/getStatus"
+	v1GetUserPath                   = v1PathPrefix + "/getUser"
 	v1TestVerifiedDomainRequestPath = v1PathPrefix + "/testVerifiedDomainRequest"
 	v1TestWebhookpath               = v1PathPrefix + "/testWebhook"
 
@@ -118,7 +121,7 @@ func (s *Server) getStatusHandler(path string) func(w http.ResponseWriter, r *ht
 			}
 			log = log.WithField("intent", intentId.PublicKey().ToBase58())
 
-			status, err := s.getIntentStatus(ctx, intentId)
+			res, err := s.getIntentStatus(ctx, intentId)
 			if err != nil {
 				log.WithError(err).Warn("failure getting intent status")
 				statusCode, err := HandleGrpcErrorInWebContext(w, err)
@@ -126,7 +129,70 @@ func (s *Server) getStatusHandler(path string) func(w http.ResponseWriter, r *ht
 			}
 
 			respBody := NewGenericApiSuccessResponseBody()
-			respBody["status"] = status.Status
+			respBody["status"] = res.Status
+			return http.StatusOK, respBody
+		}()
+
+		w.Header().Set(contentTypeHeaderName, jsonContentTypeHeaderValue)
+		w.WriteHeader(statusCode)
+		w.Write([]byte(body.ToString()))
+	}
+}
+
+func (s *Server) getUserHandler(path string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := s.log.WithField("path", path)
+
+		statusCode, body := func() (int, GenericApiResponseBody) {
+			ctx := r.Context()
+
+			if r.Method != http.MethodGet {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("http get expected"))
+			}
+
+			intentIdQueryParam := r.URL.Query()["intent"]
+			if len(intentIdQueryParam) < 1 {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("intent query parameter missing"))
+			}
+
+			intentId, err := common.NewAccountFromPublicKeyString(intentIdQueryParam[0])
+			if err != nil {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("intent id is not a public key"))
+			}
+			log = log.WithField("intent", intentId.PublicKey().ToBase58())
+
+			verifierQueryParam := r.URL.Query()["verifier"]
+			if len(intentIdQueryParam) < 1 {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("verifier query parameter missing"))
+			}
+
+			verifier, err := common.NewAccountFromPublicKeyString(verifierQueryParam[0])
+			if err != nil {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("verifier is not a public key"))
+			}
+
+			signatureQueryParam := r.URL.Query()["signature"]
+			if len(intentIdQueryParam) < 1 {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("signature query parameter missing"))
+			}
+			decodedSignature, err := base58.Decode(signatureQueryParam[0])
+			if err != nil {
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("signature is invalid base58"))
+			}
+			var signature solana.Signature
+			copy(signature[:], decodedSignature)
+
+			res, err := s.getUser(ctx, intentId, verifier, signature)
+			if err != nil {
+				log.WithError(err).Warn("failure getting user")
+				statusCode, err := HandleGrpcErrorInWebContext(w, err)
+				return statusCode, NewGenericApiFailureResponseBody(err)
+			}
+
+			respBody := NewGenericApiSuccessResponseBody()
+			if len(res.User) > 0 {
+				respBody["user"] = res.User
+			}
 			return http.StatusOK, respBody
 		}()
 
@@ -222,6 +288,7 @@ func (s *Server) GetHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		v1CreateIntentPath:              s.createIntentHandler(v1CreateIntentPath),
 		v1GetStatusPath:                 s.getStatusHandler(v1GetStatusPath),
+		v1GetUserPath:                   s.getUserHandler(v1GetUserPath),
 		v1TestVerifiedDomainRequestPath: s.testVerifiedDomainRequestHandler(v1TestVerifiedDomainRequestPath),
 		v1TestWebhookpath:               s.testWebhookHandler(v1TestWebhookpath),
 	}

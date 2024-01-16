@@ -4,15 +4,18 @@ import (
 	"context"
 	"crypto/ed25519"
 
+	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	micropaymentpb "github.com/code-payments/code-protobuf-api/generated/go/micropayment/v1"
+	userpb "github.com/code-payments/code-protobuf-api/generated/go/user/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 const (
@@ -132,11 +135,11 @@ func (s *Server) createPaymentRequest(
 	return nil
 }
 
-type intentStatus struct {
+type intentStatusResp struct {
 	Status string
 }
 
-func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) (*intentStatus, error) {
+func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) (*intentStatusResp, error) {
 	microPaymentClient := micropaymentpb.NewMicroPaymentClient(s.cc)
 
 	getStatusReq := &micropaymentpb.GetStatusRequest{
@@ -150,7 +153,7 @@ func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) 
 		return nil, err
 	}
 
-	res := intentStatus{
+	res := intentStatusResp{
 		Status: "UNKNOWN",
 	}
 
@@ -161,6 +164,35 @@ func (s *Server) getIntentStatus(ctx context.Context, intentId *common.Account) 
 	}
 
 	return &res, nil
+}
+
+type getUserResp struct {
+	User string
+}
+
+func (s *Server) getUser(ctx context.Context, intentId, verifier *common.Account, signature solana.Signature) (*getUserResp, error) {
+	userIdentityClient := userpb.NewIdentityClient(s.cc)
+
+	getLoginReq := &userpb.GetLoginForThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.PublicKey().ToBytes(),
+		},
+		Verifier: verifier.ToProto(),
+		Signature: &commonpb.Signature{
+			Value: signature[:],
+		},
+	}
+
+	getLoginResp, err := userIdentityClient.GetLoginForThirdPartyApp(ctx, getLoginReq)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &getUserResp{}
+	if getLoginResp.Result == userpb.GetLoginForThirdPartyAppResponse_OK && getLoginResp.UserId != nil {
+		res.User = base58.Encode(getLoginResp.UserId.Value)
+	}
+	return res, nil
 }
 
 func signProtoMessage(msg proto.Message, account *common.Account) (*commonpb.Signature, error) {

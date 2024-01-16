@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 	xrate "golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
@@ -16,12 +17,15 @@ import (
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	transaction_server "github.com/code-payments/code-server/pkg/code/server/grpc/transaction/v2"
+	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/rate"
 )
@@ -380,5 +384,70 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 }
 
 func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *userpb.GetLoginForThirdPartyAppRequest) (*userpb.GetLoginForThirdPartyAppResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	log := s.log.WithField("method", "GetLoginForThirdPartyApp")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	intentId := base58.Encode(req.IntentId.Value)
+	log = log.WithField("intent", intentId)
+
+	requestRecord, err := s.data.GetPaymentRequest(ctx, intentId)
+	if err == paymentrequest.ErrPaymentRequestNotFound {
+		return &userpb.GetLoginForThirdPartyAppResponse{
+			Result: userpb.GetLoginForThirdPartyAppResponse_REQUEST_NOT_FOUND,
+		}, nil
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting request record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	if !requestRecord.HasLogin() {
+		return &userpb.GetLoginForThirdPartyAppResponse{
+			Result: userpb.GetLoginForThirdPartyAppResponse_LOGIN_NOT_SUPPORTED,
+		}, nil
+	}
+
+	verifier, err := common.NewAccountFromProto(req.Verifier)
+	if err != nil {
+		log.WithError(err).Warn("invalid verifier")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	// todo: Promote a generic utility to the auth package?
+	isVerified, err := thirdparty.VerifyDomainNameOwnership(ctx, verifier, *requestRecord.Domain)
+	if err != nil {
+		log.WithError(err).Warn("failure verifying domain ownership")
+		return nil, status.Errorf(codes.Unauthenticated, "error veryfing domain ownership: %s", err.Error())
+	} else if !isVerified {
+		return nil, status.Errorf(codes.Unauthenticated, "%s does not own the domain for the login", verifier.PublicKey().ToBase58())
+	}
+
+	intentRecord, err := s.data.GetIntent(ctx, intentId)
+	if err != nil {
+		log.WithError(err).Warn("failure getting intent record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	var userId *common.Account
+	accountInfoRecord, err := s.data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *requestRecord.Domain)
+	switch err {
+	case nil:
+		userId, err = common.NewAccountFromPublicKeyString(accountInfoRecord.AuthorityAccount)
+		if err != nil {
+			log.WithError(err).Warn("invalid authority account")
+			return nil, status.Error(codes.Internal, "")
+		}
+	case account.ErrAccountInfoNotFound:
+		// The client opted to not establish a relationship, so there's no login
+	default:
+		log.WithError(err).Warn("failure getting relationship account info record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	resp := &userpb.GetLoginForThirdPartyAppResponse{
+		Result: userpb.GetLoginForThirdPartyAppResponse_OK,
+	}
+	if userId != nil {
+		resp.UserId = userId.ToProto()
+	}
+	return resp, nil
 }
