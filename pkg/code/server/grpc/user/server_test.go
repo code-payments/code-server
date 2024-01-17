@@ -874,7 +874,7 @@ func TestLoginToThirdPartyApp_HappyPath(t *testing.T) {
 	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_OK, resp.Result)
 }
 
-func TestLoginToThirdPartyApp_NoRequest(t *testing.T) {
+func TestLoginToThirdPartyApp_RequestNotFound(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
@@ -1157,7 +1157,8 @@ func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 
 			DestinationTokenAccount: *paymentRequestRecord.DestinationTokenAccount,
 
-			IsWithdrawal: true,
+			IsMicroPayment: true,
+			IsWithdrawal:   true,
 		},
 
 		State: intent.StatePending,
@@ -1234,6 +1235,132 @@ func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 		require.NotNil(t, resp.UserId)
 		assert.Equal(t, relationshipAuthorityAccount.PublicKey().ToBytes(), resp.UserId.Value)
 	}
+}
+
+func TestGetLoginForThirdPartyApp_RequestNotFound(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	verifierAccount, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
+	require.NoError(t, err)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.GetLoginForThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		Verifier: verifierAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(verifierAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	resp, err := env.client.GetLoginForThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_REQUEST_NOT_FOUND, resp.Result)
+	assert.Nil(t, resp.UserId)
+}
+
+func TestGetLoginForThirdPartyApp_LoginNotSupported(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	verifierAccount, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
+	require.NoError(t, err)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.GetLoginForThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		Verifier: verifierAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(verifierAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:                  intentId.PublicKey().ToBase58(),
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
+		Domain:                  pointer.String("example.com"),
+		IsVerified:              false,
+	}))
+
+	resp, err := env.client.GetLoginForThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_LOGIN_NOT_SUPPORTED, resp.Result)
+	assert.Nil(t, resp.UserId)
+}
+
+func TestGetLoginForThirdPartyApp_RelationshipNotEstablished(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	verifierAccount, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
+	require.NoError(t, err)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.GetLoginForThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		Verifier: verifierAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(verifierAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:                  intentId.PublicKey().ToBase58(),
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
+		Domain:                  pointer.String("example.com"),
+		IsVerified:              true,
+	}))
+
+	require.NoError(t, env.data.SaveIntent(env.ctx, &intent.Record{
+		IntentId:   intentId.PublicKey().ToBase58(),
+		IntentType: intent.SendPrivatePayment,
+
+		SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+			ExchangeCurrency: currency_lib.USD,
+			NativeAmount:     1.0,
+			ExchangeRate:     0.1,
+			Quantity:         kin.ToQuarks(10),
+			UsdMarketValue:   1.0,
+
+			DestinationTokenAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+			IsMicroPayment: true,
+			IsWithdrawal:   true,
+		},
+
+		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		State:                 intent.StatePending,
+	}))
+
+	resp, err := env.client.GetLoginForThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_NO_USER_LOGGED_IN, resp.Result)
+	assert.Nil(t, resp.UserId)
 }
 
 func TestUnauthenticatedRPC(t *testing.T) {
