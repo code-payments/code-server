@@ -2955,7 +2955,7 @@ func (p *phoneTestEnv) publiclyWithdraw777KinToCodeFromRelationshipToPrimaryAcco
 	source := getTimelockVault(t, sourceAuthority)
 
 	actions := []*transactionpb.Action{
-		// Send full payment from primary to payment destination in a single transfer
+		// Send full payment from relationship to payment destination in a single transfer
 		{Type: &transactionpb.Action_NoPrivacyTransfer{
 			NoPrivacyTransfer: &transactionpb.NoPrivacyTransferAction{
 				Authority:   sourceAuthority.ToProto(),
