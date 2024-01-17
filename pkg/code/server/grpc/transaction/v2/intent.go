@@ -74,7 +74,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 	// Client initiates phase 1 of the RPC by submitting and intent via a set of
 	// actions and metadata.
-	req, err := s.boundedRecv(ctx, streamer)
+	req, err := s.boundedSubmitIntentRecv(ctx, streamer)
 	if err != nil {
 		log.WithError(err).Info("error receiving request from client")
 		return handleSubmitIntentError(streamer, err)
@@ -749,7 +749,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return handleSubmitIntentError(streamer, err)
 		}
 
-		req, err = s.boundedRecv(ctx, streamer)
+		req, err = s.boundedSubmitIntentRecv(ctx, streamer)
 		if err != nil {
 			log.WithError(err).Info("error receiving request from client")
 			return handleSubmitIntentError(streamer, err)
@@ -1017,7 +1017,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	return nil
 }
 
-func (s *transactionServer) boundedRecv(ctx context.Context, streamer transactionpb.Transaction_SubmitIntentServer) (req *transactionpb.SubmitIntentRequest, err error) {
+func (s *transactionServer) boundedSubmitIntentRecv(ctx context.Context, streamer transactionpb.Transaction_SubmitIntentServer) (req *transactionpb.SubmitIntentRequest, err error) {
 	done := make(chan struct{})
 	go func() {
 		req, err = streamer.Recv()
@@ -1279,7 +1279,7 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 			// todo: may need to check if we're going to close the primary account when supported in the future
 			return &transactionpb.CanWithdrawToAccountResponse{
 				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY,
+				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY || accountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP,
 			}, nil
 		} else {
 			log.WithError(err).Warn("failure checking account info db")

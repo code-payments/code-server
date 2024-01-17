@@ -3542,8 +3542,11 @@ func TestCanWithdrawToAccount_CodeAccounts(t *testing.T) {
 
 	server.generateAvailableNonces(t, 100)
 
+	domain := "getcode.com"
+
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.establishRelationshipWithMerchant(t, domain)
 
 	legacyAccount, err := receivingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
 	require.NoError(t, err)
@@ -3554,6 +3557,7 @@ func TestCanWithdrawToAccount_CodeAccounts(t *testing.T) {
 	sendingPhone.send42KinToGiftCardAccount(t, giftCardAuthorityAccount).requireSuccess(t)
 
 	sendingPhone.assertCanWithdrawToAccount(t, receivingPhone.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0), true, transactionpb.CanWithdrawToAccountResponse_TokenAccount)
+	sendingPhone.assertCanWithdrawToAccount(t, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, domain)), true, transactionpb.CanWithdrawToAccountResponse_TokenAccount)
 	sendingPhone.assertCanWithdrawToAccount(t, receivingPhone.getTimelockVault(t, commonpb.AccountType_TEMPORARY_INCOMING, 0), false, transactionpb.CanWithdrawToAccountResponse_TokenAccount)
 	sendingPhone.assertCanWithdrawToAccount(t, receivingPhone.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, 0), false, transactionpb.CanWithdrawToAccountResponse_TokenAccount)
 	sendingPhone.assertCanWithdrawToAccount(t, receivingPhone.getTimelockVault(t, commonpb.AccountType_BUCKET_100_KIN, 0), false, transactionpb.CanWithdrawToAccountResponse_TokenAccount)
