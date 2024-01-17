@@ -2950,6 +2950,51 @@ func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t 
 	}
 }
 
+func (p *phoneTestEnv) publiclyWithdraw777KinToCodeFromRelationshipToPrimaryAccount(t *testing.T, relationship string, receiver phoneTestEnv) submitIntentCallMetadata {
+	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
+	source := getTimelockVault(t, sourceAuthority)
+
+	actions := []*transactionpb.Action{
+		// Send full payment from primary to payment destination in a single transfer
+		{Type: &transactionpb.Action_NoPrivacyTransfer{
+			NoPrivacyTransfer: &transactionpb.NoPrivacyTransferAction{
+				Authority:   sourceAuthority.ToProto(),
+				Source:      source.ToProto(),
+				Destination: receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+				Amount:      kin.ToQuarks(777),
+			},
+		}},
+	}
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPublicPayment{
+			SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+				Source:      source.ToProto(),
+				Destination: receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "usd",
+					ExchangeRate: 0.1,
+					NativeAmount: 77.7,
+					Quarks:       kin.ToQuarks(777),
+				},
+				IsWithdrawal: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
 func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUserBetweenRelationshipAccounts(t *testing.T, relationship string, receiver phoneTestEnv) submitIntentCallMetadata {
 	sourceAuthority := p.getAuthorityForRelationshipAccount(t, relationship)
 	destinationAuthority := receiver.getAuthorityForRelationshipAccount(t, relationship)
