@@ -429,15 +429,15 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	if requestRecord.RequiresPayment() {
-		return &userpb.LoginToThirdPartyAppResponse{
-			Result: userpb.LoginToThirdPartyAppResponse_PAYMENT_REQUIRED,
-		}, nil
-	}
-
 	if !requestRecord.HasLogin() {
 		return &userpb.LoginToThirdPartyAppResponse{
 			Result: userpb.LoginToThirdPartyAppResponse_LOGIN_NOT_SUPPORTED,
+		}, nil
+	}
+
+	if requestRecord.RequiresPayment() {
+		return &userpb.LoginToThirdPartyAppResponse{
+			Result: userpb.LoginToThirdPartyAppResponse_PAYMENT_REQUIRED,
 		}, nil
 	}
 

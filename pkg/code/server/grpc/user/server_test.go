@@ -874,6 +874,264 @@ func TestLoginToThirdPartyApp_HappyPath(t *testing.T) {
 	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_OK, resp.Result)
 }
 
+func TestLoginToThirdPartyApp_NoRequest(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	relationshipAuthorityAccount := testutil.NewRandomAccount(t)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.LoginToThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		UserId: relationshipAuthorityAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(relationshipAuthorityAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
+		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+		AccountType:    commonpb.AccountType_RELATIONSHIP,
+		RelationshipTo: pointer.String("example.com"),
+	}))
+
+	resp, err := env.client.LoginToThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_REQUEST_NOT_FOUND, resp.Result)
+
+	_, err = env.data.GetIntent(env.ctx, intentId.PublicKey().ToBase58())
+	assert.Equal(t, intent.ErrIntentNotFound, err)
+}
+
+func TestLoginToThirdPartyApp_MultipleUsers(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	relationshipAuthorityAccount := testutil.NewRandomAccount(t)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.LoginToThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		UserId: relationshipAuthorityAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(relationshipAuthorityAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:     intentId.PublicKey().ToBase58(),
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
+	}))
+
+	require.NoError(t, env.data.SaveIntent(env.ctx, &intent.Record{
+		IntentId:   intentId.PublicKey().ToBase58(),
+		IntentType: intent.Login,
+
+		LoginMetadata: &intent.LoginMetadata{
+			App:    "example.com",
+			UserId: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		},
+
+		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		State:                 intent.StateConfirmed,
+	}))
+
+	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
+		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+		AccountType:    commonpb.AccountType_RELATIONSHIP,
+		RelationshipTo: pointer.String("example.com"),
+	}))
+
+	resp, err := env.client.LoginToThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_DIFFERENT_LOGIN_EXISTS, resp.Result)
+
+	intentRecord, err := env.data.GetIntent(env.ctx, intentId.PublicKey().ToBase58())
+	require.NoError(t, err)
+	assert.NotEqual(t, intentRecord.InitiatorOwnerAccount, ownerAccount.PublicKey().ToBase58())
+	assert.NotEqual(t, intentRecord.LoginMetadata.UserId, relationshipAuthorityAccount.PublicKey().ToBase58())
+}
+
+func TestLoginToThirdPartyApp_InvalidAccount(t *testing.T) {
+	for _, accountType := range []commonpb.AccountType{
+		commonpb.AccountType_RELATIONSHIP,
+		commonpb.AccountType_PRIMARY,
+		commonpb.AccountType_BUCKET_100_KIN,
+		commonpb.AccountType_TEMPORARY_INCOMING,
+		commonpb.AccountType_ASSOCIATED_TOKEN_ACCOUNT,
+		commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
+	} {
+		env, cleanup := setup(t)
+		defer cleanup()
+
+		ownerAccount := testutil.NewRandomAccount(t)
+		authorityAccount := testutil.NewRandomAccount(t)
+
+		intentId := testutil.NewRandomAccount(t)
+
+		req := &userpb.LoginToThirdPartyAppRequest{
+			IntentId: &commonpb.IntentId{
+				Value: intentId.ToProto().Value,
+			},
+			UserId: authorityAccount.ToProto(),
+		}
+
+		reqBytes, err := proto.Marshal(req)
+		require.NoError(t, err)
+
+		req.Signature = &commonpb.Signature{
+			Value: ed25519.Sign(authorityAccount.PrivateKey().ToBytes(), reqBytes),
+		}
+
+		require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+			Intent:     intentId.PublicKey().ToBase58(),
+			Domain:     pointer.String("app1.com"),
+			IsVerified: true,
+		}))
+
+		accountInfoRecord := &account.Record{
+			OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+			AuthorityAccount: authorityAccount.PublicKey().ToBase58(),
+			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			AccountType:      accountType,
+		}
+		if accountType == commonpb.AccountType_PRIMARY || accountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+			accountInfoRecord.OwnerAccount = authorityAccount.PublicKey().ToBase58()
+			ownerAccount = authorityAccount
+		}
+		if accountType == commonpb.AccountType_RELATIONSHIP {
+			accountInfoRecord.RelationshipTo = pointer.String("app2.com")
+		}
+		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
+
+		resp, err := env.client.LoginToThirdPartyApp(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, userpb.LoginToThirdPartyAppResponse_INVALID_ACCOUNT, resp.Result)
+
+		_, err = env.data.GetIntent(env.ctx, intentId.PublicKey().ToBase58())
+		assert.Equal(t, intent.ErrIntentNotFound, err)
+	}
+}
+
+func TestLoginToThirdPartyApp_LoginNotSupported(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	relationshipAuthorityAccount := testutil.NewRandomAccount(t)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.LoginToThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		UserId: relationshipAuthorityAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(relationshipAuthorityAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:                  intentId.PublicKey().ToBase58(),
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.00),
+	}))
+
+	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
+		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+		AccountType:    commonpb.AccountType_RELATIONSHIP,
+		RelationshipTo: pointer.String("example.com"),
+	}))
+
+	resp, err := env.client.LoginToThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_LOGIN_NOT_SUPPORTED, resp.Result)
+
+	_, err = env.data.GetIntent(env.ctx, intentId.PublicKey().ToBase58())
+	assert.Equal(t, intent.ErrIntentNotFound, err)
+}
+
+func TestLoginToThirdPartyApp_PaymentRequired(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	relationshipAuthorityAccount := testutil.NewRandomAccount(t)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.LoginToThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		UserId: relationshipAuthorityAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(relationshipAuthorityAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:                  intentId.PublicKey().ToBase58(),
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.00),
+		Domain:                  pointer.String("example.com"),
+		IsVerified:              true,
+	}))
+
+	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
+		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+		AccountType:    commonpb.AccountType_RELATIONSHIP,
+		RelationshipTo: pointer.String("example.com"),
+	}))
+
+	resp, err := env.client.LoginToThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_PAYMENT_REQUIRED, resp.Result)
+
+	_, err = env.data.GetIntent(env.ctx, intentId.PublicKey().ToBase58())
+	assert.Equal(t, intent.ErrIntentNotFound, err)
+}
+
 func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 	paymentRequestRecord := &paymentrequest.Record{
 		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
