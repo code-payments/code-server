@@ -1058,12 +1058,16 @@ func TestSubmitIntent_SendPublicPayment_SelfPayment(t *testing.T) {
 	server.fundAccount(t, getTimelockVault(t, sendingPhone.getAuthorityForRelationshipAccount(t, domain)), kin.ToQuarks(1_000))
 
 	submitIntentCall := sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, sendingPhone)
-	submitIntentCall.assertInvalidIntentResponse(t, "payments within the same owner are not allowed")
+	submitIntentCall.assertInvalidIntentResponse(t, "payment is a no-op")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenRelationshipAccounts(t, domain, sendingPhone)
-	submitIntentCall.assertInvalidIntentResponse(t, "payments within the same owner are not allowed")
+	submitIntentCall.assertInvalidIntentResponse(t, "payment is a no-op")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeFromRelationshipToPrimaryAccount(t, domain, sendingPhone)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &sendingPhone)
 }
 
 func TestSubmitIntent_SendPublicPayment_AntispamGuard(t *testing.T) {
