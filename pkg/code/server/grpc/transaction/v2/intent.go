@@ -22,7 +22,6 @@ import (
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	"github.com/code-payments/code-server/pkg/code/chat"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -46,7 +45,8 @@ import (
 )
 
 const (
-	// Assumes the client signature index is consistent across all transactions.
+	// Assumes the client signature index is consistent across all transactions,
+	// including those constructed in the SubmitIntent and Swap RPCs.
 	clientSignatureIndex = 1
 )
 
@@ -800,7 +800,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		}
 	}
 
-	var chatMessagesToPush []*chat.MessageWithOwner
+	var chatMessagesToPush []*chat_util.MessageWithOwner
 
 	// Save all of the required DB records in one transaction to complete the
 	// intent operation. It's very bad if we end up failing halfway through.

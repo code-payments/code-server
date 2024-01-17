@@ -13,6 +13,7 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 
+	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
@@ -23,6 +24,8 @@ const (
 
 	quoteEndpointName            = "quote"
 	swapInstructionsEndpointName = "swap-instructions"
+
+	metricsStructName = "jupiter.client"
 )
 
 type Client struct {
@@ -59,6 +62,9 @@ func (c *Client) GetQuote(
 	maxAccounts uint8,
 	useLegacyInstruction bool,
 ) (*Quote, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetQuote")
+	defer tracer.End()
+
 	url := fmt.Sprintf(
 		"%s%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d&onlyDirectRoutes=%v&maxAccounts=%d&asLegacyTransaction=%v",
 		c.baseUrl,
@@ -120,19 +126,20 @@ func (c *Client) GetSwapInstructions(
 	quote *Quote,
 	owner string,
 	destinationTokenAccount string,
-	pricePerComputeUnit uint64,
 ) (*SwapInstructions, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetSwapInstructions")
+	defer tracer.End()
+
 	if !quote.useLegacyInstructions {
 		return nil, errors.New("only legacy transactions are supported")
 	}
 
 	// todo: struct this
 	reqBody := fmt.Sprintf(
-		`{"quoteResponse": %s, "userPublicKey": "%s", "destinationTokenAccount": "%s", "computeUnitPriceMicroLamports": %d, "asLegacyTransaction": %v}`,
+		`{"quoteResponse": %s, "userPublicKey": "%s", "destinationTokenAccount": "%s", "prioritizationFeeLamports": "auto", "asLegacyTransaction": %v}`,
 		quote.jsonString,
 		owner,
 		destinationTokenAccount,
-		pricePerComputeUnit,
 		quote.useLegacyInstructions,
 	)
 

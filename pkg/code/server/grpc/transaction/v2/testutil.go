@@ -178,9 +178,10 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 	testService := NewTransactionServer(
 		db,
 		memory_push.NewPushProvider(),
-		antispam.NewGuard(db, memory_device_verifier.NewMemoryDeviceVerifier(), nil),
 		nil,
 		messaging.NewMessagingClient(db),
+		nil,
+		antispam.NewGuard(db, memory_device_verifier.NewMemoryDeviceVerifier(), nil),
 		withManualTestOverrides(serverOverrides),
 	)
 	grpcTestServer.RegisterService(func(server *grpc.Server) {
