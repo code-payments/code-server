@@ -113,7 +113,7 @@ func (s *Server) getUserIdHandler(path string) func(w http.ResponseWriter, r *ht
 			ctx := r.Context()
 
 			if r.Method != http.MethodPost {
-				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("http get expected"))
+				return http.StatusBadRequest, NewGenericApiFailureResponseBody(errors.New("http post expected"))
 			}
 
 			protoReq, err := newGetLoggedInUserIdRequestFromHttpContext(r)
