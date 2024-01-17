@@ -22,14 +22,14 @@ import (
 // todo: Migrate to a generic HTTP -> gRPC with signed proto strategy
 
 type trustlessRequest struct {
-	originalProtoMessage *messagingpb.RequestToReceiveBill
+	originalProtoMessage *messagingpb.Message
 	publicRendezvousKey  *common.Account
 	clientSignature      solana.Signature // For a messagingpb.RequestToReceiveBill
 	webhookUrl           *string
 }
 
 func newTrustlessRequest(
-	originalProtoMessage *messagingpb.RequestToReceiveBill,
+	originalProtoMessage *messagingpb.Message,
 	publicRendezvousKey *common.Account,
 	clientSignature solana.Signature,
 	webhookUrl *string,
@@ -65,25 +65,29 @@ func newTrustlessRequestFromHttpContext(r *http.Request) (*trustlessRequest, err
 		return nil, errors.New("intent is not a public key")
 	}
 
-	// Validation occurs at the messaging service
-	var protoMesage messagingpb.RequestToReceiveBill
-	messageBytes, err := base64.RawURLEncoding.DecodeString(httpRequestBody.Message)
-	if err != nil {
-		return nil, errors.New("message not valid base64")
-	}
-	err = proto.Unmarshal(messageBytes, &protoMesage)
-	if err != nil {
-		return nil, errors.New("message bytes is not a RequestToReceiveBill")
-	} else if err := protoMesage.Validate(); err != nil {
-		return nil, errors.Wrap(err, "message failed proto validation")
-	}
-
 	var signature solana.Signature
 	decodedSignature, err := base58.Decode(httpRequestBody.Signature)
 	if err != nil || len(decodedSignature) != len(signature) {
 		return nil, errors.New("signature is invalid")
 	}
 	copy(signature[:], decodedSignature)
+
+	var requestToReceiveBill messagingpb.RequestToReceiveBill
+	messageBytes, err := base64.RawURLEncoding.DecodeString(httpRequestBody.Message)
+	if err != nil {
+		return nil, errors.New("message not valid base64")
+	}
+	err = proto.Unmarshal(messageBytes, &requestToReceiveBill)
+	if err != nil {
+		return nil, errors.New("message bytes is not a RequestToReceiveBill")
+	}
+
+	// Note: Validation occurs at the messaging service
+	protoMessage := &messagingpb.Message{
+		Kind: &messagingpb.Message_RequestToReceiveBill{
+			RequestToReceiveBill: &requestToReceiveBill,
+		},
+	}
 
 	if httpRequestBody.Webhook != nil {
 		err = netutil.ValidateHttpUrl(*httpRequestBody.Webhook, true, false)
@@ -93,7 +97,7 @@ func newTrustlessRequestFromHttpContext(r *http.Request) (*trustlessRequest, err
 	}
 
 	return newTrustlessRequest(
-		&protoMesage,
+		protoMessage,
 		rendezvousKey,
 		signature,
 		httpRequestBody.Webhook,
@@ -109,11 +113,7 @@ func (r *trustlessRequest) GetClientSignature() solana.Signature {
 }
 
 func (r *trustlessRequest) ToProtoMessage() *messagingpb.Message {
-	return &messagingpb.Message{
-		Kind: &messagingpb.Message_RequestToReceiveBill{
-			RequestToReceiveBill: r.originalProtoMessage,
-		},
-	}
+	return r.originalProtoMessage
 }
 
 func newGetLoggedInUserIdRequestFromHttpContext(r *http.Request) (*userpb.GetLoginForThirdPartyAppRequest, error) {
