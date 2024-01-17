@@ -59,9 +59,9 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	switch intentRecord.IntentType {
 	case intent.SendPrivatePayment:
 		if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-			paymentRequestRecord, err := data.GetPaymentRequest(ctx, intentRecord.IntentId)
+			paymentRequestRecord, err := data.GetRequest(ctx, intentRecord.IntentId)
 			if err != nil {
-				return nil, errors.Wrap(err, "error getting payment request record")
+				return nil, errors.Wrap(err, "error getting request record")
 			}
 
 			if paymentRequestRecord.Domain != nil {

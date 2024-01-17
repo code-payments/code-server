@@ -6,12 +6,12 @@ import (
 
 	"github.com/pkg/errors"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 )
 
 type jsonPayloadProvider func(ctx context.Context, data code_data.Provider, record *webhook.Record) (map[string]interface{}, error)
@@ -26,6 +26,13 @@ func intentSubmittedJsonPayloadProvider(ctx context.Context, data code_data.Prov
 		return nil, errors.New("invalid webhook type")
 	}
 
+	kvs := make(map[string]interface{})
+
+	requestRecord, err := data.GetRequest(ctx, webhookRecord.WebhookId)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting request record")
+	}
+
 	intentRecord, err := data.GetIntent(ctx, webhookRecord.WebhookId)
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting intent record")
@@ -33,75 +40,69 @@ func intentSubmittedJsonPayloadProvider(ctx context.Context, data code_data.Prov
 		return nil, errors.New("intent is revoked")
 	}
 
-	var currency currency_lib.Code
-	var amount float64
-	var exchangeRate float64
-	var quarks uint64
-	var destination string
-	var isMicroPayment bool
-	switch intentRecord.IntentType {
-	case intent.SendPrivatePayment:
-		currency = intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-		amount = intentRecord.SendPrivatePaymentMetadata.NativeAmount
-		exchangeRate = intentRecord.SendPrivatePaymentMetadata.ExchangeRate
-		quarks = intentRecord.SendPrivatePaymentMetadata.Quantity
-		destination = intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount
-		isMicroPayment = intentRecord.SendPrivatePaymentMetadata.IsMicroPayment
-	default:
-		return nil, errors.Errorf("%d intent type is not supported", intentRecord.IntentType)
-	}
-	if !isMicroPayment {
-		return nil, errors.New("intent is not a micro payment")
-	}
-
-	paymentRequestRecord, err := data.GetPaymentRequest(ctx, webhookRecord.WebhookId)
-	if err != nil {
-		return nil, errors.Wrap(err, "error getting payment request record")
-	}
-
-	// todo: Use a more efficient DB query or stuff fee metadata directly in the intent record
-	actionRecords, err := data.GetAllActionsByIntent(ctx, intentRecord.IntentId)
-	if err != nil {
-		return nil, errors.Wrap(err, "error getting action records")
-	}
-	var thirdPartyPaymentAction *action.Record
-	for _, actionRecord := range actionRecords {
-		if actionRecord.ActionType != action.NoPrivacyWithdraw {
-			continue
+	if requestRecord.RequiresPayment() {
+		var currency currency_lib.Code
+		var amount float64
+		var exchangeRate float64
+		var quarks uint64
+		var destination string
+		var isMicroPayment bool
+		switch intentRecord.IntentType {
+		case intent.SendPrivatePayment:
+			currency = intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
+			amount = intentRecord.SendPrivatePaymentMetadata.NativeAmount
+			exchangeRate = intentRecord.SendPrivatePaymentMetadata.ExchangeRate
+			quarks = intentRecord.SendPrivatePaymentMetadata.Quantity
+			destination = intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount
+			isMicroPayment = intentRecord.SendPrivatePaymentMetadata.IsMicroPayment
+		default:
+			return nil, errors.Errorf("%d intent type is not supported", intentRecord.IntentType)
+		}
+		if !isMicroPayment {
+			return nil, errors.New("intent is not a micro payment")
 		}
 
-		if *actionRecord.Destination == destination {
-			thirdPartyPaymentAction = actionRecord
-			break
+		// todo: Use a more efficient DB query or stuff fee metadata directly in the intent record
+		actionRecords, err := data.GetAllActionsByIntent(ctx, intentRecord.IntentId)
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting action records")
+		}
+		var thirdPartyPaymentAction *action.Record
+		for _, actionRecord := range actionRecords {
+			if actionRecord.ActionType != action.NoPrivacyWithdraw {
+				continue
+			}
+
+			if *actionRecord.Destination == destination {
+				thirdPartyPaymentAction = actionRecord
+				break
+			}
+		}
+		if thirdPartyPaymentAction == nil {
+			return nil, errors.New("third party payment action not found")
+		}
+
+		kvs = map[string]interface{}{
+			"intent":       intentRecord.IntentId,
+			"currency":     strings.ToUpper(string(currency)),
+			"amount":       amount,
+			"exchangeRate": exchangeRate,
+			"quarks":       quarks,
+			"fees":         quarks - *thirdPartyPaymentAction.Quantity,
+			"destination":  destination,
+			"state":        "SUBMITTED",
 		}
 	}
-	if thirdPartyPaymentAction == nil {
-		return nil, errors.New("third party payment action not found")
-	}
 
-	var user *string
-	if paymentRequestRecord.Domain != nil && paymentRequestRecord.IsVerified {
-		relationshipAccountInfoRecord, err := data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *paymentRequestRecord.Domain)
+	if requestRecord.HasLogin() {
+		relationshipAccountInfoRecord, err := data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *requestRecord.Domain)
 		if err == nil {
-			user = &relationshipAccountInfoRecord.AuthorityAccount
+			kvs["user"] = relationshipAccountInfoRecord.AuthorityAccount
 		} else if err != account.ErrAccountInfoNotFound {
 			return nil, errors.Wrap(err, "error querying for relationship account")
 		}
 	}
 
-	kvs := map[string]interface{}{
-		"intent":       intentRecord.IntentId,
-		"currency":     strings.ToUpper(string(currency)),
-		"amount":       amount,
-		"exchangeRate": exchangeRate,
-		"quarks":       quarks,
-		"fees":         quarks - *thirdPartyPaymentAction.Quantity,
-		"destination":  destination,
-		"state":        "SUBMITTED",
-	}
-	if user != nil {
-		kvs["user"] = *user
-	}
 	return kvs, nil
 }
 

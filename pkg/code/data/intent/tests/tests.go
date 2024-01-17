@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/currency"
 )
 
 func RunTests(t *testing.T, s intent.Store, teardown func()) {
@@ -25,6 +25,7 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testSendPublicPaymentRoundTrip,
 		testReceivePaymentsPubliclyRoundTrip,
 		testEstablishRelationshipRoundTrip,
+		testLoginRoundTrip,
 		testUpdate,
 		testGetLatestByInitiatorAndType,
 		testGetCountForAntispam,
@@ -533,6 +534,47 @@ func testEstablishRelationshipRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.EstablishRelationshipMetadata)
 		assert.Equal(t, cloned.EstablishRelationshipMetadata.RelationshipTo, actual.EstablishRelationshipMetadata.RelationshipTo)
+		assert.Equal(t, cloned.State, actual.State)
+		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
+		assert.EqualValues(t, 1, actual.Id)
+	})
+}
+
+func testLoginRoundTrip(t *testing.T, s intent.Store) {
+	t.Run("testLoginRoundTrip", func(t *testing.T) {
+		ctx := context.Background()
+
+		actual, err := s.Get(ctx, "test_intent_id")
+		require.Error(t, err)
+		assert.Equal(t, intent.ErrIntentNotFound, err)
+		assert.Nil(t, actual)
+
+		phoneNumberValue := "+12223334444"
+		expected := intent.Record{
+			IntentId:              "test_intent_id",
+			IntentType:            intent.Login,
+			InitiatorOwnerAccount: "test_owner",
+			InitiatorPhoneNumber:  &phoneNumberValue,
+			LoginMetadata: &intent.LoginMetadata{
+				App:    "app",
+				UserId: "test_user",
+			},
+			State:     intent.StateUnknown,
+			CreatedAt: time.Now(),
+		}
+		cloned := expected.Clone()
+		err = s.Save(ctx, &expected)
+		require.NoError(t, err)
+
+		actual, err = s.Get(ctx, "test_intent_id")
+		require.NoError(t, err)
+		assert.Equal(t, cloned.IntentId, actual.IntentId)
+		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
+		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
+		require.NotNil(t, actual.LoginMetadata)
+		assert.Equal(t, cloned.LoginMetadata.App, actual.LoginMetadata.App)
+		assert.Equal(t, cloned.LoginMetadata.UserId, actual.LoginMetadata.UserId)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)

@@ -14,12 +14,12 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
-	"github.com/code-payments/code-server/pkg/grpc/headers"
-	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/retry/backoff"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
+	"github.com/code-payments/code-server/pkg/grpc/headers"
+	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/retry/backoff"
 )
 
 const (

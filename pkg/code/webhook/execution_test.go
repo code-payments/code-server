@@ -15,9 +15,6 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -26,6 +23,9 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestWebhook_HappyPath_IntentSubmmitted(t *testing.T) {
@@ -182,14 +182,14 @@ func (e *testEnv) setupIntentRecord(t *testing.T, webhookRecord *webhook.Record)
 	paymentRequestRecord := &paymentrequest.Record{
 		Intent: intentRecord.IntentId,
 
-		DestinationTokenAccount: intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount,
-		ExchangeCurrency:        intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency,
-		NativeAmount:            intentRecord.SendPrivatePaymentMetadata.NativeAmount,
+		DestinationTokenAccount: &intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount,
+		ExchangeCurrency:        pointer.String(string(intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency)),
+		NativeAmount:            &intentRecord.SendPrivatePaymentMetadata.NativeAmount,
 
 		Domain:     pointer.String("example.com"),
 		IsVerified: true,
 	}
-	require.NoError(t, e.data.CreatePaymentRequest(e.ctx, paymentRequestRecord))
+	require.NoError(t, e.data.CreateRequest(e.ctx, paymentRequestRecord))
 
 	return intentRecord
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 // MessageHandler provides message-specific in addition to the generic message
@@ -100,8 +101,8 @@ type RequestToReceiveBillMessageHandler struct {
 	rpcSignatureVerifier *auth.RPCSignatureVerifier
 	domainVerifier       thirdparty.DomainVerifier
 
-	recordAlreadyExists       bool
-	paymentRecordRecordToSave *paymentrequest.Record
+	recordAlreadyExists bool
+	recordToSave        *paymentrequest.Record
 }
 
 func NewRequestToReceiveBillMessageHandler(
@@ -183,7 +184,7 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		}
 	}
 
-	existingPaymentRequestRecord, err := h.data.GetPaymentRequest(ctx, rendezvous.PublicKey().ToBase58())
+	existingRequestRecord, err := h.data.GetRequest(ctx, rendezvous.PublicKey().ToBase58())
 	switch err {
 	case nil:
 		//
@@ -192,39 +193,43 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		//           while guaranteeing consistency without changing the intent.
 		//
 
-		if existingPaymentRequestRecord.DestinationTokenAccount != requestorAccount.PublicKey().ToBase58() {
+		if !existingRequestRecord.RequiresPayment() {
+			return newMessageValidationError("original request doesn't require payment")
+		}
+
+		if *existingRequestRecord.DestinationTokenAccount != requestorAccount.PublicKey().ToBase58() {
 			return newMessageValidationError("destination mismatches original request")
 		}
 
-		if existingPaymentRequestRecord.ExchangeCurrency != currency {
+		if *existingRequestRecord.ExchangeCurrency != string(currency) {
 			return newMessageValidationError("exchange currency mismatches original request")
 		}
 
-		if existingPaymentRequestRecord.NativeAmount != nativeAmount {
+		if *existingRequestRecord.NativeAmount != nativeAmount {
 			return newMessageValidationError("native amount mismatches original request")
 		}
 
 		if exchangeRate != nil {
-			if *existingPaymentRequestRecord.ExchangeRate != *exchangeRate {
+			if *existingRequestRecord.ExchangeRate != *exchangeRate {
 				return newMessageValidationError("exchange rate mismatches original request")
 			}
 		}
 
 		if quarks != nil {
-			if *existingPaymentRequestRecord.Quantity != *quarks {
+			if *existingRequestRecord.Quantity != *quarks {
 				return newMessageValidationError("quarks mismatches original request")
 			}
 		}
 
-		if len(asciiBaseDomain) > 0 && (existingPaymentRequestRecord.Domain == nil || *existingPaymentRequestRecord.Domain != asciiBaseDomain) {
+		if len(asciiBaseDomain) > 0 && (existingRequestRecord.Domain == nil || *existingRequestRecord.Domain != asciiBaseDomain) {
 			return newMessageValidationError("domain mismatches original request")
-		} else if len(asciiBaseDomain) == 0 && existingPaymentRequestRecord.Domain != nil {
+		} else if len(asciiBaseDomain) == 0 && existingRequestRecord.Domain != nil {
 			return newMessageValidationError("domain mismatches original request")
 		}
 
-		if existingPaymentRequestRecord.IsVerified && typedMessage.Verifier == nil {
+		if existingRequestRecord.IsVerified && typedMessage.Verifier == nil {
 			return newMessageValidationError("original request is verified")
-		} else if !existingPaymentRequestRecord.IsVerified && typedMessage.Verifier != nil {
+		} else if !existingRequestRecord.IsVerified && typedMessage.Verifier != nil {
 			// todo: allow an upgrade to the payment request?
 			return newMessageValidationError("original request isn't verified")
 		}
@@ -353,22 +358,21 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 	//
 
 	if !h.recordAlreadyExists {
-		h.paymentRecordRecordToSave = &paymentrequest.Record{
+		h.recordToSave = &paymentrequest.Record{
 			Intent: rendezvous.PublicKey().ToBase58(),
 
-			DestinationTokenAccount: requestorAccount.PublicKey().ToBase58(),
-
-			ExchangeCurrency: currency,
-			NativeAmount:     nativeAmount,
-			ExchangeRate:     exchangeRate,
-			Quantity:         quarks,
+			DestinationTokenAccount: pointer.String(requestorAccount.PublicKey().ToBase58()),
+			ExchangeCurrency:        pointer.String(string(currency)),
+			NativeAmount:            pointer.Float64(nativeAmount),
+			ExchangeRate:            exchangeRate,
+			Quantity:                quarks,
 
 			CreatedAt: time.Now(),
 		}
 
 		if typedMessage.Domain != nil {
-			h.paymentRecordRecordToSave.Domain = &asciiBaseDomain
-			h.paymentRecordRecordToSave.IsVerified = isVerified
+			h.recordToSave.Domain = &asciiBaseDomain
+			h.recordToSave.IsVerified = isVerified
 		}
 	}
 
@@ -383,7 +387,7 @@ func (h *RequestToReceiveBillMessageHandler) OnSuccess(ctx context.Context) erro
 	if h.recordAlreadyExists {
 		return nil
 	}
-	return h.data.CreatePaymentRequest(ctx, h.paymentRecordRecordToSave)
+	return h.data.CreateRequest(ctx, h.recordToSave)
 }
 
 type ClientRejectedPaymentMessageHandler struct {
@@ -439,12 +443,17 @@ func (h *CodeScannedMessageHandler) OnSuccess(ctx context.Context) error {
 }
 
 type RequestToLoginMessageHandler struct {
+	data                 code_data.Provider
 	rpcSignatureVerifier *auth.RPCSignatureVerifier
 	domainVerifier       thirdparty.DomainVerifier
+
+	recordAlreadyExists bool
+	recordToSave        *paymentrequest.Record
 }
 
-func NewRequestToLoginMessageHandler(rpcSignatureVerifier *auth.RPCSignatureVerifier, domainVerifier thirdparty.DomainVerifier) MessageHandler {
+func NewRequestToLoginMessageHandler(data code_data.Provider, rpcSignatureVerifier *auth.RPCSignatureVerifier, domainVerifier thirdparty.DomainVerifier) MessageHandler {
 	return &RequestToLoginMessageHandler{
+		data:                 data,
 		rpcSignatureVerifier: rpcSignatureVerifier,
 		domainVerifier:       domainVerifier,
 	}
@@ -468,13 +477,70 @@ func (h *RequestToLoginMessageHandler) Validate(ctx context.Context, rendezvous 
 	}
 	typedMessage.Signature = signature
 
+	//
+	// Part 1: Validate the intent doesn't exist
+	//
+
+	_, err = h.data.GetIntent(ctx, rendezvous.PublicKey().ToBase58())
+	if err == nil {
+		return newMessageValidationError("client submitted intent")
+	} else if err != intent.ErrIntentNotFound {
+		return err
+	}
+
+	//
+	// Part 2: Validate the request metadata
+	//
+
+	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(typedMessage.Domain.Value)
+	if err != nil {
+		return newMessageValidationErrorf("domain is invalid: %s", err.Error())
+	}
+
 	if !bytes.Equal(rendezvous.PublicKey().ToBytes(), typedMessage.RendezvousKey.Value) {
 		return newMessageValidationError("rendezvous key mismatch")
 	}
 
+	existingRequestRecord, err := h.data.GetRequest(ctx, rendezvous.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		if existingRequestRecord.RequiresPayment() {
+			return newMessageValidationError("original request requires payment")
+		}
+
+		if *existingRequestRecord.Domain != asciiBaseDomain {
+			return newMessageValidationError("domain mismatches original request")
+		}
+
+		h.recordAlreadyExists = true
+	case paymentrequest.ErrPaymentRequestNotFound:
+	default:
+		return err
+	}
+
+	//
+	// Part 3: Domain validation
+	//
+
 	err = verifyThirdPartyDomain(ctx, h.domainVerifier, owner, typedMessage.Domain)
 	if err != nil {
 		return err
+	}
+
+	//
+	// Part 4: Create the validated payment request DB record to store later,
+	//         if it doesn't already exist
+	//
+
+	if !h.recordAlreadyExists {
+		h.recordToSave = &paymentrequest.Record{
+			Intent: rendezvous.PublicKey().ToBase58(),
+
+			Domain:     &asciiBaseDomain,
+			IsVerified: true,
+
+			CreatedAt: time.Now(),
+		}
 	}
 
 	return nil
@@ -485,73 +551,10 @@ func (h *RequestToLoginMessageHandler) RequiresActiveStream() (bool, time.Durati
 }
 
 func (h *RequestToLoginMessageHandler) OnSuccess(ctx context.Context) error {
-	return nil
-}
-
-type LoginAttemptMessageHandler struct {
-	data                 code_data.Provider
-	rpcSignatureVerifier *auth.RPCSignatureVerifier
-}
-
-func NewLoginAttemptMessageHandler(data code_data.Provider, rpcSignatureVerifier *auth.RPCSignatureVerifier) MessageHandler {
-	return &LoginAttemptMessageHandler{
-		data:                 data,
-		rpcSignatureVerifier: rpcSignatureVerifier,
+	if h.recordAlreadyExists {
+		return nil
 	}
-}
-
-func (h *LoginAttemptMessageHandler) Validate(ctx context.Context, rendezvous *common.Account, untypedMessage *messagingpb.Message) error {
-	typedMessage := untypedMessage.GetLoginAttempt()
-	if typedMessage == nil {
-		return errors.New("invalid message type")
-	}
-
-	user, err := common.NewAccountFromProto(typedMessage.UserId)
-	if err != nil {
-		return err
-	}
-
-	signature := typedMessage.Signature
-	typedMessage.Signature = nil
-	if err := h.rpcSignatureVerifier.Authenticate(ctx, user, typedMessage, signature); err != nil {
-		return newMessageAuthenticationError("")
-	}
-	typedMessage.Signature = signature
-
-	if !bytes.Equal(rendezvous.PublicKey().ToBytes(), typedMessage.RendezvousKey.Value) {
-		return newMessageValidationError("rendezvous key mismatch")
-	}
-
-	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(typedMessage.Domain.Value)
-	if err != nil {
-		return newMessageValidationErrorf("domain is invalid: %s", err.Error())
-	}
-
-	accountInfoRecord, err := h.data.GetAccountInfoByAuthorityAddress(ctx, user.PublicKey().ToBase58())
-	switch err {
-	case nil:
-		if accountInfoRecord.AccountType != commonpb.AccountType_RELATIONSHIP {
-			return newMessageValidationErrorf("account type must be %s", commonpb.AccountType_RELATIONSHIP)
-		}
-
-		if *accountInfoRecord.RelationshipTo != asciiBaseDomain {
-			return newMessageValidationErrorf("account must have a relationship to %s", asciiBaseDomain)
-		}
-	case account.ErrAccountInfoNotFound:
-		return newMessageValidationError("account doesn't exist")
-	default:
-		return err
-	}
-
-	return nil
-}
-
-func (h *LoginAttemptMessageHandler) RequiresActiveStream() (bool, time.Duration) {
-	return false, 0 * time.Minute
-}
-
-func (h *LoginAttemptMessageHandler) OnSuccess(ctx context.Context) error {
-	return nil
+	return h.data.CreateRequest(ctx, h.recordToSave)
 }
 
 type ClientRejectedLoginMessageHandler struct {

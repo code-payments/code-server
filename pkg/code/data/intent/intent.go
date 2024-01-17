@@ -39,6 +39,7 @@ const (
 	SendPublicPayment
 	ReceivePaymentsPublicly
 	EstablishRelationship
+	Login
 )
 
 type Record struct {
@@ -60,6 +61,7 @@ type Record struct {
 	SendPublicPaymentMetadata        *SendPublicPaymentMetadata
 	ReceivePaymentsPubliclyMetadata  *ReceivePaymentsPubliclyMetadata
 	EstablishRelationshipMetadata    *EstablishRelationshipMetadata
+	LoginMetadata                    *LoginMetadata
 
 	// Deprecated intents v1 metadatum
 	MoneyTransferMetadata     *MoneyTransferMetadata
@@ -167,6 +169,11 @@ type EstablishRelationshipMetadata struct {
 	RelationshipTo string
 }
 
+type LoginMetadata struct {
+	App    string
+	UserId string
+}
+
 func (r *Record) IsCompleted() bool {
 	return r.State == StateConfirmed
 }
@@ -238,6 +245,12 @@ func (r *Record) Clone() Record {
 		establishRelationshipMetadata = &cloned
 	}
 
+	var loginMetadata *LoginMetadata
+	if r.LoginMetadata != nil {
+		cloned := r.LoginMetadata.Clone()
+		loginMetadata = &cloned
+	}
+
 	var initiatorPhoneNumber *string
 	if r.InitiatorPhoneNumber != nil {
 		value := *r.InitiatorPhoneNumber
@@ -262,6 +275,7 @@ func (r *Record) Clone() Record {
 		SendPublicPaymentMetadata:        sendPublicPaymentMetadata,
 		ReceivePaymentsPubliclyMetadata:  receivePaymentsPubliclyMetadata,
 		EstablishRelationshipMetadata:    establishRelationshipMetadata,
+		LoginMetadata:                    loginMetadata,
 
 		MoneyTransferMetadata:     moneyTransferMetadata,
 		AccountManagementMetadata: accountManagementMetadata,
@@ -288,6 +302,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.MigrateToPrivacy2022Metadata = r.MigrateToPrivacy2022Metadata
 	dst.SendPublicPaymentMetadata = r.SendPublicPaymentMetadata
 	dst.ReceivePaymentsPubliclyMetadata = r.ReceivePaymentsPubliclyMetadata
+	dst.EstablishRelationshipMetadata = r.EstablishRelationshipMetadata
+	dst.LoginMetadata = r.LoginMetadata
 
 	dst.MoneyTransferMetadata = r.MoneyTransferMetadata
 	dst.AccountManagementMetadata = r.AccountManagementMetadata
@@ -430,6 +446,17 @@ func (r *Record) Validate() error {
 		}
 
 		err := r.EstablishRelationshipMetadata.Validate()
+		if err != nil {
+			return err
+		}
+	}
+
+	if r.IntentType == Login {
+		if r.LoginMetadata == nil {
+			return errors.New("login metadata must be present")
+		}
+
+		err := r.LoginMetadata.Validate()
 		if err != nil {
 			return err
 		}
@@ -813,6 +840,30 @@ func (m *EstablishRelationshipMetadata) Validate() error {
 	return nil
 }
 
+func (m *LoginMetadata) Clone() LoginMetadata {
+	return LoginMetadata{
+		App:    m.App,
+		UserId: m.UserId,
+	}
+}
+
+func (m *LoginMetadata) CopyTo(dst *LoginMetadata) {
+	dst.App = m.App
+	dst.UserId = m.UserId
+}
+
+func (m *LoginMetadata) Validate() error {
+	if len(m.App) == 0 {
+		return errors.New("app is required")
+	}
+
+	if len(m.UserId) == 0 {
+		return errors.New("user is required")
+	}
+
+	return nil
+}
+
 func (s State) IsTerminal() bool {
 	switch s {
 	case StateConfirmed:
@@ -862,6 +913,8 @@ func (t Type) String() string {
 		return "receive_payments_publicly"
 	case EstablishRelationship:
 		return "establish_relationship"
+	case Login:
+		return "login"
 	}
 
 	return "unknown"

@@ -139,41 +139,61 @@ func (s *serverEnv) assertPaymentRequestRecordSaved(t *testing.T, rendezvousKey 
 		require.NoError(t, err)
 	}
 
-	paymentRequestRecord, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+	requestRecord, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	require.NoError(t, err)
 
-	assert.Equal(t, paymentRequestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
-	assert.Equal(t, paymentRequestRecord.DestinationTokenAccount, base58.Encode(msg.RequestorAccount.Value))
+	assert.Equal(t, requestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
+	assert.Equal(t, base58.Encode(msg.RequestorAccount.Value), *requestRecord.DestinationTokenAccount)
 
 	switch typed := msg.ExchangeData.(type) {
 	case *messagingpb.RequestToReceiveBill_Exact:
-		assert.EqualValues(t, typed.Exact.Currency, paymentRequestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Exact.NativeAmount, paymentRequestRecord.NativeAmount)
-		require.NotNil(t, paymentRequestRecord.ExchangeRate)
-		assert.Equal(t, typed.Exact.ExchangeRate, *paymentRequestRecord.ExchangeRate)
-		require.NotNil(t, paymentRequestRecord.Quantity)
-		assert.Equal(t, typed.Exact.Quarks, *paymentRequestRecord.Quantity)
+		assert.EqualValues(t, typed.Exact.Currency, *requestRecord.ExchangeCurrency)
+		assert.Equal(t, typed.Exact.NativeAmount, *requestRecord.NativeAmount)
+		require.NotNil(t, requestRecord.ExchangeRate)
+		assert.Equal(t, typed.Exact.ExchangeRate, *requestRecord.ExchangeRate)
+		require.NotNil(t, requestRecord.Quantity)
+		assert.Equal(t, typed.Exact.Quarks, *requestRecord.Quantity)
 	case *messagingpb.RequestToReceiveBill_Partial:
-		assert.EqualValues(t, typed.Partial.Currency, paymentRequestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Partial.NativeAmount, paymentRequestRecord.NativeAmount)
-		assert.Nil(t, paymentRequestRecord.ExchangeRate)
-		assert.Nil(t, paymentRequestRecord.Quantity)
+		assert.EqualValues(t, typed.Partial.Currency, *requestRecord.ExchangeCurrency)
+		assert.Equal(t, typed.Partial.NativeAmount, *requestRecord.NativeAmount)
+		assert.Nil(t, requestRecord.ExchangeRate)
+		assert.Nil(t, requestRecord.Quantity)
 	default:
 		require.Fail(t, "unhandled exchange data type")
 	}
 
 	if len(asciiBaseDomain) == 0 {
-		assert.Nil(t, paymentRequestRecord.Domain)
-		assert.False(t, paymentRequestRecord.IsVerified)
+		assert.Nil(t, requestRecord.Domain)
+		assert.False(t, requestRecord.IsVerified)
 	} else {
-		require.NotNil(t, paymentRequestRecord.Domain)
-		assert.Equal(t, asciiBaseDomain, *paymentRequestRecord.Domain)
-		assert.Equal(t, msg.Verifier != nil, paymentRequestRecord.IsVerified)
+		require.NotNil(t, requestRecord.Domain)
+		assert.Equal(t, asciiBaseDomain, *requestRecord.Domain)
+		assert.Equal(t, msg.Verifier != nil, requestRecord.IsVerified)
 	}
 }
 
-func (s *serverEnv) assertPaymentRequestRecordNotSaved(t *testing.T, rendezvousKey *common.Account) {
-	_, err := s.server.data.GetPaymentRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+func (s *serverEnv) assertLoginRequestRecordSaved(t *testing.T, rendezvousKey *common.Account, msg *messagingpb.RequestToLogin) {
+	asciiBaseDomain, err := thirdparty.GetAsciiBaseDomain(msg.Domain.Value)
+	require.NoError(t, err)
+
+	requestRecord, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
+	require.NoError(t, err)
+
+	assert.Equal(t, requestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
+
+	require.NotNil(t, requestRecord.Domain)
+	assert.Equal(t, asciiBaseDomain, *requestRecord.Domain)
+	assert.True(t, requestRecord.IsVerified)
+
+	assert.Nil(t, requestRecord.DestinationTokenAccount)
+	assert.Nil(t, requestRecord.ExchangeCurrency)
+	assert.Nil(t, requestRecord.NativeAmount)
+	assert.Nil(t, requestRecord.ExchangeRate)
+	assert.Nil(t, requestRecord.Quantity)
+}
+
+func (s *serverEnv) assertRequestRecordNotSaved(t *testing.T, rendezvousKey *common.Account) {
+	_, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	assert.Equal(t, paymentrequest.ErrPaymentRequestNotFound, err)
 }
 
@@ -830,71 +850,6 @@ func (c *clientEnv) sendRequestToLoginMessage(t *testing.T, rendezvousKey *commo
 		Message: &messagingpb.Message{
 			Kind: &messagingpb.Message_RequestToLogin{
 				RequestToLogin: msg,
-			},
-		},
-		RendezvousKey: &messagingpb.RendezvousKey{
-			Value: rendezvousKey.PublicKey().ToBytes(),
-		},
-	}
-	return c.sendMessage(t, req, rendezvousKey)
-}
-
-func (c *clientEnv) sendLoginAttemptMessage(t *testing.T, rendezvousKey *common.Account) *sendMessageCallMetadata {
-	authority := testutil.NewRandomAccount(t)
-
-	accountInfoRecord := &account.Record{
-		OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		AuthorityAccount: authority.PublicKey().ToBase58(),
-		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		AccountType:      commonpb.AccountType_RELATIONSHIP,
-		Index:            0,
-		RelationshipTo:   pointer.String("getcode.com"),
-	}
-	if c.conf.simulateInvalidAccountType {
-		accountInfoRecord.OwnerAccount = accountInfoRecord.AuthorityAccount
-		accountInfoRecord.AccountType = commonpb.AccountType_PRIMARY
-		accountInfoRecord.RelationshipTo = nil
-	}
-	if c.conf.simulateInvalidRelationship {
-		accountInfoRecord.RelationshipTo = pointer.String("example.com")
-	}
-	if !c.conf.simulateAccountNotCodeAccount {
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	}
-
-	msg := &messagingpb.LoginAttempt{
-		UserId: authority.ToProto(),
-		Domain: &commonpb.Domain{
-			Value: "app.getcode.com",
-		},
-		RendezvousKey: &messagingpb.RendezvousKey{
-			Value: rendezvousKey.PublicKey().ToBytes(),
-		},
-	}
-
-	if c.conf.simulateInvalidDomain {
-		msg.Domain.Value = "localhost"
-	}
-
-	if c.conf.simulateInvalidRendezvousKey {
-		msg.RendezvousKey.Value = testutil.NewRandomAccount(t).PublicKey().ToBytes()
-	}
-
-	messageBytes, err := proto.Marshal(msg)
-	require.NoError(t, err)
-
-	signer := authority
-	if c.conf.simulateInvalidMessageSignature {
-		signer = testutil.NewRandomAccount(t)
-	}
-	msg.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(signer.PrivateKey().ToBytes(), messageBytes),
-	}
-
-	req := &messagingpb.SendMessageRequest{
-		Message: &messagingpb.Message{
-			Kind: &messagingpb.Message_LoginAttempt{
-				LoginAttempt: msg,
 			},
 		},
 		RendezvousKey: &messagingpb.RendezvousKey{

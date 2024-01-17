@@ -11,8 +11,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/currency"
 
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
@@ -146,6 +146,12 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 			Valid:  true,
 			String: obj.EstablishRelationshipMetadata.RelationshipTo,
 		}
+	case intent.Login:
+		m.RelationshipTo = sql.NullString{
+			Valid:  true,
+			String: obj.LoginMetadata.App,
+		}
+		m.Source = obj.LoginMetadata.UserId
 	default:
 		return nil, errors.New("unsupported intent type")
 	}
@@ -255,6 +261,11 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 	case intent.EstablishRelationship:
 		record.EstablishRelationshipMetadata = &intent.EstablishRelationshipMetadata{
 			RelationshipTo: obj.RelationshipTo.String,
+		}
+	case intent.Login:
+		record.LoginMetadata = &intent.LoginMetadata{
+			App:    obj.RelationshipTo.String,
+			UserId: obj.Source,
 		}
 	}
 
