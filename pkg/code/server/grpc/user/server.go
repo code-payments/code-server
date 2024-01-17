@@ -33,6 +33,7 @@ import (
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/rate"
+	"github.com/code-payments/code-server/pkg/sync"
 )
 
 type identityServer struct {
@@ -43,6 +44,9 @@ type identityServer struct {
 	antispamGuard   *antispam.Guard
 	messagingClient messaging.InternalMessageClient
 	domainVerifier  thirdparty.DomainVerifier
+
+	// todo: distributed lock
+	intentLocks *sync.StripedLock
 
 	userpb.UnimplementedIdentityServer
 }
@@ -67,6 +71,8 @@ func NewIdentityServer(
 		antispamGuard:   antispamGuard,
 		messagingClient: messagingClient,
 		domainVerifier:  thirdparty.VerifyDomainNameOwnership,
+
+		intentLocks: sync.NewStripedLock(1024),
 	}
 }
 
@@ -452,6 +458,10 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 			Result: userpb.LoginToThirdPartyAppResponse_INVALID_ACCOUNT,
 		}, nil
 	}
+
+	intentLock := s.intentLocks.Get(intentId.PublicKey().ToBytes())
+	intentLock.Lock()
+	defer intentLock.Unlock()
 
 	_, err = s.data.GetIntent(ctx, intentId.PublicKey().ToBase58())
 	switch err {
