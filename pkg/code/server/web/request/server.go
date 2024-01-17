@@ -2,11 +2,8 @@ package request
 
 import (
 	"errors"
-	"image"
-	"image/png"
 	"net/http"
 
-	"github.com/golang/freetype/truetype"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
@@ -21,35 +18,17 @@ const (
 
 	contentTypeHeaderName      = "content-type"
 	jsonContentTypeHeaderValue = "application/json"
-	pngContentTypeHeaderValue  = "image/png"
 )
-
-var (
-	pngEncoder png.Encoder
-)
-
-func init() {
-	pngEncoder.CompressionLevel = png.BestSpeed
-}
-
-type Assets struct {
-	RequestCardBackgroundLayer image.Image
-	RequestCardAmountTextFont  *truetype.Font
-}
 
 type Server struct {
-	log                   *logrus.Entry
-	cc                    *grpc.ClientConn
-	assets                *Assets
-	getcodeDomainVerifier *common.Account
+	log *logrus.Entry
+	cc  *grpc.ClientConn
 }
 
-func NewRequestServer(cc *grpc.ClientConn, assets *Assets, getcodeDomainVerifier *common.Account) *Server {
+func NewRequestServer(cc *grpc.ClientConn) *Server {
 	return &Server{
-		log:                   logrus.StandardLogger().WithField("type", "request/server"),
-		cc:                    cc,
-		assets:                assets,
-		getcodeDomainVerifier: getcodeDomainVerifier,
+		log: logrus.StandardLogger().WithField("type", "request/server"),
+		cc:  cc,
 	}
 }
 
