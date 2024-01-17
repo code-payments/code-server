@@ -2,11 +2,9 @@ package request
 
 import (
 	"context"
-	"crypto/ed25519"
 
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
@@ -125,19 +123,8 @@ func (s *Server) getUserId(ctx context.Context, protoReq *userpb.GetLoginForThir
 	}
 
 	res := &getUserIdResp{}
-	if getLoginResp.Result == userpb.GetLoginForThirdPartyAppResponse_OK && getLoginResp.UserId != nil {
+	if getLoginResp.Result == userpb.GetLoginForThirdPartyAppResponse_OK {
 		res.User = base58.Encode(getLoginResp.UserId.Value)
 	}
 	return res, nil
-}
-
-func signProtoMessage(msg proto.Message, account *common.Account) (*commonpb.Signature, error) {
-	bytesToSign, err := proto.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return &commonpb.Signature{
-		Value: ed25519.Sign(account.PrivateKey().ToBytes(), bytesToSign),
-	}, nil
 }

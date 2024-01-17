@@ -463,12 +463,17 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 	intentLock.Lock()
 	defer intentLock.Unlock()
 
-	_, err = s.data.GetIntent(ctx, intentId.PublicKey().ToBase58())
+	existingIntentRecord, err := s.data.GetIntent(ctx, intentId.PublicKey().ToBase58())
 	switch err {
 	case nil:
+		if accountInfoRecord.OwnerAccount == existingIntentRecord.InitiatorOwnerAccount {
+			return &userpb.LoginToThirdPartyAppResponse{
+				Result: userpb.LoginToThirdPartyAppResponse_OK,
+			}, nil
+		}
+
 		return &userpb.LoginToThirdPartyAppResponse{
-			// todo: different result code based on whether the original user is loggin in or not?
-			Result: userpb.LoginToThirdPartyAppResponse_LOGIN_EXISTS,
+			Result: userpb.LoginToThirdPartyAppResponse_DIFFERENT_LOGIN_EXISTS,
 		}, nil
 	case intent.ErrIntentNotFound:
 	default:
@@ -577,37 +582,35 @@ func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *user
 	intentRecord, err := s.data.GetIntent(ctx, intentId.PublicKey().ToBase58())
 	if err == intent.ErrIntentNotFound {
 		return &userpb.GetLoginForThirdPartyAppResponse{
-			// todo: different result code?
-			Result: userpb.GetLoginForThirdPartyAppResponse_OK,
+			Result: userpb.GetLoginForThirdPartyAppResponse_NO_USER_LOGGED_IN,
 		}, nil
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting intent record")
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	var userId *common.Account
 	accountInfoRecord, err := s.data.GetRelationshipAccountInfoByOwnerAddress(ctx, intentRecord.InitiatorOwnerAccount, *requestRecord.Domain)
 	switch err {
 	case nil:
-		userId, err = common.NewAccountFromPublicKeyString(accountInfoRecord.AuthorityAccount)
+		userId, err := common.NewAccountFromPublicKeyString(accountInfoRecord.AuthorityAccount)
 		if err != nil {
 			log.WithError(err).Warn("invalid authority account")
 			return nil, status.Error(codes.Internal, "")
 		}
+
+		return &userpb.GetLoginForThirdPartyAppResponse{
+			Result: userpb.GetLoginForThirdPartyAppResponse_OK,
+			UserId: userId.ToProto(),
+		}, nil
 	case account.ErrAccountInfoNotFound:
 		// The client opted to not establish a relationship, so there's no login
+		return &userpb.GetLoginForThirdPartyAppResponse{
+			Result: userpb.GetLoginForThirdPartyAppResponse_NO_USER_LOGGED_IN,
+		}, nil
 	default:
 		log.WithError(err).Warn("failure getting relationship account info record")
 		return nil, status.Error(codes.Internal, "")
 	}
-
-	resp := &userpb.GetLoginForThirdPartyAppResponse{
-		Result: userpb.GetLoginForThirdPartyAppResponse_OK,
-	}
-	if userId != nil {
-		resp.UserId = userId.ToProto()
-	}
-	return resp, nil
 }
 
 func (s *identityServer) markWebhookAsPending(ctx context.Context, id string) error {

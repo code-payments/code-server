@@ -868,6 +868,10 @@ func TestLoginToThirdPartyApp_HappyPath(t *testing.T) {
 	require.NotNil(t, protoMessage.GetIntentSubmitted())
 	assert.Equal(t, intentId.PublicKey().ToBytes(), protoMessage.GetIntentSubmitted().IntentId.Value)
 	assert.Nil(t, protoMessage.GetIntentSubmitted().Metadata)
+
+	resp, err = env.client.LoginToThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_OK, resp.Result)
 }
 
 func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
@@ -957,11 +961,16 @@ func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 		tc.requestRecord.Intent = intentId.PublicKey().ToBase58()
 		require.NoError(t, env.data.CreateRequest(env.ctx, tc.requestRecord))
 
+		resp, err := env.client.GetLoginForThirdPartyApp(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_NO_USER_LOGGED_IN, resp.Result)
+		assert.Nil(t, resp.UserId)
+
 		tc.intentRecord.IntentId = intentId.PublicKey().ToBase58()
 		tc.intentRecord.InitiatorOwnerAccount = ownerAccount.PublicKey().ToBase58()
 		require.NoError(t, env.data.SaveIntent(env.ctx, tc.intentRecord))
 
-		resp, err := env.client.GetLoginForThirdPartyApp(env.ctx, req)
+		resp, err = env.client.GetLoginForThirdPartyApp(env.ctx, req)
 		require.NoError(t, err)
 		assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_OK, resp.Result)
 		require.NotNil(t, resp.UserId)
@@ -973,11 +982,19 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
-	ownerAccount := testutil.NewRandomAccount(t)
+	intentId := testutil.NewRandomAccount(t)
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:     intentId.PublicKey().ToBase58(),
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
+	}))
+
+	validAccount := testutil.NewRandomAccount(t)
 	maliciousAccount := testutil.NewRandomAccount(t)
 
 	linkReq := &userpb.LinkAccountRequest{
-		OwnerAccountId: ownerAccount.ToProto(),
+		OwnerAccountId: validAccount.ToProto(),
 		Token: &userpb.LinkAccountRequest_Phone{
 			Phone: &phonepb.PhoneLinkingToken{
 				PhoneNumber: &commonpb.PhoneNumber{
@@ -1000,7 +1017,7 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	}
 
 	getUserReq := &userpb.GetUserRequest{
-		OwnerAccountId: ownerAccount.ToProto(),
+		OwnerAccountId: validAccount.ToProto(),
 		IdentifyingFeature: &userpb.GetUserRequest_PhoneNumber{
 			PhoneNumber: &commonpb.PhoneNumber{
 				Value: "+12223334444",
@@ -1017,10 +1034,44 @@ func TestUnauthenticatedRPC(t *testing.T) {
 		Value: signature,
 	}
 
+	loginReq := &userpb.LoginToThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		UserId: validAccount.ToProto(),
+	}
+
+	reqBytes, err = proto.Marshal(loginReq)
+	require.NoError(t, err)
+
+	loginReq.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	getLoginReq := &userpb.GetLoginForThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		Verifier: testutil.NewRandomAccount(t).ToProto(),
+	}
+
+	reqBytes, err = proto.Marshal(getLoginReq)
+	require.NoError(t, err)
+
+	getLoginReq.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
 	_, err = env.client.LinkAccount(env.ctx, linkReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 
 	_, err = env.client.GetUser(env.ctx, getUserReq)
+	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
+	_, err = env.client.LoginToThirdPartyApp(env.ctx, loginReq)
+	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
+	_, err = env.client.GetLoginForThirdPartyApp(env.ctx, getLoginReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 }
 

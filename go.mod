@@ -6,7 +6,7 @@ require (
 	firebase.google.com/go/v4 v4.8.0
 	github.com/aws/aws-sdk-go-v2 v0.17.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
-	github.com/code-payments/code-protobuf-api v1.8.1
+	github.com/code-payments/code-protobuf-api v1.8.2
 	github.com/emirpasic/gods v1.12.0
 	github.com/envoyproxy/protoc-gen-validate v0.1.0
 	github.com/golang-jwt/jwt/v5 v5.0.0
@@ -31,15 +31,11 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/viper v1.7.0
-	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
-	github.com/srwiley/rasterx v0.0.0-20210519020934-456a8d69b780
-	github.com/srwiley/scanFT v0.0.0-20220128184157-0d1ee492111f
 	github.com/stretchr/testify v1.8.4
 	github.com/twilio/twilio-go v0.26.0
 	github.com/vence722/base122-go v0.0.2
 	github.com/ybbus/jsonrpc v2.1.2+incompatible
 	golang.org/x/crypto v0.14.0
-	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	golang.org/x/net v0.17.0
 	golang.org/x/text v0.13.0
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
@@ -101,6 +97,7 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410 // indirect
 	golang.org/x/oauth2 v0.0.0-20220309155454-6242fa91716a // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
