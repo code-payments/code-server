@@ -76,8 +76,8 @@ func TestGetStatus_Flags_HappyPath(t *testing.T) {
 		IntentType: intent.Login,
 
 		LoginMetadata: &intent.LoginMetadata{
-			RelationshipTo: "example.com",
-			UserId:         testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			App:    "example.com",
+			UserId: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		},
 
 		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),

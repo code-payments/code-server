@@ -170,8 +170,8 @@ type EstablishRelationshipMetadata struct {
 }
 
 type LoginMetadata struct {
-	RelationshipTo string
-	UserId         string
+	App    string
+	UserId string
 }
 
 func (r *Record) IsCompleted() bool {
@@ -842,19 +842,19 @@ func (m *EstablishRelationshipMetadata) Validate() error {
 
 func (m *LoginMetadata) Clone() LoginMetadata {
 	return LoginMetadata{
-		RelationshipTo: m.RelationshipTo,
-		UserId:         m.UserId,
+		App:    m.App,
+		UserId: m.UserId,
 	}
 }
 
 func (m *LoginMetadata) CopyTo(dst *LoginMetadata) {
-	dst.RelationshipTo = m.RelationshipTo
+	dst.App = m.App
 	dst.UserId = m.UserId
 }
 
 func (m *LoginMetadata) Validate() error {
-	if len(m.RelationshipTo) == 0 {
-		return errors.New("relationship is required")
+	if len(m.App) == 0 {
+		return errors.New("app is required")
 	}
 
 	if len(m.UserId) == 0 {

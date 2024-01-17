@@ -149,7 +149,7 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 	case intent.Login:
 		m.RelationshipTo = sql.NullString{
 			Valid:  true,
-			String: obj.LoginMetadata.RelationshipTo,
+			String: obj.LoginMetadata.App,
 		}
 		m.Source = obj.LoginMetadata.UserId
 	default:
@@ -264,8 +264,8 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 		}
 	case intent.Login:
 		record.LoginMetadata = &intent.LoginMetadata{
-			RelationshipTo: obj.RelationshipTo.String,
-			UserId:         obj.Source,
+			App:    obj.RelationshipTo.String,
+			UserId: obj.Source,
 		}
 	}
 

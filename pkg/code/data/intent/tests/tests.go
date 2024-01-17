@@ -556,8 +556,8 @@ func testLoginRoundTrip(t *testing.T, s intent.Store) {
 			InitiatorOwnerAccount: "test_owner",
 			InitiatorPhoneNumber:  &phoneNumberValue,
 			LoginMetadata: &intent.LoginMetadata{
-				RelationshipTo: "relationship_to",
-				UserId:         "test_user",
+				App:    "app",
+				UserId: "test_user",
 			},
 			State:     intent.StateUnknown,
 			CreatedAt: time.Now(),
@@ -573,7 +573,7 @@ func testLoginRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.LoginMetadata)
-		assert.Equal(t, cloned.LoginMetadata.RelationshipTo, actual.LoginMetadata.RelationshipTo)
+		assert.Equal(t, cloned.LoginMetadata.App, actual.LoginMetadata.App)
 		assert.Equal(t, cloned.LoginMetadata.UserId, actual.LoginMetadata.UserId)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())

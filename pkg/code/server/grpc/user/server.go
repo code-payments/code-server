@@ -42,6 +42,7 @@ type identityServer struct {
 	limiter         *limiter
 	antispamGuard   *antispam.Guard
 	messagingClient messaging.InternalMessageClient
+	domainVerifier  thirdparty.DomainVerifier
 
 	userpb.UnimplementedIdentityServer
 }
@@ -65,6 +66,7 @@ func NewIdentityServer(
 		limiter:         limiter,
 		antispamGuard:   antispamGuard,
 		messagingClient: messagingClient,
+		domainVerifier:  thirdparty.VerifyDomainNameOwnership,
 	}
 }
 
@@ -455,6 +457,7 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 	switch err {
 	case nil:
 		return &userpb.LoginToThirdPartyAppResponse{
+			// todo: different result code based on whether the original user is loggin in or not?
 			Result: userpb.LoginToThirdPartyAppResponse_LOGIN_EXISTS,
 		}, nil
 	case intent.ErrIntentNotFound:
@@ -467,8 +470,8 @@ func (s *identityServer) LoginToThirdPartyApp(ctx context.Context, req *userpb.L
 		IntentId:   intentId.PublicKey().ToBase58(),
 		IntentType: intent.Login,
 		LoginMetadata: &intent.LoginMetadata{
-			RelationshipTo: *requestRecord.Domain,
-			UserId:         accountInfoRecord.AuthorityAccount,
+			App:    *requestRecord.Domain,
+			UserId: accountInfoRecord.AuthorityAccount,
 		},
 		InitiatorOwnerAccount: accountInfoRecord.OwnerAccount,
 		State:                 intent.StateConfirmed,
@@ -553,7 +556,7 @@ func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *user
 	}
 
 	// todo: Promote a generic utility to the auth package?
-	isVerified, err := thirdparty.VerifyDomainNameOwnership(ctx, verifier, *requestRecord.Domain)
+	isVerified, err := s.domainVerifier(ctx, verifier, *requestRecord.Domain)
 	if err != nil {
 		log.WithError(err).Warn("failure verifying domain ownership")
 		return nil, status.Errorf(codes.Unauthenticated, "error veryfing domain ownership: %s", err.Error())
@@ -562,7 +565,12 @@ func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *user
 	}
 
 	intentRecord, err := s.data.GetIntent(ctx, intentId.PublicKey().ToBase58())
-	if err != nil {
+	if err == intent.ErrIntentNotFound {
+		return &userpb.GetLoginForThirdPartyAppResponse{
+			// todo: different result code?
+			Result: userpb.GetLoginForThirdPartyAppResponse_OK,
+		}, nil
+	} else if err != nil {
 		log.WithError(err).Warn("failure getting intent record")
 		return nil, status.Error(codes.Internal, "")
 	}

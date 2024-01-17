@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"crypto/ed25519"
 	"testing"
 	"time"
 
@@ -13,24 +14,30 @@ import (
 	"google.golang.org/grpc/codes"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	phonepb "github.com/code-payments/code-protobuf-api/generated/go/phone/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 	userpb "github.com/code-payments/code-protobuf-api/generated/go/user/v1"
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	"github.com/code-payments/code-server/pkg/code/auth"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
+	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	transaction_server "github.com/code-payments/code-server/pkg/code/server/grpc/transaction/v2"
 	"github.com/code-payments/code-server/pkg/currency"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
 	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/rate"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
@@ -60,6 +67,7 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 		messaging.NewMessagingClient(env.data),
 	)
 	env.server = s.(*identityServer)
+	env.server.domainVerifier = mockDomainVerifier
 	env.server.limiter = newLimiter(func(r float64) rate.Limiter {
 		return rate.NewLocalRateLimiter(xrate.Limit(r))
 	}, 100, 100)
@@ -75,7 +83,7 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 	return env, cleanup
 }
 
-func TestPhoneHappyPath(t *testing.T) {
+func TestLinkAccount_PhoneHappyPath(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
@@ -787,6 +795,180 @@ func TestGetUser_AirdropStatus(t *testing.T) {
 	}
 }
 
+func TestLoginToThirdPartyApp_HappyPath(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	relationshipAuthorityAccount := testutil.NewRandomAccount(t)
+
+	intentId := testutil.NewRandomAccount(t)
+
+	req := &userpb.LoginToThirdPartyAppRequest{
+		IntentId: &commonpb.IntentId{
+			Value: intentId.ToProto().Value,
+		},
+		UserId: relationshipAuthorityAccount.ToProto(),
+	}
+
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	req.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(relationshipAuthorityAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:     intentId.PublicKey().ToBase58(),
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
+	}))
+
+	require.NoError(t, env.data.CreateWebhook(env.ctx, &webhook.Record{
+		WebhookId: intentId.PublicKey().ToBase58(),
+		Url:       "example.com/webhook",
+		Type:      webhook.TypeIntentSubmitted,
+		State:     webhook.StateUnknown,
+	}))
+
+	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
+		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+		AccountType:    commonpb.AccountType_RELATIONSHIP,
+		RelationshipTo: pointer.String("example.com"),
+	}))
+
+	resp, err := env.client.LoginToThirdPartyApp(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.LoginToThirdPartyAppResponse_OK, resp.Result)
+
+	intentRecord, err := env.data.GetIntent(env.ctx, intentId.PublicKey().ToBase58())
+	require.NoError(t, err)
+	assert.Equal(t, intentId.PublicKey().ToBase58(), intentRecord.IntentId)
+	assert.Equal(t, intent.Login, intentRecord.IntentType)
+	require.NotNil(t, intentRecord.LoginMetadata)
+	assert.Equal(t, "example.com", intentRecord.LoginMetadata.App)
+	assert.Equal(t, relationshipAuthorityAccount.PublicKey().ToBase58(), intentRecord.LoginMetadata.UserId)
+	assert.Equal(t, ownerAccount.PublicKey().ToBase58(), intentRecord.InitiatorOwnerAccount)
+	assert.Equal(t, intent.StateConfirmed, intentRecord.State)
+
+	webhookRecord, err := env.data.GetWebhook(env.ctx, intentId.PublicKey().ToBase58())
+	require.NoError(t, err)
+	assert.True(t, webhookRecord.NextAttemptAt.Before(time.Now()))
+	assert.Equal(t, webhook.StatePending, webhookRecord.State)
+
+	messageRecords, err := env.data.GetMessages(env.ctx, intentId.PublicKey().ToBase58())
+	require.NoError(t, err)
+	require.Len(t, messageRecords, 1)
+
+	var protoMessage messagingpb.Message
+	require.NoError(t, proto.Unmarshal(messageRecords[0].Message, &protoMessage))
+	require.NotNil(t, protoMessage.GetIntentSubmitted())
+	assert.Equal(t, intentId.PublicKey().ToBytes(), protoMessage.GetIntentSubmitted().IntentId.Value)
+	assert.Nil(t, protoMessage.GetIntentSubmitted().Metadata)
+}
+
+func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
+	paymentRequestRecord := &paymentrequest.Record{
+		DestinationTokenAccount: pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
+		ExchangeCurrency:        pointer.String(string(currency_lib.USD)),
+		NativeAmount:            pointer.Float64(1.0),
+		Domain:                  pointer.String("example.com"),
+		IsVerified:              true,
+	}
+	loginRequestRecord := &paymentrequest.Record{
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
+	}
+
+	paymentIntentRecord := &intent.Record{
+		IntentType: intent.SendPrivatePayment,
+
+		SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+			ExchangeCurrency: currency_lib.Code(*paymentRequestRecord.ExchangeCurrency),
+			NativeAmount:     *paymentRequestRecord.NativeAmount,
+			ExchangeRate:     0.1,
+			Quantity:         kin.ToQuarks(10),
+			UsdMarketValue:   *paymentRequestRecord.NativeAmount,
+
+			DestinationTokenAccount: *paymentRequestRecord.DestinationTokenAccount,
+
+			IsWithdrawal: true,
+		},
+
+		State: intent.StatePending,
+	}
+
+	loginIntentRecord := &intent.Record{
+		IntentType: intent.Login,
+
+		LoginMetadata: &intent.LoginMetadata{
+			App:    "example.com",
+			UserId: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		},
+
+		State: intent.StateConfirmed,
+	}
+
+	for _, tc := range []struct {
+		requestRecord *paymentrequest.Record
+		intentRecord  *intent.Record
+	}{
+		{paymentRequestRecord, paymentIntentRecord},
+		{loginRequestRecord, loginIntentRecord},
+	} {
+
+		env, cleanup := setup(t)
+		defer cleanup()
+
+		verifierAccount, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
+		require.NoError(t, err)
+
+		intentId := testutil.NewRandomAccount(t)
+
+		ownerAccount := testutil.NewRandomAccount(t)
+		relationshipAuthorityAccount := testutil.NewRandomAccount(t)
+
+		require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+			OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+			AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
+			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
+			AccountType:    commonpb.AccountType_RELATIONSHIP,
+			RelationshipTo: pointer.String("example.com"),
+		}))
+
+		req := &userpb.GetLoginForThirdPartyAppRequest{
+			IntentId: &commonpb.IntentId{
+				Value: intentId.ToProto().Value,
+			},
+			Verifier: verifierAccount.ToProto(),
+		}
+
+		reqBytes, err := proto.Marshal(req)
+		require.NoError(t, err)
+
+		req.Signature = &commonpb.Signature{
+			Value: ed25519.Sign(verifierAccount.PrivateKey().ToBytes(), reqBytes),
+		}
+
+		tc.requestRecord.Intent = intentId.PublicKey().ToBase58()
+		require.NoError(t, env.data.CreateRequest(env.ctx, tc.requestRecord))
+
+		tc.intentRecord.IntentId = intentId.PublicKey().ToBase58()
+		tc.intentRecord.InitiatorOwnerAccount = ownerAccount.PublicKey().ToBase58()
+		require.NoError(t, env.data.SaveIntent(env.ctx, tc.intentRecord))
+
+		resp, err := env.client.GetLoginForThirdPartyApp(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_OK, resp.Result)
+		require.NotNil(t, resp.UserId)
+		assert.Equal(t, relationshipAuthorityAccount.PublicKey().ToBytes(), resp.UserId.Value)
+	}
+}
+
 func TestUnauthenticatedRPC(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
@@ -840,4 +1022,9 @@ func TestUnauthenticatedRPC(t *testing.T) {
 
 	_, err = env.client.GetUser(env.ctx, getUserReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+}
+
+func mockDomainVerifier(ctx context.Context, owner *common.Account, domain string) (bool, error) {
+	// Private key: dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno
+	return owner.PublicKey().ToBase58() == "AiXmGd1DkRbVyfiLLNxC6EFF9ZidCdGpyVY9QFH966Bm", nil
 }
