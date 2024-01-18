@@ -64,6 +64,11 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 
 	case intent.SendPublicPayment:
 		if intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+			if intentRecord.InitiatorOwnerAccount == intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount {
+				// This is an internal movement of funds across the same Code user's public accounts
+				return nil
+			}
+
 			verbByMessageReceiver[intentRecord.InitiatorOwnerAccount] = chatpb.ExchangeDataContent_WITHDREW
 			if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) > 0 {
 				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
