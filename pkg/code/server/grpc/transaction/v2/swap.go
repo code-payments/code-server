@@ -231,8 +231,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 	txn.SetBlockhash(blockhash)
 
-	computeUnitLimit, _ := compute_budget.ParseSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
-	computeUnitPrice, _ := compute_budget.ParseSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
+	computeUnitLimit, _ := compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
+	computeUnitPrice, _ := compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
 
 	var protoSwapIxnAccounts []*commonpb.InstructionAccount
 	for _, ixnAccount := range jupiterSwapIxns.SwapInstruction.Accounts {
@@ -329,11 +329,11 @@ func (s *transactionServer) validateJupiterIxns(ixns *jupiter.SwapInstructions) 
 		return errors.New("invalid ComputeBudget instruction accounts")
 	}
 
-	if _, err := compute_budget.ParseSetComputeUnitLimitIxnData(ixns.ComputeBudgetInstructions[0].Data); err != nil {
+	if _, err := compute_budget.DecompileSetComputeUnitLimitIxnData(ixns.ComputeBudgetInstructions[0].Data); err != nil {
 		return errors.Wrap(err, "invalid ComputeBudget::SetComputeUnitLimit instruction data")
 	}
 
-	if _, err := compute_budget.ParseSetComputeUnitPriceIxnData(ixns.ComputeBudgetInstructions[1].Data); err != nil {
+	if _, err := compute_budget.DecompileSetComputeUnitPriceIxnData(ixns.ComputeBudgetInstructions[1].Data); err != nil {
 		return errors.Wrap(err, "invalid ComputeBudget::SetComputeUnitPrice instruction data")
 	}
 
@@ -358,12 +358,12 @@ func (s *transactionServer) mustLoadSwapSubsidizer(ctx context.Context) {
 			return err
 		}
 
-		ownerAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+		authorityAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
 		if err != nil {
 			return err
 		}
 
-		s.swapSubsidizer = ownerAccount
+		s.swapSubsidizer = authorityAccount
 		return nil
 	}()
 	if err != nil {

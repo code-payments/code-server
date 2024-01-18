@@ -40,7 +40,7 @@ func SetComputeUnitPrice(computeUnitPrice uint64) solana.Instruction {
 	)
 }
 
-func ParseSetComputeUnitLimitIxnData(data []byte) (uint32, error) {
+func DecompileSetComputeUnitLimitIxnData(data []byte) (uint32, error) {
 	if len(data) != 5 {
 		return 0, errors.New("invalid length")
 	}
@@ -52,7 +52,7 @@ func ParseSetComputeUnitLimitIxnData(data []byte) (uint32, error) {
 	return binary.LittleEndian.Uint32(data[1:]), nil
 }
 
-func ParseSetComputeUnitPriceIxnData(data []byte) (uint64, error) {
+func DecompileSetComputeUnitPriceIxnData(data []byte) (uint64, error) {
 	if len(data) != 9 {
 		return 0, errors.New("invalid length")
 	}
