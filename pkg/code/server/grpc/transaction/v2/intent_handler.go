@@ -1824,9 +1824,9 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 			return newIntentValidationError("destination account must be a deposit account")
 		}
 
-		// And that deposit account cannot be yourself
-		if destinationAccountInfo.OwnerAccount == initiatorOwnerAccount.PublicKey().ToBase58() {
-			return newIntentValidationError("payments within the same owner are not allowed")
+		// And the destination cannot be the source of funds, since that results in a no-op
+		if source.PublicKey().ToBase58() == destinationAccountInfo.TokenAccount {
+			return newIntentValidationError("payment is a no-op")
 		}
 	case account.ErrAccountInfoNotFound:
 		// Check whether the destination account is a Kin token account that's
