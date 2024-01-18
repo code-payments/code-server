@@ -198,7 +198,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 			Source:            swapSource.PublicKey().ToBytes(),
 			Destination:       swapDestination.PublicKey().ToBytes(),
 			Nonce:             swapNonce.PublicKey().ToBytes(),
-			Payer:             owner.PublicKey().ToBytes(),
+			Payer:             s.swapSubsidizer.PublicKey().ToBytes(),
 			RemainingAccounts: remainingAccountsToValidate,
 		},
 		&swap_validator.PreSwapInstructionArgs{},
@@ -209,7 +209,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 			PreSwapState: preSwapState,
 			Source:       swapSource.PublicKey().ToBytes(),
 			Destination:  swapDestination.PublicKey().ToBytes(),
-			Payer:        owner.PublicKey().ToBytes(),
+			Payer:        s.swapSubsidizer.PublicKey().ToBytes(),
 		},
 		&swap_validator.PostSwapInstructionArgs{
 			StateBump:    preSwapStateBump,
