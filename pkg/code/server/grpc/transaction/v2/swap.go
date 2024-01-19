@@ -194,7 +194,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	preSwapIxn := swap_validator.NewPreSwapInstruction(
 		&swap_validator.PreSwapInstructionAccounts{
 			PreSwapState:      preSwapState,
-			User:              owner.PublicKey().ToBytes(),
+			User:              swapAuthority.PublicKey().ToBytes(),
 			Source:            swapSource.PublicKey().ToBytes(),
 			Destination:       swapDestination.PublicKey().ToBytes(),
 			Nonce:             swapNonce.PublicKey().ToBytes(),
@@ -358,12 +358,12 @@ func (s *transactionServer) mustLoadSwapSubsidizer(ctx context.Context) {
 			return err
 		}
 
-		authorityAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+		ownerAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
 		if err != nil {
 			return err
 		}
 
-		s.swapSubsidizer = authorityAccount
+		s.swapSubsidizer = ownerAccount
 		return nil
 	}()
 	if err != nil {
