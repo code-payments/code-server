@@ -55,13 +55,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, status.Error(codes.InvalidArgument, "SwapRequest.Initiate is nil"))
 	}
 
-	if initiateReq.Limit == 0 {
-		// todo: support this
-		return handleSwapError(streamer, status.Error(codes.Unimplemented, "unlimited swap is not supported yet"))
-	}
-
-	amountToSwap := initiateReq.Limit
-
 	owner, err := common.NewAccountFromProto(initiateReq.Owner)
 	if err != nil {
 		log.WithError(err).Warn("invalid owner account")
@@ -124,6 +117,25 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 	log = log.WithField("swap_destination", swapDestination.PublicKey().ToBase58())
+
+	swapSourceBalance, err := s.data.GetBlockchainBalance(ctx, swapSource.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting swap source account balance")
+		return handleSwapError(streamer, err)
+	}
+
+	var amountToSwap uint64
+	if initiateReq.Limit == 0 {
+		// todo: Should we bound this to max send or daily limit?
+		amountToSwap = swapSourceBalance
+	} else {
+		amountToSwap = initiateReq.Limit
+	}
+	if amountToSwap == 0 {
+		return handleSwapError(streamer, newSwapValidationError("usdc account balance is 0"))
+	} else if swapSourceBalance < amountToSwap {
+		return handleSwapError(streamer, newSwapValidationError("insufficient usdc balance"))
+	}
 
 	quote, err := s.jupiterClient.GetQuote(
 		ctx,
