@@ -210,7 +210,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	var remainingAccountsToValidate []swap_validator.AccountMeta
 	for _, accountMeta := range jupiterSwapIxns.SwapInstruction.Accounts {
 		if accountMeta.IsWritable || accountMeta.IsSigner {
-			if bytes.Equal(accountMeta.PublicKey, owner.PublicKey().ToBytes()) ||
+			if bytes.Equal(accountMeta.PublicKey, swapAuthority.PublicKey().ToBytes()) ||
 				bytes.Equal(accountMeta.PublicKey, swapSource.PublicKey().ToBytes()) ||
 				bytes.Equal(accountMeta.PublicKey, swapDestination.PublicKey().ToBytes()) {
 				continue
