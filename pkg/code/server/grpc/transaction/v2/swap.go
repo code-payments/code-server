@@ -59,10 +59,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		// todo: support this
 		return handleSwapError(streamer, status.Error(codes.Unimplemented, "unlimited swap is not supported yet"))
 	}
-	if initiateReq.WaitForBlockchainStatus {
-		// todo: support this
-		return handleSwapError(streamer, status.Error(codes.Unimplemented, "waiting for blockchain status is not supported yet"))
-	}
 
 	amountToSwap := initiateReq.Limit
 
@@ -262,6 +258,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	if err := streamer.Send(serverParameters); err != nil {
 		return handleSwapError(streamer, err)
 	}
+
 	req, err = s.boundedSwapRecv(ctx, streamer)
 	if err != nil {
 		log.WithError(err).Info("error receiving request from client")
@@ -302,14 +299,46 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	log.Debug("submitted transaction")
 
-	err = streamer.Send(&transactionpb.SwapResponse{
-		Response: &transactionpb.SwapResponse_Success_{
-			Success: &transactionpb.SwapResponse_Success{
-				Code: transactionpb.SwapResponse_Success_SWAP_SUBMITTED,
+	if !initiateReq.WaitForBlockchainStatus {
+		err = streamer.Send(&transactionpb.SwapResponse{
+			Response: &transactionpb.SwapResponse_Success_{
+				Success: &transactionpb.SwapResponse_Success{
+					Code: transactionpb.SwapResponse_Success_SWAP_SUBMITTED,
+				},
 			},
-		},
-	})
-	return handleSwapError(streamer, err)
+		})
+		return handleSwapError(streamer, err)
+	}
+
+	for {
+		time.Sleep(time.Second)
+
+		statuses, err := s.data.GetBlockchainSignatureStatuses(ctx, []solana.Signature{solana.Signature(txn.Signature())})
+		if err != nil {
+			continue
+		}
+
+		if len(statuses) == 0 || statuses[0] == nil {
+			continue
+		}
+
+		if statuses[0].ErrorResult != nil {
+			log.WithError(statuses[0].ErrorResult).Warn("transaction failed")
+			return handleSwapStructuredError(streamer, transactionpb.SwapResponse_Error_SWAP_FAILED)
+		}
+
+		if statuses[0].Finalized() {
+			log.Debug("transaction succeeded and is finalized")
+			err = streamer.Send(&transactionpb.SwapResponse{
+				Response: &transactionpb.SwapResponse_Success_{
+					Success: &transactionpb.SwapResponse_Success{
+						Code: transactionpb.SwapResponse_Success_SWAP_FINALIZED,
+					},
+				},
+			})
+			return handleSwapError(streamer, err)
+		}
+	}
 }
 
 func (s *transactionServer) validateJupiterIxns(ixns *jupiter.SwapInstructions) error {
