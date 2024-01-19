@@ -21,8 +21,11 @@ const (
 	SubmitIntentTimeoutConfigEnvName = envConfigPrefix + "SUBMIT_INTENT_TIMEOUT"
 	defaultSubmitIntentTimeout       = 5 * time.Second
 
-	SubmitIntentReceiveTimeoutConfigEnvName = envConfigPrefix + "SUBMIT_INTENT_RECEIVE_TIMEOUT"
-	defaultSubmitIntentReceiveTimeout       = time.Second
+	SwapTimeoutConfigEnvName = envConfigPrefix + "SWAP_TIMEOUT"
+	defaultSwapTimeout       = 60 * time.Second
+
+	ClientReceiveTimeoutConfigEnvName = envConfigPrefix + "CLIENT_RECEIVE_TIMEOUT"
+	defaultClientReceiveTimeout       = time.Second
 
 	FeeCollectorTokenPublicKeyConfigEnvName = envConfigPrefix + "FEE_COLLECTOR_TOKEN_PUBLIC_KEY"
 	defaultFeeCollectorPublicKey            = "invalid" // Ensure something valid is set
@@ -58,7 +61,8 @@ type conf struct {
 	disableAmlChecks                     config.Bool // To avoid limits during testing
 	disableBlockchainChecks              config.Bool
 	submitIntentTimeout                  config.Duration
-	submitIntentReceiveTimeout           config.Duration
+	swapTimeout                          config.Duration
+	clientReceiveTimeout                 config.Duration
 	feeCollectorTokenPublicKey           config.String
 	enableAirdrops                       config.Bool
 	enableAsyncAirdropProcessing         config.Bool
@@ -88,7 +92,8 @@ func WithEnvConfigs() ConfigProvider {
 			disableAmlChecks:                     wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			disableBlockchainChecks:              env.NewBoolConfig(DisableBlockchainChecksConfigEnvName, defaultDisableBlockchainChecks),
 			submitIntentTimeout:                  env.NewDurationConfig(SubmitIntentTimeoutConfigEnvName, defaultSubmitIntentTimeout),
-			submitIntentReceiveTimeout:           env.NewDurationConfig(SubmitIntentReceiveTimeoutConfigEnvName, defaultSubmitIntentReceiveTimeout),
+			swapTimeout:                          env.NewDurationConfig(SwapTimeoutConfigEnvName, defaultSwapTimeout),
+			clientReceiveTimeout:                 env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
 			feeCollectorTokenPublicKey:           env.NewStringConfig(FeeCollectorTokenPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
 			enableAirdrops:                       env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
 			enableAsyncAirdropProcessing:         wrapper.NewBoolConfig(memory.NewConfig(true), true),
@@ -113,7 +118,7 @@ type testOverrides struct {
 	enableAntispamChecks                 bool
 	enableAmlChecks                      bool
 	enableAirdrops                       bool
-	submitIntentReceiveTimeout           time.Duration
+	clientReceiveTimeout                 time.Duration
 	feeCollectorTokenPublicKey           string
 	treasuryPoolOneKinBucket             string
 	treasuryPoolTenKinBucket             string
@@ -132,7 +137,8 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 			disableAmlChecks:                     wrapper.NewBoolConfig(memory.NewConfig(!overrides.enableAmlChecks), false),
 			disableBlockchainChecks:              wrapper.NewBoolConfig(memory.NewConfig(true), true),
 			submitIntentTimeout:                  wrapper.NewDurationConfig(memory.NewConfig(defaultSubmitIntentTimeout), defaultSubmitIntentTimeout),
-			submitIntentReceiveTimeout:           wrapper.NewDurationConfig(memory.NewConfig(overrides.submitIntentReceiveTimeout), defaultSubmitIntentReceiveTimeout),
+			swapTimeout:                          wrapper.NewDurationConfig(memory.NewConfig(defaultSwapTimeout), defaultSwapTimeout),
+			clientReceiveTimeout:                 wrapper.NewDurationConfig(memory.NewConfig(overrides.clientReceiveTimeout), defaultClientReceiveTimeout),
 			feeCollectorTokenPublicKey:           wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorTokenPublicKey), defaultFeeCollectorPublicKey),
 			enableAirdrops:                       wrapper.NewBoolConfig(memory.NewConfig(overrides.enableAirdrops), false),
 			enableAsyncAirdropProcessing:         wrapper.NewBoolConfig(memory.NewConfig(false), false),

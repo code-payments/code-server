@@ -1025,7 +1025,7 @@ func (s *transactionServer) boundedSubmitIntentRecv(ctx context.Context, streame
 	}()
 
 	select {
-	case <-time.After(s.conf.submitIntentReceiveTimeout.Get(ctx)):
+	case <-time.After(s.conf.clientReceiveTimeout.Get(ctx)):
 		return nil, ErrTimedOutReceivingRequest
 	case <-done:
 		return req, err

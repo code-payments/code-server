@@ -75,8 +75,8 @@ import (
 func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, phoneTestEnv, phoneTestEnv, func()) {
 	var err error
 
-	if serverOverrides.submitIntentReceiveTimeout == 0 {
-		serverOverrides.submitIntentReceiveTimeout = defaultSubmitIntentReceiveTimeout
+	if serverOverrides.clientReceiveTimeout == 0 {
+		serverOverrides.clientReceiveTimeout = defaultClientReceiveTimeout
 	}
 
 	db := code_data.NewTestDataProvider()

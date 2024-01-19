@@ -2696,7 +2696,7 @@ func TestSubmitIntent_InvalidNumberOfSignaturesSubmitted(t *testing.T) {
 
 func TestSubmitIntent_TimeBoundedRequestSend(t *testing.T) {
 	server, phone, _, cleanup := setupTestEnv(t, &testOverrides{
-		submitIntentReceiveTimeout: 100 * time.Millisecond,
+		clientReceiveTimeout: 100 * time.Millisecond,
 	})
 	defer cleanup()
 

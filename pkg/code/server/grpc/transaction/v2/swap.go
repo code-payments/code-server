@@ -28,11 +28,8 @@ import (
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
-// todo: general cleanup
 func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) error {
-	// todo: configurable
-	// todo: dynamic based on WaitForBlockchainStatus
-	ctx, cancel := context.WithTimeout(streamer.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(streamer.Context(), s.conf.swapTimeout.Get(streamer.Context()))
 	defer cancel()
 
 	log := s.log.WithField("method", "Swap")
@@ -458,8 +455,7 @@ func (s *transactionServer) boundedSwapRecv(ctx context.Context, streamer transa
 	}()
 
 	select {
-	// todo: configurable
-	case <-time.After(time.Second):
+	case <-time.After(s.conf.clientReceiveTimeout.Get(ctx)):
 		return nil, ErrTimedOutReceivingRequest
 	case <-done:
 		return req, err
