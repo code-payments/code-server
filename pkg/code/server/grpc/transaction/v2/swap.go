@@ -28,7 +28,7 @@ import (
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
-// todo: general cleanup and comments
+// todo: general cleanup
 func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) error {
 	// todo: configurable
 	// todo: dynamic based on WaitForBlockchainStatus
@@ -50,6 +50,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return err
 	}
 
+	// Client starts a swap by sending the initiation request
 	initiateReq := req.GetInitiate()
 	if initiateReq == nil {
 		return handleSwapError(streamer, status.Error(codes.InvalidArgument, "SwapRequest.Initiate is nil"))
@@ -68,6 +69,12 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return err
 	}
 
+	//
+	// Section: Antispam
+	//
+
+	// Light antispam guard that verifies phone verification
+	//
 	// todo: proper antispam guard
 	phoneVerificationRecord, err := s.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
 	if err == phone.ErrNoVerification {
@@ -77,6 +84,10 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 	log = log.WithField("phone_number", phoneVerificationRecord.PhoneNumber)
+
+	//
+	// Section: Swap parameter setup (accounts, balances, etc.)
+	//
 
 	swapAuthority, err := common.NewAccountFromProto(initiateReq.SwapAuthority)
 	if err != nil {
@@ -137,6 +148,10 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, newSwapValidationError("insufficient usdc balance"))
 	}
 
+	//
+	// Section: Jupiter routing
+	//
+
 	quote, err := s.jupiterClient.GetQuote(
 		ctx,
 		usdc.Mint,
@@ -163,10 +178,18 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 
+	//
+	// Section: Validation
+	//
+
 	if err := s.validateJupiterIxns(jupiterSwapIxns); err != nil {
 		log.WithError(err).Warn("jupiter instruction validation failure")
 		return handleSwapError(streamer, newSwapValidationError("jupiter instructions failed validation"))
 	}
+
+	//
+	// Section: Transaction construction
+	//
 
 	swapNonce, err := common.NewRandomAccount()
 	if err != nil {
@@ -239,6 +262,10 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 	txn.SetBlockhash(blockhash)
 
+	//
+	// Section: Server parameters
+	//
+
 	computeUnitLimit, _ := compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
 	computeUnitPrice, _ := compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
 
@@ -251,6 +278,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		})
 	}
 
+	// Server responds back with parameters, so client can locally construct the
+	// transaction and validate it.
 	serverParameters := &transactionpb.SwapResponse{
 		Response: &transactionpb.SwapResponse_ServerParamenters{
 			ServerParamenters: &transactionpb.SwapResponse_ServerParameters{
@@ -271,12 +300,17 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 
+	//
+	// Section: Transaction signing
+	//
+
 	req, err = s.boundedSwapRecv(ctx, streamer)
 	if err != nil {
 		log.WithError(err).Info("error receiving request from client")
 		return err
 	}
 
+	// Client responds back with a signatures to the swap transaction
 	submitSignatureReq := req.GetSubmitSignature()
 	if submitSignatureReq == nil {
 		return handleSwapError(streamer, status.Error(codes.InvalidArgument, "SwapRequest.SubmitSignature is nil"))
@@ -298,6 +332,10 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	txn.Sign(s.swapSubsidizer.PrivateKey().ToBytes())
 
 	log = log.WithField("transaction_id", base58.Encode(txn.Signature()))
+
+	//
+	// Section: Transaction submission
+	//
 
 	_, err = s.data.SubmitBlockchainTransaction(ctx, &txn)
 	if err != nil {
