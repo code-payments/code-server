@@ -17,6 +17,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/jupiter"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -134,7 +135,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	var amountToSwap uint64
 	if initiateReq.Limit == 0 {
-		// todo: Should we bound this to max send or daily limit?
 		amountToSwap = swapSourceBalance
 	} else {
 		amountToSwap = initiateReq.Limit
@@ -144,6 +144,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	} else if swapSourceBalance < amountToSwap {
 		return handleSwapError(streamer, newSwapValidationError("insufficient usdc balance"))
 	}
+	log = log.WithField("amount_to_swap", amountToSwap)
 
 	//
 	// Section: Jupiter routing
@@ -175,13 +176,20 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 
+	log = log.WithField("estimated_amount_to_receive", quote.GetEstimatedSwapAmount())
+
 	//
 	// Section: Validation
 	//
 
-	if err := s.validateJupiterIxns(jupiterSwapIxns); err != nil {
-		log.WithError(err).Warn("jupiter instruction validation failure")
-		return handleSwapError(streamer, newSwapValidationError("jupiter instructions failed validation"))
+	if err := s.validateSwap(ctx, amountToSwap, quote, jupiterSwapIxns); err != nil {
+		switch err.(type) {
+		case SwapValidationError:
+			log.WithError(err).Warn("swap failed validation")
+		default:
+			log.WithError(err).Warn("failure performing swap validation")
+		}
+		return handleSwapError(streamer, err)
 	}
 
 	//
@@ -388,35 +396,67 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 }
 
-func (s *transactionServer) validateJupiterIxns(ixns *jupiter.SwapInstructions) error {
+func (s *transactionServer) validateSwap(
+	ctx context.Context,
+	amountToSwap uint64,
+	quote *jupiter.Quote,
+	ixns *jupiter.SwapInstructions,
+) error {
+	//
+	// Part 1: Expected instructions sanity check
+	//
+
 	if len(ixns.ComputeBudgetInstructions) != 2 {
-		return errors.New("expected two compute budget instructions")
+		return newSwapValidationError("expected two compute budget instructions")
 	}
 
 	if len(ixns.SetupInstructions) != 0 || ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
-		return errors.New("unexpected instruction")
+		return newSwapValidationError("unexpected instruction")
 	}
 
+	//
+	// Part 2: Compute budget instructions
+	//
+
 	if !bytes.Equal(ixns.ComputeBudgetInstructions[0].Program, compute_budget.ProgramKey) || !bytes.Equal(ixns.ComputeBudgetInstructions[1].Program, compute_budget.ProgramKey) {
-		return errors.New("invalid ComputeBudget program key")
+		return newSwapValidationError("invalid ComputeBudget program key")
 	}
 
 	if len(ixns.ComputeBudgetInstructions[0].Accounts) != 0 || len(ixns.ComputeBudgetInstructions[1].Accounts) != 0 {
-		return errors.New("invalid ComputeBudget instruction accounts")
+		return newSwapValidationError("invalid ComputeBudget instruction accounts")
 	}
 
 	if _, err := compute_budget.DecompileSetComputeUnitLimitIxnData(ixns.ComputeBudgetInstructions[0].Data); err != nil {
-		return errors.Wrap(err, "invalid ComputeBudget::SetComputeUnitLimit instruction data")
+		return newSwapValidationErrorf("invalid ComputeBudget::SetComputeUnitLimit instruction data: %s", err.Error())
 	}
 
 	if _, err := compute_budget.DecompileSetComputeUnitPriceIxnData(ixns.ComputeBudgetInstructions[1].Data); err != nil {
-		return errors.Wrap(err, "invalid ComputeBudget::SetComputeUnitPrice instruction data")
+		return newSwapValidationErrorf("invalid ComputeBudget::SetComputeUnitPrice instruction data: %s", err.Error())
 	}
+
+	//
+	// Part 3: Swap instruction
+	//
 
 	for _, ixnAccount := range ixns.SwapInstruction.Accounts {
 		if bytes.Equal(ixnAccount.PublicKey, s.swapSubsidizer.PublicKey().ToBytes()) {
-			return errors.New("swap subsidizer used in swap instruction")
+			return newSwapValidationError("swap subsidizer used in swap instruction")
 		}
+	}
+
+	usdcAmount := float64(amountToSwap) / float64(usdc.QuarksPerUsdc)
+	kinAmount := float64(quote.GetEstimatedSwapAmount()) / float64(kin.QuarksPerKin)
+	swapRate := usdcAmount / kinAmount
+
+	usdExchangeRateRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
+	if err != nil {
+		return errors.Wrap(err, "error getting usd exchange rate record")
+	}
+
+	// todo: configurable
+	swapRateThreshold := 1.25
+	if swapRate/usdExchangeRateRateRecord.Rate > swapRateThreshold {
+		return newSwapValidationErrorf("swap rate exceeds current exchange rate by %.2fx", swapRateThreshold)
 	}
 
 	return nil
