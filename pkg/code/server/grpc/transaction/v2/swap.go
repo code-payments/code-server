@@ -21,7 +21,6 @@ import (
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/jupiter"
 	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/phone"
 	"github.com/code-payments/code-server/pkg/solana"
 	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
 	swap_validator "github.com/code-payments/code-server/pkg/solana/swapvalidator"
@@ -71,17 +70,12 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Antispam
 	//
 
-	// Light antispam guard that verifies phone verification
-	//
-	// todo: proper antispam guard
-	phoneVerificationRecord, err := s.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
-	if err == phone.ErrNoVerification {
-		return handleSwapError(streamer, newSwapDeniedError("not phone verified"))
-	} else if err != nil {
-		log.WithError(err).Warn("failure getting phone verification record")
+	allow, err := s.antispamGuard.AllowSwap(ctx, owner)
+	if err != nil {
 		return handleSwapError(streamer, err)
+	} else if !allow {
+		return handleSwapError(streamer, newSwapDeniedError("rate limited"))
 	}
-	log = log.WithField("phone_number", phoneVerificationRecord.PhoneNumber)
 
 	//
 	// Section: Swap parameter setup (accounts, balances, etc.)
