@@ -15,6 +15,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/lawenforcement"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
+	"github.com/code-payments/code-server/pkg/jupiter"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
@@ -30,10 +31,11 @@ type transactionServer struct {
 
 	pusher push_lib.Provider
 
-	maxmind *maxminddb.Reader
+	jupiterClient *jupiter.Client
 
 	messagingClient messaging.InternalMessageClient
 
+	maxmind       *maxminddb.Reader
 	antispamGuard *antispam.Guard
 	amlGuard      *lawenforcement.AntiMoneyLaunderingGuard
 
@@ -53,6 +55,8 @@ type transactionServer struct {
 	airdropperLock sync.Mutex
 	airdropper     *common.TimelockAccounts
 
+	swapSubsidizer *common.Account
+
 	feeCollector *common.Account
 
 	transactionpb.UnimplementedTransactionServer
@@ -61,9 +65,10 @@ type transactionServer struct {
 func NewTransactionServer(
 	data code_data.Provider,
 	pusher push_lib.Provider,
-	antispamGuard *antispam.Guard,
-	maxmind *maxminddb.Reader,
+	jupiterClient *jupiter.Client,
 	messagingClient messaging.InternalMessageClient,
+	maxmind *maxminddb.Reader,
+	antispamGuard *antispam.Guard,
 	configProvider ConfigProvider,
 ) transactionpb.TransactionServer {
 	ctx := context.Background()
@@ -82,10 +87,11 @@ func NewTransactionServer(
 
 		pusher: pusher,
 
-		maxmind: maxmind,
+		jupiterClient: jupiterClient,
 
 		messagingClient: messagingClient,
 
+		maxmind:       maxmind,
 		antispamGuard: antispamGuard,
 		amlGuard:      lawenforcement.NewAntiMoneyLaunderingGuard(data),
 
@@ -121,6 +127,11 @@ func NewTransactionServer(
 	airdropper := s.conf.airdropperOwnerPublicKey.Get(ctx)
 	if len(airdropper) > 0 && airdropper != defaultAirdropperOwnerPublicKey {
 		s.mustLoadAirdropper(ctx)
+	}
+
+	swapSubsidizer := s.conf.swapSubsidizerOwnerPublicKey.Get(ctx)
+	if len(swapSubsidizer) > 0 && swapSubsidizer != defaultSwapSubsidizerOwnerPublicKey {
+		s.mustLoadSwapSubsidizer(ctx)
 	}
 
 	feeCollector, err := common.NewAccountFromPublicKeyString(conf.feeCollectorTokenPublicKey.Get(ctx))

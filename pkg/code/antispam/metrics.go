@@ -23,6 +23,8 @@ const (
 
 	actionWelcomeBonus  = "WelcomeBonus"
 	actionReferralBonus = "ReferralBonus"
+
+	actionSwap = "Swap"
 )
 
 func recordDenialEvent(ctx context.Context, action, reason string) {

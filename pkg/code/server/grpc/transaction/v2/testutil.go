@@ -75,8 +75,8 @@ import (
 func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, phoneTestEnv, phoneTestEnv, func()) {
 	var err error
 
-	if serverOverrides.submitIntentReceiveTimeout == 0 {
-		serverOverrides.submitIntentReceiveTimeout = defaultSubmitIntentReceiveTimeout
+	if serverOverrides.clientReceiveTimeout == 0 {
+		serverOverrides.clientReceiveTimeout = defaultClientReceiveTimeout
 	}
 
 	db := code_data.NewTestDataProvider()
@@ -178,9 +178,10 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 	testService := NewTransactionServer(
 		db,
 		memory_push.NewPushProvider(),
-		antispam.NewGuard(db, memory_device_verifier.NewMemoryDeviceVerifier(), nil),
 		nil,
 		messaging.NewMessagingClient(db),
+		nil,
+		antispam.NewGuard(db, memory_device_verifier.NewMemoryDeviceVerifier(), nil),
 		withManualTestOverrides(serverOverrides),
 	)
 	grpcTestServer.RegisterService(func(server *grpc.Server) {
