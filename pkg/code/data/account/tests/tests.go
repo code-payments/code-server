@@ -23,6 +23,7 @@ func RunTests(t *testing.T, s account.Store, teardown func()) {
 		testGetLatestByOwner,
 		testRemoteSendEdgeCases,
 		testRelationshipAccountEdgeCases,
+		testSwapAccountEdgeCases,
 		testDepositSyncMethods,
 		testAutoReturnCheckMethods,
 	} {
@@ -423,6 +424,51 @@ func testRelationshipAccountEdgeCases(t *testing.T, s account.Store) {
 
 		_, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_RELATIONSHIP)
 		assert.Error(t, err)
+	})
+}
+
+func testSwapAccountEdgeCases(t *testing.T, s account.Store) {
+	t.Run("testSwapAccountEdgeCases", func(t *testing.T) {
+		ctx := context.Background()
+
+		swapRecord := &account.Record{
+			OwnerAccount:     "owner",
+			AuthorityAccount: "authority",
+			TokenAccount:     "token1",
+			MintAccount:      "mint1",
+			AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+			Index:            uint64(0),
+		}
+		cloned := swapRecord.Clone()
+
+		require.NoError(t, s.Put(ctx, swapRecord))
+		assert.Equal(t, account.ErrAccountInfoExists, s.Put(ctx, swapRecord))
+
+		actual, err := s.GetByTokenAddress(ctx, cloned.TokenAccount)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		actual, err = s.GetLatestByOwnerAddressAndType(ctx, cloned.OwnerAccount, commonpb.AccountType_SWAP_ACCOUNT)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		recordsByType, err := s.GetLatestByOwnerAddress(ctx, cloned.OwnerAccount)
+		require.NoError(t, err)
+		require.Len(t, recordsByType, 1)
+		require.Len(t, recordsByType[commonpb.AccountType_SWAP_ACCOUNT], 1)
+		assertEquivalentRecords(t, &cloned, recordsByType[commonpb.AccountType_SWAP_ACCOUNT][0])
+
+		// This is technically a bug, but a feature given we know we have exactly
+		// one mint we're supporting for swaps. Supporting multiple mints at this
+		// point is a larger refactor of this data store we don't want to tackle
+		// just yet.
+		swapRecord.MintAccount = "mint2"
+		swapRecord.TokenAccount = "token2"
+		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, swapRecord))
 	})
 }
 

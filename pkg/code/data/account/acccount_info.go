@@ -23,6 +23,7 @@ var AllAccountTypes = []commonpb.AccountType{
 	commonpb.AccountType_BUCKET_1_000_000_KIN,
 	commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 	commonpb.AccountType_RELATIONSHIP,
+	commonpb.AccountType_SWAP_ACCOUNT,
 }
 
 type Record struct {
@@ -163,6 +164,14 @@ func (r *Record) Validate() error {
 		commonpb.AccountType_TEMPORARY_OUTGOING:
 		if r.OwnerAccount == r.AuthorityAccount {
 			return errors.New("owner cannot be authority for temporary rotating account")
+		}
+	case commonpb.AccountType_SWAP_ACCOUNT:
+		if r.Index != 0 {
+			return errors.New("index must be 0 for swap account")
+		}
+
+		if r.OwnerAccount == r.AuthorityAccount {
+			return errors.New("owner cannot be authority for swap account")
 		}
 	default:
 		return errors.Errorf("unhandled account type: %s", r.AccountType.String())
