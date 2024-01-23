@@ -31,6 +31,7 @@ type Record struct {
 	OwnerAccount     string
 	AuthorityAccount string
 	TokenAccount     string
+	MintAccount      string
 
 	AccountType    commonpb.AccountType
 	Index          uint64
@@ -65,6 +66,7 @@ func (r *Record) Clone() Record {
 		OwnerAccount:            r.OwnerAccount,
 		AuthorityAccount:        r.AuthorityAccount,
 		TokenAccount:            r.TokenAccount,
+		MintAccount:             r.MintAccount,
 		AccountType:             r.AccountType,
 		Index:                   r.Index,
 		RelationshipTo:          pointer.StringCopy(r.RelationshipTo),
@@ -80,6 +82,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.OwnerAccount = r.OwnerAccount
 	dst.AuthorityAccount = r.AuthorityAccount
 	dst.TokenAccount = r.TokenAccount
+	dst.MintAccount = r.MintAccount
 	dst.AccountType = r.AccountType
 	dst.Index = r.Index
 	dst.RelationshipTo = pointer.StringCopy(dst.RelationshipTo)
@@ -100,6 +103,10 @@ func (r *Record) Validate() error {
 
 	if len(r.TokenAccount) == 0 {
 		return errors.New("token address is required")
+	}
+
+	if len(r.MintAccount) == 0 {
+		return errors.New("mint address is required")
 	}
 
 	if r.AccountType == commonpb.AccountType_UNKNOWN {
@@ -149,11 +156,16 @@ func (r *Record) Validate() error {
 			return errors.New("index must be 0 for bucket account")
 		}
 
-		fallthrough
-	default:
 		if r.OwnerAccount == r.AuthorityAccount {
-			return errors.New("owner cannot be authority for non-primary account")
+			return errors.New("owner cannot be authority for bucket account")
 		}
+	case commonpb.AccountType_TEMPORARY_INCOMING,
+		commonpb.AccountType_TEMPORARY_OUTGOING:
+		if r.OwnerAccount == r.AuthorityAccount {
+			return errors.New("owner cannot be authority for temporary rotating account")
+		}
+	default:
+		return errors.Errorf("unhandled account type: %s", r.AccountType.String())
 	}
 
 	if r.TokenAccount == r.OwnerAccount || r.TokenAccount == r.AuthorityAccount {

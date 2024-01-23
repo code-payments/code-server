@@ -30,6 +30,7 @@ const (
 		owner_account TEXT NOT NULL,
 		authority_account TEXT NOT NULL,
 		token_account TEXT NOT NULL,
+		mint_account TEXT NOT NULL,
 
 		account_type INTEGER NOT NULL,
 		index INTEGER NOT NULL,

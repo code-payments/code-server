@@ -41,6 +41,7 @@ func testRoundTrip(t *testing.T, s account.Store) {
 			OwnerAccount:         "owner",
 			AuthorityAccount:     "authority",
 			TokenAccount:         "token",
+			MintAccount:          "mint",
 			AccountType:          commonpb.AccountType_TEMPORARY_OUTGOING,
 			Index:                123,
 			RequiresDepositSync:  true,
@@ -94,6 +95,7 @@ func testPutMultipleRecords(t *testing.T, s account.Store) {
 				OwnerAccount:     "owner_part1",
 				AuthorityAccount: fmt.Sprintf("authority_part1_%d", i),
 				TokenAccount:     fmt.Sprintf("token_part1_%d", i),
+				MintAccount:      "mint",
 				AccountType:      commonpb.AccountType_TEMPORARY_OUTGOING,
 				Index:            uint64(i),
 			}
@@ -114,6 +116,7 @@ func testPutMultipleRecords(t *testing.T, s account.Store) {
 				OwnerAccount:     "owner_part2",
 				AuthorityAccount: fmt.Sprintf("authority_part2_%d", i),
 				TokenAccount:     fmt.Sprintf("token_part2_%d", i),
+				MintAccount:      "mint",
 				AccountType:      accountType,
 				Index:            0,
 			}
@@ -140,6 +143,7 @@ func testPutErrors(t *testing.T, s account.Store) {
 			OwnerAccount:     "owner",
 			AuthorityAccount: "authority",
 			TokenAccount:     "token",
+			MintAccount:      "mint",
 			AccountType:      commonpb.AccountType_TEMPORARY_OUTGOING,
 			Index:            123,
 		}
@@ -272,6 +276,7 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 					OwnerAccount:     "owner",
 					AuthorityAccount: fmt.Sprintf("authority%d%d", i, j),
 					TokenAccount:     fmt.Sprintf("token%d%d", i, j),
+					MintAccount:      "mint",
 					AccountType:      accountType,
 					Index:            uint64(j),
 				}
@@ -311,6 +316,7 @@ func testRemoteSendEdgeCases(t *testing.T, s account.Store) {
 			OwnerAccount:            "owner",
 			AuthorityAccount:        "owner",
 			TokenAccount:            "token",
+			MintAccount:             "mint",
 			AccountType:             commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 			Index:                   uint64(0),
 			RequiresAutoReturnCheck: true,
@@ -371,6 +377,7 @@ func testRelationshipAccountEdgeCases(t *testing.T, s account.Store) {
 				OwnerAccount:     "owner",
 				AuthorityAccount: fmt.Sprintf("authority%d", i),
 				TokenAccount:     fmt.Sprintf("token%d", i),
+				MintAccount:      "mint",
 				AccountType:      commonpb.AccountType_RELATIONSHIP,
 				RelationshipTo:   &relationshipTo,
 				Index:            uint64(0),
@@ -436,6 +443,7 @@ func testDepositSyncMethods(t *testing.T, s account.Store) {
 				OwnerAccount:         fmt.Sprintf("owner%d", i),
 				AuthorityAccount:     fmt.Sprintf("owner%d", i),
 				TokenAccount:         fmt.Sprintf("token%d", i),
+				MintAccount:          "mint",
 				AccountType:          commonpb.AccountType_PRIMARY,
 				Index:                uint64(0),
 				DepositsLastSyncedAt: time.Now().Add(time.Duration(-i) * time.Hour),
@@ -488,6 +496,7 @@ func testAutoReturnCheckMethods(t *testing.T, s account.Store) {
 				OwnerAccount:     fmt.Sprintf("owner%d", i),
 				AuthorityAccount: fmt.Sprintf("owner%d", i),
 				TokenAccount:     fmt.Sprintf("token%d", i),
+				MintAccount:      "mint",
 				AccountType:      commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 				Index:            uint64(0),
 				CreatedAt:        time.Now().Add(time.Duration(-i) * time.Hour),
@@ -535,6 +544,7 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *account.Record) {
 	assert.Equal(t, obj1.OwnerAccount, obj2.OwnerAccount)
 	assert.Equal(t, obj1.AuthorityAccount, obj2.AuthorityAccount)
 	assert.Equal(t, obj1.TokenAccount, obj2.TokenAccount)
+	assert.Equal(t, obj1.MintAccount, obj2.MintAccount)
 	assert.Equal(t, obj1.AccountType, obj2.AccountType)
 	assert.Equal(t, obj1.Index, obj2.Index)
 	assert.EqualValues(t, obj1.RelationshipTo, obj2.RelationshipTo)

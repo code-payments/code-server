@@ -37,6 +37,8 @@ type Record struct {
 	TimeAuthority  string
 	CloseAuthority string
 
+	Mint string
+
 	NumDaysLocked uint8
 	UnlockAt      *uint64
 
@@ -175,6 +177,8 @@ func (r *Record) Clone() *Record {
 		TimeAuthority:  r.TimeAuthority,
 		CloseAuthority: r.CloseAuthority,
 
+		Mint: r.Mint,
+
 		NumDaysLocked: r.NumDaysLocked,
 		UnlockAt:      unlockAt,
 
@@ -205,6 +209,8 @@ func (r *Record) CopyTo(dst *Record) {
 
 	dst.TimeAuthority = r.TimeAuthority
 	dst.CloseAuthority = r.CloseAuthority
+
+	dst.Mint = r.Mint
 
 	dst.NumDaysLocked = r.NumDaysLocked
 	dst.UnlockAt = unlockAt
@@ -245,6 +251,10 @@ func (r *Record) Validate() error {
 
 	if len(r.CloseAuthority) == 0 {
 		return errors.New("close authority is required")
+	}
+
+	if len(r.Mint) == 0 {
+		return errors.New("mint is required")
 	}
 
 	if r.NumDaysLocked != timelock_token_v1.DefaultNumDaysLocked {

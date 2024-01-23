@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/database/query"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
 func RunTests(t *testing.T, s timelock.Store, teardown func()) {
@@ -46,6 +46,8 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 
 			TimeAuthority:  "time_authority",
 			CloseAuthority: "close_authority",
+
+			Mint: "mint",
 
 			NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
@@ -138,6 +140,8 @@ func testMultiVersionRecords(t *testing.T, s timelock.Store) {
 			TimeAuthority:  "time_authority",
 			CloseAuthority: "close_authority",
 
+			Mint: "mint",
+
 			NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
 			Block: 123456,
@@ -157,6 +161,8 @@ func testMultiVersionRecords(t *testing.T, s timelock.Store) {
 
 			TimeAuthority:  "time_authority",
 			CloseAuthority: "close_authority",
+
+			Mint: "mint",
 
 			NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
@@ -201,6 +207,8 @@ func testBatchedMethods(t *testing.T, s timelock.Store) {
 
 				TimeAuthority:  "time_authority",
 				CloseAuthority: "close_authority",
+
+				Mint: "mint",
 
 				NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
@@ -254,6 +262,8 @@ func testGetAllByState(t *testing.T, s timelock.Store) {
 
 				TimeAuthority:  "time_authority",
 				CloseAuthority: "close_authority",
+
+				Mint: "mint",
 
 				NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
@@ -331,6 +341,8 @@ func testGetCountByState(t *testing.T, s timelock.Store) {
 					TimeAuthority:  "time_authority",
 					CloseAuthority: "close_authority",
 
+					Mint: "mint",
+
 					NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 				}
 
@@ -357,6 +369,8 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *timelock.Record) {
 
 	assert.Equal(t, obj1.TimeAuthority, obj2.TimeAuthority)
 	assert.Equal(t, obj1.CloseAuthority, obj2.CloseAuthority)
+
+	assert.Equal(t, obj1.Mint, obj2.Mint)
 
 	assert.Equal(t, obj1.NumDaysLocked, obj2.NumDaysLocked)
 	assert.EqualValues(t, obj1.UnlockAt, obj2.UnlockAt)
