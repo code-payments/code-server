@@ -21,8 +21,8 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	subsidizerAccount = newRandomTestAccount(t)
-
 	owner := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
@@ -49,7 +49,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 
 	// Later calls intent to OpenAccounts
 
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -59,6 +59,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
+		MintAccount:      mintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
@@ -77,8 +78,8 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	subsidizerAccount = newRandomTestAccount(t)
-
 	owner := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
@@ -93,7 +94,7 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 	}
 	require.NoError(t, data.SavePhoneVerification(ctx, verificationRecord))
 
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -103,6 +104,7 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
+		MintAccount:      mintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
@@ -120,8 +122,8 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	subsidizerAccount = newRandomTestAccount(t)
-
 	owner := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	actual, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	require.NoError(t, err)
@@ -139,7 +141,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		{authority1, commonpb.AccountType_BUCKET_1_KIN},
 		{authority2, commonpb.AccountType_BUCKET_10_KIN},
 	} {
-		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -149,6 +151,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: timelockRecord.VaultOwner,
 			TokenAccount:     timelockRecord.VaultAddress,
+			MintAccount:      mintAccount.PublicKey().ToBase58(),
 			AccountType:      authorityAndType.accountType,
 		}
 		require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
@@ -161,7 +164,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		{authority3, "app1.com"},
 		{authority4, "app2.com"},
 	} {
-		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -171,6 +174,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: timelockRecord.VaultOwner,
 			TokenAccount:     timelockRecord.VaultAddress,
+			MintAccount:      mintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_RELATIONSHIP,
 			RelationshipTo:   &authorityAndRelationship.domain,
 		}

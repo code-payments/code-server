@@ -10,15 +10,14 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/kin"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
 	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
 const (
@@ -64,6 +63,8 @@ type TimelockAccounts struct {
 
 	TimeAuthority  *Account
 	CloseAuthority *Account
+
+	Mint *Account
 }
 
 type AccountRecords struct {
@@ -182,24 +183,24 @@ func (a *Account) Sign(message []byte) ([]byte, error) {
 	return signature, nil
 }
 
-func (a *Account) ToTimelockVault(dataVersion timelock_token_v1.TimelockDataVersion) (*Account, error) {
+func (a *Account) ToTimelockVault(dataVersion timelock_token_v1.TimelockDataVersion, mint *Account) (*Account, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	timelockAccounts, err := a.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := a.GetTimelockAccounts(dataVersion, mint)
 	if err != nil {
 		return nil, err
 	}
 	return timelockAccounts.Vault, nil
 }
 
-func (a *Account) ToAssociatedTokenAccount() (*Account, error) {
+func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	ata, err := token.GetAssociatedAccount(a.publicKey.bytesValue, kin.TokenMint)
+	ata, err := token.GetAssociatedAccount(a.publicKey.ToBytes(), mint.publicKey.ToBytes())
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +208,7 @@ func (a *Account) ToAssociatedTokenAccount() (*Account, error) {
 	return NewAccountFromPublicKeyBytes(ata)
 }
 
-func (a *Account) GetTimelockAccounts(dataVersion timelock_token_v1.TimelockDataVersion) (*TimelockAccounts, error) {
+func (a *Account) GetTimelockAccounts(dataVersion timelock_token_v1.TimelockDataVersion, mint *Account) (*TimelockAccounts, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
@@ -216,7 +217,7 @@ func (a *Account) GetTimelockAccounts(dataVersion timelock_token_v1.TimelockData
 	switch dataVersion {
 	case timelock_token_v1.DataVersion1:
 		stateAddress, stateBump, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-			Mint:          kin.TokenMint,
+			Mint:          mint.publicKey.ToBytes(),
 			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
 			VaultOwner:    a.publicKey.ToBytes(),
 			NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
@@ -249,10 +250,12 @@ func (a *Account) GetTimelockAccounts(dataVersion timelock_token_v1.TimelockData
 
 			Vault:     vaultAccount,
 			VaultBump: vaultBump,
+
+			Mint: mint,
 		}
 	case timelock_token_v1.DataVersionLegacy:
 		stateAddress, stateBump, err := timelock_token_legacy.GetStateAddress(&timelock_token_legacy.GetStateAddressArgs{
-			Mint:           kin.TokenMint,
+			Mint:           mint.publicKey.ToBytes(),
 			TimeAuthority:  GetSubsidizer().publicKey.ToBytes(),
 			Nonce:          defaultTimelockNonceAccount.publicKey.ToBytes(),
 			VaultOwner:     a.publicKey.ToBytes(),
@@ -285,6 +288,8 @@ func (a *Account) GetTimelockAccounts(dataVersion timelock_token_v1.TimelockData
 
 			Vault:     vaultAccount,
 			VaultBump: vaultBump,
+
+			Mint: mint,
 		}
 	default:
 		return nil, errors.New("unsupported data version")
@@ -400,6 +405,8 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 		TimeAuthority:  a.TimeAuthority.publicKey.ToBase58(),
 		CloseAuthority: a.CloseAuthority.publicKey.ToBase58(),
 
+		Mint: a.Mint.publicKey.ToBase58(),
+
 		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
 		UnlockAt:      nil,
 
@@ -422,7 +429,7 @@ func (a *TimelockAccounts) GetInitializeInstruction() (solana.Instruction, error
 				Timelock:      a.State.publicKey.ToBytes(),
 				Vault:         a.Vault.publicKey.ToBytes(),
 				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-				Mint:          kin.TokenMint,
+				Mint:          a.Mint.publicKey.ToBytes(),
 				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
 				Payer:         a.CloseAuthority.publicKey.ToBytes(),
 			},
@@ -518,7 +525,7 @@ func (a *TimelockAccounts) GetBurnDustWithAuthorityInstruction(maxQuarks uint64)
 				Vault:         a.Vault.publicKey.ToBytes(),
 				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
 				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Mint:          kin.TokenMint,
+				Mint:          a.Mint.publicKey.ToBytes(),
 				Payer:         GetSubsidizer().publicKey.ToBytes(),
 			},
 			&timelock_token_v1.BurnDustWithAuthorityInstructionArgs{
@@ -533,7 +540,7 @@ func (a *TimelockAccounts) GetBurnDustWithAuthorityInstruction(maxQuarks uint64)
 				Vault:         a.Vault.publicKey.ToBytes(),
 				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
 				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Mint:          kin.TokenMint,
+				Mint:          a.Mint.publicKey.ToBytes(),
 				Payer:         GetSubsidizer().publicKey.ToBytes(),
 			},
 			&timelock_token_legacy.BurnDustWithAuthorityInstructionArgs{
@@ -642,13 +649,13 @@ func (a *TimelockAccounts) GetCloseAccountsInstruction() (solana.Instruction, er
 
 // ValidateExternalKinTokenAccount validates an address is an external Kin token account
 func ValidateExternalKinTokenAccount(ctx context.Context, data code_data.Provider, tokenAccount *Account) (bool, string, error) {
-	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.publicKey.ToBase58(), solana.CommitmentFinalized)
 	switch err {
 	case nil:
 		// Double check there were no race conditions between other SubmitIntent
 		// calls and scheduling. This would be highly unlikely to occur, but is a
 		// safety precaution.
-		_, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.PublicKey().ToBase58())
+		_, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.publicKey.ToBase58())
 		if err == nil {
 			return false, "destination is not an external account", nil
 		} else if err == account.ErrAccountInfoNotFound {
