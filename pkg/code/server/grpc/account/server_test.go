@@ -25,6 +25,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
@@ -203,11 +204,13 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	tempIncomingDerivedOwner := testutil.NewRandomAccount(t)
 	relationship1DerivedOwner := testutil.NewRandomAccount(t)
 	relationship2DerivedOwner := testutil.NewRandomAccount(t)
+	swapDerivedOwner := testutil.NewRandomAccount(t)
 
 	primaryAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
 	bucketAccountRecords := setupAccountRecords(t, env, ownerAccount, bucketDerivedOwner, 0, commonpb.AccountType_BUCKET_100_KIN)
 	relationship1AccountRecords := setupAccountRecords(t, env, ownerAccount, relationship1DerivedOwner, 0, commonpb.AccountType_RELATIONSHIP)
 	relationship2AccountRecords := setupAccountRecords(t, env, ownerAccount, relationship2DerivedOwner, 0, commonpb.AccountType_RELATIONSHIP)
+	setupAccountRecords(t, env, ownerAccount, swapDerivedOwner, 0, commonpb.AccountType_SWAP_ACCOUNT)
 	setupAccountRecords(t, env, ownerAccount, tempIncomingDerivedOwner, 2, commonpb.AccountType_TEMPORARY_INCOMING)
 	setupCachedBalance(t, env, bucketAccountRecords, kin.ToQuarks(100))
 	setupCachedBalance(t, env, primaryAccountRecords, kin.ToQuarks(42))
@@ -222,7 +225,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 5)
+	assert.Len(t, resp.TokenAccountInfos, 6)
 
 	for _, authority := range []*common.Account{
 		ownerAccount,
@@ -230,15 +233,22 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 		tempIncomingDerivedOwner,
 		relationship1DerivedOwner,
 		relationship2DerivedOwner,
+		swapDerivedOwner,
 	} {
+		var tokenAccount *common.Account
+		if authority.PublicKey().ToBase58() == swapDerivedOwner.PublicKey().ToBase58() {
+			tokenAccount, err = authority.ToAssociatedTokenAccount(common.UsdcMintAccount)
+			require.NoError(t, err)
+		} else {
+			timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+			require.NoError(t, err)
+			tokenAccount = timelockAccounts.Vault
+		}
 
-		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
-		require.NoError(t, err)
-
-		accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
+		accountInfo, ok := resp.TokenAccountInfos[tokenAccount.PublicKey().ToBase58()]
 		require.True(t, ok)
 
-		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
+		assert.Equal(t, tokenAccount.PublicKey().ToBytes(), accountInfo.Address.Value)
 		assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
 		assert.Equal(t, authority.PublicKey().ToBytes(), accountInfo.Authority.Value)
 
@@ -267,6 +277,10 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.EqualValues(t, kin.ToQuarks(5), accountInfo.Balance)
 			require.NotNil(t, accountInfo.Relationship)
 			assert.Equal(t, *relationship2AccountRecords.General.RelationshipTo, accountInfo.Relationship.GetDomain().Value)
+		case swapDerivedOwner.PublicKey().ToBase58():
+			assert.Equal(t, commonpb.AccountType_SWAP_ACCOUNT, accountInfo.AccountType)
+			assert.EqualValues(t, 0, accountInfo.Index)
+			assert.EqualValues(t, 0, accountInfo.Balance)
 		default:
 			require.Fail(t, "unexpected authority")
 		}
@@ -275,13 +289,21 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Nil(t, accountInfo.Relationship)
 		}
 
-		assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
-		assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
-		assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS, accountInfo.BlockchainState)
+		if accountInfo.AccountType == commonpb.AccountType_SWAP_ACCOUNT {
+			assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN, accountInfo.BalanceSource)
+			assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE, accountInfo.ManagementState)
+			assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_UNKNOWN, accountInfo.BlockchainState)
+			assert.Equal(t, common.UsdcMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
+		} else {
+			assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
+			assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
+			assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS, accountInfo.BlockchainState)
+			assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
+		}
+
 		assert.False(t, accountInfo.MustRotate)
 		assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
 		assert.Nil(t, accountInfo.OriginalExchangeData)
-		assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
 	}
 
 	primaryAccountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
@@ -925,9 +947,11 @@ func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccou
 		require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
 	}
 
-	accountRecords.Timelock.VaultState = timelock_token_v1.StateLocked
-	accountRecords.Timelock.Block += 1
-	require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
+	if accountRecords.IsTimelock() {
+		accountRecords.Timelock.VaultState = timelock_token_v1.StateLocked
+		accountRecords.Timelock.Block += 1
+		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
+	}
 
 	return accountRecords
 }
@@ -940,14 +964,31 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 		dataVerstion = timelock_token_v1.DataVersion1
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(dataVerstion, common.KinMintAccount)
-	require.NoError(t, err)
+	var tokenAccount *common.Account
+	var mintAccount *common.Account
+	var timelockRecord *timelock.Record
+	var err error
+
+	if accountType == commonpb.AccountType_SWAP_ACCOUNT {
+		mintAccount = common.UsdcMintAccount
+
+		tokenAccount, err = authorityAccount.ToAssociatedTokenAccount(mintAccount)
+		require.NoError(t, err)
+	} else {
+		mintAccount = common.KinMintAccount
+
+		timelockAccounts, err := authorityAccount.GetTimelockAccounts(dataVerstion, mintAccount)
+		require.NoError(t, err)
+		timelockRecord = timelockAccounts.ToDBRecord()
+
+		tokenAccount = timelockAccounts.Vault
+	}
 
 	accountInfoRecord := &account.Record{
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: authorityAccount.PublicKey().ToBase58(),
-		TokenAccount:     timelockAccounts.Vault.PublicKey().ToBase58(),
-		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+		TokenAccount:     tokenAccount.PublicKey().ToBase58(),
+		MintAccount:      mintAccount.PublicKey().ToBase58(),
 
 		AccountType: accountType,
 
@@ -960,7 +1001,7 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 
 	return &common.AccountRecords{
 		General:  accountInfoRecord,
-		Timelock: timelockAccounts.ToDBRecord(),
+		Timelock: timelockRecord,
 	}
 }
 
@@ -1005,7 +1046,7 @@ func setupPrivacyMigration2022Intent(t *testing.T, env testEnv, ownerAccount *co
 	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 
-	balance, err := balance.DefaultCalculation(env.ctx, env.data, tokenAccount)
+	balance, err := balance.CalculateFromCache(env.ctx, env.data, tokenAccount)
 	require.NoError(t, err)
 
 	intentRecord := &intent.Record{

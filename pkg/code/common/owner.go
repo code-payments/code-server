@@ -114,7 +114,7 @@ func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner
 	}
 	for _, batchAccountRecords := range recordsByType {
 		for _, accountRecords := range batchAccountRecords {
-			if !accountRecords.IsManagedByCode(ctx) {
+			if accountRecords.IsTimelock() && !accountRecords.IsManagedByCode(ctx) {
 				return OwnerManagementStateUnlocked, nil
 			}
 		}
@@ -137,23 +137,29 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 		return res, nil
 	}
 
-	var tokenAccounts []string
+	var timelockAccounts []string
 	for _, infoRecords := range infoRecordsByType {
 		for _, infoRecord := range infoRecords {
-			tokenAccounts = append(tokenAccounts, infoRecord.TokenAccount)
+			if infoRecord.IsTimelock() {
+				timelockAccounts = append(timelockAccounts, infoRecord.TokenAccount)
+			}
 		}
 	}
 
-	timelockRecordsByVault, err := data.GetTimelockByVaultBatch(ctx, tokenAccounts...)
+	timelockRecordsByVault, err := data.GetTimelockByVaultBatch(ctx, timelockAccounts...)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, generalRecords := range infoRecordsByType {
 		for _, generalRecord := range generalRecords {
-			timelockRecord, ok := timelockRecordsByVault[generalRecord.TokenAccount]
-			if !ok {
-				return nil, errors.New("timelock record unexpectedly doesn't exist")
+			var timelockRecord *timelock.Record
+			var ok bool
+			if generalRecord.IsTimelock() {
+				timelockRecord, ok = timelockRecordsByVault[generalRecord.TokenAccount]
+				if !ok {
+					return nil, errors.New("timelock record unexpectedly doesn't exist")
+				}
 			}
 
 			res[generalRecord.AccountType] = append(res[generalRecord.AccountType], &AccountRecords{
@@ -166,6 +172,27 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 	// The record should never exist, but this is precautionary. Pre-privacy timelock
 	// accounts should only be used in a migration.
 	delete(res, commonpb.AccountType_LEGACY_PRIMARY_2022)
+
+	return res, nil
+}
+
+// GetLatestCodeTimelockAccountRecordsForOwner is a utility wrapper over GetLatestTokenAccountRecordsForOwner
+// that filters for Code Timelock accounts.
+func GetLatestCodeTimelockAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[commonpb.AccountType][]*AccountRecords, error) {
+	res := make(map[commonpb.AccountType][]*AccountRecords)
+
+	recordsByType, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, recordsList := range recordsByType {
+		for _, records := range recordsList {
+			if records.IsTimelock() {
+				res[records.General.AccountType] = append(res[records.General.AccountType], records)
+			}
+		}
+	}
 
 	return res, nil
 }

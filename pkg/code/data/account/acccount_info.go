@@ -191,3 +191,7 @@ func (r *Record) Validate() error {
 
 	return nil
 }
+
+func (r *Record) IsTimelock() bool {
+	return r.AccountType != commonpb.AccountType_SWAP_ACCOUNT
+}

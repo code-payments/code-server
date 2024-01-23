@@ -139,67 +139,13 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	}
 
 	// Fetch balances
-	balanceMetadataByTokenAccount := make(map[string]*balanceMetadata)
-
-	// Pre-privacy accounts are not supported by the new batching stuff
-	if _, ok := recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022]; ok {
-		log := log.WithField("token_account", recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022][0].General.TokenAccount)
-
-		tokenAccount, err := common.NewAccountFromPublicKeyString(recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022][0].General.TokenAccount)
-		if err != nil {
-			return nil, status.Error(codes.Internal, "")
-		}
-
-		quarks, err := balance.DefaultCalculation(ctx, s.data, tokenAccount)
-		switch err {
-		case nil:
-			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
-				value:  quarks,
-				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
-			}
-		case balance.ErrNotManagedByCode:
-			// Don't bother calculating a balance, the account isn't useable in Code
-			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
-				value:  0,
-				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
-			}
-		default:
-			log.WithError(err).Warn("failure getting balance")
-			return nil, status.Error(codes.Internal, "")
-		}
-	}
-
-	// Privacy account balances can be fetched in a batched method
-	var batchedAccountRecords []*common.AccountRecords
-	for accountType, batchAccountRecords := range recordsByType {
-		if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
-			continue
-		}
-
-		for _, accountRecords := range batchAccountRecords {
-			if common.IsManagedByCode(ctx, accountRecords.Timelock) {
-				batchedAccountRecords = append(batchedAccountRecords, accountRecords)
-			} else {
-				// Don't bother calculating a balance, the account isn't useable in Code
-				balanceMetadataByTokenAccount[accountRecords.General.TokenAccount] = &balanceMetadata{
-					value:  0,
-					source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
-				}
-			}
-		}
-	}
-	balancesByTokenAccount, err := balance.DefaultBatchCalculationWithAccountRecords(ctx, s.data, batchedAccountRecords...)
+	balanceMetadataByTokenAccount, err := s.fetchBalances(ctx, recordsByType)
 	if err != nil {
-		log.WithError(err).Warn("failure fetching batched balances")
+		log.WithError(err).Warn("failure fetching balances")
 		return nil, status.Error(codes.Internal, "")
 	}
-	for tokenAccount, quarks := range balancesByTokenAccount {
-		balanceMetadataByTokenAccount[tokenAccount] = &balanceMetadata{
-			value:  quarks,
-			source: accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
-		}
-	}
 
+	// Construct token account info
 	tokenAccountInfos := make(map[string]*accountpb.TokenAccountInfo)
 	for _, batchRecords := range recordsByType {
 		for _, records := range batchRecords {
@@ -239,6 +185,95 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	return resp, nil
 }
 
+// fetchBalances optimally routes and batches balance calculations for a set of
+// account records.
+func (s *server) fetchBalances(ctx context.Context, recordsByType map[commonpb.AccountType][]*common.AccountRecords) (map[string]*balanceMetadata, error) {
+	balanceMetadataByTokenAccount := make(map[string]*balanceMetadata)
+
+	// Pre-privacy accounts are not supported by the new batching stuff
+	if _, ok := recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022]; ok {
+		tokenAccount, err := common.NewAccountFromPublicKeyString(recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022][0].General.TokenAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		quarks, err := balance.CalculateFromCache(ctx, s.data, tokenAccount)
+		switch err {
+		case nil:
+			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
+				value:  quarks,
+				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
+			}
+		case balance.ErrNotManagedByCode:
+			// Don't bother calculating a balance, the account isn't useable in Code
+			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
+				value:  0,
+				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
+			}
+		default:
+			return nil, err
+		}
+	}
+
+	// Post-privacy Timelock account balances can be fetched using a batched method from cache
+	var batchedAccountRecords []*common.AccountRecords
+	for accountType, batchAccountRecords := range recordsByType {
+		if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
+			continue
+		}
+
+		for _, accountRecords := range batchAccountRecords {
+			if accountRecords.IsManagedByCode(ctx) {
+				batchedAccountRecords = append(batchedAccountRecords, accountRecords)
+			} else {
+				// Don't calculate a balance for now, since the caching strategy
+				// is not possible.
+				balanceMetadataByTokenAccount[accountRecords.General.TokenAccount] = &balanceMetadata{
+					value:  0,
+					source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
+				}
+			}
+		}
+	}
+	balancesByTokenAccount, err := balance.BatchCalculateFromCacheWithAccountRecords(ctx, s.data, batchedAccountRecords...)
+	if err != nil {
+		return nil, err
+	}
+	for tokenAccount, quarks := range balancesByTokenAccount {
+		balanceMetadataByTokenAccount[tokenAccount] = &balanceMetadata{
+			value:  quarks,
+			source: accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
+		}
+	}
+
+	// Any accounts that aren't Timelock can be deferred to the blockchain
+	//
+	// todo: support batching
+	for _, batchAccountRecords := range recordsByType {
+		for _, accountRecords := range batchAccountRecords {
+			if accountRecords.IsTimelock() {
+				continue
+			}
+
+			tokenAccount, err := common.NewAccountFromPublicKeyString(accountRecords.General.TokenAccount)
+			if err != nil {
+				return nil, err
+			}
+
+			quarks, err := balance.CalculateFromBlockchain(ctx, s.data, tokenAccount)
+			if err != nil {
+				return nil, err
+			}
+			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
+				value:  quarks,
+				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN,
+			}
+		}
+	}
+
+	return balanceMetadataByTokenAccount, nil
+}
+
 func (s *server) getProtoAccountInfo(ctx context.Context, records *common.AccountRecords, prefetchedBalanceMetadata *balanceMetadata) (*accountpb.TokenAccountInfo, error) {
 	ownerAccount, err := common.NewAccountFromPublicKeyString(records.General.OwnerAccount)
 	if err != nil {
@@ -262,42 +297,49 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 
 	// todo: We don't yet handle the closing state
 	var managementState accountpb.TokenAccountInfo_ManagementState
-	switch records.Timelock.VaultState {
-	case timelock_token_v1.StateUnknown:
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN
-		if records.Timelock.Block == 0 {
-			// We haven't observed the timelock account at all on the blockchain,
-			// but we know it's guaranteed to be created by the intents system
-			// in the locked state.
+	if !records.IsTimelock() {
+		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
+	} else {
+		switch records.Timelock.VaultState {
+		case timelock_token_v1.StateUnknown:
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN
+			if records.Timelock.Block == 0 {
+				// We haven't observed the timelock account at all on the blockchain,
+				// but we know it's guaranteed to be created by the intents system
+				// in the locked state.
+				managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED
+			}
+		case timelock_token_v1.StateUnlocked:
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKED
+		case timelock_token_v1.StateWaitingForTimeout:
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKING
+		case timelock_token_v1.StateLocked:
 			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED
+		case timelock_token_v1.StateClosed:
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_CLOSED
+		default:
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN
 		}
-	case timelock_token_v1.StateUnlocked:
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKED
-	case timelock_token_v1.StateWaitingForTimeout:
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKING
-	case timelock_token_v1.StateLocked:
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED
-	case timelock_token_v1.StateClosed:
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_CLOSED
-	default:
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN
-	}
 
-	// Should never happen and is a precautionary check. We can't manage timelock
-	// accounts where we aren't the time authority.
-	if records.Timelock.TimeAuthority != common.GetSubsidizer().PublicKey().ToBase58() {
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
-	}
+		// Should never happen and is a precautionary check. We can't manage timelock
+		// accounts where we aren't the time authority.
+		if records.Timelock.TimeAuthority != common.GetSubsidizer().PublicKey().ToBase58() {
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
+		}
 
-	// Should never happen and is a precautionary check. We can't manage timelock
-	// accounts where we aren't the close authority.
-	if records.Timelock.CloseAuthority != common.GetSubsidizer().PublicKey().ToBase58() {
-		managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
+		// Should never happen and is a precautionary check. We can't manage timelock
+		// accounts where we aren't the close authority.
+		if records.Timelock.CloseAuthority != common.GetSubsidizer().PublicKey().ToBase58() {
+			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
+		}
 	}
 
 	blockchainState := accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_DOES_NOT_EXIST
-	if records.Timelock.ExistsOnBlockchain() {
+	if records.IsTimelock() && records.Timelock.ExistsOnBlockchain() {
 		blockchainState = accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS
+	}
+	if !records.IsTimelock() {
+		blockchainState = accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_UNKNOWN
 	}
 
 	mustRotate, err := s.shouldClientRotateAccount(ctx, records, prefetchedBalanceMetadata.value)

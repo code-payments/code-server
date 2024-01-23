@@ -255,6 +255,18 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 		timelockRecord.Block += 1
 		require.NoError(t, serverEnv.data.SaveTimelock(serverEnv.ctx, timelockRecord))
 
+		// Simulate a swap account being created
+		swapAuthorityAccount := testutil.NewRandomAccount(t)
+		swapAta, err := swapAuthorityAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
+		require.NoError(t, err)
+		require.NoError(t, serverEnv.data.CreateAccountInfo(serverEnv.ctx, &account.Record{
+			OwnerAccount:     phoneEnv.parentAccount.PublicKey().ToBase58(),
+			AuthorityAccount: swapAuthorityAccount.PublicKey().ToBase58(),
+			TokenAccount:     swapAta.PublicKey().ToBase58(),
+			MintAccount:      common.UsdcMintAccount.PublicKey().ToBase58(),
+			AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+		}))
+
 		phoneEnvs = append(phoneEnvs, phoneEnv)
 	}
 

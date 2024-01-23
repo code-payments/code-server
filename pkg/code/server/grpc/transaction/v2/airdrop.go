@@ -398,7 +398,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 
 	// Do a balance check. If there's insufficient balance, the feature is considered
 	// to be over with until we get more funding.
-	balance, err := balance.DefaultCalculation(ctx, s.data, s.airdropper.Vault)
+	balance, err := balance.CalculateFromCache(ctx, s.data, s.airdropper.Vault)
 	if err != nil {
 		log.WithError(err).Warn("failure getting airdropper balance")
 		return nil, err

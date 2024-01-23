@@ -22,7 +22,9 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 
 	subsidizerAccount = newRandomTestAccount(t)
 	owner := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
+	swapAuthority := newRandomTestAccount(t)
+	coreMintAccount := newRandomTestAccount(t)
+	swapMintAccount := newRandomTestAccount(t)
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
@@ -49,26 +51,61 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 
 	// Later calls intent to OpenAccounts
 
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, coreMintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
-	accountInfoRecord := &account.Record{
+	primaryAccountInfoRecord := &account.Record{
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
-		MintAccount:      mintAccount.PublicKey().ToBase58(),
+		MintAccount:      coreMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
-	require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
+	require.NoError(t, data.CreateAccountInfo(ctx, primaryAccountInfoRecord))
 
 	actual, err = GetOwnerMetadata(ctx, data, owner)
 	require.NoError(t, err)
 	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
 	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
 	assert.Equal(t, OwnerManagementStateCodeAccount, actual.State)
+	require.NotNil(t, actual.VerificationRecord)
+	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
+
+	// Add swap account
+
+	swapAta, err := swapAuthority.ToAssociatedTokenAccount(swapMintAccount)
+	require.NoError(t, err)
+	swapAccountInfoRecord := &account.Record{
+		OwnerAccount:     owner.PublicKey().ToBase58(),
+		AuthorityAccount: swapAuthority.PublicKey().ToBase58(),
+		TokenAccount:     swapAta.PublicKey().ToBase58(),
+		MintAccount:      swapMintAccount.PublicKey().ToBase58(),
+		AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+	}
+	require.NoError(t, data.CreateAccountInfo(ctx, swapAccountInfoRecord))
+
+	actual, err = GetOwnerMetadata(ctx, data, owner)
+	require.NoError(t, err)
+	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
+	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
+	assert.Equal(t, OwnerManagementStateCodeAccount, actual.State)
+	require.NotNil(t, actual.VerificationRecord)
+	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
+
+	// Unlock a Timelock account
+
+	timelockRecord.VaultState = timelock_token_v1.StateWaitingForTimeout
+	timelockRecord.Block += 1
+	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
+
+	actual, err = GetOwnerMetadata(ctx, data, owner)
+	require.NoError(t, err)
+	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
+	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
+	assert.Equal(t, OwnerManagementStateUnlocked, actual.State)
 	require.NotNil(t, actual.VerificationRecord)
 	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
 }
@@ -123,7 +160,8 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 
 	subsidizerAccount = newRandomTestAccount(t)
 	owner := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
+	coreMintAccount := newRandomTestAccount(t)
+	swapMintAccount := newRandomTestAccount(t)
 
 	actual, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	require.NoError(t, err)
@@ -133,6 +171,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	authority2 := newRandomTestAccount(t)
 	authority3 := newRandomTestAccount(t)
 	authority4 := newRandomTestAccount(t)
+	authority5 := newRandomTestAccount(t)
 
 	for _, authorityAndType := range []struct {
 		account     *Account
@@ -141,7 +180,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		{authority1, commonpb.AccountType_BUCKET_1_KIN},
 		{authority2, commonpb.AccountType_BUCKET_10_KIN},
 	} {
-		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
+		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, coreMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -151,7 +190,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: timelockRecord.VaultOwner,
 			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      mintAccount.PublicKey().ToBase58(),
+			MintAccount:      coreMintAccount.PublicKey().ToBase58(),
 			AccountType:      authorityAndType.accountType,
 		}
 		require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
@@ -164,7 +203,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		{authority3, "app1.com"},
 		{authority4, "app2.com"},
 	} {
-		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
+		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, coreMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -174,16 +213,27 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: timelockRecord.VaultOwner,
 			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      mintAccount.PublicKey().ToBase58(),
+			MintAccount:      coreMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_RELATIONSHIP,
 			RelationshipTo:   &authorityAndRelationship.domain,
 		}
 		require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
 	}
 
+	swapAta, err := owner.ToAssociatedTokenAccount(authority5)
+	require.NoError(t, err)
+	swapAccountInfoRecord := &account.Record{
+		OwnerAccount:     owner.PublicKey().ToBase58(),
+		AuthorityAccount: authority5.PublicKey().ToBase58(),
+		TokenAccount:     swapAta.PublicKey().ToBase58(),
+		MintAccount:      swapMintAccount.PublicKey().ToBase58(),
+		AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+	}
+	require.NoError(t, data.CreateAccountInfo(ctx, swapAccountInfoRecord))
+
 	actual, err = GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	require.NoError(t, err)
-	require.Len(t, actual, 3)
+	require.Len(t, actual, 4)
 
 	records, ok := actual[commonpb.AccountType_BUCKET_1_KIN]
 	require.True(t, ok)
@@ -216,4 +266,12 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	assert.Equal(t, records[1].Timelock.VaultOwner, authority4.PublicKey().ToBase58())
 	assert.Equal(t, records[1].General.TokenAccount, records[1].Timelock.VaultAddress)
 	assert.Equal(t, *records[1].General.RelationshipTo, "app2.com")
+
+	records, ok = actual[commonpb.AccountType_SWAP_ACCOUNT]
+	require.True(t, ok)
+	require.Len(t, records, 1)
+	assert.Nil(t, records[0].Timelock)
+	assert.Equal(t, records[0].General.AuthorityAccount, authority5.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.TokenAccount, swapAta.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_SWAP_ACCOUNT)
 }

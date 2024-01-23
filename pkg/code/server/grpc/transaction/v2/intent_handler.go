@@ -501,7 +501,7 @@ func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, int
 		return err
 	}
 
-	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
 	}
@@ -1026,7 +1026,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Contex
 		return err
 	}
 
-	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
 	}
@@ -1463,10 +1463,10 @@ func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, i
 	//         we need the new primary account to exist.
 	//
 
-	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
-	} else if len(initiatorAccountsByType) == 0 {
+	} else if _, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]; !ok {
 		return newStaleStateError("must submit open accounts intent")
 	}
 
@@ -1490,7 +1490,7 @@ func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, i
 	// Part 6: Validate full balance is being migrated
 	//
 
-	balance, err := balance.DefaultCalculation(ctx, h.data, legacyTimelockAccounts.Vault)
+	balance, err := balance.CalculateFromCache(ctx, h.data, legacyTimelockAccounts.Vault)
 	if err != nil {
 		return err
 	} else if balance != typedMetadata.Quarks {
@@ -1687,7 +1687,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 		return err
 	}
 
-	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
 	}
@@ -2037,7 +2037,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 		return err
 	}
 
-	initiatorAccountsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
 	}
@@ -3081,7 +3081,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 
 	// We don't track external deposits to gift cards or any further Code transfers
 	// to it in SubmitIntent, so this check is sufficient for now.
-	giftCardBalance, err := balance.DefaultCalculation(ctx, data, giftCardVaultAccount)
+	giftCardBalance, err := balance.CalculateFromCache(ctx, data, giftCardVaultAccount)
 	if err != nil {
 		return err
 	} else if giftCardBalance == 0 {

@@ -352,7 +352,14 @@ func (a *Account) String() string {
 }
 
 func (r *AccountRecords) IsManagedByCode(ctx context.Context) bool {
+	if !r.IsTimelock() {
+		return false
+	}
 	return IsManagedByCode(ctx, r.Timelock)
+}
+
+func (r *AccountRecords) IsTimelock() bool {
+	return r.Timelock != nil
 }
 
 func IsManagedByCode(ctx context.Context, timelockRecord *timelock.Record) bool {
