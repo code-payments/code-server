@@ -9,9 +9,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
 
 const (
@@ -109,7 +109,7 @@ func dbGet(ctx context.Context, db *sqlx.DB, signature, account string) (*model,
 	return &res, nil
 }
 
-func dbGetKinAmount(ctx context.Context, db *sqlx.DB, account string) (uint64, error) {
+func dbGetQuarkAmount(ctx context.Context, db *sqlx.DB, account string) (uint64, error) {
 	var res sql.NullInt64
 
 	query := `SELECT SUM(amount) FROM ` + tableName + `
@@ -129,7 +129,7 @@ func dbGetKinAmount(ctx context.Context, db *sqlx.DB, account string) (uint64, e
 	return uint64(res.Int64), nil
 }
 
-func dbGetKinAmountBatch(ctx context.Context, db *sqlx.DB, accounts ...string) (map[string]uint64, error) {
+func dbGetQuarkAmountBatch(ctx context.Context, db *sqlx.DB, accounts ...string) (map[string]uint64, error) {
 	if len(accounts) == 0 {
 		return make(map[string]uint64), nil
 	}

@@ -47,14 +47,14 @@ func (s *store) Get(ctx context.Context, signature, account string) (*deposit.Re
 	return fromModel(model), nil
 }
 
-// GetKinAmount implements deposit.Store.GetKinAmount
-func (s *store) GetKinAmount(ctx context.Context, account string) (uint64, error) {
-	return dbGetKinAmount(ctx, s.db, account)
+// GetQuarkAmount implements deposit.Store.GetQuarkAmount
+func (s *store) GetQuarkAmount(ctx context.Context, account string) (uint64, error) {
+	return dbGetQuarkAmount(ctx, s.db, account)
 }
 
-// GetKinAmountBatch implements deposit.Store.GetKinAmountBatch
-func (s *store) GetKinAmountBatch(ctx context.Context, accounts ...string) (map[string]uint64, error) {
-	return dbGetKinAmountBatch(ctx, s.db, accounts...)
+// GetQuarkAmountBatch implements deposit.Store.GetQuarkAmountBatch
+func (s *store) GetQuarkAmountBatch(ctx context.Context, accounts ...string) (map[string]uint64, error) {
+	return dbGetQuarkAmountBatch(ctx, s.db, accounts...)
 }
 
 // GetUsdAmount implements deposit.Store.GetUsdAmount

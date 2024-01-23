@@ -172,7 +172,7 @@ func FundingFromExternalDeposits(ctx context.Context, data code_data.Provider) S
 			"account": tokenAccount.PublicKey().ToBase58(),
 		})
 
-		amount, err := data.GetTotalExternalDepositedAmountInKin(ctx, tokenAccount.PublicKey().ToBase58())
+		amount, err := data.GetTotalExternalDepositedAmountInQuarks(ctx, tokenAccount.PublicKey().ToBase58())
 		if err != nil {
 			log.WithError(err).Warn("failure getting external deposit amount")
 			return nil, errors.Wrap(err, "error getting external deposit amount")
@@ -352,7 +352,7 @@ func FundingFromExternalDepositsBatch(ctx context.Context, data code_data.Provid
 	return func(ctx context.Context, tokenAccounts []string, state *BatchState) (*BatchState, error) {
 		log := logrus.StandardLogger().WithField("method", "FundingFromExternalDepositsBatch")
 
-		amountByAccount, err := data.GetTotalExternalDepositedAmountInKinBatch(ctx, tokenAccounts...)
+		amountByAccount, err := data.GetTotalExternalDepositedAmountInQuarksBatch(ctx, tokenAccounts...)
 		if err != nil {
 			log.WithError(err).Warn("failure getting external deposit amount")
 			return nil, errors.Wrap(err, "error getting external deposit amount")

@@ -68,11 +68,11 @@ func testGetAmounts(t *testing.T, s deposit.Store) {
 		destination1 := "destination1"
 		destination2 := "destination2"
 
-		quarks, err := s.GetKinAmount(ctx, destination1)
+		quarks, err := s.GetQuarkAmount(ctx, destination1)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, quarks)
 
-		quarksByAccount, err := s.GetKinAmountBatch(ctx, destination1, destination2)
+		quarksByAccount, err := s.GetQuarkAmountBatch(ctx, destination1, destination2)
 		require.NoError(t, err)
 		require.Len(t, quarksByAccount, 2)
 		assert.EqualValues(t, 0, quarksByAccount[destination1])
@@ -96,15 +96,15 @@ func testGetAmounts(t *testing.T, s deposit.Store) {
 			assert.True(t, record.CreatedAt.After(start))
 		}
 
-		quarks, err = s.GetKinAmount(ctx, destination1)
+		quarks, err = s.GetQuarkAmount(ctx, destination1)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1100, quarks)
 
-		quarks, err = s.GetKinAmount(ctx, destination2)
+		quarks, err = s.GetQuarkAmount(ctx, destination2)
 		require.NoError(t, err)
 		assert.EqualValues(t, 10000, quarks)
 
-		quarksByAccount, err = s.GetKinAmountBatch(ctx, destination1, destination2, destination2)
+		quarksByAccount, err = s.GetQuarkAmountBatch(ctx, destination1, destination2, destination2)
 		require.NoError(t, err)
 		require.Len(t, quarksByAccount, 2)
 		assert.EqualValues(t, 1100, quarksByAccount[destination1])
