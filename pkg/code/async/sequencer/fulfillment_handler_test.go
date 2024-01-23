@@ -15,14 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -36,6 +28,14 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/memo"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/solana/system"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 // Note: CanSubmitToBlockchain tests are handled in scheduler testing
@@ -96,7 +96,7 @@ func TestInitializeLockedTimelockAccountFulfillmentHandler_OnDemandTransaction(t
 	authority := testutil.NewRandomAccount(t)
 	env.setupTimelockRecord(t, authority)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	handler := env.handlersByType[fulfillment.InitializeLockedTimelockAccount]
@@ -818,6 +818,7 @@ func TestIsTokenAccountOnBlockchain_CodeAccount(t *testing.T) {
 		VaultState:     timelock_token_v1.StateUnknown,
 		TimeAuthority:  "code",
 		CloseAuthority: "code",
+		Mint:           "mint",
 		NumDaysLocked:  timelock_token_v1.DefaultNumDaysLocked,
 	}
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
@@ -956,7 +957,7 @@ func (e *fulfillmentHandlerTestEnv) assertTimelockRecordInState(t *testing.T, va
 }
 
 func (e *fulfillmentHandlerTestEnv) setupTimelockRecord(t *testing.T, owner *common.Account) *timelock.Record {
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	require.NoError(t, e.data.SaveTimelock(e.ctx, timelockRecord))
@@ -1218,7 +1219,7 @@ func (e *fulfillmentHandlerTestEnv) assertExpectedInitializeLockedTimelockAccoun
 	_, err := system.DecompileAdvanceNonce(txn.Message, 0)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	initializeIxnArgs, initializeIxnAccounts, err := timelock_token_v1.InitializeInstructionFromLegacyInstruction(*txn, 1)

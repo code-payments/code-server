@@ -456,7 +456,7 @@ func TestGetUser_UnlockedTimelockAccount(t *testing.T) {
 		LastVerifiedAt: time.Now(),
 	}))
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token.DataVersion1)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
@@ -465,6 +465,7 @@ func TestGetUser_UnlockedTimelockAccount(t *testing.T) {
 		OwnerAccount:     timelockRecord.VaultOwner,
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
+		MintAccount:      timelockRecord.Mint,
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
@@ -835,6 +836,7 @@ func TestLoginToThirdPartyApp_HappyPath(t *testing.T) {
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
 		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType:    commonpb.AccountType_RELATIONSHIP,
 		RelationshipTo: pointer.String("example.com"),
@@ -901,6 +903,7 @@ func TestLoginToThirdPartyApp_RequestNotFound(t *testing.T) {
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
 		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType:    commonpb.AccountType_RELATIONSHIP,
 		RelationshipTo: pointer.String("example.com"),
@@ -960,6 +963,7 @@ func TestLoginToThirdPartyApp_MultipleUsers(t *testing.T) {
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
 		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType:    commonpb.AccountType_RELATIONSHIP,
 		RelationshipTo: pointer.String("example.com"),
@@ -981,7 +985,6 @@ func TestLoginToThirdPartyApp_InvalidAccount(t *testing.T) {
 		commonpb.AccountType_PRIMARY,
 		commonpb.AccountType_BUCKET_100_KIN,
 		commonpb.AccountType_TEMPORARY_INCOMING,
-		commonpb.AccountType_ASSOCIATED_TOKEN_ACCOUNT,
 		commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 	} {
 		env, cleanup := setup(t)
@@ -1016,6 +1019,7 @@ func TestLoginToThirdPartyApp_InvalidAccount(t *testing.T) {
 			OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 			AuthorityAccount: authorityAccount.PublicKey().ToBase58(),
 			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      accountType,
 		}
 		if accountType == commonpb.AccountType_PRIMARY || accountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
@@ -1070,6 +1074,7 @@ func TestLoginToThirdPartyApp_LoginNotSupported(t *testing.T) {
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
 		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType:    commonpb.AccountType_RELATIONSHIP,
 		RelationshipTo: pointer.String("example.com"),
@@ -1119,6 +1124,7 @@ func TestLoginToThirdPartyApp_PaymentRequired(t *testing.T) {
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
 		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType:    commonpb.AccountType_RELATIONSHIP,
 		RelationshipTo: pointer.String("example.com"),
@@ -1198,6 +1204,7 @@ func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 			OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 			AuthorityAccount: relationshipAuthorityAccount.PublicKey().ToBase58(),
 			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 			AccountType:    commonpb.AccountType_RELATIONSHIP,
 			RelationshipTo: pointer.String("example.com"),

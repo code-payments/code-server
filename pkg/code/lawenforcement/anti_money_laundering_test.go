@@ -11,10 +11,6 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/kin"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -23,6 +19,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestAntiMoneyLaunderingGuard_SendPrivatePayment_TransactionValue(t *testing.T) {
@@ -458,7 +458,7 @@ func makeReceivePaymentsPubliclyIntent(t *testing.T, phoneNumber string, owner *
 func setupPrivateBalance(t *testing.T, env amlTestEnv, owner *common.Account, balance uint64) {
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -468,6 +468,7 @@ func setupPrivateBalance(t *testing.T, env amlTestEnv, owner *common.Account, ba
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: authority.PublicKey().ToBase58(),
 		TokenAccount:     timelockRecord.VaultAddress,
+		MintAccount:      timelockRecord.Mint,
 		AccountType:      commonpb.AccountType_BUCKET_1_KIN,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &accountInfoRecord))

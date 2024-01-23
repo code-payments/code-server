@@ -30,7 +30,7 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
 	newOwnerAccount := testutil.NewRandomAccount(t)
-	newTokenAccount, err := newOwnerAccount.ToTimelockVault(getTimelockDataVersion(false))
+	newTokenAccount, err := newOwnerAccount.ToTimelockVault(getTimelockDataVersion(false), common.KinMintAccount)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
@@ -62,7 +62,7 @@ func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
 		env := setupBalanceTestEnv(t)
 
 		owner := testutil.NewRandomAccount(t)
-		depositAccount, err := owner.ToTimelockVault(getTimelockDataVersion(useLegacyDeposits))
+		depositAccount, err := owner.ToTimelockVault(getTimelockDataVersion(useLegacyDeposits), common.KinMintAccount)
 		require.NoError(t, err)
 
 		externalAccount := testutil.NewRandomAccount(t)
@@ -110,19 +110,19 @@ func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
 		env := setupBalanceTestEnv(t)
 
 		owner1 := testutil.NewRandomAccount(t)
-		a1, err := owner1.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		a1, err := owner1.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		owner2 := testutil.NewRandomAccount(t)
-		a2, err := owner2.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		a2, err := owner2.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		owner3 := testutil.NewRandomAccount(t)
-		a3, err := owner3.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		a3, err := owner3.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		owner4 := testutil.NewRandomAccount(t)
-		a4, err := owner4.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		a4, err := owner4.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		externalAccount := testutil.NewRandomAccount(t)
@@ -222,11 +222,11 @@ func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
 		env := setupBalanceTestEnv(t)
 
 		owner1 := testutil.NewRandomAccount(t)
-		a1, err := owner1.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		a1, err := owner1.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		owner2 := testutil.NewRandomAccount(t)
-		a2, err := owner2.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		a2, err := owner2.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		externalAccount := testutil.NewRandomAccount(t)
@@ -285,7 +285,7 @@ func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
 		env := setupBalanceTestEnv(t)
 
 		ownerAccount := testutil.NewRandomAccount(t)
-		tokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(useLegacyIntents))
+		tokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 
 		externalAccount := testutil.NewRandomAccount(t)
@@ -334,7 +334,7 @@ func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
 	ownerAccount := testutil.NewRandomAccount(t)
-	tokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(false))
+	tokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(false), common.KinMintAccount)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
@@ -366,7 +366,7 @@ func TestDefaultBatchCalculation_PrePrivacyAccounts(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
 	ownerAccount := testutil.NewRandomAccount(t)
-	legacyTokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(true))
+	legacyTokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(true), common.KinMintAccount)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
@@ -424,7 +424,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 			expectedPrivateBalance += balance
 		}
 
-		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -434,6 +434,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: authority.PublicKey().ToBase58(),
 			TokenAccount:     timelockRecord.VaultAddress,
+			MintAccount:      timelockRecord.Mint,
 			AccountType:      accountType,
 		}
 		if accountType == commonpb.AccountType_RELATIONSHIP {
@@ -496,7 +497,7 @@ type balanceTestDataConf struct {
 
 func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestData, conf balanceTestDataConf) {
 	for _, owner := range data.codeUsers {
-		timelockAccounts, err := owner.GetTimelockAccounts(getTimelockDataVersion(conf.useLegacyIntents))
+		timelockAccounts, err := owner.GetTimelockAccounts(getTimelockDataVersion(conf.useLegacyIntents), common.KinMintAccount)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.VaultState = timelock_token_v1.StateLocked
@@ -508,6 +509,7 @@ func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestDat
 				OwnerAccount:     owner.PublicKey().ToBase58(),
 				AuthorityAccount: owner.PublicKey().ToBase58(),
 				TokenAccount:     timelockRecord.VaultAddress,
+				MintAccount:      timelockRecord.Mint,
 				AccountType:      commonpb.AccountType_PRIMARY,
 			}
 			require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))

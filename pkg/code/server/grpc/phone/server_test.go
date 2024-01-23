@@ -16,6 +16,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	"github.com/code-payments/code-server/pkg/code/auth"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
@@ -586,7 +587,7 @@ func TestGetAssociatedPhoneNumber_UnlockedTimelockAccount(t *testing.T) {
 		LastVerifiedAt: time.Now(),
 	}))
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token.DataVersion1)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
@@ -595,6 +596,7 @@ func TestGetAssociatedPhoneNumber_UnlockedTimelockAccount(t *testing.T) {
 		OwnerAccount:     timelockRecord.VaultOwner,
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
+		MintAccount:      timelockRecord.Mint,
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))

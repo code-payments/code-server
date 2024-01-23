@@ -144,7 +144,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 	}
 
 	// todo: a single function utility in the common package to do exactly how we're getting timelockAccounts
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token.DataVersion1)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
