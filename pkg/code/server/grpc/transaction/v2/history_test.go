@@ -14,6 +14,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
+	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -33,7 +34,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	server.setupAirdropper(t, kin.ToQuarks(1_500_000_000))
 
 	amountForPrivacyMigration := kin.ToQuarks(23)
-	legacyTimelockVault, err := sendingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockVault, err := sendingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 	server.fundAccount(t, legacyTimelockVault, amountForPrivacyMigration)
 

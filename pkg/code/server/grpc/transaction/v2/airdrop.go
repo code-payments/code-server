@@ -727,7 +727,7 @@ func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 			return err
 		}
 
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		if err != nil {
 			return err
 		}

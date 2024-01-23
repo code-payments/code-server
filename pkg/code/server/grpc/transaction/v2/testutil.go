@@ -248,7 +248,7 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 		}
 
 		// Simulate a legacy timelock account being created
-		legacyTimelockAccounts, err := phoneEnv.parentAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+		legacyTimelockAccounts, err := phoneEnv.parentAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 		require.NoError(t, err)
 		timelockRecord := legacyTimelockAccounts.ToDBRecord()
 		timelockRecord.VaultState = timelock_token_v1.StateLocked
@@ -444,7 +444,7 @@ func (s *serverTestEnv) simulatePhoneVerifyingUser(t *testing.T, user phoneTestE
 func (s *serverTestEnv) generateRandomUnclaimedGiftCard(t *testing.T) *common.Account {
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{
@@ -452,6 +452,7 @@ func (s *serverTestEnv) generateRandomUnclaimedGiftCard(t *testing.T) *common.Ac
 		OwnerAccount:     authority.PublicKey().ToBase58(),
 		AuthorityAccount: authority.PublicKey().ToBase58(),
 		TokenAccount:     timelockAccounts.Vault.PublicKey().ToBase58(),
+		MintAccount:      timelockAccounts.Mint.PublicKey().ToBase58(),
 	}
 	require.NoError(t, s.data.CreateAccountInfo(s.ctx, accountInfoRecord))
 
@@ -1023,7 +1024,7 @@ func (s *serverTestEnv) setupAirdropper(t *testing.T, initialFunds uint64) *comm
 
 	owner := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -1228,13 +1229,14 @@ func (s serverTestEnv) assertLatestAccountRecordsSaved(t *testing.T, phone phone
 
 		authorityAccount, index := phone.getAuthorityForLatestAccount(t, accountType)
 
-		timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		require.NoError(t, err)
 
 		assert.Equal(t, accountType, accountRecords[0].General.AccountType)
 		assert.Equal(t, phone.parentAccount.PublicKey().ToBase58(), accountRecords[0].General.OwnerAccount)
 		assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountRecords[0].General.AuthorityAccount)
 		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountRecords[0].General.TokenAccount)
+		assert.Equal(t, kin.Mint, accountRecords[0].General.MintAccount)
 		assert.EqualValues(t, index, accountRecords[0].General.Index)
 		assert.Nil(t, accountRecords[0].General.RelationshipTo)
 		assert.False(t, accountRecords[0].General.RequiresDepositSync)
@@ -1249,6 +1251,7 @@ func (s serverTestEnv) assertLatestAccountRecordsSaved(t *testing.T, phone phone
 		assert.Equal(t, timelock_token_v1.StateUnknown, accountRecords[0].Timelock.VaultState)
 		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords[0].Timelock.TimeAuthority)
 		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), accountRecords[0].Timelock.CloseAuthority)
+		assert.Equal(t, kin.Mint, accountRecords[0].Timelock.Mint)
 		assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, accountRecords[0].Timelock.NumDaysLocked)
 		assert.Nil(t, accountRecords[0].Timelock.UnlockAt)
 		assert.EqualValues(t, 0, accountRecords[0].Timelock.Block)
@@ -1257,7 +1260,7 @@ func (s serverTestEnv) assertLatestAccountRecordsSaved(t *testing.T, phone phone
 
 // todo: there's duplication of account record check code
 func (s serverTestEnv) assertRemoteSendGiftCardAccountRecordsSaved(t *testing.T, authorityAccount *common.Account) {
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(s.ctx, timelockAccounts.Vault.PublicKey().ToBase58())
@@ -1266,6 +1269,7 @@ func (s serverTestEnv) assertRemoteSendGiftCardAccountRecordsSaved(t *testing.T,
 	assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountInfoRecord.OwnerAccount)
 	assert.Equal(t, authorityAccount.PublicKey().ToBase58(), accountInfoRecord.AuthorityAccount)
 	assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountInfoRecord.TokenAccount)
+	assert.Equal(t, kin.Mint, accountInfoRecord.MintAccount)
 	assert.EqualValues(t, 0, accountInfoRecord.Index)
 	assert.False(t, accountInfoRecord.RequiresDepositSync)
 	assert.True(t, accountInfoRecord.RequiresAutoReturnCheck)
@@ -1281,6 +1285,7 @@ func (s serverTestEnv) assertRemoteSendGiftCardAccountRecordsSaved(t *testing.T,
 	assert.Equal(t, timelock_token_v1.StateUnknown, timelockRecord.VaultState)
 	assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), timelockRecord.TimeAuthority)
 	assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), timelockRecord.CloseAuthority)
+	assert.Equal(t, kin.Mint, timelockRecord.Mint)
 	assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, timelockRecord.NumDaysLocked)
 	assert.Nil(t, timelockRecord.UnlockAt)
 	assert.EqualValues(t, 0, timelockRecord.Block)
@@ -1293,7 +1298,7 @@ func (s serverTestEnv) assertFirstRelationshipAccountRecordsSaved(t *testing.T, 
 			continue
 		}
 
-		timelockAccounts, err := derivedAccount.value.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := derivedAccount.value.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		require.NoError(t, err)
 
 		accountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(s.ctx, derivedAccount.value.PublicKey().ToBase58())
@@ -1306,6 +1311,7 @@ func (s serverTestEnv) assertFirstRelationshipAccountRecordsSaved(t *testing.T, 
 		assert.Equal(t, phone.parentAccount.PublicKey().ToBase58(), accountInfoRecord.OwnerAccount)
 		assert.Equal(t, derivedAccount.value.PublicKey().ToBase58(), accountInfoRecord.AuthorityAccount)
 		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBase58(), accountInfoRecord.TokenAccount)
+		assert.Equal(t, kin.Mint, accountInfoRecord.MintAccount)
 		assert.EqualValues(t, 0, accountInfoRecord.Index)
 		require.NotNil(t, accountInfoRecord.RelationshipTo)
 		assert.Equal(t, *derivedAccount.relationshipTo, *accountInfoRecord.RelationshipTo)
@@ -1321,6 +1327,7 @@ func (s serverTestEnv) assertFirstRelationshipAccountRecordsSaved(t *testing.T, 
 		assert.Equal(t, timelock_token_v1.StateUnknown, timelockRecord.VaultState)
 		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), timelockRecord.TimeAuthority)
 		assert.Equal(t, s.subsidizer.PublicKey().ToBase58(), timelockRecord.CloseAuthority)
+		assert.Equal(t, kin.Mint, timelockRecord.Mint)
 		assert.Equal(t, timelock_token_v1.DefaultNumDaysLocked, timelockRecord.NumDaysLocked)
 		assert.Nil(t, timelockRecord.UnlockAt)
 		assert.EqualValues(t, 0, timelockRecord.Block)
@@ -1336,7 +1343,7 @@ func (s serverTestEnv) assertNoRelationshipAccountRecordsSaved(t *testing.T, pho
 			continue
 		}
 
-		timelockAccounts, err := derivedAccount.value.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := derivedAccount.value.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		require.NoError(t, err)
 
 		_, err = s.data.GetAccountInfoByAuthorityAddress(s.ctx, derivedAccount.value.PublicKey().ToBase58())
@@ -1538,7 +1545,7 @@ func (s serverTestEnv) assertExpectedCloseEmptyTimelockAccountTransaction(t *tes
 		dataVersion = timelock_token_v1.DataVersionLegacy
 	}
 
-	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	require.NoError(t, err)
 
 	if dataVersion == timelock_token_v1.DataVersion1 {
@@ -1606,7 +1613,7 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		dataVersion = timelock_token_v1.DataVersionLegacy
 	}
 
-	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	require.NoError(t, err)
 
 	if dataVersion == timelock_token_v1.DataVersion1 {
@@ -1703,7 +1710,7 @@ func (s serverTestEnv) assertExpectedTransferWithAuthorityTransaction(t *testing
 
 	assertExpectedKreMemoInstruction(t, txn, 1)
 
-	sourceTimelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	sourceTimelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	transferIxnArgs, transferIxnAccounts, err := timelock_token_v1.TransferWithAuthorityInstructionFromLegacyInstruction(txn, 2)
@@ -3304,7 +3311,7 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 func (p *phoneTestEnv) migrateToPrivacy2022(t *testing.T, quarks uint64) submitIntentCallMetadata {
 	actions := []*transactionpb.Action{}
 
-	legacyTimelockAccounts, err := p.parentAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockAccounts, err := p.parentAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 
 	if quarks == 0 {
@@ -3987,7 +3994,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			)
 		}
 	case *transactionpb.Metadata_MigrateToPrivacy_2022:
-		legacyTimelockAccounts, err := p.parentAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+		legacyTimelockAccounts, err := p.parentAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 		require.NoError(t, err)
 
 		if p.conf.simulateClosingWrongAccount {
@@ -5116,7 +5123,7 @@ func (p *phoneTestEnv) getCloseEmptyAccountTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	require.NoError(t, err)
 
 	txn, err := transaction_util.MakeCloseEmptyAccountTransaction(
@@ -5143,7 +5150,7 @@ func (p *phoneTestEnv) getCloseDormantAccountTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	destination, err := common.NewAccountFromProto(action.Destination)
@@ -5181,7 +5188,7 @@ func (p *phoneTestEnv) getNoPrivacyTransferTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	require.NoError(t, err)
 
 	destination, err := common.NewAccountFromProto(action.Destination)
@@ -5220,7 +5227,7 @@ func (p *phoneTestEnv) getNoPrivacyWithdrawTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	require.NoError(t, err)
 
 	destination, err := common.NewAccountFromProto(action.Destination)
@@ -5257,7 +5264,7 @@ func (p *phoneTestEnv) getTemporaryPrivacyTransferTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	destination, err := common.NewAccountFromProto(action.Destination)
@@ -5339,7 +5346,7 @@ func (p *phoneTestEnv) getTemporaryPrivacyExchangeTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	destination, err := common.NewAccountFromProto(action.Destination)
@@ -5482,7 +5489,7 @@ func (p *phoneTestEnv) getFeePaymentTransactionToSign(
 	authority, err := common.NewAccountFromProto(action.Authority)
 	require.NoError(t, err)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	destination, err := common.NewAccountFromProto(serverParameter.Destination)
@@ -5739,7 +5746,7 @@ func (m submitIntentCallMetadata) isError(t *testing.T) bool {
 }
 
 func getTimelockVault(t *testing.T, owner *common.Account) *common.Account {
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return timelockAccounts.Vault

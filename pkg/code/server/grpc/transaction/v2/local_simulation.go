@@ -6,11 +6,11 @@ import (
 
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 type LocalSimulationResult struct {
@@ -353,7 +353,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 		}
 
 		// Validate authorities and respective derived timelock vault accounts match.
-		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		if err != nil {
 			return nil, err
 		}

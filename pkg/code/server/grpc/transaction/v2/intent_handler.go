@@ -1435,7 +1435,7 @@ func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, i
 	// Part 2: Validate there's a legacy timelock account to migrate.
 	//
 
-	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	if err != nil {
 		return err
 	}
@@ -1514,7 +1514,7 @@ func (h *MigrateToPrivacy2022IntentHandler) validateActions(
 		return newIntentValidationError("expected 1 action")
 	}
 
-	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	if err != nil {
 		return err
 	}
@@ -1569,7 +1569,7 @@ func (h *MigrateToPrivacy2022IntentHandler) validateActions(
 	}
 
 	if metadata.Quarks > 0 {
-		primaryTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		primaryTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		if err != nil {
 			return err
 		}
@@ -3120,7 +3120,7 @@ func getExpectedTimelockVaultFromProtoAccount(authorityProto *commonpb.SolanaAcc
 		return nil, err
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}

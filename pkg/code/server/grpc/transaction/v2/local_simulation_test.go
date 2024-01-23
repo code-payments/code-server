@@ -12,12 +12,12 @@ import (
 
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestLocalSimulation_HappyPath(t *testing.T) {
@@ -621,7 +621,7 @@ func setupLocalSimulationTestEnv(t *testing.T) localSimulationTestEnv {
 }
 
 func (env localSimulationTestEnv) setupTimelockRecord(t *testing.T, authority *common.Account, state timelock_token_v1.TimelockState) {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	timelockRecord.VaultState = state
@@ -630,7 +630,7 @@ func (env localSimulationTestEnv) setupTimelockRecord(t *testing.T, authority *c
 }
 
 func (env localSimulationTestEnv) setupCachedBalance(t *testing.T, authority *common.Account, amount uint64) {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	if amount > 0 {
@@ -656,7 +656,7 @@ func (env localSimulationTestEnv) LocalSimulation(t *testing.T, actions []*trans
 }
 
 func getOpenAccountActionForLocalSimulation(t *testing.T, authority *common.Account) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -670,7 +670,7 @@ func getOpenAccountActionForLocalSimulation(t *testing.T, authority *common.Acco
 }
 
 func getCloseEmptyAccountActionForLocalSimulation(t *testing.T, authority *common.Account) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -684,7 +684,7 @@ func getCloseEmptyAccountActionForLocalSimulation(t *testing.T, authority *commo
 }
 
 func getClosDormantAccountActionForLocalSimulation(t *testing.T, authority *common.Account) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -698,7 +698,7 @@ func getClosDormantAccountActionForLocalSimulation(t *testing.T, authority *comm
 }
 
 func getNoPrivacyWithdrawActionForLocalSimulation(t *testing.T, authority, destination *common.Account, amount uint64) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -714,7 +714,7 @@ func getNoPrivacyWithdrawActionForLocalSimulation(t *testing.T, authority, desti
 }
 
 func getNoPrivacyTransferActionForLocalSimulation(t *testing.T, authority, destination *common.Account, amount uint64) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -730,7 +730,7 @@ func getNoPrivacyTransferActionForLocalSimulation(t *testing.T, authority, desti
 }
 
 func getFeePaymentActionForLocalSimulation(t *testing.T, authority *common.Account, amount uint64) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -745,7 +745,7 @@ func getFeePaymentActionForLocalSimulation(t *testing.T, authority *common.Accou
 }
 
 func getTemporaryPrivacyTransferActionForLocalSimulation(t *testing.T, authority, destination *common.Account, amount uint64) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{
@@ -761,7 +761,7 @@ func getTemporaryPrivacyTransferActionForLocalSimulation(t *testing.T, authority
 }
 
 func getTemporaryPrivacyExchangeActionForLocalSimulation(t *testing.T, authority, destination *common.Account, amount uint64) *transactionpb.Action {
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	return &transactionpb.Action{

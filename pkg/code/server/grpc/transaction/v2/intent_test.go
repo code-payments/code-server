@@ -2992,7 +2992,7 @@ func TestSubmitIntent_MigrateToPrivacy2022_HappyPath_PositiveBalance(t *testing.
 
 	amountToMigrate := kin.ToQuarks(23)
 
-	legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 	server.fundAccount(t, legacyTimelockVault, amountToMigrate)
 
@@ -3053,7 +3053,7 @@ func TestSubmitIntent_MigrateToPrivacy2022_Validation_Balances(t *testing.T) {
 
 	amountToMigrate := kin.ToQuarks(23)
 
-	legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 	server.fundAccount(t, legacyTimelockVault, amountToMigrate)
 
@@ -3091,7 +3091,7 @@ func TestSubmitIntent_MigrateToPrivacy2022_Validation_ManagedByCode(t *testing.T
 			if accountType == commonpb.AccountType_PRIMARY {
 				tokenAccount = phone.getTimelockVault(t, accountType, 0)
 			} else {
-				legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+				legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 				require.NoError(t, err)
 				tokenAccount = legacyTimelockVault
 			}
@@ -3233,7 +3233,7 @@ func TestSubmitIntent_MigrateToPrivacy2022_Validation_Actions(t *testing.T) {
 
 	phone.openAccounts(t).requireSuccess(t)
 
-	legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	legacyTimelockVault, err := phone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 
 	phone.resetConfig()
@@ -3329,7 +3329,7 @@ func TestGetIntentMetadata_HappyPath(t *testing.T) {
 		// MigrateToPrivacy2022 intent
 
 		amountToMigrate := kin.ToQuarks(1)
-		legacyTimelockVault, err := sendingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+		legacyTimelockVault, err := sendingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 		require.NoError(t, err)
 		server.fundAccount(t, legacyTimelockVault, amountToMigrate)
 
@@ -3552,7 +3552,7 @@ func TestCanWithdrawToAccount_CodeAccounts(t *testing.T) {
 	receivingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.establishRelationshipWithMerchant(t, domain)
 
-	legacyAccount, err := receivingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	legacyAccount, err := receivingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 
 	giftCardAuthorityAccount := testutil.NewRandomAccount(t)
