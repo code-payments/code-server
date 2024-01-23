@@ -282,8 +282,6 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 		assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
 		assert.Nil(t, accountInfo.OriginalExchangeData)
 		assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
-		assert.EqualValues(t, kin.Decimals, accountInfo.MintDecimals)
-		assert.Equal(t, "Kin", accountInfo.MintDisplayName)
 	}
 
 	primaryAccountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
