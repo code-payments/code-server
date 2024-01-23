@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -233,7 +232,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 		relationship2DerivedOwner,
 	} {
 
-		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		require.NoError(t, err)
 
 		accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
@@ -282,7 +281,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 		assert.False(t, accountInfo.MustRotate)
 		assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
 		assert.Nil(t, accountInfo.OriginalExchangeData)
-		assert.Equal(t, kin.Mint, base58.Encode(accountInfo.Mint.Value))
+		assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
 		assert.EqualValues(t, kin.Decimals, accountInfo.MintDecimals)
 		assert.Equal(t, "Kin", accountInfo.MintDisplayName)
 	}
@@ -422,7 +421,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 	} {
 		phoneNumber := fmt.Sprintf("+1800555%d", i)
 		ownerAccount := testutil.NewRandomAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		require.NoError(t, err)
 
 		req := &accountpb.GetTokenAccountInfosRequest{
@@ -528,6 +527,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
 		assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Authority.Value)
 		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
+		assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
 		assert.EqualValues(t, 0, accountInfo.Index)
 
 		assert.Equal(t, tc.expectedBalanceSource, accountInfo.BalanceSource)
@@ -793,7 +793,7 @@ func TestGetTokenAccountInfos_LegacyPrimary2022Migration_HappyPath(t *testing.T)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
 	assert.Len(t, resp.TokenAccountInfos, 1)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
@@ -804,6 +804,7 @@ func TestGetTokenAccountInfos_LegacyPrimary2022Migration_HappyPath(t *testing.T)
 	assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
 	assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
 	assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Authority.Value)
+	assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
 	assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
 	assert.EqualValues(t, kin.ToQuarks(123), accountInfo.Balance)
 	assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
@@ -941,13 +942,14 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 		dataVerstion = timelock_token_v1.DataVersion1
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(dataVerstion)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(dataVerstion, common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{
 		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
 		AuthorityAccount: authorityAccount.PublicKey().ToBase58(),
 		TokenAccount:     timelockAccounts.Vault.PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType: accountType,
 
@@ -1002,7 +1004,7 @@ func setupCachedBalance(t *testing.T, env testEnv, accountRecords *common.Accoun
 }
 
 func setupPrivacyMigration2022Intent(t *testing.T, env testEnv, ownerAccount *common.Account) {
-	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
 	require.NoError(t, err)
 
 	balance, err := balance.DefaultCalculation(env.ctx, env.data, tokenAccount)

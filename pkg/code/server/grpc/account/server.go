@@ -22,6 +22,7 @@ import (
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/usdc"
 )
 
 var (
@@ -255,6 +256,11 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		return nil, err
 	}
 
+	mintAccount, err := common.NewAccountFromPublicKeyString(records.General.MintAccount)
+	if err != nil {
+		return nil, err
+	}
+
 	// todo: We don't yet handle the closing state
 	var managementState accountpb.TokenAccountInfo_ManagementState
 	switch records.Timelock.VaultState {
@@ -369,6 +375,20 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		}
 	}
 
+	var mintDecimals uint32
+	var mintDisplayName string
+	switch mintAccount.PublicKey().ToBase58() {
+	case kin.Mint:
+		mintDecimals = kin.Decimals
+		mintDisplayName = "Kin"
+	case usdc.Mint:
+		mintDecimals = usdc.Decimals
+		mintDisplayName = "USDC"
+	default:
+		// todo: Add a dynamic check when we extend support byeond Kin and USDC
+		return nil, errors.New("unsupported mint")
+	}
+
 	return &accountpb.TokenAccountInfo{
 		Address:              tokenAccount.ToProto(),
 		Owner:                ownerAccount.ToProto(),
@@ -383,11 +403,9 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		ClaimState:           claimState,
 		OriginalExchangeData: originalExchangeData,
 		Relationship:         relationship,
-		Mint: &commonpb.SolanaAccountId{
-			Value: kin.TokenMint,
-		},
-		MintDecimals:    kin.Decimals,
-		MintDisplayName: "Kin",
+		Mint:                 mintAccount.ToProto(),
+		MintDecimals:         mintDecimals,
+		MintDisplayName:      mintDisplayName,
 	}, nil
 }
 

@@ -12,7 +12,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
-	"github.com/code-payments/code-server/pkg/kin"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
@@ -176,15 +175,11 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 // the account doesn't exist, or was migrated, then ErrNoPrivacyMigration2022
 // is returned.
 //
+// Note: Legacy Timelock accounts were always Kin accounts
+//
 // todo: Needs tests here, but most already exist in account service
 func GetLegacyPrimary2022AccountRecordsIfNotMigrated(ctx context.Context, data code_data.Provider, owner *Account) (*AccountRecords, error) {
-	// Legacy Timelock accounts were always Kin accounts
-	mint, err := NewAccountFromPublicKeyBytes(kin.TokenMint)
-	if err != nil {
-		return nil, err
-	}
-
-	tokenAccount, err := owner.ToTimelockVault(timelock_token_v1.DataVersionLegacy, mint)
+	tokenAccount, err := owner.ToTimelockVault(timelock_token_v1.DataVersionLegacy, KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +210,7 @@ func GetLegacyPrimary2022AccountRecordsIfNotMigrated(ctx context.Context, data c
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: owner.PublicKey().ToBase58(),
 		TokenAccount:     timelockRecord.VaultAddress,
-		MintAccount:      mint.PublicKey().ToBase58(),
+		MintAccount:      KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_LEGACY_PRIMARY_2022,
 		Index:            0,
 	}
