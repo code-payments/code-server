@@ -16,6 +16,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
@@ -190,22 +191,22 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		return nil
 	}
 
-	// Verified the transaction is an external deposit, so check whether we've
-	// previously processed it.
-	_, err = data.GetExternalDeposit(ctx, signature, tokenAccount.PublicKey().ToBase58())
-	if err == nil {
-		syncedDepositCache.Insert(cacheKey, true, 1)
-		return nil
-	}
-
 	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.PublicKey().ToBase58())
 	if err != nil {
 		return errors.Wrap(err, "error getting account info record")
 	}
 
+	// Use the account type to determine how we'll process this external deposit
 	switch accountInfoRecord.AccountType {
 
 	case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
+		// Check whether we've previously processed this external deposit
+		_, err = data.GetExternalDeposit(ctx, signature, tokenAccount.PublicKey().ToBase58())
+		if err == nil {
+			syncedDepositCache.Insert(cacheKey, true, 1)
+			return nil
+		}
+
 		usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
 		if err != nil {
 			return errors.Wrap(err, "error getting usd rate")
@@ -267,8 +268,41 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		return nil
 
 	case commonpb.AccountType_SWAP_ACCOUNT:
-		// todo: handle swap account logic
+		// todo: Don't think we need to track an external deposit record. Balances
+		//       cannot be tracked using cached values.
+
+		chatMessageReceiver, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+		if err != nil {
+			return errors.Wrap(err, "invalid owner account")
+		}
+
+		// todo: solana client doesn't return block time
+		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), time.Now())
+		if err != nil {
+			return errors.Wrap(err, "error creating chat message")
+		}
+
+		canPush, err := chat_util.SendCodeTeamMessage(ctx, data, chatMessageReceiver, chatMessage)
+		if err == chat.ErrMessageAlreadyExists {
+			syncedDepositCache.Insert(cacheKey, true, 1)
+			return nil
+		} else if err != nil {
+			return errors.Wrap(err, "error sending chat message")
+		}
+
 		syncedDepositCache.Insert(cacheKey, true, 1)
+
+		if canPush {
+			push.SendChatMessagePushNotification(
+				ctx,
+				data,
+				pusher,
+				chat_util.CodeTeamName,
+				chatMessageReceiver,
+				chatMessage,
+			)
+		}
+
 		return nil
 
 	default:
