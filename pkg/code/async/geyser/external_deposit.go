@@ -28,6 +28,7 @@ import (
 	push_lib "github.com/code-payments/code-server/pkg/push"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/usdc"
 )
 
 const (
@@ -163,27 +164,10 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		}
 	}
 
-	var preQuarkBalance, postQuarkBalance int64
-	for _, tokenBalance := range tokenBalances.PreTokenBalances {
-		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
-			preQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
-			if err != nil {
-				return errors.Wrap(err, "error parsing pre token balance")
-			}
-			break
-		}
+	deltaQuarks, err := getDeltaQuarksFromTokenBalances(tokenAccount, tokenBalances)
+	if err != nil {
+		return errors.Wrap(err, "error getting delta quarks from token balances")
 	}
-	for _, tokenBalance := range tokenBalances.PostTokenBalances {
-		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
-			postQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
-			if err != nil {
-				return errors.Wrap(err, "error parsing post token balance")
-			}
-			break
-		}
-	}
-
-	deltaQuarks := postQuarkBalance - preQuarkBalance
 
 	// Transaction did not positively affect token account balance, so no new funds
 	// were externally deposited into the account.
@@ -196,7 +180,15 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		return errors.Wrap(err, "error getting account info record")
 	}
 
+	chatMessageReceiver, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+	if err != nil {
+		return errors.Wrap(err, "invalid owner account")
+	}
+
 	// Use the account type to determine how we'll process this external deposit
+	//
+	// todo: Below logic is beginning to get messy and might be in need of a
+	//       refactor soon
 	switch accountInfoRecord.AccountType {
 
 	case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
@@ -207,11 +199,21 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 			return nil
 		}
 
-		usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
+		isCodeSwap, usdcQuarksSwapped, err := getCodeSwapMetadata(tokenBalances)
 		if err != nil {
-			return errors.Wrap(err, "error getting usd rate")
+			return errors.Wrap(err, "error getting code swap metadata")
 		}
-		usdMarketValue := usdExchangeRecord.Rate * float64(deltaQuarks) / float64(kin.QuarksPerKin)
+
+		var usdMarketValue float64
+		if isCodeSwap {
+			usdMarketValue = float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc)
+		} else {
+			usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
+			if err != nil {
+				return errors.Wrap(err, "error getting usd rate")
+			}
+			usdMarketValue = usdExchangeRecord.Rate * float64(deltaQuarks) / float64(kin.QuarksPerKin)
+		}
 
 		// For a consistent payment history list
 		//
@@ -237,13 +239,40 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 			return errors.Wrap(err, "error saving intent record")
 		}
 
-		err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
-		if err != nil {
-			return errors.Wrap(err, "error updating cash transactions chat")
-		}
-		_, err = chat_util.SendMerchantExchangeMessage(ctx, data, intentRecord, nil)
-		if err != nil {
-			return errors.Wrap(err, "error updating merchant chat")
+		if isCodeSwap {
+			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, usdcQuarksSwapped, time.Now())
+			if err != nil {
+				return errors.Wrap(err, "error creating chat message")
+			}
+
+			canPush, err := chat_util.SendCodeTeamMessage(ctx, data, chatMessageReceiver, chatMessage)
+			switch err {
+			case nil:
+				if canPush {
+					push.SendChatMessagePushNotification(
+						ctx,
+						data,
+						pusher,
+						chat_util.CodeTeamName,
+						chatMessageReceiver,
+						chatMessage,
+					)
+				}
+			case chat.ErrMessageAlreadyExists:
+			default:
+				return errors.Wrap(err, "error sending chat message")
+			}
+		} else {
+			err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
+			if err != nil {
+				return errors.Wrap(err, "error updating cash transactions chat")
+			}
+			_, err = chat_util.SendMerchantExchangeMessage(ctx, data, intentRecord, nil)
+			if err != nil {
+				return errors.Wrap(err, "error updating merchant chat")
+			}
+
+			push.SendDepositPushNotification(ctx, data, pusher, tokenAccount, uint64(deltaQuarks))
 		}
 
 		// For tracking in balances
@@ -262,19 +291,14 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 		if err != nil {
 			return errors.Wrap(err, "error creating external deposit record")
 		}
+
 		syncedDepositCache.Insert(cacheKey, true, 1)
-		push.SendDepositPushNotification(ctx, data, pusher, tokenAccount, uint64(deltaQuarks))
 
 		return nil
 
 	case commonpb.AccountType_SWAP_ACCOUNT:
 		// todo: Don't think we need to track an external deposit record. Balances
 		//       cannot be tracked using cached values.
-
-		chatMessageReceiver, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
-		if err != nil {
-			return errors.Wrap(err, "invalid owner account")
-		}
 
 		// todo: solana client doesn't return block time
 		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), time.Now())
@@ -329,6 +353,75 @@ func markDepositsAsSynced(ctx context.Context, data code_data.Provider, vault *c
 		return errors.Wrap(err, "error updating account info record")
 	}
 	return nil
+}
+
+// todo: can be promoted more broadly
+func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {
+	var preQuarkBalance, postQuarkBalance int64
+	var err error
+	for _, tokenBalance := range tokenBalances.PreTokenBalances {
+		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
+			preQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
+			if err != nil {
+				return 0, errors.Wrap(err, "error parsing pre token balance")
+			}
+			break
+		}
+	}
+	for _, tokenBalance := range tokenBalances.PostTokenBalances {
+		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
+			postQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
+			if err != nil {
+				return 0, errors.Wrap(err, "error parsing post token balance")
+			}
+			break
+		}
+	}
+
+	return postQuarkBalance - preQuarkBalance, nil
+}
+
+func getCodeSwapMetadata(tokenBalances *solana.TransactionTokenBalances) (bool, uint64, error) {
+	// Detect whether this is a Code swap by inspecting whether the swap subsidizer
+	// is included in the transaction.
+	var isCodeSwap bool
+	for _, account := range tokenBalances.Accounts {
+		// todo: configurable
+		if account == "swapBMF2EzkHSn9NDwaSFWMtGC7ZsgzApQv9NSkeUeU" {
+			isCodeSwap = true
+			break
+		}
+	}
+
+	if !isCodeSwap {
+		return false, 0, nil
+	}
+
+	var usdcPaid uint64
+	for _, tokenBalance := range tokenBalances.PreTokenBalances {
+		tokenAccount, err := common.NewAccountFromPublicKeyString(tokenBalances.Accounts[tokenBalance.AccountIndex])
+		if err != nil {
+			return false, 0, errors.Wrap(err, "invalid token account")
+		}
+
+		if tokenBalance.Mint == common.UsdcMintAccount.PublicKey().ToBase58() {
+			deltaQuarks, err := getDeltaQuarksFromTokenBalances(tokenAccount, tokenBalances)
+			if err != nil {
+				return false, 0, errors.Wrap(err, "error getting delta quarks")
+			}
+
+			if deltaQuarks > 0 {
+				continue
+			}
+
+			absDeltaQuarks := uint64(-1 * deltaQuarks)
+			if absDeltaQuarks > usdcPaid {
+				usdcPaid = absDeltaQuarks
+			}
+		}
+	}
+
+	return true, usdcPaid, nil
 }
 
 func getSyncedDepositCacheKey(signature string, account *common.Account) string {
