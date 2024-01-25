@@ -23,7 +23,7 @@ var AllAccountTypes = []commonpb.AccountType{
 	commonpb.AccountType_BUCKET_1_000_000_KIN,
 	commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 	commonpb.AccountType_RELATIONSHIP,
-	commonpb.AccountType_SWAP_ACCOUNT,
+	commonpb.AccountType_SWAP,
 }
 
 type Record struct {
@@ -165,7 +165,7 @@ func (r *Record) Validate() error {
 		if r.OwnerAccount == r.AuthorityAccount {
 			return errors.New("owner cannot be authority for temporary rotating account")
 		}
-	case commonpb.AccountType_SWAP_ACCOUNT:
+	case commonpb.AccountType_SWAP:
 		if r.Index != 0 {
 			return errors.New("index must be 0 for swap account")
 		}
@@ -193,5 +193,5 @@ func (r *Record) Validate() error {
 }
 
 func (r *Record) IsTimelock() bool {
-	return r.AccountType != commonpb.AccountType_SWAP_ACCOUNT
+	return r.AccountType != commonpb.AccountType_SWAP
 }

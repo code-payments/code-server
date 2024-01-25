@@ -406,7 +406,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 
 	var expectedTotalBalance, expectedPrivateBalance uint64
 	for i, accountType := range account.AllAccountTypes {
-		if accountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD || accountType == commonpb.AccountType_SWAP_ACCOUNT {
+		if accountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD || accountType == commonpb.AccountType_SWAP {
 			continue
 		}
 

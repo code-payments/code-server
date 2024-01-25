@@ -296,7 +296,7 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 
 		return nil
 
-	case commonpb.AccountType_SWAP_ACCOUNT:
+	case commonpb.AccountType_SWAP:
 		// todo: Don't think we need to track an external deposit record. Balances
 		//       cannot be tracked using cached values.
 

@@ -417,7 +417,7 @@ func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *comm
 			commonpb.AccountType_LEGACY_PRIMARY_2022,
 			commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 			commonpb.AccountType_RELATIONSHIP,
-			commonpb.AccountType_SWAP_ACCOUNT:
+			commonpb.AccountType_SWAP:
 			continue
 		}
 

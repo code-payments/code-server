@@ -264,7 +264,7 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 			AuthorityAccount: swapAuthorityAccount.PublicKey().ToBase58(),
 			TokenAccount:     swapAta.PublicKey().ToBase58(),
 			MintAccount:      common.UsdcMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+			AccountType:      commonpb.AccountType_SWAP,
 		}))
 
 		phoneEnvs = append(phoneEnvs, phoneEnv)

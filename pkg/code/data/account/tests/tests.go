@@ -436,7 +436,7 @@ func testSwapAccountEdgeCases(t *testing.T, s account.Store) {
 			AuthorityAccount: "authority",
 			TokenAccount:     "token1",
 			MintAccount:      "mint1",
-			AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+			AccountType:      commonpb.AccountType_SWAP,
 			Index:            uint64(0),
 		}
 		cloned := swapRecord.Clone()
@@ -452,15 +452,15 @@ func testSwapAccountEdgeCases(t *testing.T, s account.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetLatestByOwnerAddressAndType(ctx, cloned.OwnerAccount, commonpb.AccountType_SWAP_ACCOUNT)
+		actual, err = s.GetLatestByOwnerAddressAndType(ctx, cloned.OwnerAccount, commonpb.AccountType_SWAP)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
 		recordsByType, err := s.GetLatestByOwnerAddress(ctx, cloned.OwnerAccount)
 		require.NoError(t, err)
 		require.Len(t, recordsByType, 1)
-		require.Len(t, recordsByType[commonpb.AccountType_SWAP_ACCOUNT], 1)
-		assertEquivalentRecords(t, &cloned, recordsByType[commonpb.AccountType_SWAP_ACCOUNT][0])
+		require.Len(t, recordsByType[commonpb.AccountType_SWAP], 1)
+		assertEquivalentRecords(t, &cloned, recordsByType[commonpb.AccountType_SWAP][0])
 
 		// This is technically a bug, but a feature given we know we have exactly
 		// one mint we're supporting for swaps. Supporting multiple mints at this

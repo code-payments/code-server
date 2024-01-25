@@ -83,7 +83,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 		AuthorityAccount: swapAuthority.PublicKey().ToBase58(),
 		TokenAccount:     swapAta.PublicKey().ToBase58(),
 		MintAccount:      swapMintAccount.PublicKey().ToBase58(),
-		AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+		AccountType:      commonpb.AccountType_SWAP,
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, swapAccountInfoRecord))
 
@@ -227,7 +227,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		AuthorityAccount: authority5.PublicKey().ToBase58(),
 		TokenAccount:     swapAta.PublicKey().ToBase58(),
 		MintAccount:      swapMintAccount.PublicKey().ToBase58(),
-		AccountType:      commonpb.AccountType_SWAP_ACCOUNT,
+		AccountType:      commonpb.AccountType_SWAP,
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, swapAccountInfoRecord))
 
@@ -267,11 +267,11 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	assert.Equal(t, records[1].General.TokenAccount, records[1].Timelock.VaultAddress)
 	assert.Equal(t, *records[1].General.RelationshipTo, "app2.com")
 
-	records, ok = actual[commonpb.AccountType_SWAP_ACCOUNT]
+	records, ok = actual[commonpb.AccountType_SWAP]
 	require.True(t, ok)
 	require.Len(t, records, 1)
 	assert.Nil(t, records[0].Timelock)
 	assert.Equal(t, records[0].General.AuthorityAccount, authority5.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.TokenAccount, swapAta.PublicKey().ToBase58())
-	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_SWAP_ACCOUNT)
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_SWAP)
 }

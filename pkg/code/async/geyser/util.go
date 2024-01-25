@@ -52,7 +52,7 @@ func testForKnownCodeSwapAccount(ctx context.Context, data code_data.Provider, t
 		codeSwapAccontStatusCache.Insert(tokenAccount.PublicKey().ToBase58(), false, 1)
 		return false, nil
 	case nil:
-		isSwapAccount := accountInfoRecord.AccountType == commonpb.AccountType_SWAP_ACCOUNT
+		isSwapAccount := accountInfoRecord.AccountType == commonpb.AccountType_SWAP
 		codeSwapAccontStatusCache.Insert(tokenAccount.PublicKey().ToBase58(), isSwapAccount, 1)
 		return isSwapAccount, nil
 	default:

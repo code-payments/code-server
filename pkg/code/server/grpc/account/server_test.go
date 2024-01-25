@@ -210,7 +210,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	bucketAccountRecords := setupAccountRecords(t, env, ownerAccount, bucketDerivedOwner, 0, commonpb.AccountType_BUCKET_100_KIN)
 	relationship1AccountRecords := setupAccountRecords(t, env, ownerAccount, relationship1DerivedOwner, 0, commonpb.AccountType_RELATIONSHIP)
 	relationship2AccountRecords := setupAccountRecords(t, env, ownerAccount, relationship2DerivedOwner, 0, commonpb.AccountType_RELATIONSHIP)
-	setupAccountRecords(t, env, ownerAccount, swapDerivedOwner, 0, commonpb.AccountType_SWAP_ACCOUNT)
+	setupAccountRecords(t, env, ownerAccount, swapDerivedOwner, 0, commonpb.AccountType_SWAP)
 	setupAccountRecords(t, env, ownerAccount, tempIncomingDerivedOwner, 2, commonpb.AccountType_TEMPORARY_INCOMING)
 	setupCachedBalance(t, env, bucketAccountRecords, kin.ToQuarks(100))
 	setupCachedBalance(t, env, primaryAccountRecords, kin.ToQuarks(42))
@@ -278,7 +278,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			require.NotNil(t, accountInfo.Relationship)
 			assert.Equal(t, *relationship2AccountRecords.General.RelationshipTo, accountInfo.Relationship.GetDomain().Value)
 		case swapDerivedOwner.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_SWAP_ACCOUNT, accountInfo.AccountType)
+			assert.Equal(t, commonpb.AccountType_SWAP, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, 0, accountInfo.Balance)
 		default:
@@ -289,7 +289,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Nil(t, accountInfo.Relationship)
 		}
 
-		if accountInfo.AccountType == commonpb.AccountType_SWAP_ACCOUNT {
+		if accountInfo.AccountType == commonpb.AccountType_SWAP {
 			assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN, accountInfo.BalanceSource)
 			assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE, accountInfo.ManagementState)
 			assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_UNKNOWN, accountInfo.BlockchainState)
@@ -896,11 +896,157 @@ func TestGetTokenAccountInfos_LegacyPrimary2022Migration_AccountClosed(t *testin
 	assert.Len(t, resp.TokenAccountInfos, 0)
 }
 
+func TestLinkAdditionalAccounts_HappyPath(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	swapAuthorityAccount := testutil.NewRandomAccount(t)
+
+	setupOpenAccountsIntent(t, env, ownerAccount)
+
+	req := &accountpb.LinkAdditionalAccountsRequest{
+		Owner:         ownerAccount.ToProto(),
+		SwapAuthority: swapAuthorityAccount.ToProto(),
+	}
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+	signatures := []*commonpb.Signature{
+		{Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes)},
+		{Value: ed25519.Sign(swapAuthorityAccount.PrivateKey().ToBytes(), reqBytes)},
+	}
+	req.Signatures = signatures
+
+	resp, err := env.client.LinkAdditionalAccounts(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, accountpb.LinkAdditionalAccountsResponse_OK, resp.Result)
+
+	expectedSwapUsdcAta, err := swapAuthorityAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
+	require.NoError(t, err)
+
+	accountInfoRecord, err := env.data.GetAccountInfoByAuthorityAddress(env.ctx, swapAuthorityAccount.PublicKey().ToBase58())
+	require.NoError(t, err)
+	assert.Equal(t, ownerAccount.PublicKey().ToBase58(), accountInfoRecord.OwnerAccount)
+	assert.Equal(t, swapAuthorityAccount.PublicKey().ToBase58(), accountInfoRecord.AuthorityAccount)
+	assert.Equal(t, expectedSwapUsdcAta.PublicKey().ToBase58(), accountInfoRecord.TokenAccount)
+	assert.Equal(t, common.UsdcMintAccount.PublicKey().ToBase58(), accountInfoRecord.MintAccount)
+	assert.Equal(t, commonpb.AccountType_SWAP, accountInfoRecord.AccountType)
+	assert.EqualValues(t, 0, accountInfoRecord.Index)
+
+	resp, err = env.client.LinkAdditionalAccounts(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, accountpb.LinkAdditionalAccountsResponse_OK, resp.Result)
+}
+
+func TestLinkAdditionalAccounts_UserAccountsNotOpened(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	swapAuthorityAccount := testutil.NewRandomAccount(t)
+
+	req := &accountpb.LinkAdditionalAccountsRequest{
+		Owner:         ownerAccount.ToProto(),
+		SwapAuthority: swapAuthorityAccount.ToProto(),
+	}
+	reqBytes, err := proto.Marshal(req)
+	require.NoError(t, err)
+	signatures := []*commonpb.Signature{
+		{Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes)},
+		{Value: ed25519.Sign(swapAuthorityAccount.PrivateKey().ToBytes(), reqBytes)},
+	}
+	req.Signatures = signatures
+
+	resp, err := env.client.LinkAdditionalAccounts(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, accountpb.LinkAdditionalAccountsResponse_DENIED, resp.Result)
+
+	_, err = env.data.GetAccountInfoByAuthorityAddress(env.ctx, swapAuthorityAccount.PublicKey().ToBase58())
+	assert.Equal(t, account.ErrAccountInfoNotFound, err)
+}
+
+func TestLinkAdditionalAccounts_InvalidSwapAuthority(t *testing.T) {
+	ownerAccount := testutil.NewRandomAccount(t)
+	swapAuthorityAccount := testutil.NewRandomAccount(t)
+	expectedSwapUsdcAta, err := swapAuthorityAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		swapAuthorityAccount *common.Account
+		setup                func(t *testing.T, env testEnv)
+	}{
+		{
+			ownerAccount,
+			func(t *testing.T, env testEnv) {},
+		},
+		{
+			swapAuthorityAccount,
+			func(t *testing.T, env testEnv) {
+				require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+					OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+					AuthorityAccount: swapAuthorityAccount.PublicKey().ToBase58(),
+					TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+					MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+					AccountType:      commonpb.AccountType_BUCKET_100_000_KIN,
+				}))
+			},
+		},
+		{
+			swapAuthorityAccount,
+			func(t *testing.T, env testEnv) {
+				require.NoError(t, env.data.CreateAccountInfo(env.ctx, &account.Record{
+					OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+					AuthorityAccount: swapAuthorityAccount.PublicKey().ToBase58(),
+					TokenAccount:     expectedSwapUsdcAta.PublicKey().ToBase58(),
+					MintAccount:      common.UsdcMintAccount.PublicKey().ToBase58(),
+					AccountType:      commonpb.AccountType_SWAP,
+				}))
+			},
+		},
+	} {
+		env, cleanup := setup(t)
+		defer cleanup()
+
+		swapAuthorityAccount := tc.swapAuthorityAccount
+
+		setupOpenAccountsIntent(t, env, ownerAccount)
+		tc.setup(t, env)
+
+		req := &accountpb.LinkAdditionalAccountsRequest{
+			Owner:         ownerAccount.ToProto(),
+			SwapAuthority: swapAuthorityAccount.ToProto(),
+		}
+		reqBytes, err := proto.Marshal(req)
+		require.NoError(t, err)
+		signatures := []*commonpb.Signature{
+			{Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes)},
+			{Value: ed25519.Sign(swapAuthorityAccount.PrivateKey().ToBytes(), reqBytes)},
+		}
+		req.Signatures = signatures
+
+		resp, err := env.client.LinkAdditionalAccounts(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, accountpb.LinkAdditionalAccountsResponse_INVALID_ACCOUNT, resp.Result)
+
+		accountInfoRecord, err := env.data.GetAccountInfoByAuthorityAddress(env.ctx, swapAuthorityAccount.PublicKey().ToBase58())
+		if err == nil {
+			// If there's a record, then at least one of these conditions must be false
+			isSwapAccount := accountInfoRecord.AccountType == commonpb.AccountType_SWAP
+			isSametOwner := accountInfoRecord.OwnerAccount == ownerAccount.PublicKey().ToBase58()
+			isExpectedTokenAccount := accountInfoRecord.TokenAccount == expectedSwapUsdcAta.PublicKey().ToBase58()
+			assert.True(t, !isSwapAccount || !isSametOwner || !isExpectedTokenAccount)
+		} else if err != account.ErrAccountInfoNotFound {
+			require.NoError(t, err)
+		}
+	}
+}
+
 func TestUnauthenticatedRPC(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
 	ownerAccount := testutil.NewRandomAccount(t)
+	swapAuthorityAccount := testutil.NewRandomAccount(t)
 	maliciousAccount := testutil.NewRandomAccount(t)
 
 	isCodeAccountReq := &accountpb.IsCodeAccountRequest{
@@ -926,6 +1072,24 @@ func TestUnauthenticatedRPC(t *testing.T) {
 
 	_, err = env.client.GetTokenAccountInfos(env.ctx, getTokenAccountInfosReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
+	for i := 0; i < 2; i++ {
+		linkReq := &accountpb.LinkAdditionalAccountsRequest{
+			Owner:         ownerAccount.ToProto(),
+			SwapAuthority: swapAuthorityAccount.ToProto(),
+		}
+		reqBytes, err = proto.Marshal(linkReq)
+		require.NoError(t, err)
+		signatures := []*commonpb.Signature{
+			{Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes)},
+			{Value: ed25519.Sign(swapAuthorityAccount.PrivateKey().ToBytes(), reqBytes)},
+		}
+		signatures[i].Value = ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes)
+		linkReq.Signatures = signatures
+
+		_, err = env.client.LinkAdditionalAccounts(env.ctx, linkReq)
+		testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+	}
 }
 
 func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
@@ -969,7 +1133,7 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 	var timelockRecord *timelock.Record
 	var err error
 
-	if accountType == commonpb.AccountType_SWAP_ACCOUNT {
+	if accountType == commonpb.AccountType_SWAP {
 		mintAccount = common.UsdcMintAccount
 
 		tokenAccount, err = authorityAccount.ToAssociatedTokenAccount(mintAccount)
@@ -1040,6 +1204,21 @@ func setupCachedBalance(t *testing.T, env testEnv, accountRecords *common.Accoun
 		}
 		require.NoError(t, env.data.SaveExternalDeposit(env.ctx, depositRecord))
 	}
+}
+
+func setupOpenAccountsIntent(t *testing.T, env testEnv, ownerAccount *common.Account) {
+	intentRecord := &intent.Record{
+		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		IntentType: intent.OpenAccounts,
+
+		InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
+
+		OpenAccountsMetadata: &intent.OpenAccountsMetadata{},
+
+		State: intent.StatePending,
+	}
+
+	require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
 }
 
 func setupPrivacyMigration2022Intent(t *testing.T, env testEnv, ownerAccount *common.Account) {
