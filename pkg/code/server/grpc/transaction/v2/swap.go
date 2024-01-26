@@ -15,6 +15,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/balance"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -26,7 +27,6 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
 	swap_validator "github.com/code-payments/code-server/pkg/solana/swapvalidator"
-	"github.com/code-payments/code-server/pkg/solana/token"
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
@@ -80,7 +80,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	//
-	// Section: Swap parameter setup (accounts, balances, etc.)
+	// Section: Swap parameter setup and validation (accounts, balances, etc.)
 	//
 
 	swapAuthority, err := common.NewAccountFromProto(initiateReq.SwapAuthority)
@@ -89,19 +89,35 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 
-	usdcAtaBytes, err := token.GetAssociatedAccount(swapAuthority.PublicKey().ToBytes(), usdc.TokenMint)
-	if err != nil {
-		log.WithError(err).Warn("failure deriving usdc ata")
+	if owner.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
+		return handleSwapError(streamer, newSwapValidationError("owner cannot be swap authority"))
+	}
+
+	accountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(ctx, swapAuthority.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		if accountInfoRecord.AccountType != commonpb.AccountType_SWAP {
+			return handleSwapError(streamer, newSwapValidationError("swap authority isn't an authority for a swap account"))
+		}
+
+		if accountInfoRecord.OwnerAccount != owner.PublicKey().ToBase58() {
+			return handleSwapError(streamer, newSwapValidationError("swap authority isn't linked to owner"))
+		}
+	case account.ErrAccountInfoNotFound:
+		return handleSwapError(streamer, newSwapValidationError("swap authority isn't linked"))
+	default:
+		log.WithError(err).Warn("failure getting account info record")
 		return handleSwapError(streamer, err)
 	}
-	swapSource, err := common.NewAccountFromPublicKeyBytes(usdcAtaBytes)
+
+	swapSource, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
 	if err != nil {
 		log.WithError(err).Warn("invalid usdc ata")
 		return handleSwapError(streamer, err)
 	}
 	log = log.WithField("swap_source", swapSource.PublicKey().ToBase58())
 
-	accountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(ctx, owner.PublicKey().ToBase58())
+	accountInfoRecord, err = s.data.GetAccountInfoByAuthorityAddress(ctx, owner.PublicKey().ToBase58())
 	switch err {
 	case nil:
 		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
@@ -123,7 +139,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 	log = log.WithField("swap_destination", swapDestination.PublicKey().ToBase58())
 
-	swapSourceBalance, err := s.data.GetBlockchainBalance(ctx, swapSource.PublicKey().ToBase58())
+	swapSourceBalance, err := balance.CalculateFromBlockchain(ctx, s.data, swapSource)
 	if err != nil {
 		log.WithError(err).Warn("failure getting swap source account balance")
 		return handleSwapError(streamer, err)
