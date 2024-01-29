@@ -21,6 +21,7 @@ import (
 	micropaymentpb "github.com/code-payments/code-protobuf-api/generated/go/micropayment/v1"
 
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
@@ -341,6 +342,7 @@ func TestCodify_HappyPath(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: owner.PublicKey().ToBase58(),
 		TokenAccount:     destination.PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
@@ -433,6 +435,7 @@ func TestCodify_AccountValidation(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		TokenAccount:     destination.PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
@@ -489,6 +492,7 @@ func TestCodify_AmountValidation(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: owner.PublicKey().ToBase58(),
 		TokenAccount:     destination.PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
@@ -527,6 +531,7 @@ func TestCodify_CurrencyValidation(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: owner.PublicKey().ToBase58(),
 		TokenAccount:     destination.PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))

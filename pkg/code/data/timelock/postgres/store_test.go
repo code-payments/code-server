@@ -35,6 +35,8 @@ const (
 			time_authority TEXT NOT NULL,
 			close_authority TEXT NOT NULL,
 
+			mint TEXT NOT NULL,
+
 			num_days_locked INTEGER NOT NULL,
 			unlock_at INTEGER,
 

@@ -42,6 +42,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/data/user"
+	"github.com/code-payments/code-server/pkg/code/data/user/identity"
+	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 
@@ -70,9 +72,7 @@ import (
 	timelock_memory_client "github.com/code-payments/code-server/pkg/code/data/timelock/memory"
 	transaction_memory_client "github.com/code-payments/code-server/pkg/code/data/transaction/memory"
 	treasury_memory_client "github.com/code-payments/code-server/pkg/code/data/treasury/memory"
-	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	user_identity_memory_client "github.com/code-payments/code-server/pkg/code/data/user/identity/memory"
-	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	user_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/user/storage/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
 	webhook_memory_client "github.com/code-payments/code-server/pkg/code/data/webhook/memory"
@@ -326,8 +326,8 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	SaveExternalDeposit(ctx context.Context, record *deposit.Record) error
 	GetExternalDeposit(ctx context.Context, signature, destination string) (*deposit.Record, error)
-	GetTotalExternalDepositedAmountInKin(ctx context.Context, account string) (uint64, error)
-	GetTotalExternalDepositedAmountInKinBatch(ctx context.Context, accounts ...string) (map[string]uint64, error)
+	GetTotalExternalDepositedAmountInQuarks(ctx context.Context, account string) (uint64, error)
+	GetTotalExternalDepositedAmountInQuarksBatch(ctx context.Context, accounts ...string) (map[string]uint64, error)
 	GetTotalExternalDepositedAmountInUsd(ctx context.Context, account string) (float64, error)
 
 	// Rendezvous
@@ -1261,11 +1261,11 @@ func (dp *DatabaseProvider) SaveExternalDeposit(ctx context.Context, record *dep
 func (dp *DatabaseProvider) GetExternalDeposit(ctx context.Context, signature, account string) (*deposit.Record, error) {
 	return dp.deposits.Get(ctx, signature, account)
 }
-func (dp *DatabaseProvider) GetTotalExternalDepositedAmountInKin(ctx context.Context, account string) (uint64, error) {
-	return dp.deposits.GetKinAmount(ctx, account)
+func (dp *DatabaseProvider) GetTotalExternalDepositedAmountInQuarks(ctx context.Context, account string) (uint64, error) {
+	return dp.deposits.GetQuarkAmount(ctx, account)
 }
-func (dp *DatabaseProvider) GetTotalExternalDepositedAmountInKinBatch(ctx context.Context, accounts ...string) (map[string]uint64, error) {
-	return dp.deposits.GetKinAmountBatch(ctx, accounts...)
+func (dp *DatabaseProvider) GetTotalExternalDepositedAmountInQuarksBatch(ctx context.Context, accounts ...string) (map[string]uint64, error) {
+	return dp.deposits.GetQuarkAmountBatch(ctx, accounts...)
 }
 func (dp *DatabaseProvider) GetTotalExternalDepositedAmountInUsd(ctx context.Context, account string) (float64, error) {
 	return dp.deposits.GetUsdAmount(ctx, account)

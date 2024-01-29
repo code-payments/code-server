@@ -9,10 +9,10 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
 const (
@@ -34,6 +34,8 @@ type model struct {
 
 	TimeAuthority  string `db:"time_authority"`
 	CloseAuthority string `db:"close_authority"`
+
+	Mint string `db:"mint"`
 
 	NumDaysLocked uint          `db:"num_days_locked"`
 	UnlockAt      sql.NullInt64 `db:"unlock_at"`
@@ -68,6 +70,8 @@ func toModel(obj *timelock.Record) (*model, error) {
 		TimeAuthority:  obj.TimeAuthority,
 		CloseAuthority: obj.CloseAuthority,
 
+		Mint: obj.Mint,
+
 		NumDaysLocked: uint(obj.NumDaysLocked),
 		UnlockAt:      unlockAt,
 
@@ -100,6 +104,8 @@ func fromModel(obj *model) *timelock.Record {
 		TimeAuthority:  obj.TimeAuthority,
 		CloseAuthority: obj.CloseAuthority,
 
+		Mint: obj.Mint,
+
 		NumDaysLocked: uint8(obj.NumDaysLocked),
 		UnlockAt:      unlockAt,
 
@@ -112,16 +118,16 @@ func fromModel(obj *model) *timelock.Record {
 func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + tableName + `
-			(data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, num_days_locked, unlock_at, block, last_updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			(data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, mint, num_days_locked, unlock_at, block, last_updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 
 			ON CONFLICT (address)
 			DO UPDATE
-				SET data_version = $1, vault_state = $7, time_authority = $8, close_authority = $9, unlock_at = $11, block = $12, last_updated_at = $13
-				WHERE ` + tableName + `.address = $2 AND ` + tableName + `.vault_address = $4 AND ` + tableName + `.block < $12
+				SET data_version = $1, vault_state = $7, time_authority = $8, close_authority = $9, unlock_at = $12, block = $13, last_updated_at = $14
+				WHERE ` + tableName + `.address = $2 AND ` + tableName + `.vault_address = $4 AND ` + tableName + `.block < $13
 
 			RETURNING
-				id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, num_days_locked, unlock_at, block, last_updated_at`
+				id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, mint, num_days_locked, unlock_at, block, last_updated_at`
 
 		m.LastUpdatedAt = time.Now()
 
@@ -142,6 +148,8 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.TimeAuthority,
 			m.CloseAuthority,
 
+			m.Mint,
+
 			m.NumDaysLocked,
 			m.UnlockAt,
 
@@ -158,7 +166,7 @@ func dbGetByAddress(ctx context.Context, db *sqlx.DB, address string) (*model, e
 	res := &model{}
 
 	query := `SELECT
-		id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, num_days_locked, unlock_at, block, last_updated_at
+		id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, mint, num_days_locked, unlock_at, block, last_updated_at
 		FROM ` + tableName + `
 		WHERE address = $1
 		LIMIT 1`
@@ -174,7 +182,7 @@ func dbGetByVault(ctx context.Context, db *sqlx.DB, vault string) (*model, error
 	res := &model{}
 
 	query := `SELECT
-		id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, num_days_locked, unlock_at, block, last_updated_at
+		id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, mint, num_days_locked, unlock_at, block, last_updated_at
 		FROM ` + tableName + `
 		WHERE vault_address = $1
 		LIMIT 1`
@@ -195,7 +203,7 @@ func dbGetByVaultBatch(ctx context.Context, db *sqlx.DB, vaults ...string) ([]*m
 	}
 
 	query := fmt.Sprintf(
-		`SELECT id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, num_days_locked, unlock_at, block, last_updated_at
+		`SELECT id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, mint, num_days_locked, unlock_at, block, last_updated_at
 		FROM `+tableName+`
 		WHERE vault_address IN (%s)`,
 		strings.Join(individualFilters, ", "),
@@ -215,7 +223,7 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state timelock_token.Time
 	res := []*model{}
 
 	query := `SELECT
-		id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, num_days_locked, unlock_at, block, last_updated_at
+		id, data_version, address, bump, vault_address, vault_bump, vault_owner, vault_state, time_authority, close_authority, mint, num_days_locked, unlock_at, block, last_updated_at
 		FROM ` + tableName + `
 		WHERE (vault_state = $1)
 	`

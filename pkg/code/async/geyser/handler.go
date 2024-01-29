@@ -68,45 +68,83 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		return nil
 	}
 
-	// Not a Kin account, so filter it out
-	if !bytes.Equal(unmarshalled.Mint, kin.TokenMint) {
-		return nil
-	}
-
-	kinTokenAccount, err := common.NewAccountFromPublicKeyBytes(update.Pubkey)
+	tokenAccount, err := common.NewAccountFromPublicKeyBytes(update.Pubkey)
 	if err != nil {
 		return errors.Wrap(err, "invalid token account")
 	}
 
-	if kinTokenAccount.PublicKey().ToBase58() == h.conf.messagingFeeCollectorPublicKey.Get(ctx) {
+	ownerAccount, err := common.NewAccountFromPublicKeyBytes(unmarshalled.Owner)
+	if err != nil {
+		return errors.Wrap(err, "invalid owner account")
+	}
+
+	mintAccount, err := common.NewAccountFromPublicKeyBytes(unmarshalled.Mint)
+	if err != nil {
+		return errors.Wrap(err, "invalid mint account")
+	}
+
+	// The token account is the messaging fee collector, so process the update as
+	// a blockchain message.
+	if tokenAccount.PublicKey().ToBase58() == h.conf.messagingFeeCollectorPublicKey.Get(ctx) {
 		return processPotentialBlockchainMessage(
 			ctx,
 			h.data,
 			h.pusher,
-			kinTokenAccount,
+			tokenAccount,
 			*update.TxSignature,
 		)
 	}
 
-	// Not a program vault account, so filter it out
-	if !bytes.Equal(update.Pubkey, unmarshalled.Owner) {
-		return nil
-	}
-
-	// Account is empty, and all we care about are external deposits, so filter it out
+	// Account is empty, and all we care about are external deposits at this point,
+	// so filter it out
 	if unmarshalled.Amount == 0 {
 		return nil
 	}
 
-	isCodeAccount, err := testForKnownCodeUserAccount(ctx, h.data, kinTokenAccount)
-	if err != nil {
-		return errors.Wrap(err, "error testing for known account")
-	} else if !isCodeAccount {
-		// Not an account we track, so skip the update
+	switch mintAccount.PublicKey().ToBase58() {
+
+	case common.KinMintAccount.PublicKey().ToBase58():
+		// Not a program vault account, so filter it out. It cannot be a Timelock
+		// account.
+		if !bytes.Equal(tokenAccount.PublicKey().ToBytes(), ownerAccount.PublicKey().ToBytes()) {
+			return nil
+		}
+
+		isCodeTimelockAccount, err := testForKnownCodeTimelockAccount(ctx, h.data, tokenAccount)
+		if err != nil {
+			return errors.Wrap(err, "error testing for known account")
+		} else if !isCodeTimelockAccount {
+			// Not an account we track, so skip the update
+			return nil
+		}
+
+	case common.UsdcMintAccount.PublicKey().ToBase58():
+		ata, err := ownerAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
+		if err != nil {
+			return errors.Wrap(err, "error deriving usdc ata")
+		}
+
+		// Not an ATA, so filter it out
+		if !bytes.Equal(tokenAccount.PublicKey().ToBytes(), ata.PrivateKey().ToBytes()) {
+			return nil
+		}
+
+		isCodeSwapAccount, err := testForKnownCodeSwapAccount(ctx, h.data, tokenAccount)
+		if err != nil {
+			return errors.Wrap(err, "error testing for known account")
+		} else if !isCodeSwapAccount {
+			// Not an account we track, so skip the update
+			return nil
+		}
+
+	default:
+		// Not a Kin or USDC account, so filter it out
 		return nil
 	}
 
-	return processPotentialExternalDeposit(ctx, h.data, h.pusher, *update.TxSignature, kinTokenAccount)
+	// We've determined this token account is one that we care about. Process
+	// the update as an external deposit.
+	return processPotentialExternalDeposit(ctx, h.data, h.pusher, *update.TxSignature, tokenAccount)
 }
 
 type TimelockV1ProgramAccountHandler struct {

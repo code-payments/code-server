@@ -23,7 +23,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/event"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
@@ -398,7 +397,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 
 	// Do a balance check. If there's insufficient balance, the feature is considered
 	// to be over with until we get more funding.
-	balance, err := balance.DefaultCalculation(ctx, s.data, s.airdropper.Vault)
+	balance, err := balance.CalculateFromCache(ctx, s.data, s.airdropper.Vault)
 	if err != nil {
 		log.WithError(err).Warn("failure getting airdropper balance")
 		return nil, err
@@ -580,7 +579,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			return err
 		}
 
-		canPushChatMessage, err = chat_util.SendChatMessage(ctx, s.data, chat_util.CodeTeamName, chat.ChatTypeInternal, true, owner, chatMessage, false)
+		canPushChatMessage, err = chat_util.SendCodeTeamMessage(ctx, s.data, owner, chatMessage)
 		if err != nil {
 			return err
 		}
@@ -727,7 +726,7 @@ func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 			return err
 		}
 
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 		if err != nil {
 			return err
 		}

@@ -199,6 +199,7 @@ func (e *testEnv) setupRelationshipAccount(t *testing.T, owner string) *account.
 		OwnerAccount:     owner,
 		AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 
 		AccountType:    commonpb.AccountType_RELATIONSHIP,
 		Index:          0,

@@ -114,7 +114,7 @@ func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner
 	}
 	for _, batchAccountRecords := range recordsByType {
 		for _, accountRecords := range batchAccountRecords {
-			if !accountRecords.IsManagedByCode(ctx) {
+			if accountRecords.IsTimelock() && !accountRecords.IsManagedByCode(ctx) {
 				return OwnerManagementStateUnlocked, nil
 			}
 		}
@@ -137,23 +137,29 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 		return res, nil
 	}
 
-	var tokenAccounts []string
+	var timelockAccounts []string
 	for _, infoRecords := range infoRecordsByType {
 		for _, infoRecord := range infoRecords {
-			tokenAccounts = append(tokenAccounts, infoRecord.TokenAccount)
+			if infoRecord.IsTimelock() {
+				timelockAccounts = append(timelockAccounts, infoRecord.TokenAccount)
+			}
 		}
 	}
 
-	timelockRecordsByVault, err := data.GetTimelockByVaultBatch(ctx, tokenAccounts...)
+	timelockRecordsByVault, err := data.GetTimelockByVaultBatch(ctx, timelockAccounts...)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, generalRecords := range infoRecordsByType {
 		for _, generalRecord := range generalRecords {
-			timelockRecord, ok := timelockRecordsByVault[generalRecord.TokenAccount]
-			if !ok {
-				return nil, errors.New("timelock record unexpectedly doesn't exist")
+			var timelockRecord *timelock.Record
+			var ok bool
+			if generalRecord.IsTimelock() {
+				timelockRecord, ok = timelockRecordsByVault[generalRecord.TokenAccount]
+				if !ok {
+					return nil, errors.New("timelock record unexpectedly doesn't exist")
+				}
 			}
 
 			res[generalRecord.AccountType] = append(res[generalRecord.AccountType], &AccountRecords{
@@ -170,14 +176,37 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 	return res, nil
 }
 
+// GetLatestCodeTimelockAccountRecordsForOwner is a utility wrapper over GetLatestTokenAccountRecordsForOwner
+// that filters for Code Timelock accounts.
+func GetLatestCodeTimelockAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[commonpb.AccountType][]*AccountRecords, error) {
+	res := make(map[commonpb.AccountType][]*AccountRecords)
+
+	recordsByType, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, recordsList := range recordsByType {
+		for _, records := range recordsList {
+			if records.IsTimelock() {
+				res[records.General.AccountType] = append(res[records.General.AccountType], records)
+			}
+		}
+	}
+
+	return res, nil
+}
+
 // GetLegacyPrimary2022AccountRecordsIfNotMigrated gets a faked AccountRecords
 // for the LEGACY_PRIMARY_2022 account associated with the provided owner. If
 // the account doesn't exist, or was migrated, then ErrNoPrivacyMigration2022
 // is returned.
 //
+// Note: Legacy Timelock accounts were always Kin accounts
+//
 // todo: Needs tests here, but most already exist in account service
 func GetLegacyPrimary2022AccountRecordsIfNotMigrated(ctx context.Context, data code_data.Provider, owner *Account) (*AccountRecords, error) {
-	tokenAccount, err := owner.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	tokenAccount, err := owner.ToTimelockVault(timelock_token_v1.DataVersionLegacy, KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +237,7 @@ func GetLegacyPrimary2022AccountRecordsIfNotMigrated(ctx context.Context, data c
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: owner.PublicKey().ToBase58(),
 		TokenAccount:     timelockRecord.VaultAddress,
+		MintAccount:      KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_LEGACY_PRIMARY_2022,
 		Index:            0,
 	}

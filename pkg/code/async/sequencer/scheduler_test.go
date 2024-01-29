@@ -17,12 +17,6 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -34,6 +28,12 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 // todo: Still not entirely happy how temporary incoming/outgoing accounts are handled in these tests. Lots of manual and error prone input still.
@@ -2522,6 +2522,7 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 				OwnerAccount:     owner,
 				AuthorityAccount: authority,
 				TokenAccount:     actionRecord.Source,
+				MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 				AccountType:      accountType,
 				Index:            index,
 			}
@@ -2535,6 +2536,7 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 				VaultState:     timelock_token_v1.StateUnknown,
 				TimeAuthority:  common.GetSubsidizer().PublicKey().ToBase58(),
 				CloseAuthority: common.GetSubsidizer().PublicKey().ToBase58(),
+				Mint:           common.KinMintAccount.PublicKey().ToBase58(),
 				NumDaysLocked:  timelock_token_v1.DefaultNumDaysLocked,
 			}
 			require.NoError(t, e.data.SaveTimelock(e.ctx, timelockRecord))

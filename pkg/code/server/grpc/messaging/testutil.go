@@ -524,6 +524,7 @@ func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *co
 		OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		TokenAccount:     destination.PublicKey().ToBase58(),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
 		Index:            0,
 	}
@@ -539,6 +540,7 @@ func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *co
 			OwnerAccount:     accountInfoRecord.OwnerAccount,
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
 			Index:            accountInfoRecord.Index + 1,
 		}
@@ -578,6 +580,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: owner.PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_PRIMARY,
 			Index:            0,
 		}
@@ -587,6 +590,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_RELATIONSHIP,
 			Index:            0,
 			RelationshipTo:   pointer.String("getcode.com"),
@@ -602,6 +606,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
 			Index:            0,
 		}
@@ -711,6 +716,7 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: owner.PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_PRIMARY,
 			Index:            0,
 		}
@@ -720,6 +726,7 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_RELATIONSHIP,
 			Index:            0,
 			RelationshipTo:   pointer.String("getcode.com"),
@@ -735,6 +742,7 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
 			Index:            0,
 		}

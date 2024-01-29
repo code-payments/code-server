@@ -11,12 +11,12 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
 	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
 )
 
 func TestAccountWithPublicKey(t *testing.T) {
@@ -107,9 +107,10 @@ func TestInvalidAccount(t *testing.T) {
 func TestConvertToTimelockVault_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	stateAddress, _, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-		Mint:          kin.TokenMint,
+		Mint:          mintAccount.PublicKey().ToBytes(),
 		TimeAuthority: subsidizerAccount.PublicKey().ToBytes(),
 		VaultOwner:    ownerAccount.PublicKey().ToBytes(),
 		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
@@ -122,7 +123,7 @@ func TestConvertToTimelockVault_V1Program(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersion1)
+	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 	assert.EqualValues(t, expectedVaultAddress, tokenAccount.PublicKey().ToBytes())
 }
@@ -130,9 +131,10 @@ func TestConvertToTimelockVault_V1Program(t *testing.T) {
 func TestGetTimelockAccounts_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	expectedStateAddress, expectedStateBump, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-		Mint:          kin.TokenMint,
+		Mint:          mintAccount.PublicKey().ToBytes(),
 		TimeAuthority: subsidizerAccount.PublicKey().ToBytes(),
 		VaultOwner:    ownerAccount.PublicKey().ToBytes(),
 		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
@@ -145,7 +147,7 @@ func TestGetTimelockAccounts_V1Program(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	actual, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	actual, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 	assert.Equal(t, timelock_token_v1.DataVersion1, actual.DataVersion)
 	assert.EqualValues(t, expectedStateAddress, actual.State.PublicKey().ToBytes())
@@ -155,6 +157,7 @@ func TestGetTimelockAccounts_V1Program(t *testing.T) {
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), actual.TimeAuthority.PublicKey().ToBytes())
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), actual.CloseAuthority.PublicKey().ToBytes())
+	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 
 func TestIsAccountManagedByCode_TimelockState_V1Program(t *testing.T) {
@@ -162,8 +165,9 @@ func TestIsAccountManagedByCode_TimelockState_V1Program(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	// No record of the account anywhere
@@ -211,8 +215,9 @@ func TestIsAccountManagedByCode_OtherAccounts_V1Program(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 	require.NoError(t, data.SaveTimelock(ctx, timelockAccounts.ToDBRecord()))
 
@@ -240,9 +245,11 @@ func TestIsAccountManagedByCode_TimeAuthority_V1Program(t *testing.T) {
 		newRandomTestAccount(t),
 	}
 
+	mintAccount := newRandomTestAccount(t)
+
 	for _, timeAuthority := range timeAuthorities {
 		ownerAccount := newRandomTestAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.TimeAuthority = timeAuthority.PublicKey().ToBase58()
@@ -265,9 +272,11 @@ func TestIsAccountManagedByCode_CloseAuthority_V1Program(t *testing.T) {
 		newRandomTestAccount(t),
 	}
 
+	mintAccount := newRandomTestAccount(t)
+
 	for _, closeAuthority := range closeAuthorities {
 		ownerAccount := newRandomTestAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.CloseAuthority = closeAuthority.PublicKey().ToBase58()
@@ -284,7 +293,9 @@ func TestIsAccountManagedByCode_DataVersionClosed_V1Program(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	timelockRecord.DataVersion = timelock_token_v1.DataVersionClosed
@@ -297,9 +308,10 @@ func TestIsAccountManagedByCode_DataVersionClosed_V1Program(t *testing.T) {
 
 func TestGetInitializeInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetInitializeInstruction()
@@ -315,16 +327,17 @@ func TestGetInitializeInstruction_V1Program(t *testing.T) {
 	assert.EqualValues(t, timelockAccounts.State.PublicKey().ToBytes(), accounts.Timelock)
 	assert.EqualValues(t, timelockAccounts.Vault.PublicKey().ToBytes(), accounts.Vault)
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), accounts.VaultOwner)
-	assert.EqualValues(t, kin.TokenMint, accounts.Mint)
+	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), accounts.Mint)
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), accounts.TimeAuthority)
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), accounts.Payer)
 }
 
 func TestGetTransferWithAuthorityInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	source, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	source, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	destination := newRandomTestAccount(t)
@@ -351,9 +364,10 @@ func TestGetTransferWithAuthorityInstruction_V1Program(t *testing.T) {
 
 func TestGetWithdrawInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	source, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	source, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	destination := newRandomTestAccount(t)
@@ -377,9 +391,10 @@ func TestGetWithdrawInstruction_V1Program(t *testing.T) {
 
 func TestGetBurnDustWithAuthorityInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	maxAmount := kin.ToQuarks(1)
@@ -399,15 +414,16 @@ func TestGetBurnDustWithAuthorityInstruction_V1Program(t *testing.T) {
 	assert.EqualValues(t, timelockAccounts.Vault.PublicKey().ToBytes(), accounts.Vault)
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), accounts.VaultOwner)
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), accounts.TimeAuthority)
-	assert.EqualValues(t, kin.TokenMint, accounts.Mint)
+	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), accounts.Mint)
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), accounts.Payer)
 }
 
 func TestGetRevokeLockWithAuthorityInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetRevokeLockWithAuthorityInstruction()
@@ -428,9 +444,10 @@ func TestGetRevokeLockWithAuthorityInstruction_V1Program(t *testing.T) {
 
 func TestGetDeactivateInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetDeactivateInstruction()
@@ -450,9 +467,10 @@ func TestGetDeactivateInstruction_V1Program(t *testing.T) {
 
 func TestGetCloseAccountsInstruction_V1Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetCloseAccountsInstruction()
@@ -474,9 +492,10 @@ func TestGetCloseAccountsInstruction_V1Program(t *testing.T) {
 func TestConvertToTimelockVault_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	stateAddress, _, err := timelock_token_legacy.GetStateAddress(&timelock_token_legacy.GetStateAddressArgs{
-		Mint:           kin.TokenMint,
+		Mint:           mintAccount.PublicKey().ToBytes(),
 		TimeAuthority:  subsidizerAccount.PublicKey().ToBytes(),
 		Nonce:          defaultTimelockNonceAccount.PublicKey().ToBytes(),
 		VaultOwner:     ownerAccount.PublicKey().ToBytes(),
@@ -489,7 +508,7 @@ func TestConvertToTimelockVault_Legacy2022Program(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy)
+	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 	assert.EqualValues(t, expectedVaultAddress, tokenAccount.PublicKey().ToBytes())
 }
@@ -497,9 +516,10 @@ func TestConvertToTimelockVault_Legacy2022Program(t *testing.T) {
 func TestGetTimelockAccounts_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
 	expectedStateAddress, expectedStateBump, err := timelock_token_legacy.GetStateAddress(&timelock_token_legacy.GetStateAddressArgs{
-		Mint:           kin.TokenMint,
+		Mint:           mintAccount.PublicKey().ToBytes(),
 		TimeAuthority:  subsidizerAccount.PublicKey().ToBytes(),
 		Nonce:          defaultTimelockNonceAccount.PublicKey().ToBytes(),
 		VaultOwner:     ownerAccount.PublicKey().ToBytes(),
@@ -512,7 +532,7 @@ func TestGetTimelockAccounts_Legacy2022Program(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	actual, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	actual, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 	assert.Equal(t, timelock_token_v1.DataVersionLegacy, actual.DataVersion)
 	assert.EqualValues(t, expectedStateAddress, actual.State.PublicKey().ToBytes())
@@ -522,6 +542,7 @@ func TestGetTimelockAccounts_Legacy2022Program(t *testing.T) {
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), actual.TimeAuthority.PublicKey().ToBytes())
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), actual.CloseAuthority.PublicKey().ToBytes())
+	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 
 func TestIsAccountManagedByCode_TimelockState_Legacy2022Program(t *testing.T) {
@@ -529,8 +550,9 @@ func TestIsAccountManagedByCode_TimelockState_Legacy2022Program(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 
 	// No record of the account anywhere
@@ -578,8 +600,9 @@ func TestIsAccountManagedByCode_OtherAccounts_Legacy2022Program(t *testing.T) {
 	data := code_data.NewTestDataProvider()
 
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 	require.NoError(t, data.SaveTimelock(ctx, timelockAccounts.ToDBRecord()))
 
@@ -607,9 +630,11 @@ func TestIsAccountManagedByCode_TimeAuthority_Legacy2022Program(t *testing.T) {
 		newRandomTestAccount(t),
 	}
 
+	mintAccount := newRandomTestAccount(t)
+
 	for _, timeAuthority := range timeAuthorities {
 		ownerAccount := newRandomTestAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.TimeAuthority = timeAuthority.PublicKey().ToBase58()
@@ -632,9 +657,11 @@ func TestIsAccountManagedByCode_CloseAuthority_Legacy2022Program(t *testing.T) {
 		newRandomTestAccount(t),
 	}
 
+	mintAccount := newRandomTestAccount(t)
+
 	for _, closeAuthority := range closeAuthorities {
 		ownerAccount := newRandomTestAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.CloseAuthority = closeAuthority.PublicKey().ToBase58()
@@ -651,7 +678,9 @@ func TestIsAccountManagedByCode_DataVersionClosed_Legacy2022Program(t *testing.T
 	data := code_data.NewTestDataProvider()
 
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	timelockRecord.DataVersion = timelock_token_v1.DataVersionClosed
@@ -664,7 +693,9 @@ func TestIsAccountManagedByCode_DataVersionClosed_Legacy2022Program(t *testing.T
 
 func TestGetInitializeInstruction_Legacy2022Program(t *testing.T) {
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 
 	_, err = timelockAccounts.GetInitializeInstruction()
@@ -673,7 +704,9 @@ func TestGetInitializeInstruction_Legacy2022Program(t *testing.T) {
 
 func TestGetTransferWithAuthorityInstruction_Legacy2022Program(t *testing.T) {
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 
 	_, err = timelockAccounts.GetTransferWithAuthorityInstruction(newRandomTestAccount(t), kin.ToQuarks(123))
@@ -682,9 +715,10 @@ func TestGetTransferWithAuthorityInstruction_Legacy2022Program(t *testing.T) {
 
 func TestGetWithdrawInstruction_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	source, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	mintAccount := newRandomTestAccount(t)
+
+	source, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 
 	destination := newRandomTestAccount(t)
@@ -708,9 +742,10 @@ func TestGetWithdrawInstruction_Legacy2022Program(t *testing.T) {
 
 func TestGetBurnDustWithAuthorityInstruction_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 
 	maxAmount := kin.ToQuarks(1)
@@ -730,15 +765,16 @@ func TestGetBurnDustWithAuthorityInstruction_Legacy2022Program(t *testing.T) {
 	assert.EqualValues(t, timelockAccounts.Vault.PublicKey().ToBytes(), accounts.Vault)
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), accounts.VaultOwner)
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), accounts.TimeAuthority)
-	assert.Equal(t, kin.TokenMint, accounts.Mint)
+	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), accounts.Mint)
 	assert.EqualValues(t, subsidizerAccount.PublicKey().ToBytes(), accounts.Payer)
 }
 
 func TestGetRevokeLockWithAuthorityInstruction_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetRevokeLockWithAuthorityInstruction()
@@ -759,9 +795,10 @@ func TestGetRevokeLockWithAuthorityInstruction_Legacy2022Program(t *testing.T) {
 
 func TestGetDeactivateInstruction_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetDeactivateInstruction()
@@ -781,9 +818,10 @@ func TestGetDeactivateInstruction_Legacy2022Program(t *testing.T) {
 
 func TestGetCloseAccountsInstruction_Legacy2022Program(t *testing.T) {
 	subsidizerAccount = newRandomTestAccount(t)
-
 	ownerAccount := newRandomTestAccount(t)
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	mintAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetCloseAccountsInstruction()
@@ -804,11 +842,12 @@ func TestGetCloseAccountsInstruction_Legacy2022Program(t *testing.T) {
 
 func TestConvertToAssociatedTokenAccount(t *testing.T) {
 	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
 
-	expected, err := token.GetAssociatedAccount(ownerAccount.PublicKey().ToBytes(), kin.TokenMint)
+	expected, err := token.GetAssociatedAccount(ownerAccount.PublicKey().ToBytes(), mintAccount.PublicKey().ToBytes())
 	require.NoError(t, err)
 
-	actual, err := ownerAccount.ToAssociatedTokenAccount()
+	actual, err := ownerAccount.ToAssociatedTokenAccount(mintAccount)
 	require.NoError(t, err)
 
 	assert.EqualValues(t, expected, actual.PublicKey().ToBytes())

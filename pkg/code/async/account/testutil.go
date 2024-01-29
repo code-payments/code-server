@@ -11,12 +11,6 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	memory_push "github.com/code-payments/code-server/pkg/push/memory"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -24,6 +18,12 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 type testEnv struct {
@@ -63,13 +63,14 @@ func setup(t *testing.T) *testEnv {
 func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *testGiftCard {
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{
 		OwnerAccount:     authority.PublicKey().ToBase58(),
 		AuthorityAccount: authority.PublicKey().ToBase58(),
 		TokenAccount:     timelockAccounts.Vault.PublicKey().ToBase58(),
+		MintAccount:      timelockAccounts.Mint.PublicKey().ToBase58(),
 
 		AccountType: commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 

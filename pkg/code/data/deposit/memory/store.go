@@ -65,16 +65,16 @@ func (s *store) Get(_ context.Context, signature, account string) (*deposit.Reco
 	return &cloned, nil
 }
 
-// GetKinAmount implements deposit.Store.GetKinAmount
-func (s *store) GetKinAmount(_ context.Context, account string) (uint64, error) {
+// GetQuarkAmount implements deposit.Store.GetQuarkAmount
+func (s *store) GetQuarkAmount(_ context.Context, account string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.getKinAmount(account), nil
 }
 
-// GetKinAmountBatch implements deposit.Store.GetKinAmountBatch
-func (s *store) GetKinAmountBatch(_ context.Context, accounts ...string) (map[string]uint64, error) {
+// GetQuarkAmountBatch implements deposit.Store.GetQuarkAmountBatch
+func (s *store) GetQuarkAmountBatch(_ context.Context, accounts ...string) (map[string]uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

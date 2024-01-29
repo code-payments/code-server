@@ -1309,7 +1309,7 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	// Part 4: Is this an owner account with an opened Kin ATA? If so, allow it.
 	//
 
-	ata, err := accountToCheck.ToAssociatedTokenAccount()
+	ata, err := accountToCheck.ToAssociatedTokenAccount(common.KinMintAccount)
 	if err != nil {
 		log.WithError(err).Warn("failure getting ata address")
 		return nil, status.Error(codes.Internal, "")

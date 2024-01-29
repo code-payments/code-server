@@ -15,8 +15,11 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/balance"
+	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	push_util "github.com/code-payments/code-server/pkg/code/push"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/jupiter"
@@ -24,7 +27,6 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
 	swap_validator "github.com/code-payments/code-server/pkg/solana/swapvalidator"
-	"github.com/code-payments/code-server/pkg/solana/token"
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
@@ -78,7 +80,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	//
-	// Section: Swap parameter setup (accounts, balances, etc.)
+	// Section: Swap parameter setup and validation (accounts, balances, etc.)
 	//
 
 	swapAuthority, err := common.NewAccountFromProto(initiateReq.SwapAuthority)
@@ -87,19 +89,35 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 
-	usdcAtaBytes, err := token.GetAssociatedAccount(swapAuthority.PublicKey().ToBytes(), usdc.TokenMint)
-	if err != nil {
-		log.WithError(err).Warn("failure deriving usdc ata")
+	if owner.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
+		return handleSwapError(streamer, newSwapValidationError("owner cannot be swap authority"))
+	}
+
+	accountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(ctx, swapAuthority.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		if accountInfoRecord.AccountType != commonpb.AccountType_SWAP {
+			return handleSwapError(streamer, newSwapValidationError("swap authority isn't an authority for a swap account"))
+		}
+
+		if accountInfoRecord.OwnerAccount != owner.PublicKey().ToBase58() {
+			return handleSwapError(streamer, newSwapValidationError("swap authority isn't linked to owner"))
+		}
+	case account.ErrAccountInfoNotFound:
+		return handleSwapError(streamer, newSwapValidationError("swap authority isn't linked"))
+	default:
+		log.WithError(err).Warn("failure getting account info record")
 		return handleSwapError(streamer, err)
 	}
-	swapSource, err := common.NewAccountFromPublicKeyBytes(usdcAtaBytes)
+
+	swapSource, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
 	if err != nil {
 		log.WithError(err).Warn("invalid usdc ata")
 		return handleSwapError(streamer, err)
 	}
 	log = log.WithField("swap_source", swapSource.PublicKey().ToBase58())
 
-	accountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(ctx, owner.PublicKey().ToBase58())
+	accountInfoRecord, err = s.data.GetAccountInfoByAuthorityAddress(ctx, owner.PublicKey().ToBase58())
 	switch err {
 	case nil:
 		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
@@ -121,7 +139,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 	log = log.WithField("swap_destination", swapDestination.PublicKey().ToBase58())
 
-	swapSourceBalance, err := s.data.GetBlockchainBalance(ctx, swapSource.PublicKey().ToBase58())
+	swapSourceBalance, err := balance.CalculateFromBlockchain(ctx, s.data, swapSource)
 	if err != nil {
 		log.WithError(err).Warn("failure getting swap source account balance")
 		return handleSwapError(streamer, err)
@@ -348,6 +366,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	log.Debug("submitted transaction")
 
+	s.bestEffortNotifyUserOfSwapInProgress(ctx, owner)
+
 	if !initiateReq.WaitForBlockchainStatus {
 		err = streamer.Send(&transactionpb.SwapResponse{
 			Response: &transactionpb.SwapResponse_Success_{
@@ -387,6 +407,30 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 			})
 			return handleSwapError(streamer, err)
 		}
+	}
+}
+
+// Temporary for manual USDC deposit flow
+func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) {
+	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
+	if err != nil {
+		return
+	}
+
+	canPush, err := chat_util.SendCodeTeamMessage(ctx, s.data, owner, chatMessage)
+	if err != nil {
+		return
+	}
+
+	if canPush {
+		push_util.SendChatMessagePushNotification(
+			ctx,
+			s.data,
+			s.pusher,
+			chat_util.CodeTeamName,
+			owner,
+			chatMessage,
+		)
 	}
 }
 

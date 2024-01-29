@@ -12,6 +12,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/solana"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
@@ -47,10 +48,10 @@ type State struct {
 	current int64
 }
 
-// DefaultCalculation is the default and recommended strategy for reliably
-// estimating a token account's balance.
-func DefaultCalculation(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
-	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "DefaultCalculation")
+// CalculateFromCache is the default and recommended strategy for reliably estimating
+// a token account's balance using cached values.
+func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "CalculateFromCache")
 	tracer.AddAttribute("account", tokenAccount.PublicKey().ToBase58())
 	defer tracer.End()
 
@@ -99,6 +100,21 @@ func DefaultCalculation(ctx context.Context, data code_data.Provider, tokenAccou
 	if err != nil {
 		tracer.OnError(err)
 		return 0, errors.Wrap(err, "error calculating token account balance")
+	}
+	return balance, nil
+}
+
+// CalculateFromBlockchain is the default and recommended strategy for reliably
+// estimating a token account's balance from the blockchain.
+//
+// todo: add a batching variant
+func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
+	// todo: we may need something that's more resistant to RPC nodes with stale account state
+	balance, err := data.GetBlockchainBalance(ctx, tokenAccount.PublicKey().ToBase58())
+	if err == solana.ErrNoBalance {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
 	}
 	return balance, nil
 }
@@ -172,7 +188,7 @@ func FundingFromExternalDeposits(ctx context.Context, data code_data.Provider) S
 			"account": tokenAccount.PublicKey().ToBase58(),
 		})
 
-		amount, err := data.GetTotalExternalDepositedAmountInKin(ctx, tokenAccount.PublicKey().ToBase58())
+		amount, err := data.GetTotalExternalDepositedAmountInQuarks(ctx, tokenAccount.PublicKey().ToBase58())
 		if err != nil {
 			log.WithError(err).Warn("failure getting external deposit amount")
 			return nil, errors.Wrap(err, "error getting external deposit amount")
@@ -214,21 +230,26 @@ type BatchState struct {
 	current map[string]int64
 }
 
-// DefaultBatchCalculationWithAccountRecords is the default and recommended batch strategy
+// BatchCalculateFromCacheWithAccountRecords is the default and recommended batch strategy
 // or reliably estimating a set of token accounts' balance when common.AccountRecords are
 // available.
 //
-// Note: This only supports post-privacy accounts. Use DefaultCalculation instead.
-func DefaultBatchCalculationWithAccountRecords(ctx context.Context, data code_data.Provider, accountRecordsBatch ...*common.AccountRecords) (map[string]uint64, error) {
-	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "DefaultBatchCalculationWithAccountRecords")
+// Note: This only supports post-privacy accounts. Use CalculateFromCache instead.
+func BatchCalculateFromCacheWithAccountRecords(ctx context.Context, data code_data.Provider, accountRecordsBatch ...*common.AccountRecords) (map[string]uint64, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "BatchCalculateFromCacheWithAccountRecords")
 	defer tracer.End()
 
-	timelockRecords := make([]*timelock.Record, len(accountRecordsBatch))
-	for i, accountRecords := range accountRecordsBatch {
-		timelockRecords[i] = accountRecords.Timelock
+	timelockRecords := make([]*timelock.Record, 0)
+	for _, accountRecords := range accountRecordsBatch {
+		if !accountRecords.IsTimelock() {
+			tracer.OnError(ErrNotManagedByCode)
+			return nil, ErrNotManagedByCode
+		}
+
+		timelockRecords = append(timelockRecords, accountRecords.Timelock)
 	}
 
-	balanceByTokenAccount, err := defaultBatchCalculation(ctx, data, timelockRecords)
+	balanceByTokenAccount, err := defaultBatchCalculationFromCache(ctx, data, timelockRecords)
 	if err != nil {
 		tracer.OnError(err)
 		return nil, err
@@ -236,13 +257,13 @@ func DefaultBatchCalculationWithAccountRecords(ctx context.Context, data code_da
 	return balanceByTokenAccount, nil
 }
 
-// DefaultBatchCalculationWithTokenAccounts is the default and recommended batch strategy
+// BatchCalculateFromCacheWithTokenAccounts is the default and recommended batch strategy
 // or reliably estimating a set of token accounts' balance when common.Account are
 // available.
 //
-// Note: This only supports post-privacy accounts. Use DefaultCalculation instead.
-func DefaultBatchCalculationWithTokenAccounts(ctx context.Context, data code_data.Provider, tokenAccounts ...*common.Account) (map[string]uint64, error) {
-	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "DefaultBatchCalculationWithTokenAccounts")
+// Note: This only supports post-privacy accounts. Use CalculateFromCache instead.
+func BatchCalculateFromCacheWithTokenAccounts(ctx context.Context, data code_data.Provider, tokenAccounts ...*common.Account) (map[string]uint64, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "BatchCalculateFromCacheWithTokenAccounts")
 	defer tracer.End()
 
 	tokenAccountStrings := make([]string, len(tokenAccounts))
@@ -264,7 +285,7 @@ func DefaultBatchCalculationWithTokenAccounts(ctx context.Context, data code_dat
 		timelockRecords = append(timelockRecords, timelockRecord)
 	}
 
-	balanceByTokenAccount, err := defaultBatchCalculation(ctx, data, timelockRecords)
+	balanceByTokenAccount, err := defaultBatchCalculationFromCache(ctx, data, timelockRecords)
 	if err != nil {
 		tracer.OnError(err)
 		return nil, err
@@ -272,7 +293,7 @@ func DefaultBatchCalculationWithTokenAccounts(ctx context.Context, data code_dat
 	return balanceByTokenAccount, nil
 }
 
-func defaultBatchCalculation(ctx context.Context, data code_data.Provider, timelockRecords []*timelock.Record) (map[string]uint64, error) {
+func defaultBatchCalculationFromCache(ctx context.Context, data code_data.Provider, timelockRecords []*timelock.Record) (map[string]uint64, error) {
 	var tokenAccounts []string
 	for _, timelockRecord := range timelockRecords {
 		// The strategy uses cached values from the intents system. The account must
@@ -299,9 +320,9 @@ func defaultBatchCalculation(ctx context.Context, data code_data.Provider, timel
 	)
 }
 
-// Calculate calculates a token account's balance using a starting point and a set
-// of strategies. Each may be incomplete individually, but in total must form a
-// complete balance calculation.
+// CalculateBatch calculates a set of token accounts' balance using a starting point
+// and a set of strategies. Each may be incomplete individually, but in total must
+// form a complete balance calculation.
 func CalculateBatch(ctx context.Context, tokenAccounts []string, strategies ...BatchStrategy) (balanceByTokenAccount map[string]uint64, err error) {
 	balanceState := &BatchState{
 		current: make(map[string]int64),
@@ -352,7 +373,7 @@ func FundingFromExternalDepositsBatch(ctx context.Context, data code_data.Provid
 	return func(ctx context.Context, tokenAccounts []string, state *BatchState) (*BatchState, error) {
 		log := logrus.StandardLogger().WithField("method", "FundingFromExternalDepositsBatch")
 
-		amountByAccount, err := data.GetTotalExternalDepositedAmountInKinBatch(ctx, tokenAccounts...)
+		amountByAccount, err := data.GetTotalExternalDepositedAmountInQuarksBatch(ctx, tokenAccounts...)
 		if err != nil {
 			log.WithError(err).Warn("failure getting external deposit amount")
 			return nil, errors.Wrap(err, "error getting external deposit amount")
@@ -366,56 +387,9 @@ func FundingFromExternalDepositsBatch(ctx context.Context, data code_data.Provid
 	}
 }
 
-// GetTotalBalance gets an owner account's total balance
+// GetPrivateBalance gets an owner account's total private balance.
 //
-// todo: consolidate common logic with GetPrivateBalance
-func GetTotalBalance(ctx context.Context, data code_data.Provider, owner *common.Account) (uint64, error) {
-	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"method": "GetTotalBalance",
-		"owner":  owner.PublicKey().ToBase58(),
-	})
-
-	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "GetTotalBalance")
-	tracer.AddAttribute("owner", owner.PublicKey().ToBase58())
-	defer tracer.End()
-
-	accountRecordsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
-	if err != nil {
-		log.WithError(err).Warn("failure getting latest token account records")
-		tracer.OnError(err)
-		return 0, err
-	}
-
-	if len(accountRecordsByType) == 0 {
-		tracer.OnError(ErrNotManagedByCode)
-		return 0, ErrNotManagedByCode
-	}
-
-	var accountRecordsBatch []*common.AccountRecords
-	for _, accountRecords := range accountRecordsByType {
-		accountRecordsBatch = append(accountRecordsBatch, accountRecords...)
-	}
-
-	balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(ctx, data, accountRecordsBatch...)
-	if err != nil {
-		log.WithError(err).Warn("failure getting balances")
-		tracer.OnError(err)
-		return 0, err
-	}
-
-	var total uint64
-	for _, batchRecords := range accountRecordsByType {
-		for _, records := range batchRecords {
-			total += balanceByAccount[records.General.TokenAccount]
-		}
-	}
-	return total, nil
-}
-
-// GetPrivateBalance gets an owner account's total private balance (ie. everything
-// except the primary account).
-//
-// todo: consolidate common logic with GetTotalBalance
+// Note: Assumes all private accounts have the same mint
 func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *common.Account) (uint64, error) {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"method": "GetPrivateBalance",
@@ -441,14 +415,18 @@ func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *comm
 	var accountRecordsBatch []*common.AccountRecords
 	for _, accountRecords := range accountRecordsByType {
 		switch accountRecords[0].General.AccountType {
-		case commonpb.AccountType_PRIMARY, commonpb.AccountType_LEGACY_PRIMARY_2022, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, commonpb.AccountType_RELATIONSHIP:
+		case commonpb.AccountType_PRIMARY,
+			commonpb.AccountType_LEGACY_PRIMARY_2022,
+			commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
+			commonpb.AccountType_RELATIONSHIP,
+			commonpb.AccountType_SWAP:
 			continue
 		}
 
 		accountRecordsBatch = append(accountRecordsBatch, accountRecords...)
 	}
 
-	balanceByAccount, err := DefaultBatchCalculationWithAccountRecords(ctx, data, accountRecordsBatch...)
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(ctx, data, accountRecordsBatch...)
 	if err != nil {
 		log.WithError(err).Warn("failure getting balances")
 		tracer.OnError(err)

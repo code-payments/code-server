@@ -34,12 +34,12 @@ type Store interface {
 	// Get gets a deposit record for a signature and account
 	Get(ctx context.Context, signature, account string) (*Record, error)
 
-	// GetKinAmount gets the total deposited Kin amount in quarks to an account
+	// GetQuarkAmount gets the total deposited quark amount to an account
 	// for finalized transactions
-	GetKinAmount(ctx context.Context, account string) (uint64, error)
+	GetQuarkAmount(ctx context.Context, account string) (uint64, error)
 
-	// GetKinAmountBatch is like GetKinAmount but for a batch of accounts
-	GetKinAmountBatch(ctx context.Context, accounts ...string) (map[string]uint64, error)
+	// GetQuarkAmountBatch is like GetQuarkAmount but for a batch of accounts
+	GetQuarkAmountBatch(ctx context.Context, accounts ...string) (map[string]uint64, error)
 
 	// GetUsdAmount gets the total deposited USD amount to an account for finalized
 	// transactions

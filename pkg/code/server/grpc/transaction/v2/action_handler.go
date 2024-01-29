@@ -12,9 +12,6 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -25,6 +22,9 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/solana"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // todo: a better name for this lol?
@@ -128,7 +128,7 @@ func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transacti
 		return nil, err
 	}
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +143,7 @@ func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transacti
 		OwnerAccount:            owner.PublicKey().ToBase58(),
 		AuthorityAccount:        authority.PublicKey().ToBase58(),
 		TokenAccount:            timelockAccounts.Vault.PublicKey().ToBase58(),
+		MintAccount:             timelockAccounts.Mint.PublicKey().ToBase58(),
 		AccountType:             protoAction.AccountType,
 		Index:                   protoAction.Index,
 		RelationshipTo:          relationshipTo,
@@ -234,7 +235,7 @@ func NewCloseEmptyAccountActionHandler(intentType intent.Type, protoAction *tran
 	if intentType == intent.MigrateToPrivacy2022 {
 		dataVersion = timelock_token_v1.DataVersionLegacy
 	}
-	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion)
+	timelockAccounts, err := authority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +316,7 @@ func NewCloseDormantAccountActionHandler(protoAction *transactionpb.CloseDormant
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +429,7 @@ func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTrans
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +453,7 @@ func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, fee
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +557,7 @@ func NewNoPrivacyWithdrawActionHandler(intentType intent.Type, protoAction *tran
 	if intentType == intent.MigrateToPrivacy2022 {
 		dataVersion = timelock_token_v1.DataVersionLegacy
 	}
-	source, err := sourceAuthority.GetTimelockAccounts(dataVersion)
+	source, err := sourceAuthority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +715,7 @@ func NewTemporaryPrivacyTransferActionHandler(
 		return nil, err
 	}
 
-	h.source, err = authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	h.source, err = authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -945,7 +946,7 @@ func NewPermanentPrivacyUpgradeActionHandler(
 		return nil, err
 	}
 
-	h.source, err = authority.GetTimelockAccounts(timelock_token_v1.DataVersion1)
+	h.source, err = authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}

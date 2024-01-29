@@ -25,4 +25,8 @@ const (
 
 	ChatMessageReferralBonus = "subtitle.chat.referralBonus"
 	ChatMessageWelcomeBonus  = "subtitle.chat.welcomeBonus"
+
+	ChatMessageUsdcDeposited      = "subtitle.chat.usdcDeposited"
+	ChatMessageUsdcBeingConverted = "subtitle.chat.usdcBeingConverted"
+	ChatMessageKinAvailableForUse = "subtitle.chat.kinAvailableForUse"
 )

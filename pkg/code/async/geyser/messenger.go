@@ -58,16 +58,6 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 		var err error
 		_, err = retry.Retry(
 			func() error {
-				// Optimizes QuickNode API credit usage
-				statuses, err := data.GetBlockchainSignatureStatuses(ctx, []solana.Signature{typedSignature})
-				if err != nil {
-					return err
-				}
-
-				if len(statuses) == 0 || statuses[0] == nil || !statuses[0].Confirmed() {
-					return errSignatureNotConfirmed
-				}
-
 				txn, err = data.GetBlockchainTransaction(ctx, signature, solana.CommitmentConfirmed)
 				return err
 			},
