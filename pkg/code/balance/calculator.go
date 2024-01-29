@@ -106,8 +106,10 @@ func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccou
 
 // CalculateFromBlockchain is the default and recommended strategy for reliably
 // estimating a token account's balance from the blockchain.
+//
+// todo: add a batching variant
 func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
-	// todo: we may need something that's
+	// todo: we may need something that's more resistant to RPC nodes with stale account state
 	balance, err := data.GetBlockchainBalance(ctx, tokenAccount.PublicKey().ToBase58())
 	if err == solana.ErrNoBalance {
 		return 0, nil
