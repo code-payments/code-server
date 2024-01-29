@@ -70,6 +70,7 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	ownerAccount := testutil.NewRandomAccount(t)
+	swapDerivedOwnerAccount := testutil.NewRandomAccount(t)
 
 	req := &accountpb.IsCodeAccountRequest{
 		Owner: ownerAccount.ToProto(),
@@ -87,6 +88,7 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 	// Technically an invalid reality, but SubmitIntent guarantees all or no accounts
 	// are opened, which allows IsCodeAccount to do lazy checking.
 	setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
+	setupAccountRecords(t, env, ownerAccount, swapDerivedOwnerAccount, 0, commonpb.AccountType_SWAP)
 
 	resp, err = env.client.IsCodeAccount(env.ctx, req)
 	require.NoError(t, err)
