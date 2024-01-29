@@ -7,5 +7,5 @@ import (
 
 var (
 	KinMintAccount, _  = NewAccountFromPublicKeyBytes(kin.TokenMint)
-	UsdcMintAccount, _ = NewAccountFromPublicKeyString(usdc.Mint)
+	UsdcMintAccount, _ = NewAccountFromPublicKeyBytes(usdc.TokenMint)
 )
