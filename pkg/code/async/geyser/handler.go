@@ -125,7 +125,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		}
 
 		// Not an ATA, so filter it out
-		if !bytes.Equal(tokenAccount.PublicKey().ToBytes(), ata.PrivateKey().ToBytes()) {
+		if !bytes.Equal(tokenAccount.PublicKey().ToBytes(), ata.PublicKey().ToBytes()) {
 			return nil
 		}
 
