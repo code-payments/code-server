@@ -144,7 +144,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 
 	// We've determined this token account is one that we care about. Process
 	// the update as an external deposit.
-	return processPotentialExternalDeposit(ctx, h.data, h.pusher, *update.TxSignature, tokenAccount)
+	return processPotentialExternalDeposit(ctx, h.conf, h.data, h.pusher, *update.TxSignature, tokenAccount)
 }
 
 type TimelockV1ProgramAccountHandler struct {

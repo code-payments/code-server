@@ -142,7 +142,7 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 
 						log := log.WithField("account", vault.PublicKey().ToBase58())
 
-						err := fixMissingExternalDeposits(tracedCtx, p.data, p.pusher, vault)
+						err := fixMissingExternalDeposits(tracedCtx, p.conf, p.data, p.pusher, vault)
 						if err != nil {
 							m.NoticeError(err)
 							log.WithError(err).Warn("failure fixing missing external deposits")
