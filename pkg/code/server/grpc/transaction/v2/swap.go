@@ -380,32 +380,35 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	for {
-		time.Sleep(time.Second)
+		select {
+		case <-time.After(time.Second):
+			statuses, err := s.data.GetBlockchainSignatureStatuses(ctx, []solana.Signature{solana.Signature(txn.Signature())})
+			if err != nil {
+				continue
+			}
 
-		statuses, err := s.data.GetBlockchainSignatureStatuses(ctx, []solana.Signature{solana.Signature(txn.Signature())})
-		if err != nil {
-			continue
-		}
+			if len(statuses) == 0 || statuses[0] == nil {
+				continue
+			}
 
-		if len(statuses) == 0 || statuses[0] == nil {
-			continue
-		}
+			if statuses[0].ErrorResult != nil {
+				log.WithError(statuses[0].ErrorResult).Warn("transaction failed")
+				return handleSwapStructuredError(streamer, transactionpb.SwapResponse_Error_SWAP_FAILED)
+			}
 
-		if statuses[0].ErrorResult != nil {
-			log.WithError(statuses[0].ErrorResult).Warn("transaction failed")
-			return handleSwapStructuredError(streamer, transactionpb.SwapResponse_Error_SWAP_FAILED)
-		}
-
-		if statuses[0].Finalized() {
-			log.Debug("transaction succeeded and is finalized")
-			err = streamer.Send(&transactionpb.SwapResponse{
-				Response: &transactionpb.SwapResponse_Success_{
-					Success: &transactionpb.SwapResponse_Success{
-						Code: transactionpb.SwapResponse_Success_SWAP_FINALIZED,
+			if statuses[0].Finalized() {
+				log.Debug("transaction succeeded and is finalized")
+				err = streamer.Send(&transactionpb.SwapResponse{
+					Response: &transactionpb.SwapResponse_Success_{
+						Success: &transactionpb.SwapResponse_Success{
+							Code: transactionpb.SwapResponse_Success_SWAP_FINALIZED,
+						},
 					},
-				},
-			})
-			return handleSwapError(streamer, err)
+				})
+				return handleSwapError(streamer, err)
+			}
+		case <-ctx.Done():
+			return handleSwapError(streamer, ctx.Err())
 		}
 	}
 }
