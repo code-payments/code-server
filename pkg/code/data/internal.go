@@ -21,6 +21,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
+	"github.com/code-payments/code-server/pkg/code/data/balance"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/contact"
@@ -50,6 +51,7 @@ import (
 	account_memory_client "github.com/code-payments/code-server/pkg/code/data/account/memory"
 	action_memory_client "github.com/code-payments/code-server/pkg/code/data/action/memory"
 	badgecount_memory_client "github.com/code-payments/code-server/pkg/code/data/badgecount/memory"
+	balance_memory_client "github.com/code-payments/code-server/pkg/code/data/balance/memory"
 	chat_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/memory"
 	commitment_memory_client "github.com/code-payments/code-server/pkg/code/data/commitment/memory"
 	contact_memory_client "github.com/code-payments/code-server/pkg/code/data/contact/memory"
@@ -80,6 +82,7 @@ import (
 	account_postgres_client "github.com/code-payments/code-server/pkg/code/data/account/postgres"
 	action_postgres_client "github.com/code-payments/code-server/pkg/code/data/action/postgres"
 	badgecount_postgres_client "github.com/code-payments/code-server/pkg/code/data/badgecount/postgres"
+	balance_postgres_client "github.com/code-payments/code-server/pkg/code/data/balance/postgres"
 	chat_postgres_client "github.com/code-payments/code-server/pkg/code/data/chat/postgres"
 	commitment_postgres_client "github.com/code-payments/code-server/pkg/code/data/commitment/postgres"
 	contact_postgres_client "github.com/code-payments/code-server/pkg/code/data/contact/postgres"
@@ -385,6 +388,11 @@ type DatabaseData interface {
 	GetLoginsByAppInstall(ctx context.Context, appInstallId string) (*login.MultiRecord, error)
 	GetLatestLoginByOwner(ctx context.Context, owner string) (*login.Record, error)
 
+	// Balance
+	// --------------------------------------------------------------------------------
+	SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error
+	GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -423,6 +431,7 @@ type DatabaseProvider struct {
 	chat           chat.Store
 	badgecount     badgecount.Store
 	login          login.Store
+	balance        balance.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -480,6 +489,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		chat:           chat_postgres_client.New(db),
 		badgecount:     badgecount_postgres_client.New(db),
 		login:          login_postgres_client.New(db),
+		balance:        balance_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -518,6 +528,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		chat:           chat_memory_client.New(),
 		badgecount:     badgecount_memory_client.New(),
 		login:          login_memory_client.New(),
+		balance:        balance_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1394,4 +1405,13 @@ func (dp *DatabaseProvider) GetLoginsByAppInstall(ctx context.Context, appInstal
 }
 func (dp *DatabaseProvider) GetLatestLoginByOwner(ctx context.Context, owner string) (*login.Record, error) {
 	return dp.login.GetLatestByOwner(ctx, owner)
+}
+
+// Balance
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error {
+	return dp.balance.SaveCheckpoint(ctx, record)
+}
+func (dp *DatabaseProvider) GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error) {
+	return dp.balance.GetCheckpoint(ctx, account)
 }
