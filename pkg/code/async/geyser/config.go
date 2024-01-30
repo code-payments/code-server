@@ -34,6 +34,9 @@ const (
 	MessagingFeeCollectorPublicKeyConfigEnvName = envConfigPrefix + "MESSAGING_FEE_COLLECTOR_PUBLIC_KEY"
 	defaultMessagingFeeCollectorPublicKey       = "invalid" // ensure something valid is set
 
+	SwapSubsidizerPublicKeyConfigEnvName = envConfigPrefix + "SWAP_SUBSIDIZER_PUBLIC_KEY"
+	defaultSwapSubsidizerPublicKey       = "invalid" // ensure something valid is set
+
 	BackupMessagingWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_MESSAGING_WORKER_INTERVAL"
 	defaultBackupMessagingWorkerInterval       = 15 * time.Minute // Decrease significantly once feature is live
 )
@@ -52,6 +55,8 @@ type conf struct {
 
 	messagingFeeCollectorPublicKey config.String
 	backupMessagingWorkerInterval  config.Duration
+
+	swapSubsidizerPublicKey config.String
 }
 
 // ConfigProvider defines how config values are pulled
@@ -74,6 +79,8 @@ func WithEnvConfigs() ConfigProvider {
 
 			messagingFeeCollectorPublicKey: env.NewStringConfig(MessagingFeeCollectorPublicKeyConfigEnvName, defaultMessagingFeeCollectorPublicKey),
 			backupMessagingWorkerInterval:  env.NewDurationConfig(BackupMessagingWorkerIntervalConfigEnvName, defaultBackupMessagingWorkerInterval),
+
+			swapSubsidizerPublicKey: env.NewStringConfig(SwapSubsidizerPublicKeyConfigEnvName, defaultSwapSubsidizerPublicKey),
 		}
 	}
 }

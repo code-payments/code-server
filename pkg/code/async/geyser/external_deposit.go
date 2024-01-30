@@ -39,7 +39,7 @@ var (
 	syncedDepositCache = cache.NewCache(1_000_000)
 )
 
-func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, pusher push_lib.Provider, vault *common.Account) error {
+func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.Provider, pusher push_lib.Provider, vault *common.Account) error {
 	signatures, err := findPotentialExternalDeposits(ctx, data, vault)
 	if err != nil {
 		return errors.Wrap(err, "error finding potential external deposits")
@@ -47,7 +47,7 @@ func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, pu
 
 	var anyError error
 	for _, signature := range signatures {
-		err := processPotentialExternalDeposit(ctx, data, pusher, signature, vault)
+		err := processPotentialExternalDeposit(ctx, conf, data, pusher, signature, vault)
 		if err != nil {
 			anyError = errors.Wrap(err, "error processing signature for external deposit")
 		}
@@ -115,7 +115,7 @@ func findPotentialExternalDeposits(ctx context.Context, data code_data.Provider,
 	}
 }
 
-func processPotentialExternalDeposit(ctx context.Context, data code_data.Provider, pusher push_lib.Provider, signature string, tokenAccount *common.Account) error {
+func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_data.Provider, pusher push_lib.Provider, signature string, tokenAccount *common.Account) error {
 	// Avoid reprocessing deposits we've recently seen and processed. Particularly,
 	// the backup process will likely be triggered in frequent bursts, so this is
 	// just an optimization around that.
@@ -199,7 +199,7 @@ func processPotentialExternalDeposit(ctx context.Context, data code_data.Provide
 			return nil
 		}
 
-		isCodeSwap, usdcQuarksSwapped, err := getCodeSwapMetadata(tokenBalances)
+		isCodeSwap, usdcQuarksSwapped, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
 		if err != nil {
 			return errors.Wrap(err, "error getting code swap metadata")
 		}
@@ -381,13 +381,12 @@ func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances
 	return postQuarkBalance - preQuarkBalance, nil
 }
 
-func getCodeSwapMetadata(tokenBalances *solana.TransactionTokenBalances) (bool, uint64, error) {
+func getCodeSwapMetadata(ctx context.Context, conf *conf, tokenBalances *solana.TransactionTokenBalances) (bool, uint64, error) {
 	// Detect whether this is a Code swap by inspecting whether the swap subsidizer
 	// is included in the transaction.
 	var isCodeSwap bool
 	for _, account := range tokenBalances.Accounts {
-		// todo: configurable
-		if account == "swapBMF2EzkHSn9NDwaSFWMtGC7ZsgzApQv9NSkeUeU" {
+		if account == conf.swapSubsidizerPublicKey.Get(ctx) {
 			isCodeSwap = true
 			break
 		}
