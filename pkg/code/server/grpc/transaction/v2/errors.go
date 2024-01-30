@@ -1,6 +1,7 @@
 package transaction_v2
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -226,8 +227,10 @@ func handleSubmitIntentError(streamer transactionpb.Transaction_SubmitIntentServ
 
 	// Case 2: Errors that map to gRPC status errors
 	switch err {
-	case ErrTimedOutReceivingRequest:
+	case ErrTimedOutReceivingRequest, context.DeadlineExceeded:
 		return status.Error(codes.DeadlineExceeded, err.Error())
+	case context.Canceled:
+		return status.Error(codes.Canceled, err.Error())
 	case transaction.ErrNoAvailableNonces:
 		return status.Error(codes.Unavailable, "")
 	}
@@ -281,8 +284,10 @@ func handleSwapError(streamer transactionpb.Transaction_SwapServer, err error) e
 
 	// Case 2: Errors that map to gRPC status errors
 	switch err {
-	case ErrTimedOutReceivingRequest:
+	case ErrTimedOutReceivingRequest, context.DeadlineExceeded:
 		return status.Error(codes.DeadlineExceeded, err.Error())
+	case context.Canceled:
+		return status.Error(codes.Canceled, err.Error())
 	}
 	return status.Error(codes.Internal, "rpc server failure")
 }
