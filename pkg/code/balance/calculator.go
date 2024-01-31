@@ -10,6 +10,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/balance"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -109,14 +110,41 @@ func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccou
 //
 // todo: add a batching variant
 func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
+	var cachedQuarks uint64
+	var cachedSlot uint64
+	checkpointRecord, err := data.GetBalanceCheckpoint(ctx, tokenAccount.PublicKey().ToBase58())
+	if err == nil {
+		cachedQuarks = checkpointRecord.Quarks
+		cachedSlot = checkpointRecord.SlotCheckpoint
+	} else if err != balance.ErrCheckpointNotFound {
+		return 0, err
+	}
+
 	// todo: we may need something that's more resistant to RPC nodes with stale account state
-	balance, err := data.GetBlockchainBalance(ctx, tokenAccount.PublicKey().ToBase58())
+	quarks, slot, err := data.GetBlockchainBalance(ctx, tokenAccount.PublicKey().ToBase58())
 	if err == solana.ErrNoBalance {
 		return 0, nil
 	} else if err != nil {
-		return 0, err
+		// RPC node threw an error. Return the cached balance
+		return cachedQuarks, nil
 	}
-	return balance, nil
+
+	// RPC node is behind, use cached balance
+	if cachedSlot > slot {
+		return cachedQuarks, nil
+	}
+
+	// Observed a balance that's more recent. Best-effort update the checkpoint.
+	if cachedSlot == 0 || (slot > cachedSlot && quarks != cachedQuarks) {
+		newCheckpointRecord := &balance.Record{
+			TokenAccount:   tokenAccount.PublicKey().ToBase58(),
+			Quarks:         quarks,
+			SlotCheckpoint: slot,
+		}
+		data.SaveBalanceCheckpoint(ctx, newCheckpointRecord)
+	}
+
+	return quarks, nil
 }
 
 // Calculate calculates a token account's balance using a starting point and a set
