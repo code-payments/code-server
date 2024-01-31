@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// Note: Only supports external balances
 type Record struct {
 	Id uint64
 
