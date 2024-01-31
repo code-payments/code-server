@@ -16,6 +16,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/balance"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
@@ -199,7 +200,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 			return nil
 		}
 
-		isCodeSwap, usdcQuarksSwapped, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
+		isCodeSwap, usdcSwapAccount, usdcQuarksSwapped, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
 		if err != nil {
 			return errors.Wrap(err, "error getting code swap metadata")
 		}
@@ -213,6 +214,12 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 				return errors.Wrap(err, "error getting usd rate")
 			}
 			usdMarketValue = usdExchangeRecord.Rate * float64(deltaQuarks) / float64(kin.QuarksPerKin)
+		}
+
+		if isCodeSwap {
+			// Checkpoint the Code swap account balance, to minimize chances a
+			// stale RPC node results in a double counting of funds
+			bestEffortCacheExternalAccountBalance(ctx, data, usdcSwapAccount, tokenBalances)
 		}
 
 		// For a consistent payment history list
@@ -297,8 +304,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 		return nil
 
 	case commonpb.AccountType_SWAP:
-		// todo: Don't think we need to track an external deposit record. Balances
-		//       cannot be tracked using cached values.
+		bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
 
 		// todo: solana client doesn't return block time
 		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), time.Now())
@@ -307,25 +313,24 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 		}
 
 		canPush, err := chat_util.SendCodeTeamMessage(ctx, data, chatMessageReceiver, chatMessage)
-		if err == chat.ErrMessageAlreadyExists {
-			syncedDepositCache.Insert(cacheKey, true, 1)
-			return nil
-		} else if err != nil {
+		switch err {
+		case nil:
+			if canPush {
+				push.SendChatMessagePushNotification(
+					ctx,
+					data,
+					pusher,
+					chat_util.CodeTeamName,
+					chatMessageReceiver,
+					chatMessage,
+				)
+			}
+		case chat.ErrMessageAlreadyExists:
+		default:
 			return errors.Wrap(err, "error sending chat message")
 		}
 
 		syncedDepositCache.Insert(cacheKey, true, 1)
-
-		if canPush {
-			push.SendChatMessagePushNotification(
-				ctx,
-				data,
-				pusher,
-				chat_util.CodeTeamName,
-				chatMessageReceiver,
-				chatMessage,
-			)
-		}
 
 		return nil
 
@@ -381,7 +386,21 @@ func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances
 	return postQuarkBalance - preQuarkBalance, nil
 }
 
-func getCodeSwapMetadata(ctx context.Context, conf *conf, tokenBalances *solana.TransactionTokenBalances) (bool, uint64, error) {
+// todo: can be promoted more broadly
+func getPostQuarkBalance(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (uint64, error) {
+	for _, postBalance := range tokenBalances.PostTokenBalances {
+		if tokenBalances.Accounts[postBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
+			postQuarkBalance, err := strconv.ParseUint(postBalance.TokenAmount.Amount, 10, 64)
+			if err != nil {
+				return 0, errors.Wrap(err, "error parsing post token balance")
+			}
+			return postQuarkBalance, nil
+		}
+	}
+	return 0, errors.New("no post balance for account")
+}
+
+func getCodeSwapMetadata(ctx context.Context, conf *conf, tokenBalances *solana.TransactionTokenBalances) (bool, *common.Account, uint64, error) {
 	// Detect whether this is a Code swap by inspecting whether the swap subsidizer
 	// is included in the transaction.
 	var isCodeSwap bool
@@ -393,34 +412,55 @@ func getCodeSwapMetadata(ctx context.Context, conf *conf, tokenBalances *solana.
 	}
 
 	if !isCodeSwap {
-		return false, 0, nil
+		return false, nil, 0, nil
 	}
 
 	var usdcPaid uint64
+	var usdcAccount *common.Account
 	for _, tokenBalance := range tokenBalances.PreTokenBalances {
 		tokenAccount, err := common.NewAccountFromPublicKeyString(tokenBalances.Accounts[tokenBalance.AccountIndex])
 		if err != nil {
-			return false, 0, errors.Wrap(err, "invalid token account")
+			return false, nil, 0, errors.Wrap(err, "invalid token account")
 		}
 
 		if tokenBalance.Mint == common.UsdcMintAccount.PublicKey().ToBase58() {
 			deltaQuarks, err := getDeltaQuarksFromTokenBalances(tokenAccount, tokenBalances)
 			if err != nil {
-				return false, 0, errors.Wrap(err, "error getting delta quarks")
+				return false, nil, 0, errors.Wrap(err, "error getting delta quarks")
 			}
 
-			if deltaQuarks > 0 {
+			if deltaQuarks >= 0 {
 				continue
 			}
 
 			absDeltaQuarks := uint64(-1 * deltaQuarks)
 			if absDeltaQuarks > usdcPaid {
 				usdcPaid = absDeltaQuarks
+				usdcAccount = tokenAccount
 			}
 		}
 	}
 
-	return true, usdcPaid, nil
+	if usdcAccount == nil {
+		return false, nil, 0, errors.New("usdc account not found")
+	}
+
+	return true, usdcAccount, usdcPaid, nil
+}
+
+// Optimistically tries to cache a balance for an external account not managed
+// Code. It doesn't need to be perfect and will be lazily corrected on the next
+// balance fetch with a newer state returned by a RPC node.
+func bestEffortCacheExternalAccountBalance(ctx context.Context, data code_data.Provider, tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) {
+	postBalance, err := getPostQuarkBalance(tokenAccount, tokenBalances)
+	if err == nil {
+		checkpointRecord := &balance.Record{
+			TokenAccount:   tokenAccount.PublicKey().ToBase58(),
+			Quarks:         postBalance,
+			SlotCheckpoint: tokenBalances.Slot,
+		}
+		data.SaveBalanceCheckpoint(ctx, checkpointRecord)
+	}
 }
 
 func getSyncedDepositCacheKey(signature string, account *common.Account) string {
