@@ -371,13 +371,22 @@ func (s *server) fetchBalances(ctx context.Context, recordsByType map[commonpb.A
 				return nil, err
 			}
 
-			quarks, err := balance.CalculateFromBlockchain(ctx, s.data, tokenAccount)
+			quarks, balanceSource, err := balance.CalculateFromBlockchain(ctx, s.data, tokenAccount)
 			if err != nil {
 				return nil, err
 			}
+			var protoBalanceSource accountpb.TokenAccountInfo_BalanceSource
+			switch balanceSource {
+			case balance.BlockchainSource:
+				protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN
+			case balance.CacheSource:
+				protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE
+			default:
+				protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN
+			}
 			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
 				value:  quarks,
-				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN,
+				source: protoBalanceSource,
 			}
 		}
 	}
