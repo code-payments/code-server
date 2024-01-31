@@ -184,7 +184,7 @@ type Client interface {
 	GetSignatureStatuses([]Signature) ([]*SignatureStatus, error)
 	GetSignaturesForAddress(owner ed25519.PublicKey, commitment Commitment, limit uint64, before, until string) ([]*TransactionSignature, error)
 	GetSlot(Commitment) (uint64, error)
-	GetTokenAccountBalance(ed25519.PublicKey) (uint64, error)
+	GetTokenAccountBalance(ed25519.PublicKey) (uint64, uint64, error)
 	GetTokenAccountsByOwner(owner, mint ed25519.PublicKey) ([]ed25519.PublicKey, error)
 	GetTransaction(Signature, Commitment) (ConfirmedTransaction, error)
 	GetTransactionTokenBalances(Signature) (TransactionTokenBalances, error)
@@ -691,7 +691,7 @@ func (c *client) GetBalance(account ed25519.PublicKey) (uint64, error) {
 	return 0, errors.Errorf("invalid value in response")
 }
 
-func (c *client) GetTokenAccountBalance(account ed25519.PublicKey) (uint64, error) {
+func (c *client) GetTokenAccountBalance(account ed25519.PublicKey) (uint64, uint64, error) {
 	var resp struct {
 		Context struct {
 			Slot int64 `json:"slot"`
@@ -701,22 +701,22 @@ func (c *client) GetTokenAccountBalance(account ed25519.PublicKey) (uint64, erro
 	if err := c.call(&resp, "getTokenAccountBalance", base58.Encode(account[:]), CommitmentProcessed); err != nil {
 		jsonRPCErr, ok := err.(*jsonrpc.RPCError)
 		if !ok {
-			return 0, errors.Wrapf(err, "getTokenAccountBalance() failed to send request")
+			return 0, 0, errors.Wrapf(err, "getTokenAccountBalance() failed to send request")
 		}
 
 		if jsonRPCErr.Code == invalidParamCode {
-			return 0, ErrNoBalance
+			return 0, 0, ErrNoBalance
 		}
 
-		return 0, errors.Wrapf(err, "getTokenAccountBalance() failed to send request")
+		return 0, 0, errors.Wrapf(err, "getTokenAccountBalance() failed to send request")
 	}
 
 	quarks, err := strconv.ParseUint(resp.Value.Amount, 10, 64)
 	if err != nil {
-		return 0, errors.Errorf("invalid value in response")
+		return 0, 0, errors.Errorf("invalid value in response")
 	}
 
-	return quarks, nil
+	return quarks, uint64(resp.Context.Slot), nil
 }
 
 func (c *client) SubmitTransaction(txn Transaction, commitment Commitment) (Signature, error) {
