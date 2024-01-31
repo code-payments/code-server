@@ -17,6 +17,14 @@ import (
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
+type Source uint8
+
+const (
+	UnknownSource Source = iota
+	CacheSource
+	BlockchainSource
+)
+
 const (
 	metricsPackageName = "balance"
 )
@@ -51,6 +59,9 @@ type State struct {
 
 // CalculateFromCache is the default and recommended strategy for reliably estimating
 // a token account's balance using cached values.
+//
+// Note: Use this method when calculating balances for accounts that are managed by
+// Code (ie. Timelock account) and operate within the L2 system.
 func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "CalculateFromCache")
 	tracer.AddAttribute("account", tokenAccount.PublicKey().ToBase58())
@@ -106,10 +117,15 @@ func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccou
 }
 
 // CalculateFromBlockchain is the default and recommended strategy for reliably
-// estimating a token account's balance from the blockchain.
+// estimating a token account's balance from the blockchain. This strategy is
+// resistant to various RPC failure nodes, and may return a cached value. The
+// source of the balance calculation is returned.
+//
+// Note: Use this method when calculating token account balances that are external
+// and not managed by Code and outside the L2 system.
 //
 // todo: add a batching variant
-func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, error) {
+func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, Source, error) {
 	var cachedQuarks uint64
 	var cachedSlot uint64
 	checkpointRecord, err := data.GetBalanceCheckpoint(ctx, tokenAccount.PublicKey().ToBase58())
@@ -117,21 +133,21 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 		cachedQuarks = checkpointRecord.Quarks
 		cachedSlot = checkpointRecord.SlotCheckpoint
 	} else if err != balance.ErrCheckpointNotFound {
-		return 0, err
+		return 0, UnknownSource, err
 	}
 
 	// todo: we may need something that's more resistant to RPC nodes with stale account state
 	quarks, slot, err := data.GetBlockchainBalance(ctx, tokenAccount.PublicKey().ToBase58())
 	if err == solana.ErrNoBalance {
-		return 0, nil
+		return 0, BlockchainSource, nil
 	} else if err != nil {
 		// RPC node threw an error. Return the cached balance
-		return cachedQuarks, nil
+		return cachedQuarks, CacheSource, nil
 	}
 
 	// RPC node is behind, use cached balance
 	if cachedSlot > slot {
-		return cachedQuarks, nil
+		return cachedQuarks, CacheSource, nil
 	}
 
 	// Observed a balance that's more recent. Best-effort update the checkpoint.
@@ -144,7 +160,7 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 		data.SaveBalanceCheckpoint(ctx, newCheckpointRecord)
 	}
 
-	return quarks, nil
+	return quarks, BlockchainSource, nil
 }
 
 // Calculate calculates a token account's balance using a starting point and a set
@@ -262,6 +278,9 @@ type BatchState struct {
 // or reliably estimating a set of token accounts' balance when common.AccountRecords are
 // available.
 //
+// Note: Use this method when calculating balances for accounts that are managed by
+// Code (ie. Timelock account) and operate within the L2 system.
+//
 // Note: This only supports post-privacy accounts. Use CalculateFromCache instead.
 func BatchCalculateFromCacheWithAccountRecords(ctx context.Context, data code_data.Provider, accountRecordsBatch ...*common.AccountRecords) (map[string]uint64, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "BatchCalculateFromCacheWithAccountRecords")
@@ -288,6 +307,9 @@ func BatchCalculateFromCacheWithAccountRecords(ctx context.Context, data code_da
 // BatchCalculateFromCacheWithTokenAccounts is the default and recommended batch strategy
 // or reliably estimating a set of token accounts' balance when common.Account are
 // available.
+//
+// Note: Use this method when calculating balances for accounts that are managed by
+// Code (ie. Timelock account) and operate within the L2 system.
 //
 // Note: This only supports post-privacy accounts. Use CalculateFromCache instead.
 func BatchCalculateFromCacheWithTokenAccounts(ctx context.Context, data code_data.Provider, tokenAccounts ...*common.Account) (map[string]uint64, error) {
@@ -468,4 +490,16 @@ func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *comm
 		}
 	}
 	return total, nil
+}
+
+func (s Source) String() string {
+	switch s {
+	case UnknownSource:
+		return "unknown"
+	case CacheSource:
+		return "cache"
+	case BlockchainSource:
+		return "blockchain"
+	}
+	return "unknown"
 }

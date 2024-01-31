@@ -139,7 +139,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 	log = log.WithField("swap_destination", swapDestination.PublicKey().ToBase58())
 
-	swapSourceBalance, err := balance.CalculateFromBlockchain(ctx, s.data, swapSource)
+	swapSourceBalance, _, err := balance.CalculateFromBlockchain(ctx, s.data, swapSource)
 	if err != nil {
 		log.WithError(err).Warn("failure getting swap source account balance")
 		return handleSwapError(streamer, err)
