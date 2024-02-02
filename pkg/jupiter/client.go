@@ -51,6 +51,10 @@ func (q *Quote) GetEstimatedSwapAmount() uint64 {
 	return q.estimatedSwapAmount
 }
 
+func (q *Quote) String() string {
+	return q.jsonString
+}
+
 // GetQuote gets an optimal route for performing a swap
 func (c *Client) GetQuote(
 	ctx context.Context,
@@ -117,6 +121,7 @@ type SwapInstructions struct {
 	SetupInstructions         []solana.Instruction
 	SwapInstruction           solana.Instruction
 	CleanupInstruction        *solana.Instruction
+	AddressLookupTables       []string
 }
 
 // GetSwapInstructions gets the instructions to construct a transaction to sign
@@ -129,10 +134,6 @@ func (c *Client) GetSwapInstructions(
 ) (*SwapInstructions, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetSwapInstructions")
 	defer tracer.End()
-
-	if !quote.useLegacyInstructions {
-		return nil, errors.New("only legacy transactions are supported")
-	}
 
 	// todo: struct this
 	reqBody := fmt.Sprintf(
@@ -206,6 +207,8 @@ func (c *Client) GetSwapInstructions(
 		}
 	}
 
+	res.AddressLookupTables = jsonBody.AddressLookupTableAddresses
+
 	return &res, nil
 }
 
@@ -258,9 +261,10 @@ type jsonInstruction struct {
 }
 
 type jsonSwapInstructions struct {
-	TokenLedgerInstruction    *jsonInstruction   `json:"tokenLedgerInstruction"`
-	ComputeBudgetInstructions []*jsonInstruction `json:"computeBudgetInstructions"`
-	SetupInstructions         []*jsonInstruction `json:"setupInstructions"`
-	SwapInstruction           *jsonInstruction   `json:"swapInstruction"`
-	CleanupInstruction        *jsonInstruction   `json:"cleanupInstruction"`
+	TokenLedgerInstruction      *jsonInstruction   `json:"tokenLedgerInstruction"`
+	ComputeBudgetInstructions   []*jsonInstruction `json:"computeBudgetInstructions"`
+	SetupInstructions           []*jsonInstruction `json:"setupInstructions"`
+	SwapInstruction             *jsonInstruction   `json:"swapInstruction"`
+	CleanupInstruction          *jsonInstruction   `json:"cleanupInstruction"`
+	AddressLookupTableAddresses []string           `json:"addressLookupTableAddresses"`
 }
