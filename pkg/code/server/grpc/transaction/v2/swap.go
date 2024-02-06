@@ -451,7 +451,7 @@ func (s *transactionServer) validateSwap(
 		return newSwapValidationError("expected two compute budget instructions")
 	}
 
-	if len(ixns.SetupInstructions) != 0 || ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
+	if ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
 		return newSwapValidationError("unexpected instruction")
 	}
 
