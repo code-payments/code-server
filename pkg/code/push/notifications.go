@@ -199,12 +199,13 @@ func SendChatMessagePushNotification(
 			"message_content": base64.StdEncoding.EncodeToString(marshalledContent),
 		}
 
-		err = sendDataPushNotificationToOwner(
+		err = sendMutableNotificationToOwner(
 			ctx,
 			data,
 			pusher,
 			owner,
 			chatMessageDataPush,
+			chatTitle,
 			kvs,
 		)
 		if err != nil {

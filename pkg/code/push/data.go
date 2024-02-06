@@ -18,11 +18,11 @@ const (
 	chatMessageDataPush dataPushType = "ChatMessage"
 )
 
-// sendDataPushNotificationToOwner is a generic utility for sending data push
+// sendRawDataPushNotificationToOwner is a generic utility for sending raw data push
 // notification to the devices linked to an owner account.
 //
 // todo: Duplicated code with other send push utitilies
-func sendDataPushNotificationToOwner(
+func sendRawDataPushNotificationToOwner(
 	ctx context.Context,
 	data code_data.Provider,
 	pusher push_lib.Provider,
@@ -31,7 +31,7 @@ func sendDataPushNotificationToOwner(
 	kvs map[string]string,
 ) error {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"method": "sendDataPushNotificationToOwner",
+		"method": "sendRawDataPushNotificationToOwner",
 		"owner":  owner.PublicKey().ToBase58(),
 	})
 
