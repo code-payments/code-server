@@ -12,6 +12,7 @@ import (
 var (
 	ErrPaymentRequestAlreadyExists = errors.New("payment request record already exists")
 	ErrPaymentRequestNotFound      = errors.New("no payment request records could be found")
+	ErrInvalidPaymentRequest       = errors.New("payment request is invalid")
 )
 
 type Store interface {

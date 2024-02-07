@@ -21,12 +21,18 @@ type Record struct {
 	NativeAmount            *float64
 	ExchangeRate            *float64
 	Quantity                *uint64
+	Fees                    []*Fee
 
 	// Login fields
 	Domain     *string
 	IsVerified bool
 
 	CreatedAt time.Time
+}
+
+type Fee struct {
+	DestinationTokenAccount string
+	// todo: how are we representing the amount?
 }
 
 func (r *Record) Validate() error {
@@ -66,6 +72,16 @@ func (r *Record) Validate() error {
 		return errors.New("exchange rate and quantity presence must match")
 	}
 
+	if len(r.Fees) > 0 && r.DestinationTokenAccount == nil {
+		return errors.New("fees cannot be present without payment")
+	}
+
+	for _, fee := range r.Fees {
+		if err := fee.Validate(); err != nil {
+			return err
+		}
+	}
+
 	if r.Domain != nil && len(*r.Domain) == 0 {
 		return errors.New("domain cannot be empty when provided")
 	}
@@ -82,6 +98,12 @@ func (r *Record) Validate() error {
 }
 
 func (r *Record) Clone() Record {
+	fees := make([]*Fee, len(r.Fees))
+	for i, fee := range r.Fees {
+		copied := fee.Clone()
+		fees[i] = &copied
+	}
+
 	return Record{
 		Id: r.Id,
 
@@ -92,6 +114,7 @@ func (r *Record) Clone() Record {
 		NativeAmount:            pointer.Float64Copy(r.NativeAmount),
 		ExchangeRate:            pointer.Float64Copy(r.ExchangeRate),
 		Quantity:                pointer.Uint64Copy(r.Quantity),
+		Fees:                    fees,
 
 		Domain:     pointer.StringCopy(r.Domain),
 		IsVerified: r.IsVerified,
@@ -115,6 +138,12 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IsVerified = r.IsVerified
 
 	dst.CreatedAt = r.CreatedAt
+
+	dst.Fees = make([]*Fee, len(r.Fees))
+	for i, fee := range r.Fees {
+		copied := fee.Clone()
+		dst.Fees[i] = &copied
+	}
 }
 
 func (r *Record) RequiresPayment() bool {
@@ -123,4 +152,22 @@ func (r *Record) RequiresPayment() bool {
 
 func (r *Record) HasLogin() bool {
 	return r.Domain != nil && r.IsVerified
+}
+
+func (f *Fee) Validate() error {
+	if len(f.DestinationTokenAccount) == 0 {
+		return errors.New("fee destination token account is required")
+	}
+
+	return nil
+}
+
+func (f *Fee) Clone() Fee {
+	return Fee{
+		DestinationTokenAccount: f.DestinationTokenAccount,
+	}
+}
+
+func (f *Fee) CopyTo(dst *Fee) {
+	dst.DestinationTokenAccount = f.DestinationTokenAccount
 }
