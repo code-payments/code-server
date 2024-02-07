@@ -2,6 +2,7 @@ package balance
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -128,10 +129,12 @@ func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccou
 func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (uint64, Source, error) {
 	var cachedQuarks uint64
 	var cachedSlot uint64
+	var cachedUpdateTs time.Time
 	checkpointRecord, err := data.GetBalanceCheckpoint(ctx, tokenAccount.PublicKey().ToBase58())
 	if err == nil {
 		cachedQuarks = checkpointRecord.Quarks
 		cachedSlot = checkpointRecord.SlotCheckpoint
+		cachedUpdateTs = checkpointRecord.LastUpdatedAt
 	} else if err != balance.ErrCheckpointNotFound {
 		return 0, UnknownSource, err
 	}
@@ -139,6 +142,17 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 	// todo: we may need something that's more resistant to RPC nodes with stale account state
 	quarks, slot, err := data.GetBlockchainBalance(ctx, tokenAccount.PublicKey().ToBase58())
 	if err == solana.ErrNoBalance {
+		// We can't tell whether
+		//  1. RPC node is behind, and observed a state before the account existed
+		//  2. RPC node is ahead, and the account was closed
+		// because we don't have a slot to compare against the checkpoint.
+		//
+		// If the checkpoint was recently updated, we opt to trust that, optimizing
+		// to reduce potential race conditions for 1.
+		if time.Since(cachedUpdateTs) < 5*time.Minute {
+			return cachedQuarks, CacheSource, nil
+		}
+
 		return 0, BlockchainSource, nil
 	} else if err != nil {
 		// RPC node threw an error. Return the cached balance
