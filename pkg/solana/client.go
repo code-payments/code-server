@@ -698,7 +698,7 @@ func (c *client) GetTokenAccountBalance(account ed25519.PublicKey) (uint64, uint
 		} `json:"context"`
 		Value TokenAmount `json:"value"`
 	}
-	if err := c.call(&resp, "getTokenAccountBalance", base58.Encode(account[:]), CommitmentProcessed); err != nil {
+	if err := c.call(&resp, "getTokenAccountBalance", base58.Encode(account[:]), CommitmentFinalized); err != nil {
 		jsonRPCErr, ok := err.(*jsonrpc.RPCError)
 		if !ok {
 			return 0, 0, errors.Wrapf(err, "getTokenAccountBalance() failed to send request")
