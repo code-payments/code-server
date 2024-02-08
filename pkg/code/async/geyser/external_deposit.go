@@ -186,6 +186,11 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 		return errors.Wrap(err, "invalid owner account")
 	}
 
+	blockTime := time.Now()
+	if tokenBalances.BlockTime != nil {
+		blockTime = *tokenBalances.BlockTime
+	}
+
 	// Use the account type to determine how we'll process this external deposit
 	//
 	// todo: Below logic is beginning to get messy and might be in need of a
@@ -247,7 +252,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 		}
 
 		if isCodeSwap {
-			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, usdcQuarksSwapped, time.Now())
+			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, usdcQuarksSwapped, blockTime)
 			if err != nil {
 				return errors.Wrap(err, "error creating chat message")
 			}
@@ -306,8 +311,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 	case commonpb.AccountType_SWAP:
 		bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
 
-		// todo: solana client doesn't return block time
-		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), time.Now())
+		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), blockTime)
 		if err != nil {
 			return errors.Wrap(err, "error creating chat message")
 		}
