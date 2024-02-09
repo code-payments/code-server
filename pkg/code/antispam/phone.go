@@ -6,7 +6,7 @@ import "strings"
 // todo: Needs tests
 func hasBannedPhoneNumberPrefix(phoneNumber string) bool {
 	// Check that a +7 phone number is not a mobile number from Kazakhstan
-	if strings.HasPrefix("+770", phoneNumber) || strings.HasPrefix("+777", phoneNumber) {
+	if strings.HasPrefix(phoneNumber, "+770") || strings.HasPrefix(phoneNumber, "+777") {
 		return false
 	}
 
