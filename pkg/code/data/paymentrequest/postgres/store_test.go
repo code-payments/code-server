@@ -42,6 +42,7 @@ const (
 			intent TEXT NOT NULL,
 
 			destination_token_account TEXT NULL,
+			bps INTEGER NOT NULL,
 
 			CONSTRAINT codewallet__core_paymentrequestfees__uniq__intent__and__destination_token_account UNIQUE (intent, destination_token_account)
 		);

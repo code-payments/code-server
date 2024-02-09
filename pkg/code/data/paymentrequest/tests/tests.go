@@ -31,9 +31,11 @@ func testRoundTrip(t *testing.T, s paymentrequest.Store) {
 			{
 				{
 					DestinationTokenAccount: "destination2",
+					BasisPoints:             50,
 				},
 				{
 					DestinationTokenAccount: "destination3",
+					BasisPoints:             1234,
 				},
 			},
 		} {
@@ -87,9 +89,11 @@ func testInvalidRecord(t *testing.T, s paymentrequest.Store) {
 			Fees: []*paymentrequest.Fee{
 				{
 					DestinationTokenAccount: "destination2",
+					BasisPoints:             1,
 				},
 				{
 					DestinationTokenAccount: "destination2",
+					BasisPoints:             2,
 				},
 			},
 			Domain:     pointer.String("example.com"),
@@ -118,5 +122,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *paymentrequest.Record) {
 	require.Equal(t, len(obj1.Fees), len(obj2.Fees))
 	for i := 0; i < len(obj1.Fees); i++ {
 		assert.Equal(t, obj1.Fees[i].DestinationTokenAccount, obj2.Fees[i].DestinationTokenAccount)
+		assert.Equal(t, obj1.Fees[i].BasisPoints, obj2.Fees[i].BasisPoints)
 	}
 }

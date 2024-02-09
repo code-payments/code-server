@@ -39,6 +39,7 @@ type feeModel struct {
 	Id                      sql.NullInt64 `db:"id"`
 	Intent                  string        `db:"intent"`
 	DestinationTokenAccount string        `db:"destination_token_account"`
+	BasisPoints             uint16        `db:"bps"`
 }
 
 func toRequestModel(obj *paymentrequest.Record) (*requestModel, error) {
@@ -55,6 +56,7 @@ func toRequestModel(obj *paymentrequest.Record) (*requestModel, error) {
 		fees[i] = &feeModel{
 			Intent:                  obj.Intent,
 			DestinationTokenAccount: fee.DestinationTokenAccount,
+			BasisPoints:             fee.BasisPoints,
 		}
 	}
 
@@ -96,6 +98,7 @@ func fromRequestModel(obj *requestModel) *paymentrequest.Record {
 	for i, fee := range obj.Fees {
 		fees[i] = &paymentrequest.Fee{
 			DestinationTokenAccount: fee.DestinationTokenAccount,
+			BasisPoints:             fee.BasisPoints,
 		}
 	}
 
@@ -142,15 +145,16 @@ func (m *requestModel) dbPut(ctx context.Context, db *sqlx.DB) error {
 
 		for _, fee := range m.Fees {
 			query := `INSERT INTO ` + feesTableName + `
-				(intent, destination_token_account)
-				VALUES ($1, $2)
-				RETURNING id, intent, destination_token_account`
+				(intent, destination_token_account, bps)
+				VALUES ($1, $2, $3)
+				RETURNING id, intent, destination_token_account, bps`
 
 			err := tx.QueryRowxContext(
 				ctx,
 				query,
 				fee.Intent,
 				fee.DestinationTokenAccount,
+				fee.BasisPoints,
 			).StructScan(fee)
 
 			err = pgutil.CheckUniqueViolation(err, paymentrequest.ErrInvalidPaymentRequest)
@@ -180,7 +184,7 @@ func dbGet(ctx context.Context, db *sqlx.DB, intent string) (*requestModel, erro
 	}
 
 	var fees []*feeModel
-	query = `SELECT id, intent, destination_token_account FROM ` + feesTableName + `
+	query = `SELECT id, intent, destination_token_account, bps FROM ` + feesTableName + `
 			WHERE intent = $1`
 
 	err = db.SelectContext(ctx, &fees, query, intent)

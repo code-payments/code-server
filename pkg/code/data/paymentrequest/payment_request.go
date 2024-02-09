@@ -32,7 +32,7 @@ type Record struct {
 
 type Fee struct {
 	DestinationTokenAccount string
-	// todo: how are we representing the amount?
+	BasisPoints             uint16
 }
 
 func (r *Record) Validate() error {
@@ -159,15 +159,25 @@ func (f *Fee) Validate() error {
 		return errors.New("fee destination token account is required")
 	}
 
+	if f.BasisPoints == 0 {
+		return errors.New("fee percentage is required")
+	}
+
+	if f.BasisPoints > 10000 {
+		return errors.New("fee percentage cannot exceed 100%")
+	}
+
 	return nil
 }
 
 func (f *Fee) Clone() Fee {
 	return Fee{
 		DestinationTokenAccount: f.DestinationTokenAccount,
+		BasisPoints:             f.BasisPoints,
 	}
 }
 
 func (f *Fee) CopyTo(dst *Fee) {
 	dst.DestinationTokenAccount = f.DestinationTokenAccount
+	dst.BasisPoints = f.BasisPoints
 }
