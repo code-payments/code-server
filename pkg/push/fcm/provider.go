@@ -142,6 +142,7 @@ func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey 
 				Aps: &messaging.Aps{
 					Alert: &messaging.ApsAlert{
 						TitleLocKey: titleKey,
+						Body:        "...",
 					},
 					MutableContent: true,
 				},
