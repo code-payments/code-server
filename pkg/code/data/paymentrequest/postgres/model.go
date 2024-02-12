@@ -185,7 +185,8 @@ func dbGet(ctx context.Context, db *sqlx.DB, intent string) (*requestModel, erro
 
 	var fees []*feeModel
 	query = `SELECT id, intent, destination_token_account, bps FROM ` + feesTableName + `
-			WHERE intent = $1`
+			WHERE intent = $1
+			ORDER BY id ASC`
 
 	err = db.SelectContext(ctx, &fees, query, intent)
 	err = pgutil.CheckNoRows(err, nil)
