@@ -161,8 +161,12 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		return newMessageValidationError("exchange data is nil")
 	}
 
-	if len(typedMessage.AdditionalFees) > 0 {
-		return newMessageValidationError("additional fee takers are not supported yet")
+	var additionalFees []*paymentrequest.Fee
+	for _, additionalFee := range typedMessage.AdditionalFees {
+		additionalFees = append(additionalFees, &paymentrequest.Fee{
+			DestinationTokenAccount: base58.Encode(additionalFee.Destination.Value),
+			BasisPoints:             uint16(additionalFee.FeeBps),
+		})
 	}
 
 	//
@@ -238,37 +242,27 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 			return newMessageValidationError("original request isn't verified")
 		}
 
+		if len(existingRequestRecord.Fees) != len(additionalFees) {
+			return newMessageValidationErrorf("original request configured %d fee takers", len(existingRequestRecord.Fees))
+		}
+		for i, existingFee := range existingRequestRecord.Fees {
+			if existingFee.DestinationTokenAccount != additionalFees[i].DestinationTokenAccount {
+				return newMessageValidationErrorf("destination for fee at index %d mismatches original request", i)
+			}
+
+			if existingFee.BasisPoints != additionalFees[i].BasisPoints {
+				return newMessageValidationErrorf("basis points for fee at index %d mismatches original request", i)
+			}
+		}
+
 		h.recordAlreadyExists = true
 	case paymentrequest.ErrPaymentRequestNotFound:
 		//
-		// Part 2.1: Requestor account must be a primary account (for trial use cases)
-		//           or an external account (for real production use cases)
+		// Part 2.1: Requestor account must be a deposit or an external account
 		//
 
-		accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, requestorAccount.PublicKey().ToBase58())
-		switch err {
-		case nil:
-			switch accountInfoRecord.AccountType {
-			case commonpb.AccountType_PRIMARY:
-			case commonpb.AccountType_RELATIONSHIP:
-				if typedMessage.Verifier == nil {
-					return newMessageValidationError("domain verification is required when requestor account is a relationship account")
-				}
-
-				if *accountInfoRecord.RelationshipTo != asciiBaseDomain {
-					return newMessageValidationErrorf("requestor account must have a relationship with %s", asciiBaseDomain)
-				}
-			default:
-				return newMessageValidationError("requestor account must be a code deposit account")
-			}
-		case account.ErrAccountInfoNotFound:
-			if !h.conf.disableBlockchainChecks.Get(ctx) {
-				err := validateExternalKinTokenAccountWithinMessage(ctx, h.data, requestorAccount)
-				if err != nil {
-					return err
-				}
-			}
-		default:
+		err = h.validateDestinationAccount(ctx, requestorAccount, typedMessage.Verifier != nil, asciiBaseDomain)
+		if err != nil {
 			return err
 		}
 
@@ -290,6 +284,40 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 			if err != nil {
 				return err
 			}
+		}
+
+		//
+		// Part 2.3: Fee structure validation
+		//
+
+		var totalFeeBps uint32
+		seenFeeTakers := make(map[string]interface{})
+		for i, additionalFee := range additionalFees {
+			feeTaker, err := common.NewAccountFromPublicKeyString(additionalFee.DestinationTokenAccount)
+			if err != nil {
+				return err
+			}
+
+			totalFeeBps += uint32(additionalFee.BasisPoints)
+
+			if additionalFee.DestinationTokenAccount == requestorAccount.PublicKey().ToBase58() {
+				return newMessageValidationErrorf("fee taker at index %d is the payment destination and should be omitted", i)
+			}
+
+			_, ok := seenFeeTakers[additionalFee.DestinationTokenAccount]
+			if ok {
+				return newMessageValidationErrorf("fee taker at index %d appears multiple times and should be merged", i)
+			}
+			seenFeeTakers[additionalFee.DestinationTokenAccount] = struct{}{}
+
+			err = h.validateDestinationAccount(ctx, feeTaker, typedMessage.Verifier != nil, asciiBaseDomain)
+			if err != nil {
+				return err
+			}
+		}
+		// todo: configurable
+		if totalFeeBps > 5_000 {
+			return newMessageValidationError("total fee percentage cannot exceed 50%")
 		}
 	default:
 		return err
@@ -370,6 +398,7 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 			NativeAmount:            pointer.Float64(nativeAmount),
 			ExchangeRate:            exchangeRate,
 			Quantity:                quarks,
+			Fees:                    additionalFees,
 
 			CreatedAt: time.Now(),
 		}
@@ -392,6 +421,43 @@ func (h *RequestToReceiveBillMessageHandler) OnSuccess(ctx context.Context) erro
 		return nil
 	}
 	return h.data.CreateRequest(ctx, h.recordToSave)
+}
+
+// todo: need to add context (ie. is it payment destination or fee taker) and improve error messaging
+func (h *RequestToReceiveBillMessageHandler) validateDestinationAccount(
+	ctx context.Context,
+	accountToValidate *common.Account,
+	isVerified bool,
+	asciiBaseDomain string,
+) error {
+	accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, accountToValidate.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		switch accountInfoRecord.AccountType {
+		case commonpb.AccountType_PRIMARY:
+		case commonpb.AccountType_RELATIONSHIP:
+			if !isVerified {
+				return newMessageValidationError("domain verification is required when using a relationship account")
+			}
+
+			if *accountInfoRecord.RelationshipTo != asciiBaseDomain {
+				return newMessageValidationErrorf("relationship account is not associated with %s", asciiBaseDomain)
+			}
+		default:
+			return newMessageValidationError("code account must be a deposit account")
+		}
+	case account.ErrAccountInfoNotFound:
+		if !h.conf.disableBlockchainChecks.Get(ctx) {
+			err := validateExternalKinTokenAccountWithinMessage(ctx, h.data, accountToValidate)
+			if err != nil {
+				return err
+			}
+		}
+	default:
+		return err
+	}
+
+	return nil
 }
 
 type ClientRejectedPaymentMessageHandler struct {

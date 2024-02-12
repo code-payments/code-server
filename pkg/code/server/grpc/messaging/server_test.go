@@ -377,14 +377,14 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidAccountType = true
 	sendMessageCall := env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a code deposit account")
+	sendMessageCall.assertInvalidMessageError(t, "code account must be a deposit account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidRelationship = true
 	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, true, false)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must have a relationship with getcode.com")
+	sendMessageCall.assertInvalidMessageError(t, "relationship account is not associated with getcode.com")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -461,7 +461,7 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, true, true)
-	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when requestor account is a relationship account")
+	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when using a relationship account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -514,14 +514,14 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidAccountType = true
 	sendMessageCall := env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, true)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a code deposit account")
+	sendMessageCall.assertInvalidMessageError(t, "code account must be a deposit account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidRelationship = true
 	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, true, false)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must have a relationship with getcode.com")
+	sendMessageCall.assertInvalidMessageError(t, "relationship account is not associated with getcode.com")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -570,7 +570,7 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, true, true)
-	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when requestor account is a relationship account")
+	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when using a relationship account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
