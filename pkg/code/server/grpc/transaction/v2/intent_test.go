@@ -3225,6 +3225,54 @@ func TestSubmitIntent_PaymentRequest_Validation(t *testing.T) {
 	submitIntentCall.assertInvalidIntentResponse(t, "actions[3]: code fee payment amount must be $0.01 USD")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateAdditionalFees = true
+	phone1.conf.simulateTooManyThirdPartyFees = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "expected 3 fee payment action")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateAdditionalFees = true
+	phone1.conf.simulateThirdPartyFeeMissing = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "expected 5 fee payment action")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateAdditionalFees = true
+	phone1.conf.simulateInvalidThirdPartyFeeAmount = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: fee payment amount must be for 250 bps of total amount")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateAdditionalFees = true
+	phone1.conf.simulateInvalidThirdPartyFeeDestination = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: fee payment destination must be")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateAdditionalFees = true
+	phone1.conf.simulateThirdPartyFeeDestinationMissing = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: fee payment destination is required")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	phone1.resetConfig()
+	phone1.conf.simulatePaymentRequest = true
+	phone1.conf.simulateAdditionalFees = true
+	phone1.conf.simulateThirdParyFeeAsCodeFee = true
+	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: fee payment type must be THIRD_PARTY")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
 	//
 	// Part 3: Client attempts to pay a login request
 	//

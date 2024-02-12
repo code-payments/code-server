@@ -2012,6 +2012,12 @@ type phoneConf struct {
 	simulateLargeCodeFee                          bool
 	simulateCodeFeeAsThirdParyFee                 bool
 	simulateMultipleCodeFeePayments               bool
+	simulateTooManyThirdPartyFees                 bool
+	simulateThirdPartyFeeMissing                  bool
+	simulateInvalidThirdPartyFeeAmount            bool
+	simulateInvalidThirdPartyFeeDestination       bool
+	simulateThirdPartyFeeDestinationMissing       bool
+	simulateThirdParyFeeAsCodeFee                 bool
 }
 
 type phoneTestEnv struct {
@@ -4770,12 +4776,30 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			switch typed := action.Type.(type) {
 			case *transactionpb.Action_FeePayment:
 				if typed.FeePayment.Type == transactionpb.FeePaymentAction_THIRD_PARTY {
+					destination := base58.Encode(typed.FeePayment.Destination.Value)
+					if p.conf.simulateInvalidThirdPartyFeeDestination {
+						destination = testutil.NewRandomAccount(t).PublicKey().ToBase58()
+					}
+
+					bps := defaultTestThirdPartyFeeBps
+					if p.conf.simulateInvalidThirdPartyFeeAmount {
+						bps += 1
+					}
+
 					paymentRequestRecord.Fees = append(paymentRequestRecord.Fees, &paymentrequest.Fee{
-						DestinationTokenAccount: base58.Encode(typed.FeePayment.Destination.Value),
-						BasisPoints:             defaultTestThirdPartyFeeBps,
+						DestinationTokenAccount: destination,
+						BasisPoints:             uint16(bps),
 					})
 				}
 			}
+		}
+		if p.conf.simulateTooManyThirdPartyFees {
+			paymentRequestRecord.Fees = paymentRequestRecord.Fees[:len(paymentRequestRecord.Fees)-1]
+		} else if p.conf.simulateThirdPartyFeeMissing {
+			paymentRequestRecord.Fees = append(paymentRequestRecord.Fees, &paymentrequest.Fee{
+				DestinationTokenAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+				BasisPoints:             defaultTestThirdPartyFeeBps,
+			})
 		}
 		if p.conf.simulateLoginRequest {
 			// Simulate a login request by downgrading the payment request to having no payment
@@ -4826,6 +4850,17 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 				}
 			}
 		}
+		if p.conf.simulateThirdParyFeeAsCodeFee {
+			for _, action := range actions {
+				switch typed := action.Type.(type) {
+				case *transactionpb.Action_FeePayment:
+					if typed.FeePayment.Type == transactionpb.FeePaymentAction_THIRD_PARTY {
+						typed.FeePayment.Type = transactionpb.FeePaymentAction_CODE
+						typed.FeePayment.Destination = nil
+					}
+				}
+			}
+		}
 
 		if p.conf.simulateMultipleCodeFeePayments {
 			actions = append(actions, &transactionpb.Action{
@@ -4839,6 +4874,17 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 					},
 				},
 			})
+		}
+
+		if p.conf.simulateThirdPartyFeeDestinationMissing {
+			for _, action := range actions {
+				switch typed := action.Type.(type) {
+				case *transactionpb.Action_FeePayment:
+					if typed.FeePayment.Type == transactionpb.FeePaymentAction_THIRD_PARTY {
+						typed.FeePayment.Destination = nil
+					}
+				}
+			}
 		}
 
 		for i, action := range actions {
