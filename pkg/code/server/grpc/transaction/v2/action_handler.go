@@ -417,10 +417,11 @@ func (h *CloseDormantAccountActionHandler) OnSaveToDB(ctx context.Context) error
 }
 
 type NoPrivacyTransferActionHandler struct {
-	source       *common.TimelockAccounts
-	destination  *common.Account
-	amount       uint64
-	isFeePayment bool // Internally, the mechanics of a fee payment are exactly the same
+	source           *common.TimelockAccounts
+	destination      *common.Account
+	amount           uint64
+	isFeePayment     bool // Internally, the mechanics of a fee payment are exactly the same
+	isCodeFeePayment bool
 }
 
 func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTransferAction) (CreateActionHandler, error) {
@@ -458,11 +459,24 @@ func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, fee
 		return nil, err
 	}
 
+	var destination *common.Account
+	var isCodeFeePayment bool
+	if protoAction.Type == transactionpb.FeePaymentAction_CODE {
+		destination = feeCollector
+		isCodeFeePayment = true
+	} else {
+		destination, err = common.NewAccountFromProto(protoAction.Destination)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &NoPrivacyTransferActionHandler{
-		source:       source,
-		destination:  feeCollector,
-		amount:       protoAction.Amount,
-		isFeePayment: true,
+		source:           source,
+		destination:      destination,
+		amount:           protoAction.Amount,
+		isFeePayment:     true,
+		isCodeFeePayment: isCodeFeePayment,
 	}, nil
 }
 
@@ -484,10 +498,15 @@ func (h *NoPrivacyTransferActionHandler) PopulateMetadata(actionRecord *action.R
 }
 func (h *NoPrivacyTransferActionHandler) GetServerParameter() *transactionpb.ServerParameter {
 	if h.isFeePayment {
+		var codeDestination *commonpb.SolanaAccountId
+		if h.isCodeFeePayment {
+			codeDestination = h.destination.ToProto()
+		}
+
 		return &transactionpb.ServerParameter{
 			Type: &transactionpb.ServerParameter_FeePayment{
 				FeePayment: &transactionpb.FeePaymentServerParameter{
-					CodeDestination: h.destination.ToProto(),
+					CodeDestination: codeDestination,
 				},
 			},
 		}

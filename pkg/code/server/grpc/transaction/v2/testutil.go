@@ -70,6 +70,10 @@ import (
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
+const (
+	defaultTestThirdPartyFeeBps = 249 // 2.49%
+)
+
 // todo: Make working with different timelock versions easier
 
 func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, phoneTestEnv, phoneTestEnv, func()) {
@@ -769,7 +773,11 @@ func (s serverTestEnv) assertActionRecordsSaved(t *testing.T, intentId string, p
 		case *transactionpb.Action_FeePayment:
 			assert.Equal(t, action.NoPrivacyTransfer, actionRecord.ActionType)
 			assert.Equal(t, base58.Encode(typed.FeePayment.Source.Value), actionRecord.Source)
-			assert.Equal(t, s.service.conf.feeCollectorTokenPublicKey.Get(s.ctx), *actionRecord.Destination)
+			if typed.FeePayment.Type == transactionpb.FeePaymentAction_CODE {
+				assert.Equal(t, s.service.conf.feeCollectorTokenPublicKey.Get(s.ctx), *actionRecord.Destination)
+			} else {
+				assert.Equal(t, base58.Encode(typed.FeePayment.Destination.Value), *actionRecord.Destination)
+			}
 			assert.Equal(t, typed.FeePayment.Amount, *actionRecord.Quantity)
 			assert.Equal(t, action.StatePending, actionRecord.State)
 		case *transactionpb.Action_NoPrivacyWithdraw:
@@ -902,15 +910,21 @@ func (s serverTestEnv) assertFulfillmentRecordsSaved(t *testing.T, intentId stri
 			authorityAccount, err := common.NewAccountFromProto(typed.FeePayment.Authority)
 			require.NoError(t, err)
 
-			destinationAccount, err := common.NewAccountFromPublicKeyString(s.service.conf.feeCollectorTokenPublicKey.Get(s.ctx))
-			require.NoError(t, err)
+			var destinationAccount *common.Account
+			if typed.FeePayment.Type == transactionpb.FeePaymentAction_CODE {
+				destinationAccount, err = common.NewAccountFromPublicKeyString(s.service.conf.feeCollectorTokenPublicKey.Get(s.ctx))
+				require.NoError(t, err)
+			} else {
+				destinationAccount, err = common.NewAccountFromProto(typed.FeePayment.Destination)
+				require.NoError(t, err)
+			}
 
 			amount := typed.FeePayment.Amount
 
 			fulfillmentRecord := fulfillmentRecords[0]
 			assert.Equal(t, fulfillment.NoPrivacyTransferWithAuthority, fulfillmentRecord.FulfillmentType)
 			assert.Equal(t, base58.Encode(typed.FeePayment.Source.Value), actionRecord.Source)
-			assert.Equal(t, s.service.conf.feeCollectorTokenPublicKey.Get(s.ctx), *fulfillmentRecord.Destination)
+			assert.Equal(t, destinationAccount.PublicKey().ToBase58(), *fulfillmentRecord.Destination)
 			assert.Equal(t, intentRecord.Id, fulfillmentRecord.IntentOrderingIndex)
 			assert.Equal(t, actionRecord.ActionId, fulfillmentRecord.ActionOrderingIndex)
 			assert.EqualValues(t, 0, fulfillmentRecord.FulfillmentOrderingIndex)
@@ -1991,11 +2005,13 @@ type phoneConf struct {
 	simulateInvalidPaymentRequestDestination      bool
 	simulateInvalidPaymentRequestExchangeCurrency bool
 	simulateInvalidPaymentRequestNativeAmount     bool
-	simulateFeePaid                               bool
-	simulateNoFeesPaid                            bool
-	simulateSmallFee                              bool
-	simulateLargeFee                              bool
-	simulateMultipleFeePayments                   bool
+	simulateAdditionalFees                        bool
+	simulateCodeFeePaid                           bool
+	simulateCodeFeeNotPaid                        bool
+	simulateSmallCodeFee                          bool
+	simulateLargeCodeFee                          bool
+	simulateCodeFeeAsThirdParyFee                 bool
+	simulateMultipleCodeFeePayments               bool
 }
 
 type phoneTestEnv struct {
@@ -2550,6 +2566,8 @@ func (p *phoneTestEnv) publiclyWithdraw123KinToExternalWalletFromRelationshipAcc
 }
 
 func (p *phoneTestEnv) privatelyWithdraw123KinToExternalWallet(t *testing.T) submitIntentCallMetadata {
+	totalAmount := kin.ToQuarks(123)
+
 	destination := testutil.NewRandomAccount(t)
 
 	nextIndex := p.currentTempOutgoingIndex + 1
@@ -2588,20 +2606,41 @@ func (p *phoneTestEnv) privatelyWithdraw123KinToExternalWallet(t *testing.T) sub
 		}},
 	}
 
-	var feePayment uint64
+	var feePayments uint64
 	if p.conf.simulatePaymentRequest {
-		feePayment = kin.ToQuarks(1) / 10 // 0.1 Kin
+		// Pay mandatory hard-coded Code $0.01 USD fee
+		codeFeePayment := kin.ToQuarks(1) / 10 // 0.1 Kin
+		feePayments += codeFeePayment
 		actions = append(actions, &transactionpb.Action{
-			// Pay any fees when applicable
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
 					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
-					Amount:    feePayment,
+					Amount:    codeFeePayment,
 				},
 			},
 		})
+
+		// Pay additional fees as configured by the third party
+		if p.conf.simulateAdditionalFees {
+			for i := 0; i < 3; i++ {
+				requestedFee := (uint64(defaultTestThirdPartyFeeBps) * totalAmount) / 10000
+				feePayments += requestedFee
+				actions = append(actions, &transactionpb.Action{
+					// Pay any fees when applicable
+					Type: &transactionpb.Action_FeePayment{
+						FeePayment: &transactionpb.FeePaymentAction{
+							Type:        transactionpb.FeePaymentAction_THIRD_PARTY,
+							Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+							Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+							Destination: testutil.NewRandomAccount(t).ToProto(),
+							Amount:      requestedFee,
+						},
+					},
+				})
+			}
+		}
 	}
 
 	actions = append(
@@ -2613,7 +2652,7 @@ func (p *phoneTestEnv) privatelyWithdraw123KinToExternalWallet(t *testing.T) sub
 				Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 				Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
 				Destination: destination.ToProto(),
-				Amount:      kin.ToQuarks(123) - feePayment,
+				Amount:      kin.ToQuarks(123) - feePayments,
 				ShouldClose: true,
 			},
 		}},
@@ -3062,6 +3101,8 @@ func (p *phoneTestEnv) publiclyWithdraw777KinToCodeUserBetweenRelationshipAccoun
 }
 
 func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver phoneTestEnv) submitIntentCallMetadata {
+	totalAmount := kin.ToQuarks(777)
+
 	destination := receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0)
 
 	nextIndex := p.currentTempOutgoingIndex + 1
@@ -3100,20 +3141,41 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 		}},
 	}
 
-	var feePayment uint64
+	var feePayments uint64
 	if p.conf.simulatePaymentRequest {
-		feePayment = kin.ToQuarks(1) / 10 // 0.1 Kin
+		// Pay mandatory hard-coded Code $0.01 USD fee
+		codeFeePayment := kin.ToQuarks(1) / 10 // 0.1 Kin
+		feePayments += codeFeePayment
 		actions = append(actions, &transactionpb.Action{
-			// Pay any fees when applicable
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
 					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
-					Amount:    feePayment,
+					Amount:    codeFeePayment,
 				},
 			},
 		})
+
+		// Pay additional fees as configured by the third party
+		if p.conf.simulateAdditionalFees {
+			for i := 0; i < 3; i++ {
+				requestedFee := (uint64(defaultTestThirdPartyFeeBps) * totalAmount) / 10000
+				feePayments += requestedFee
+				actions = append(actions, &transactionpb.Action{
+					// Pay any fees when applicable
+					Type: &transactionpb.Action_FeePayment{
+						FeePayment: &transactionpb.FeePaymentAction{
+							Type:        transactionpb.FeePaymentAction_THIRD_PARTY,
+							Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+							Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+							Destination: testutil.NewRandomAccount(t).ToProto(),
+							Amount:      requestedFee,
+						},
+					},
+				})
+			}
+		}
 	}
 
 	actions = append(
@@ -3125,7 +3187,7 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 				Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 				Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
 				Destination: destination.ToProto(),
-				Amount:      kin.ToQuarks(777) - feePayment,
+				Amount:      totalAmount - feePayments,
 				ShouldClose: true,
 			},
 		}},
@@ -3168,7 +3230,7 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 					Currency:     "usd",
 					ExchangeRate: 0.1,
 					NativeAmount: 77.7,
-					Quarks:       kin.ToQuarks(777),
+					Quarks:       totalAmount,
 				},
 				IsWithdrawal: true,
 			},
@@ -3193,6 +3255,8 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 }
 
 func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *testing.T, receiver phoneTestEnv, relationship string) submitIntentCallMetadata {
+	totalAmount := kin.ToQuarks(321)
+
 	destination := getTimelockVault(t, receiver.getAuthorityForRelationshipAccount(t, relationship))
 
 	nextIndex := p.currentTempOutgoingIndex + 1
@@ -3231,20 +3295,41 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 		}},
 	}
 
-	var feePayment uint64
+	var feePayments uint64
 	if p.conf.simulatePaymentRequest {
-		feePayment = kin.ToQuarks(1) / 10 // 0.1 Kin
+		// Pay mandatory hard-coded Code $0.01 USD fee
+		codeFeePayment := kin.ToQuarks(1) / 10 // 0.1 Kin
+		feePayments += codeFeePayment
 		actions = append(actions, &transactionpb.Action{
-			// Pay any fees when applicable
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
 					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
-					Amount:    feePayment,
+					Amount:    codeFeePayment,
 				},
 			},
 		})
+
+		// Pay additional fees as configured by the third party
+		if p.conf.simulateAdditionalFees {
+			for i := 0; i < 3; i++ {
+				requestedFee := (uint64(defaultTestThirdPartyFeeBps) * totalAmount) / 10000
+				feePayments += requestedFee
+				actions = append(actions, &transactionpb.Action{
+					// Pay any fees when applicable
+					Type: &transactionpb.Action_FeePayment{
+						FeePayment: &transactionpb.FeePaymentAction{
+							Type:        transactionpb.FeePaymentAction_THIRD_PARTY,
+							Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+							Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+							Destination: testutil.NewRandomAccount(t).ToProto(),
+							Amount:      requestedFee,
+						},
+					},
+				})
+			}
+		}
 	}
 
 	actions = append(
@@ -3256,7 +3341,7 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 				Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 				Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
 				Destination: destination.ToProto(),
-				Amount:      kin.ToQuarks(321) - feePayment,
+				Amount:      totalAmount - feePayments,
 				ShouldClose: true,
 			},
 		}},
@@ -3299,7 +3384,7 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 					Currency:     "usd",
 					ExchangeRate: 0.1,
 					NativeAmount: 32.1,
-					Quarks:       kin.ToQuarks(321),
+					Quarks:       totalAmount,
 				},
 				IsWithdrawal: true,
 			},
@@ -4681,11 +4766,23 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 			CreatedAt: time.Now(),
 		}
+		for _, action := range actions {
+			switch typed := action.Type.(type) {
+			case *transactionpb.Action_FeePayment:
+				if typed.FeePayment.Type == transactionpb.FeePaymentAction_THIRD_PARTY {
+					paymentRequestRecord.Fees = append(paymentRequestRecord.Fees, &paymentrequest.Fee{
+						DestinationTokenAccount: base58.Encode(typed.FeePayment.Destination.Value),
+						BasisPoints:             defaultTestThirdPartyFeeBps,
+					})
+				}
+			}
+		}
 		if p.conf.simulateLoginRequest {
 			// Simulate a login request by downgrading the payment request to having no payment
 			paymentRequestRecord.DestinationTokenAccount = nil
 			paymentRequestRecord.ExchangeCurrency = nil
 			paymentRequestRecord.NativeAmount = nil
+			paymentRequestRecord.Fees = nil
 		}
 		if p.conf.simulateUnverifiedPaymentRequest {
 			paymentRequestRecord.IsVerified = false
@@ -4705,7 +4802,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 		require.NoError(t, p.directServerAccess.data.CreateRequest(p.directServerAccess.ctx, paymentRequestRecord))
 
-		if p.conf.simulateNoFeesPaid {
+		if p.conf.simulateCodeFeeNotPaid {
 			for i, action := range actions {
 				switch typed := action.Type.(type) {
 				case *transactionpb.Action_FeePayment:
@@ -4718,7 +4815,19 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			}
 		}
 
-		if p.conf.simulateMultipleFeePayments {
+		if p.conf.simulateCodeFeeAsThirdParyFee {
+			for _, action := range actions {
+				switch typed := action.Type.(type) {
+				case *transactionpb.Action_FeePayment:
+					if typed.FeePayment.Type == transactionpb.FeePaymentAction_CODE {
+						typed.FeePayment.Type = transactionpb.FeePaymentAction_THIRD_PARTY
+						typed.FeePayment.Destination = testutil.NewRandomAccount(t).ToProto()
+					}
+				}
+			}
+		}
+
+		if p.conf.simulateMultipleCodeFeePayments {
 			actions = append(actions, &transactionpb.Action{
 				Id: uint32(len(actions)),
 				Type: &transactionpb.Action_FeePayment{
@@ -4736,17 +4845,17 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			deltaFee := kin.ToQuarks(1) / 100 // 0.01 Kin
 			switch typed := action.Type.(type) {
 			case *transactionpb.Action_FeePayment:
-				if p.conf.simulateSmallFee {
+				if p.conf.simulateSmallCodeFee {
 					typed.FeePayment.Amount -= deltaFee
 					actions[i+1].GetNoPrivacyWithdraw().Amount += deltaFee
-				} else if p.conf.simulateLargeFee {
+				} else if p.conf.simulateLargeCodeFee {
 					typed.FeePayment.Amount += deltaFee
 					actions[i+1].GetNoPrivacyWithdraw().Amount -= deltaFee
 				}
 			}
 		}
 	}
-	if p.conf.simulateFeePaid {
+	if p.conf.simulateCodeFeePaid {
 		actions = append(actions, &transactionpb.Action{
 			Id: uint32(len(actions)),
 			Type: &transactionpb.Action_FeePayment{
@@ -5509,8 +5618,14 @@ func (p *phoneTestEnv) getFeePaymentTransactionToSign(
 	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
-	destination, err := common.NewAccountFromProto(serverParameter.CodeDestination)
-	require.NoError(t, err)
+	var destination *common.Account
+	if action.Type == transactionpb.FeePaymentAction_CODE {
+		destination, err = common.NewAccountFromProto(serverParameter.CodeDestination)
+		require.NoError(t, err)
+	} else {
+		destination, err = common.NewAccountFromProto(action.Destination)
+		require.NoError(t, err)
+	}
 
 	txn, err := transaction_util.MakeTransferWithAuthorityTransaction(
 		nonce,
