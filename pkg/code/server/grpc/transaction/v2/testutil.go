@@ -2595,6 +2595,7 @@ func (p *phoneTestEnv) privatelyWithdraw123KinToExternalWallet(t *testing.T) sub
 			// Pay any fees when applicable
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
+					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
 					Amount:    feePayment,
@@ -3106,6 +3107,7 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 			// Pay any fees when applicable
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
+					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
 					Amount:    feePayment,
@@ -3236,6 +3238,7 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 			// Pay any fees when applicable
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
+					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
 					Source:    p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
 					Amount:    feePayment,
@@ -4720,6 +4723,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 				Id: uint32(len(actions)),
 				Type: &transactionpb.Action_FeePayment{
 					FeePayment: &transactionpb.FeePaymentAction{
+						Type:      transactionpb.FeePaymentAction_CODE,
 						Authority: p.parentAccount.ToProto(),
 						Source:    getTimelockVault(t, p.parentAccount).ToProto(),
 						Amount:    1,
@@ -4747,6 +4751,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			Id: uint32(len(actions)),
 			Type: &transactionpb.Action_FeePayment{
 				FeePayment: &transactionpb.FeePaymentAction{
+					Type:      transactionpb.FeePaymentAction_CODE,
 					Authority: p.parentAccount.ToProto(),
 					Source:    getTimelockVault(t, p.parentAccount).ToProto(),
 					Amount:    1,
@@ -5504,7 +5509,7 @@ func (p *phoneTestEnv) getFeePaymentTransactionToSign(
 	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
 	require.NoError(t, err)
 
-	destination, err := common.NewAccountFromProto(serverParameter.Destination)
+	destination, err := common.NewAccountFromProto(serverParameter.CodeDestination)
 	require.NoError(t, err)
 
 	txn, err := transaction_util.MakeTransferWithAuthorityTransaction(

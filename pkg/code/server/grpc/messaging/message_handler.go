@@ -161,6 +161,10 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		return newMessageValidationError("exchange data is nil")
 	}
 
+	if len(typedMessage.AdditionalFees) > 0 {
+		return newMessageValidationError("additional fee takers are not supported yet")
+	}
+
 	//
 	// Part 1: Validate the intent doesn't exist
 	//

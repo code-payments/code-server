@@ -487,7 +487,7 @@ func (h *NoPrivacyTransferActionHandler) GetServerParameter() *transactionpb.Ser
 		return &transactionpb.ServerParameter{
 			Type: &transactionpb.ServerParameter_FeePayment{
 				FeePayment: &transactionpb.FeePaymentServerParameter{
-					Destination: h.destination.ToProto(),
+					CodeDestination: h.destination.ToProto(),
 				},
 			},
 		}

@@ -238,7 +238,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	// Part 6: Validate fee payments
 	//
 
-	return validateFeePayment(ctx, h.data, intentRecord, simResult)
+	return validateFeePayments(ctx, h.data, intentRecord, simResult)
 }
 
 func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
@@ -572,7 +572,7 @@ func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, int
 	// Part 5: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -1092,7 +1092,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Contex
 	// Part 5: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -1758,7 +1758,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -2103,7 +2103,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -2364,7 +2364,7 @@ func (h *EstablishRelationshipIntentHandler) AllowCreation(ctx context.Context, 
 	// Part 7: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -2929,7 +2929,7 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 
 // Generically validates fee payments as much as possible, but won't cover any
 // intent-specific nuances (eg. where the fee payment comes from)
-func validateFeePayment(
+func validateFeePayments(
 	ctx context.Context,
 	data code_data.Provider,
 	intentRecord *intent.Record,
@@ -2957,7 +2957,18 @@ func validateFeePayment(
 	if len(feePayments) > 1 {
 		return newIntentValidationError("fee payment must be done in a single action")
 	}
-	feeAmount := feePayments[0].DeltaQuarks
+
+	codeFeePayment := feePayments[0]
+
+	if codeFeePayment.Action.GetFeePayment().Type != transactionpb.FeePaymentAction_CODE {
+		return newActionValidationError(codeFeePayment.Action, "fee payment type must be code")
+	}
+
+	if codeFeePayment.Action.GetFeePayment().Destination != nil {
+		return newActionValidationError(codeFeePayment.Action, "code fee payment destination is configured by server")
+	}
+
+	feeAmount := codeFeePayment.DeltaQuarks
 	if feeAmount >= 0 {
 		return newIntentValidationError("fee payment is not a payment to code")
 	}
@@ -2979,7 +2990,7 @@ func validateFeePayment(
 		}
 	}
 
-	return newActionValidationError(feePayments[0].Action, "fee payment must be $0.01 USD")
+	return newActionValidationError(codeFeePayment.Action, "fee payment must be $0.01 USD")
 }
 
 func validateMinimalTempIncomingAccountUsage(ctx context.Context, data code_data.Provider, accountInfo *account.Record) error {
