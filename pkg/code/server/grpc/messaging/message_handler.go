@@ -315,9 +315,10 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 				return err
 			}
 		}
-		// todo: configurable
-		if totalFeeBps > 5_000 {
-			return newMessageValidationError("total fee percentage cannot exceed 50%")
+
+		maxFeeBps := h.conf.maxFeeBasisPoints.Get(ctx)
+		if totalFeeBps > uint32(maxFeeBps) {
+			return newMessageValidationErrorf("total fee percentage cannot exceed %d basis points", maxFeeBps)
 		}
 	default:
 		return err
