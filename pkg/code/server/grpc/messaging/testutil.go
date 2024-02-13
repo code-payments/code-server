@@ -170,6 +170,12 @@ func (s *serverEnv) assertPaymentRequestRecordSaved(t *testing.T, rendezvousKey 
 		assert.Equal(t, asciiBaseDomain, *requestRecord.Domain)
 		assert.Equal(t, msg.Verifier != nil, requestRecord.IsVerified)
 	}
+
+	require.Len(t, requestRecord.Fees, len(msg.AdditionalFees))
+	for i, expectedFee := range msg.AdditionalFees {
+		assert.Equal(t, base58.Encode(expectedFee.Destination.Value), requestRecord.Fees[i].DestinationTokenAccount)
+		assert.EqualValues(t, expectedFee.FeeBps, requestRecord.Fees[i].BasisPoints)
+	}
 }
 
 func (s *serverEnv) assertLoginRequestRecordSaved(t *testing.T, rendezvousKey *common.Account, msg *messagingpb.RequestToLogin) {
@@ -563,8 +569,18 @@ func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *co
 	return c.sendMessage(t, req, rendezvousKey)
 }
 
+type testRequestToReceiveBillConf struct {
+	usePrimaryAccount         bool
+	useRelationshipAccount    bool
+	disableDomainVerification bool
+}
+
 // todo: code duplication with fiat variant
-func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousKey *common.Account, usePrimaryAccount, useRelationship, disableDomainVerification bool) *sendMessageCallMetadata {
+func (c *clientEnv) sendRequestToReceiveKinBillMessage(
+	t *testing.T,
+	rendezvousKey *common.Account,
+	conf *testRequestToReceiveBillConf,
+) *sendMessageCallMetadata {
 	authority, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
 	require.NoError(t, err)
 
@@ -574,7 +590,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 
 	destination := testutil.NewRandomAccount(t)
 
-	if usePrimaryAccount {
+	if conf.usePrimaryAccount {
 		owner := testutil.NewRandomAccount(t)
 		accountInfoRecord := &account.Record{
 			OwnerAccount:     owner.PublicKey().ToBase58(),
@@ -585,7 +601,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 			Index:            0,
 		}
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	} else if useRelationship {
+	} else if conf.useRelationshipAccount {
 		accountInfoRecord := &account.Record{
 			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
@@ -645,6 +661,42 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 		exchangeData.Quarks += kin.QuarksPerKin / 10
 	}
 
+	additionalFees := []*transactionpb.AdditionalFeePayment{
+		{
+			Destination: testutil.NewRandomAccount(t).ToProto(),
+			FeeBps:      1234,
+		},
+		{
+			Destination: testutil.NewRandomAccount(t).ToProto(),
+			FeeBps:      56,
+		},
+		{
+			Destination: testutil.NewRandomAccount(t).ToProto(),
+			FeeBps:      789,
+		},
+	}
+
+	feeCodeAccountOwner := testutil.NewRandomAccount(t)
+	require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
+		OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
+		AuthorityAccount: feeCodeAccountOwner.PublicKey().ToBase58(),
+		TokenAccount:     base58.Encode(additionalFees[0].Destination.Value),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+		AccountType:      commonpb.AccountType_PRIMARY,
+		Index:            0,
+	}))
+	if !conf.disableDomainVerification {
+		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
+			OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
+			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			TokenAccount:     base58.Encode(additionalFees[1].Destination.Value),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+			AccountType:      commonpb.AccountType_RELATIONSHIP,
+			Index:            0,
+			RelationshipTo:   pointer.String("getcode.com"),
+		}))
+	}
+
 	msg := &messagingpb.RequestToReceiveBill{
 		RequestorAccount: destination.ToProto(),
 		ExchangeData: &messagingpb.RequestToReceiveBill_Exact{
@@ -657,9 +709,10 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 		RendezvousKey: &messagingpb.RendezvousKey{
 			Value: rendezvousKey.PublicKey().ToBytes(),
 		},
+		AdditionalFees: additionalFees,
 	}
 
-	if disableDomainVerification {
+	if conf.disableDomainVerification {
 		msg.Verifier = nil
 		msg.RendezvousKey = nil
 	}
@@ -675,7 +728,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 	messageBytes, err := proto.Marshal(msg)
 	require.NoError(t, err)
 
-	if !disableDomainVerification {
+	if !conf.disableDomainVerification {
 		signer := authority
 		if c.conf.simulateInvalidMessageSignature {
 			signer = testutil.NewRandomAccount(t)
@@ -700,7 +753,11 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(t *testing.T, rendezvousK
 }
 
 // todo: code duplication with kin variant
-func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvousKey *common.Account, usePrimaryAccount, useRelationship, disableDomainVerification bool) *sendMessageCallMetadata {
+func (c *clientEnv) sendRequestToReceiveFiatBillMessage(
+	t *testing.T,
+	rendezvousKey *common.Account,
+	conf *testRequestToReceiveBillConf,
+) *sendMessageCallMetadata {
 	authority, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
 	require.NoError(t, err)
 
@@ -710,18 +767,17 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 
 	destination := testutil.NewRandomAccount(t)
 
-	if usePrimaryAccount {
+	if conf.usePrimaryAccount {
 		owner := testutil.NewRandomAccount(t)
-		accountInfoRecord := &account.Record{
+		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: owner.PublicKey().ToBase58(),
 			TokenAccount:     destination.PublicKey().ToBase58(),
 			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_PRIMARY,
 			Index:            0,
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	} else if useRelationship {
+		}))
+	} else if conf.useRelationshipAccount {
 		accountInfoRecord := &account.Record{
 			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
@@ -763,6 +819,42 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 		exchangeData.NativeAmount = 1.01
 	}
 
+	additionalFees := []*transactionpb.AdditionalFeePayment{
+		{
+			Destination: testutil.NewRandomAccount(t).ToProto(),
+			FeeBps:      1234,
+		},
+		{
+			Destination: testutil.NewRandomAccount(t).ToProto(),
+			FeeBps:      56,
+		},
+		{
+			Destination: testutil.NewRandomAccount(t).ToProto(),
+			FeeBps:      789,
+		},
+	}
+
+	feeCodeAccountOwner := testutil.NewRandomAccount(t)
+	require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
+		OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
+		AuthorityAccount: feeCodeAccountOwner.PublicKey().ToBase58(),
+		TokenAccount:     base58.Encode(additionalFees[0].Destination.Value),
+		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+		AccountType:      commonpb.AccountType_PRIMARY,
+		Index:            0,
+	}))
+	if !conf.disableDomainVerification {
+		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
+			OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
+			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			TokenAccount:     base58.Encode(additionalFees[1].Destination.Value),
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+			AccountType:      commonpb.AccountType_RELATIONSHIP,
+			Index:            0,
+			RelationshipTo:   pointer.String("getcode.com"),
+		}))
+	}
+
 	msg := &messagingpb.RequestToReceiveBill{
 		RequestorAccount: destination.ToProto(),
 		ExchangeData: &messagingpb.RequestToReceiveBill_Partial{
@@ -775,9 +867,10 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 		RendezvousKey: &messagingpb.RendezvousKey{
 			Value: rendezvousKey.PublicKey().ToBytes(),
 		},
+		AdditionalFees: additionalFees,
 	}
 
-	if disableDomainVerification {
+	if conf.disableDomainVerification {
 		msg.Verifier = nil
 		msg.RendezvousKey = nil
 	}
@@ -793,7 +886,7 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(t *testing.T, rendezvous
 	messageBytes, err := proto.Marshal(msg)
 	require.NoError(t, err)
 
-	if !disableDomainVerification {
+	if !conf.disableDomainVerification {
 		signer := authority
 		if c.conf.simulateInvalidMessageSignature {
 			signer = testutil.NewRandomAccount(t)
