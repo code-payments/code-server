@@ -534,6 +534,43 @@ func TestLocalSimulation_TransferFromClosedAccount(t *testing.T) {
 	}
 }
 
+func TestLocalSimulation_FeeStructureBecomesInvalidOverTime(t *testing.T) {
+	microPaymentAmount := uint64(100)
+	thirdPartyFeeAmount := uint64(20)
+
+	// Simulate a test where the Code fee amount causes an insufficient balance
+	// because the USD exchange rate fluctuated significantly against another
+	// currency
+	for _, codeFeeAmount := range []uint64{
+		microPaymentAmount - 2*thirdPartyFeeAmount,
+		microPaymentAmount - 2*thirdPartyFeeAmount + 1,
+		microPaymentAmount - 2*thirdPartyFeeAmount - 1,
+	} {
+		env := setupLocalSimulationTestEnv(t)
+
+		bucketAccount := testutil.NewRandomAccount(t)
+		env.setupTimelockRecord(t, bucketAccount, timelock_token_v1.StateLocked)
+		env.setupCachedBalance(t, bucketAccount, microPaymentAmount)
+
+		tempOutgoingAccount := testutil.NewRandomAccount(t)
+		env.setupTimelockRecord(t, tempOutgoingAccount, timelock_token_v1.StateLocked)
+
+		externalATA := testutil.NewRandomAccount(t)
+
+		actions := []*transactionpb.Action{
+			getTemporaryPrivacyTransferActionForLocalSimulation(t, bucketAccount, getTimelockVault(t, tempOutgoingAccount), microPaymentAmount),
+			getFeePaymentActionForLocalSimulation(t, tempOutgoingAccount, codeFeeAmount),
+			getFeePaymentActionForLocalSimulation(t, tempOutgoingAccount, thirdPartyFeeAmount),
+			getFeePaymentActionForLocalSimulation(t, tempOutgoingAccount, thirdPartyFeeAmount),
+			getNoPrivacyWithdrawActionForLocalSimulation(t, tempOutgoingAccount, externalATA, 10),
+		}
+
+		_, err := env.LocalSimulation(t, actions)
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "insufficient balance to perform action"))
+	}
+}
+
 func TestLocalSimulation_NotManagedByCode(t *testing.T) {
 	env := setupLocalSimulationTestEnv(t)
 

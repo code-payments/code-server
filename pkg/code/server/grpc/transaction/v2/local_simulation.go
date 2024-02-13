@@ -155,8 +155,6 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 							DeltaQuarks: -int64(amount),
 						},
 					},
-					Closed:      false,
-					CloseAction: action,
 				},
 				TokenAccountSimulation{
 					TokenAccount: destination,
@@ -198,9 +196,10 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 							DeltaQuarks: -int64(amount),
 						},
 					},
-					Closed:      false,
-					CloseAction: action,
 				},
+				// todo: Doesn't specify destination, but that's not required yet,
+				//       and makes other validation more complex since it's based
+				//       on the simulation.
 			)
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			source, err := common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Source)

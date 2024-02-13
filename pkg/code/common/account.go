@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -664,7 +665,7 @@ func ValidateExternalKinTokenAccount(ctx context.Context, data code_data.Provide
 		// safety precaution.
 		_, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.publicKey.ToBase58())
 		if err == nil {
-			return false, "destination is not an external account", nil
+			return false, fmt.Sprintf("%s is not an external account", tokenAccount.publicKey.ToBase58()), nil
 		} else if err == account.ErrAccountInfoNotFound {
 			return true, "", nil
 		} else if err != nil {
@@ -672,9 +673,9 @@ func ValidateExternalKinTokenAccount(ctx context.Context, data code_data.Provide
 		}
 		return true, "", nil
 	case solana.ErrNoAccountInfo, token.ErrAccountNotFound:
-		return false, "destination doesn't exist on the blockchain", nil
+		return false, fmt.Sprintf("%s doesn't exist on the blockchain", tokenAccount.publicKey.ToBase58()), nil
 	case token.ErrInvalidTokenAccount:
-		return false, "destination is not a kin token account", nil
+		return false, fmt.Sprintf("%s is not a kin token account", tokenAccount.publicKey.ToBase58()), nil
 	default:
 		// Unfortunate if Solana is down, but this only impacts withdraw flows,
 		// and we need to guarantee this isn't going to something that's not

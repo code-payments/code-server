@@ -35,11 +35,23 @@ const (
 
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL
 		);
+
+		CREATE TABLE codewallet__core_paymentrequestfees(
+			id SERIAL NOT NULL PRIMARY KEY,
+
+			intent TEXT NOT NULL,
+
+			destination_token_account TEXT NULL,
+			bps INTEGER NOT NULL,
+
+			CONSTRAINT codewallet__core_paymentrequestfees__uniq__intent__and__destination_token_account UNIQUE (intent, destination_token_account)
+		);
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
 		DROP TABLE codewallet__core_paymentrequest;
+		DROP TABLE codewallet__core_paymentrequestfees;
 	`
 )
 

@@ -298,8 +298,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Server responds back with parameters, so client can locally construct the
 	// transaction and validate it.
 	serverParameters := &transactionpb.SwapResponse{
-		Response: &transactionpb.SwapResponse_ServerParamenters{
-			ServerParamenters: &transactionpb.SwapResponse_ServerParameters{
+		Response: &transactionpb.SwapResponse_ServerParameters_{
+			ServerParameters: &transactionpb.SwapResponse_ServerParameters{
 				Payer:            s.swapSubsidizer.ToProto(),
 				RecentBlockhash:  &commonpb.Blockhash{Value: blockhash[:]},
 				ComputeUnitLimit: computeUnitLimit,
