@@ -1,16 +1,18 @@
 package chat
 
 import (
+	"context"
 	"time"
 
 	"github.com/mr-tron/base58/base58"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -96,17 +98,18 @@ func getExchangeDataFromIntent(intentRecord *intent.Record) (*transactionpb.Exch
 	return nil, false
 }
 
-func getExchangeDataMinusFees(exchangeData *transactionpb.ExchangeData, intentRecord *intent.Record, actionRecords []*action.Record) *transactionpb.ExchangeData {
-	cloned := proto.Clone(exchangeData).(*transactionpb.ExchangeData)
-
-	if intentRecord.IntentType != intent.SendPrivatePayment {
-		return cloned
+func getMicroPaymentReceiveExchangeDataByOwner(
+	ctx context.Context,
+	data code_data.Provider,
+	exchangeData *transactionpb.ExchangeData,
+	intentRecord *intent.Record,
+	actionRecords []*action.Record,
+) (map[string]*transactionpb.ExchangeData, error) {
+	if intentRecord.IntentType != intent.SendPrivatePayment && !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		return nil, errors.New("intent is not a micro payment")
 	}
 
-	if !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-		return cloned
-	}
-
+	// Find the action record where the final payment is made
 	var thirdPartyPaymentAction *action.Record
 	for _, actionRecord := range actionRecords {
 		if actionRecord.ActionType != action.NoPrivacyWithdraw {
@@ -119,12 +122,70 @@ func getExchangeDataMinusFees(exchangeData *transactionpb.ExchangeData, intentRe
 		}
 	}
 
-	// Should never happen
+	// Should never happen if the intent is a micropayment
 	if thirdPartyPaymentAction == nil {
-		return cloned
+		return nil, errors.New("payment action is missing")
 	}
 
-	cloned.Quarks = *thirdPartyPaymentAction.Quantity
-	cloned.NativeAmount = cloned.ExchangeRate * float64(cloned.Quarks) / float64(kin.QuarksPerKin)
-	return cloned
+	quarksByTokenAccount := make(map[string]uint64)
+	quarksByTokenAccount[*thirdPartyPaymentAction.Destination] = *thirdPartyPaymentAction.Quantity
+
+	// Find and consolidate all fee payments into a quark amount by token account
+	var foundCodeFee bool
+	for _, actionRecord := range actionRecords {
+		if actionRecord.ActionType != action.NoPrivacyTransfer {
+			continue
+		}
+
+		if actionRecord.Source != thirdPartyPaymentAction.Source {
+			continue
+		}
+
+		// The first fee is always Code, and can be skipped
+		if !foundCodeFee {
+			foundCodeFee = true
+			continue
+		}
+
+		quarksByTokenAccount[*actionRecord.Destination] += *actionRecord.Quantity
+	}
+
+	// Consolidate quark amount by owner account
+	quarksByOwnerAccount := make(map[string]uint64)
+	for tokenAccount, quarks := range quarksByTokenAccount {
+		if tokenAccount == intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount {
+			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
+				quarksByOwnerAccount[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] += quarks
+			}
+			continue
+		}
+
+		accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount)
+		if err == nil {
+			quarksByOwnerAccount[accountInfoRecord.OwnerAccount] += quarks
+		} else if err != account.ErrAccountInfoNotFound {
+			return nil, err
+		}
+	}
+
+	// Map result to an exchange data
+	res := make(map[string]*transactionpb.ExchangeData)
+	for ownerAccount, quarks := range quarksByOwnerAccount {
+		res[ownerAccount] = getExchangeDataInOtherQuarkAmount(exchangeData, quarks)
+	}
+	return res, nil
+}
+
+func getExchangeDataInOtherQuarkAmount(original *transactionpb.ExchangeData, quarks uint64) *transactionpb.ExchangeData {
+	nativeAmount := original.NativeAmount
+	if original.Quarks != quarks {
+		nativeAmount = original.ExchangeRate * float64(quarks) / float64(kin.QuarksPerKin)
+	}
+
+	return &transactionpb.ExchangeData{
+		Currency:     original.Currency,
+		ExchangeRate: original.ExchangeRate,
+		NativeAmount: nativeAmount,
+		Quarks:       quarks,
+	}
 }
