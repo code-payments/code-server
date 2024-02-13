@@ -412,7 +412,6 @@ func (h *RequestToReceiveBillMessageHandler) OnSuccess(ctx context.Context) erro
 	return h.data.CreateRequest(ctx, h.recordToSave)
 }
 
-// todo: need to add context (ie. is it payment destination or fee taker) and improve error messaging
 func (h *RequestToReceiveBillMessageHandler) validateDestinationAccount(
 	ctx context.Context,
 	accountToValidate *common.Account,
@@ -430,10 +429,10 @@ func (h *RequestToReceiveBillMessageHandler) validateDestinationAccount(
 			}
 
 			if *accountInfoRecord.RelationshipTo != asciiBaseDomain {
-				return newMessageValidationErrorf("relationship account is not associated with %s", asciiBaseDomain)
+				return newMessageValidationErrorf("relationship account %s is not associated with %s", accountToValidate.PublicKey().ToBase58(), asciiBaseDomain)
 			}
 		default:
-			return newMessageValidationError("code account must be a deposit account")
+			return newMessageValidationErrorf("code account %s is not a deposit account", accountToValidate.PublicKey().ToBase58())
 		}
 	case account.ErrAccountInfoNotFound:
 		if !h.conf.disableBlockchainChecks.Get(ctx) {
