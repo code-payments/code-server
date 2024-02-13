@@ -610,7 +610,17 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		}
 	}
 
-	forceSimulateFeePayment := func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
+	forceSimulateOneFeePayments := func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
+		for _, fulfillmentRecord := range fulfillmentRecords {
+			if fulfillmentRecord.FulfillmentType == fulfillment.NoPrivacyTransferWithAuthority && fulfillmentRecord.Source == transfer.Source {
+				fulfillmentRecord.State = fulfillment.StateConfirmed
+				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				break
+			}
+		}
+	}
+
+	forceSimulateAllFeePayments := func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.NoPrivacyTransferWithAuthority && fulfillmentRecord.Source == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
@@ -632,7 +642,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 			simulation: func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
 				simulateOpeningSourceAccount(env, transfer, fulfillmentRecords)
 				simulateOpeningDestinationAccount(env, transfer, fulfillmentRecords)
-				forceSimulateFeePayment(env, transfer, fulfillmentRecords)
+				forceSimulateAllFeePayments(env, transfer, fulfillmentRecords)
 			},
 			expected: false,
 		},
@@ -642,7 +652,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 				simulateOpeningSourceAccount(env, transfer, fulfillmentRecords)
 				simulateOpeningDestinationAccount(env, transfer, fulfillmentRecords)
 				simulateOneTreasuryPayment(env, transfer, fulfillmentRecords)
-				forceSimulateFeePayment(env, transfer, fulfillmentRecords)
+				forceSimulateAllFeePayments(env, transfer, fulfillmentRecords)
 			},
 			expected: false,
 		},
@@ -651,7 +661,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 			simulation: func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
 				simulateOpeningSourceAccount(env, transfer, fulfillmentRecords)
 				simulateAllTreasuryPayments(env, transfer, fulfillmentRecords)
-				forceSimulateFeePayment(env, transfer, fulfillmentRecords)
+				forceSimulateAllFeePayments(env, transfer, fulfillmentRecords)
 			},
 			expected: false,
 		},
@@ -659,13 +669,13 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 			// Source user account not opened
 			simulation: func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
 				forceSimulateAllTreasuryPayments(env, transfer, fulfillmentRecords)
-				forceSimulateFeePayment(env, transfer, fulfillmentRecords)
+				forceSimulateAllFeePayments(env, transfer, fulfillmentRecords)
 				simulateOpeningDestinationAccount(env, transfer, fulfillmentRecords)
 			},
 			expected: false,
 		},
 		{
-			// Fee payment not confirmed
+			// All fee payments not confirmed
 			simulation: func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
 				simulateOpeningSourceAccount(env, transfer, fulfillmentRecords)
 				simulateOpeningDestinationAccount(env, transfer, fulfillmentRecords)
@@ -674,11 +684,21 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 			expected: false,
 		},
 		{
+			// Subset of fee payments not confirmed
 			simulation: func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
 				simulateOpeningSourceAccount(env, transfer, fulfillmentRecords)
 				simulateOpeningDestinationAccount(env, transfer, fulfillmentRecords)
 				simulateAllTreasuryPayments(env, transfer, fulfillmentRecords)
-				forceSimulateFeePayment(env, transfer, fulfillmentRecords)
+				forceSimulateOneFeePayments(env, transfer, fulfillmentRecords)
+			},
+			expected: false,
+		},
+		{
+			simulation: func(env *schedulerTestEnv, transfer *fulfillment.Record, fulfillmentRecords []*fulfillment.Record) {
+				simulateOpeningSourceAccount(env, transfer, fulfillmentRecords)
+				simulateOpeningDestinationAccount(env, transfer, fulfillmentRecords)
+				simulateAllTreasuryPayments(env, transfer, fulfillmentRecords)
+				forceSimulateAllFeePayments(env, transfer, fulfillmentRecords)
 			},
 			expected: true,
 		},
@@ -2306,14 +2326,21 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 				bucketActionRecords = append(bucketActionRecords, bucketReorganization)
 			}
 
-			var feePaymentAction *action.Record
+			var feePaymentActions []*action.Record
 			if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-				feePaymentAction = &action.Record{
-					ActionType: action.NoPrivacyTransfer,
-
-					Source:      fmt.Sprintf("%s-outgoing-%d", intentRecord.InitiatorOwnerAccount, currentOutgoingByUser[intentRecord.InitiatorOwnerAccount]),
-					Destination: &codeFeeCollector,
-					Quantity:    &feeAmount,
+				feePaymentActions = []*action.Record{
+					{
+						ActionType:  action.NoPrivacyTransfer,
+						Source:      fmt.Sprintf("%s-outgoing-%d", intentRecord.InitiatorOwnerAccount, currentOutgoingByUser[intentRecord.InitiatorOwnerAccount]),
+						Destination: &codeFeeCollector,
+						Quantity:    &feeAmount,
+					},
+					{
+						ActionType:  action.NoPrivacyTransfer,
+						Source:      fmt.Sprintf("%s-outgoing-%d", intentRecord.InitiatorOwnerAccount, currentOutgoingByUser[intentRecord.InitiatorOwnerAccount]),
+						Destination: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
+						Quantity:    &feeAmount,
+					},
 				}
 			}
 
@@ -2343,8 +2370,8 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 				newActionRecords,
 				bucketActionRecords...,
 			)
-			if feePaymentAction != nil {
-				newActionRecords = append(newActionRecords, feePaymentAction)
+			if feePaymentActions != nil {
+				newActionRecords = append(newActionRecords, feePaymentActions...)
 			}
 			newActionRecords = append(
 				newActionRecords,
