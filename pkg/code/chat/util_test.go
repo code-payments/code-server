@@ -37,6 +37,8 @@ func TestGetMicroPaymentReceiveExchangeDataByOwner(t *testing.T) {
 			ExchangeRate:     0.1,
 			NativeAmount:     100,
 			Quantity:         kin.ToQuarks(1000),
+
+			IsMicroPayment: true,
 		},
 	}
 

@@ -105,7 +105,7 @@ func getMicroPaymentReceiveExchangeDataByOwner(
 	intentRecord *intent.Record,
 	actionRecords []*action.Record,
 ) (map[string]*transactionpb.ExchangeData, error) {
-	if intentRecord.IntentType != intent.SendPrivatePayment && !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+	if intentRecord.IntentType != intent.SendPrivatePayment || !intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
 		return nil, errors.New("intent is not a micro payment")
 	}
 
