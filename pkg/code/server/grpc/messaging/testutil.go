@@ -282,6 +282,11 @@ type clientConf struct {
 	// Simulations for invalid rendezvous keys
 
 	simulateInvalidRendezvousKey bool
+
+	// Simulations for invalid fee structures
+	simulateLargeFeePercentage     bool
+	simulateInvalidFeeCodeAccount  bool
+	simulateInvalidFeeRelationship bool
 }
 
 type clientEnv struct {
@@ -676,16 +681,30 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(
 		},
 	}
 
+	if c.conf.simulateLargeFeePercentage {
+		additionalFees[0].FeeBps = 8000
+	}
+
 	feeCodeAccountOwner := testutil.NewRandomAccount(t)
+	feeCodeAccountAuthority := feeCodeAccountOwner
+	feeCodeAccountType := commonpb.AccountType_PRIMARY
+	if c.conf.simulateInvalidFeeCodeAccount {
+		feeCodeAccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		feeCodeAccountAuthority = testutil.NewRandomAccount(t)
+	}
 	require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
 		OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
-		AuthorityAccount: feeCodeAccountOwner.PublicKey().ToBase58(),
+		AuthorityAccount: feeCodeAccountAuthority.PublicKey().ToBase58(),
 		TokenAccount:     base58.Encode(additionalFees[0].Destination.Value),
 		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
-		AccountType:      commonpb.AccountType_PRIMARY,
+		AccountType:      feeCodeAccountType,
 		Index:            0,
 	}))
 	if !conf.disableDomainVerification {
+		feeRelationship := "getcode.com"
+		if c.conf.simulateInvalidFeeRelationship {
+			feeRelationship = "example.com"
+		}
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
 			OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
@@ -693,7 +712,7 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(
 			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_RELATIONSHIP,
 			Index:            0,
-			RelationshipTo:   pointer.String("getcode.com"),
+			RelationshipTo:   &feeRelationship,
 		}))
 	}
 
@@ -834,16 +853,30 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(
 		},
 	}
 
+	if c.conf.simulateLargeFeePercentage {
+		additionalFees[0].FeeBps = 8000
+	}
+
 	feeCodeAccountOwner := testutil.NewRandomAccount(t)
+	feeCodeAccountAuthority := feeCodeAccountOwner
+	feeCodeAccountType := commonpb.AccountType_PRIMARY
+	if c.conf.simulateInvalidFeeCodeAccount {
+		feeCodeAccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		feeCodeAccountAuthority = testutil.NewRandomAccount(t)
+	}
 	require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
 		OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
-		AuthorityAccount: feeCodeAccountOwner.PublicKey().ToBase58(),
+		AuthorityAccount: feeCodeAccountAuthority.PublicKey().ToBase58(),
 		TokenAccount:     base58.Encode(additionalFees[0].Destination.Value),
 		MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
-		AccountType:      commonpb.AccountType_PRIMARY,
+		AccountType:      feeCodeAccountType,
 		Index:            0,
 	}))
 	if !conf.disableDomainVerification {
+		feeRelationship := "getcode.com"
+		if c.conf.simulateInvalidFeeRelationship {
+			feeRelationship = "example.com"
+		}
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
 			OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
 			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
@@ -851,7 +884,7 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(
 			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_RELATIONSHIP,
 			Index:            0,
-			RelationshipTo:   pointer.String("getcode.com"),
+			RelationshipTo:   &feeRelationship,
 		}))
 	}
 

@@ -505,7 +505,32 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 4: Signature validation
+	// Part 4: Fee structure validation
+	//
+
+	env.client1.resetConf()
+	env.client1.conf.simulateLargeFeePercentage = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "total fee percentage cannot exceed")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeCodeAccount = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "code account must be a deposit account")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeRelationship = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "relationship account is not associated with getcode.com")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	//
+	// Part 5: Signature validation
 	//
 
 	env.client1.resetConf()
@@ -516,7 +541,7 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 5: Rendezvous key validation
+	// Part 6: Rendezvous key validation
 	//
 
 	env.client1.resetConf()
@@ -527,7 +552,7 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 6: Upgrading request with a payment requirement
+	// Part 7: Upgrading request with a payment requirement
 	//
 
 	env.client1.resetConf()
@@ -627,7 +652,32 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 4: Signature validation
+	// Part 4: Fee structure validaiton
+	//
+
+	env.client1.resetConf()
+	env.client1.conf.simulateLargeFeePercentage = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "total fee percentage cannot exceed")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeCodeAccount = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "code account must be a deposit account")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeRelationship = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "relationship account is not associated with getcode.com")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	//
+	// Part 5: Signature validation
 	//
 
 	env.client1.resetConf()
@@ -638,7 +688,7 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 5: Rendezvous key validation
+	// Part 6: Rendezvous key validation
 	//
 
 	env.client1.resetConf()
@@ -649,7 +699,7 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 6: Upgrading request with a payment requirement
+	// Part 7: Upgrading request with a payment requirement
 	//
 
 	env.client1.resetConf()

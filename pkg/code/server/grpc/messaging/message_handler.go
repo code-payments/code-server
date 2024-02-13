@@ -291,24 +291,13 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 		//
 
 		var totalFeeBps uint32
-		seenFeeTakers := make(map[string]interface{})
-		for i, additionalFee := range additionalFees {
+		for _, additionalFee := range additionalFees {
 			feeTaker, err := common.NewAccountFromPublicKeyString(additionalFee.DestinationTokenAccount)
 			if err != nil {
 				return err
 			}
 
 			totalFeeBps += uint32(additionalFee.BasisPoints)
-
-			if additionalFee.DestinationTokenAccount == requestorAccount.PublicKey().ToBase58() {
-				return newMessageValidationErrorf("fee taker at index %d is the payment destination and should be omitted", i)
-			}
-
-			_, ok := seenFeeTakers[additionalFee.DestinationTokenAccount]
-			if ok {
-				return newMessageValidationErrorf("fee taker at index %d appears multiple times and should be merged", i)
-			}
-			seenFeeTakers[additionalFee.DestinationTokenAccount] = struct{}{}
 
 			err = h.validateDestinationAccount(ctx, feeTaker, typedMessage.Verifier != nil, asciiBaseDomain)
 			if err != nil {
