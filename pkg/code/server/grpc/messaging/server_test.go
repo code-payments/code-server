@@ -516,6 +516,20 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
+	env.client1.conf.simulateDuplicatedFeeTaker = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 2 appears multiple times and should be merged")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateFeeTakerIsPaymentDestination = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 0 is the payment destination and should be omitted")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
 	env.client1.conf.simulateInvalidFeeCodeAccount = true
 	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertInvalidMessageError(t, "is not a deposit account")
@@ -652,13 +666,27 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 4: Fee structure validaiton
+	// Part 4: Fee structure validation
 	//
 
 	env.client1.resetConf()
 	env.client1.conf.simulateLargeFeePercentage = true
 	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertInvalidMessageError(t, "total fee percentage cannot exceed")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateDuplicatedFeeTaker = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 2 appears multiple times and should be merged")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateFeeTakerIsPaymentDestination = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 0 is the payment destination and should be omitted")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 

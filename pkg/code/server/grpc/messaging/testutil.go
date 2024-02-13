@@ -284,9 +284,11 @@ type clientConf struct {
 	simulateInvalidRendezvousKey bool
 
 	// Simulations for invalid fee structures
-	simulateLargeFeePercentage     bool
-	simulateInvalidFeeCodeAccount  bool
-	simulateInvalidFeeRelationship bool
+	simulateLargeFeePercentage           bool
+	simulateInvalidFeeCodeAccount        bool
+	simulateInvalidFeeRelationship       bool
+	simulateDuplicatedFeeTaker           bool
+	simulateFeeTakerIsPaymentDestination bool
 }
 
 type clientEnv struct {
@@ -684,6 +686,12 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(
 	if c.conf.simulateLargeFeePercentage {
 		additionalFees[0].FeeBps = 8000
 	}
+	if c.conf.simulateDuplicatedFeeTaker {
+		additionalFees[0].Destination = additionalFees[2].Destination
+	}
+	if c.conf.simulateFeeTakerIsPaymentDestination {
+		additionalFees[0].Destination = destination.ToProto()
+	}
 
 	feeCodeAccountOwner := testutil.NewRandomAccount(t)
 	feeCodeAccountAuthority := feeCodeAccountOwner
@@ -855,6 +863,12 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(
 
 	if c.conf.simulateLargeFeePercentage {
 		additionalFees[0].FeeBps = 8000
+	}
+	if c.conf.simulateDuplicatedFeeTaker {
+		additionalFees[0].Destination = additionalFees[2].Destination
+	}
+	if c.conf.simulateFeeTakerIsPaymentDestination {
+		additionalFees[0].Destination = destination.ToProto()
 	}
 
 	feeCodeAccountOwner := testutil.NewRandomAccount(t)
