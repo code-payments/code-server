@@ -5666,9 +5666,11 @@ func (p *phoneTestEnv) getFeePaymentTransactionToSign(
 
 	var destination *common.Account
 	if action.Type == transactionpb.FeePaymentAction_CODE {
+		require.NotNil(t, serverParameter.CodeDestination)
 		destination, err = common.NewAccountFromProto(serverParameter.CodeDestination)
 		require.NoError(t, err)
 	} else {
+		assert.Nil(t, serverParameter.CodeDestination)
 		destination, err = common.NewAccountFromProto(action.Destination)
 		require.NoError(t, err)
 	}
