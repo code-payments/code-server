@@ -30,6 +30,10 @@ import (
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
+var (
+	swapNotificationTimeByOwner = make(map[string]time.Time)
+)
+
 func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) error {
 	ctx, cancel := context.WithTimeout(streamer.Context(), s.conf.swapTimeout.Get(streamer.Context()))
 	defer cancel()
@@ -415,6 +419,15 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 // Temporary for manual USDC deposit flow
 func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) {
+	// Avoid spamming users chat messages due to retries of the Swap RPC within
+	// small periods of time. Implementation isn't perfect, but we'll be updating
+	// notifications later anyways.
+	lastNotificationTs, ok := swapNotificationTimeByOwner[owner.PublicKey().ToBase58()]
+	if ok && time.Since(lastNotificationTs) < time.Minute {
+		return
+	}
+	swapNotificationTimeByOwner[owner.PublicKey().ToBase58()] = time.Now()
+
 	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
 	if err != nil {
 		return
