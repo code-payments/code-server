@@ -5217,7 +5217,7 @@ func (p *phoneTestEnv) validateUpgradeableIntents(t *testing.T, upgradeableInten
 	}
 }
 
-func (p *phoneTestEnv) getSendLimits(t *testing.T) map[string]*transactionpb.RemainingSendLimit {
+func (p *phoneTestEnv) getSendLimits(t *testing.T) map[string]*transactionpb.SendLimit {
 	req := &transactionpb.GetLimitsRequest{
 		Owner:         p.parentAccount.ToProto(),
 		ConsumedSince: timestamppb.New(time.Now().Add(-24 * time.Hour)),
@@ -5227,20 +5227,7 @@ func (p *phoneTestEnv) getSendLimits(t *testing.T) map[string]*transactionpb.Rem
 	resp, err := p.client.GetLimits(p.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, transactionpb.GetLimitsResponse_OK, resp.Result)
-	return resp.RemainingSendLimitsByCurrency
-}
-
-func (p *phoneTestEnv) getDepositLimit(t *testing.T) *transactionpb.DepositLimit {
-	req := &transactionpb.GetLimitsRequest{
-		Owner:         p.parentAccount.ToProto(),
-		ConsumedSince: timestamppb.New(time.Now().Add(-24 * time.Hour)),
-	}
-	req.Signature = p.signProtoMessage(t, req, req.Owner, false)
-
-	resp, err := p.client.GetLimits(p.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, transactionpb.GetLimitsResponse_OK, resp.Result)
-	return resp.DepositLimit
+	return resp.SendLimitsByCurrency
 }
 
 func (p *phoneTestEnv) getMicroPaymentLimits(t *testing.T) map[string]*transactionpb.MicroPaymentLimit {
@@ -5254,6 +5241,32 @@ func (p *phoneTestEnv) getMicroPaymentLimits(t *testing.T) map[string]*transacti
 	require.NoError(t, err)
 	assert.Equal(t, transactionpb.GetLimitsResponse_OK, resp.Result)
 	return resp.MicroPaymentLimitsByCurrency
+}
+
+func (p *phoneTestEnv) getBuyModuleLimits(t *testing.T) map[string]*transactionpb.BuyModuleLimit {
+	req := &transactionpb.GetLimitsRequest{
+		Owner:         p.parentAccount.ToProto(),
+		ConsumedSince: timestamppb.New(time.Now().Add(-24 * time.Hour)),
+	}
+	req.Signature = p.signProtoMessage(t, req, req.Owner, false)
+
+	resp, err := p.client.GetLimits(p.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, transactionpb.GetLimitsResponse_OK, resp.Result)
+	return resp.BuyModuleLimitsByCurrency
+}
+
+func (p *phoneTestEnv) getDepositLimit(t *testing.T) *transactionpb.DepositLimit {
+	req := &transactionpb.GetLimitsRequest{
+		Owner:         p.parentAccount.ToProto(),
+		ConsumedSince: timestamppb.New(time.Now().Add(-24 * time.Hour)),
+	}
+	req.Signature = p.signProtoMessage(t, req, req.Owner, false)
+
+	resp, err := p.client.GetLimits(p.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, transactionpb.GetLimitsResponse_OK, resp.Result)
+	return resp.DepositLimit
 }
 
 func (p *phoneTestEnv) getPaymentHistory(t *testing.T) []*transactionpb.PaymentHistoryItem {
