@@ -44,13 +44,21 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 			MaxPerTransaction: 0,
 			MaxPerDay:         0,
 		}
+		zeroBuyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
+			MaxPerTransaction: 0,
+			MinPerTransaction: 0,
+		}
+	}
+	for currency := range limit.MicroPaymentLimits {
 		zeroMicroPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
 			MaxPerTransaction: 0,
 			MinPerTransaction: 0,
 		}
 	}
 	zeroSendLimits[string(currency_lib.KIN)] = &transactionpb.SendLimit{
-		NextTransaction: 0,
+		NextTransaction:   0,
+		MaxPerTransaction: 0,
+		MaxPerDay:         0,
 	}
 	zeroMicroPaymentLimits[string(currency_lib.KIN)] = &transactionpb.MicroPaymentLimit{
 		MaxPerTransaction: 0,
@@ -154,7 +162,31 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 	}
 
 	//
-	// Part 2: Calculate deposit limits
+	// Part 2: Calculate micro payment limits
+	//
+
+	microPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
+	for currency, limits := range limit.MicroPaymentLimits {
+		microPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
+			MaxPerTransaction: float32(limits.Max),
+			MinPerTransaction: float32(limits.Min),
+		}
+	}
+
+	//
+	// Part 3: Calculate buy module limits
+	//
+
+	buyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
+	for currency, limits := range limit.SendLimits {
+		buyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
+			MaxPerTransaction: float32(limits.PerTransaction),
+			MinPerTransaction: float32(limits.PerTransaction / 10),
+		}
+	}
+
+	//
+	// Part 4: Calculate deposit limits
 	//
 
 	usdForNextDeposit := limit.MaxPerDepositUsdAmount
@@ -179,35 +211,11 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		usdForNextDeposit = 0
 	}
 
-	//
-	// Part 3: Calculate micro payment limits
-	//
-
-	convertedMicroPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
-	for currency, limits := range limit.MicroPaymentLimits {
-		convertedMicroPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
-			MaxPerTransaction: float32(limits.Max),
-			MinPerTransaction: float32(limits.Min),
-		}
-	}
-
-	//
-	// Part 4: Calculate buy module limits
-	//
-
-	convertedBuyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
-	for currency, limits := range limit.SendLimits {
-		convertedBuyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
-			MaxPerTransaction: float32(limits.PerTransaction),
-			MinPerTransaction: float32(limits.PerTransaction / 10),
-		}
-	}
-
 	return &transactionpb.GetLimitsResponse{
 		Result:                       transactionpb.GetLimitsResponse_OK,
 		SendLimitsByCurrency:         sendLimits,
-		MicroPaymentLimitsByCurrency: convertedMicroPaymentLimits,
-		BuyModuleLimitsByCurrency:    convertedBuyModuleLimits,
+		MicroPaymentLimitsByCurrency: microPaymentLimits,
+		BuyModuleLimitsByCurrency:    buyModuleLimits,
 		DepositLimit: &transactionpb.DepositLimit{
 			MaxQuarks: kin.ToQuarks(uint64(usdForNextDeposit / usdRate)),
 		},
