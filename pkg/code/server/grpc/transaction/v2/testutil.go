@@ -43,6 +43,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/data/onramp"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
@@ -1758,6 +1759,20 @@ func (s serverTestEnv) getExpectedTreasury(t *testing.T, amount uint64) *treasur
 	treasury, ok := s.treasuryPoolByBucket[bucket]
 	require.True(t, ok)
 	return treasury
+}
+
+func (s serverTestEnv) assertFiatOnrampPurchasedDetailsSaved(t *testing.T, expectedOwner *common.Account, expectedCurrency currency_lib.Code, expectedAmount float64, nonce uuid.UUID) {
+	record, err := s.data.GetFiatOnrampPurchase(s.ctx, nonce)
+	require.NoError(t, err)
+	assert.Equal(t, expectedOwner.PublicKey().ToBase58(), record.Owner)
+	assert.EqualValues(t, expectedCurrency, record.Currency)
+	assert.Equal(t, expectedAmount, record.Amount)
+	assert.Equal(t, nonce, record.Nonce)
+}
+
+func (s serverTestEnv) assertFiatOnrampPurchasedDetailsNotSaved(t *testing.T, nonce uuid.UUID) {
+	_, err := s.data.GetFiatOnrampPurchase(s.ctx, nonce)
+	assert.Equal(t, onramp.ErrPurchaseNotFound, err)
 }
 
 func assertExpectedKreMemoInstruction(t *testing.T, txn solana.Transaction, index int) {
@@ -5267,6 +5282,24 @@ func (p *phoneTestEnv) getDepositLimit(t *testing.T) *transactionpb.DepositLimit
 	require.NoError(t, err)
 	assert.Equal(t, transactionpb.GetLimitsResponse_OK, resp.Result)
 	return resp.DepositLimit
+}
+
+func (p *phoneTestEnv) declareFiatOnRampPurchase(t *testing.T, currency currency_lib.Code, amount float64, nonce uuid.UUID) transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_Result {
+	req := &transactionpb.DeclareFiatOnrampPurchaseAttemptRequest{
+		Owner: p.parentAccount.ToProto(),
+		PurchaseAmount: &transactionpb.ExchangeDataWithoutRate{
+			Currency:     string(currency),
+			NativeAmount: amount,
+		},
+		Nonce: &commonpb.UUID{
+			Value: nonce[:],
+		},
+	}
+	req.Signature = p.signProtoMessage(t, req, req.Owner, false)
+
+	resp, err := p.client.DeclareFiatOnrampPurchaseAttempt(p.ctx, req)
+	require.NoError(t, err)
+	return resp.Result
 }
 
 func (p *phoneTestEnv) getPaymentHistory(t *testing.T) []*transactionpb.PaymentHistoryItem {

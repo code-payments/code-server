@@ -33,6 +33,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/login"
 	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/data/onramp"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/paywall"
@@ -65,6 +66,7 @@ import (
 	messaging "github.com/code-payments/code-server/pkg/code/data/messaging"
 	messaging_memory_client "github.com/code-payments/code-server/pkg/code/data/messaging/memory"
 	nonce_memory_client "github.com/code-payments/code-server/pkg/code/data/nonce/memory"
+	onramp_memory_client "github.com/code-payments/code-server/pkg/code/data/onramp/memory"
 	payment_memory_client "github.com/code-payments/code-server/pkg/code/data/payment/memory"
 	paymentrequest_memory_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/memory"
 	paywall_memory_client "github.com/code-payments/code-server/pkg/code/data/paywall/memory"
@@ -95,6 +97,7 @@ import (
 	merkletree_postgres_client "github.com/code-payments/code-server/pkg/code/data/merkletree/postgres"
 	messaging_postgres_client "github.com/code-payments/code-server/pkg/code/data/messaging/postgres"
 	nonce_postgres_client "github.com/code-payments/code-server/pkg/code/data/nonce/postgres"
+	onramp_postgres_client "github.com/code-payments/code-server/pkg/code/data/onramp/postgres"
 	payment_postgres_client "github.com/code-payments/code-server/pkg/code/data/payment/postgres"
 	paymentrequest_postgres_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/postgres"
 	paywall_postgres_client "github.com/code-payments/code-server/pkg/code/data/paywall/postgres"
@@ -393,6 +396,11 @@ type DatabaseData interface {
 	SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error
 	GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error)
 
+	// Onramp
+	// --------------------------------------------------------------------------------
+	PutFiatOnrampPurchase(ctx context.Context, record *onramp.Record) error
+	GetFiatOnrampPurchase(ctx context.Context, nonce uuid.UUID) (*onramp.Record, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -432,6 +440,7 @@ type DatabaseProvider struct {
 	badgecount     badgecount.Store
 	login          login.Store
 	balance        balance.Store
+	onramp         onramp.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -490,6 +499,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		badgecount:     badgecount_postgres_client.New(db),
 		login:          login_postgres_client.New(db),
 		balance:        balance_postgres_client.New(db),
+		onramp:         onramp_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -529,6 +539,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		badgecount:     badgecount_memory_client.New(),
 		login:          login_memory_client.New(),
 		balance:        balance_memory_client.New(),
+		onramp:         onramp_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1414,4 +1425,13 @@ func (dp *DatabaseProvider) SaveBalanceCheckpoint(ctx context.Context, record *b
 }
 func (dp *DatabaseProvider) GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error) {
 	return dp.balance.GetCheckpoint(ctx, account)
+}
+
+// Onramp
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) PutFiatOnrampPurchase(ctx context.Context, record *onramp.Record) error {
+	return dp.onramp.Put(ctx, record)
+}
+func (dp *DatabaseProvider) GetFiatOnrampPurchase(ctx context.Context, nonce uuid.UUID) (*onramp.Record, error) {
+	return dp.onramp.Get(ctx, nonce)
 }
