@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jdgcs/ed25519/extra25519"
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
@@ -16,8 +17,8 @@ import (
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 
-	"github.com/code-payments/code-server/pkg/netutil"
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/netutil"
 )
 
 const (
@@ -25,23 +26,23 @@ const (
 	//
 	// Note: May be different per type and version of blockchain message in the future
 	// Note: Assumes up to two additional token transfer instructions in the transactions for paying fees and user
-	maxDynamicContentSize = 650
+	maxNaclBoxDynamicContentSize = 650
 )
 
 type BlockchainMessageType uint8
 
 const (
-	NaclBoxBlockchainMessage BlockchainMessageType = iota
+	NaclBoxType BlockchainMessageType = iota
+	FiatOnrampPurchase
 )
 
 const naclBoxNonceLength = 24
 
 type naclBoxNonce [naclBoxNonceLength]byte
 
-// BlockchainMessage is an encrypted message, plus associated metadata, sent
+// NaclBoxBlockchainMessage is an encrypted message, plus associated metadata, sent
 // over the blockchain.
-type BlockchainMessage struct {
-	Type             BlockchainMessageType
+type NaclBoxBlockchainMessage struct {
 	Version          uint8
 	Flags            uint32
 	SenderDomain     string // Subdomains are allowed, but unused. There could be something there as a feature.
@@ -50,14 +51,14 @@ type BlockchainMessage struct {
 	EncryptedMessage []byte
 }
 
-// NewNaclBoxBlockchainMessage returns a new BlockchainMessage using a NCAL box
+// NewNaclBoxBlockchainMessage returns a new BlockchainMessage using a NACL box
 // where the shared key is derived using ECDH.
 func NewNaclBoxBlockchainMessage(
 	senderDomain string,
 	plaintextMessage string,
 	sender *common.Account,
 	receiver *common.Account,
-) (*BlockchainMessage, error) {
+) (*NaclBoxBlockchainMessage, error) {
 	if err := netutil.ValidateDomainName(senderDomain); err != nil {
 		return nil, errors.Wrap(err, "domain is invalid")
 	}
@@ -73,12 +74,11 @@ func NewNaclBoxBlockchainMessage(
 
 	encryptedMessage, nonce := encryptMessageUsingNaclBox(sender, receiver, plaintextMessage)
 
-	if len(encryptedMessage)+len(senderDomain) > maxDynamicContentSize {
+	if len(encryptedMessage)+len(senderDomain) > maxNaclBoxDynamicContentSize {
 		return nil, errors.New("encrypted message length exceeds limit")
 	}
 
-	return &BlockchainMessage{
-		Type:             NaclBoxBlockchainMessage,
+	return &NaclBoxBlockchainMessage{
 		Version:          0,
 		Flags:            0,
 		SenderDomain:     senderDomain,
@@ -88,12 +88,12 @@ func NewNaclBoxBlockchainMessage(
 	}, nil
 }
 
-// Encode encodes the BlockchainMessage into a format compatible with the Solana
+// Encode encodes the NaclBoxBlockchainMessage into a format compatible with the Solana
 // memo instruction.
-func (m *BlockchainMessage) Encode() ([]byte, error) {
+func (m *NaclBoxBlockchainMessage) Encode() ([]byte, error) {
 	var buffer []byte
 
-	buffer = append(buffer, uint8(m.Type))
+	buffer = append(buffer, uint8(NaclBoxType))
 
 	buffer = append(buffer, m.Version)
 
@@ -113,8 +113,8 @@ func (m *BlockchainMessage) Encode() ([]byte, error) {
 	return base122.Encode(buffer)
 }
 
-// ToProto creates the proto representation of a BlockchainMessage
-func (m *BlockchainMessage) ToProto(
+// ToProto creates the proto representation of a NaclBoxBlockchainMessage
+func (m *NaclBoxBlockchainMessage) ToProto(
 	sender *common.Account,
 	signature string,
 	ts time.Time,
@@ -148,8 +148,8 @@ func (m *BlockchainMessage) ToProto(
 	return msg, nil
 }
 
-// DecodeBlockchainMessages attempts to decode a byte payload into a BlockchainMessage
-func DecodeBlockchainMessage(payload []byte) (*BlockchainMessage, error) {
+// DecodeNaclBoxBlockchainMessage attempts to decode a byte payload into a NaclBoxBlockchainMessage
+func DecodeNaclBoxBlockchainMessage(payload []byte) (*NaclBoxBlockchainMessage, error) {
 	errInvalidPayload := errors.New("invalid payload")
 
 	buffer, err := base122.Decode(payload)
@@ -162,8 +162,8 @@ func DecodeBlockchainMessage(payload []byte) (*BlockchainMessage, error) {
 	}
 
 	messageType := BlockchainMessageType(buffer[0])
-	if messageType != NaclBoxBlockchainMessage {
-		return nil, errors.Errorf("message type %d is not supported", messageType)
+	if messageType != NaclBoxType {
+		return nil, errors.Errorf("expected message type %d", NaclBoxType)
 	}
 
 	// 1  + (messageType)
@@ -181,7 +181,7 @@ func DecodeBlockchainMessage(payload []byte) (*BlockchainMessage, error) {
 
 	version := buffer[1]
 	if version != 0 {
-		return nil, errors.Errorf("message type %d version %d is not supported", version, messageType)
+		return nil, errors.Errorf("version %d is not supported", version)
 	}
 
 	flags := binary.LittleEndian.Uint32(buffer[2:6])
@@ -209,12 +209,11 @@ func DecodeBlockchainMessage(payload []byte) (*BlockchainMessage, error) {
 	offset += len(nonce)
 
 	encryptedMessage := buffer[offset:]
-	if len(encryptedMessage)+len(senderDomain) > maxDynamicContentSize {
+	if len(encryptedMessage)+len(senderDomain) > maxNaclBoxDynamicContentSize {
 		return nil, errors.New("encrypted message length exceeds limit")
 	}
 
-	return &BlockchainMessage{
-		Type:             messageType,
+	return &NaclBoxBlockchainMessage{
 		Version:          version,
 		Flags:            flags,
 		SenderDomain:     senderDomain,
@@ -259,4 +258,86 @@ func decryptMessageUsingNaclBox(receiver, sender *common.Account, encryptedPaylo
 		return "", errors.New("failed decrypting payload")
 	}
 	return string(message), nil
+}
+
+type FiatOnrampPurchaseMessage struct {
+	Version uint8
+	Flags   uint32
+	Nonce   uuid.UUID
+}
+
+// NewFiatOnrampPurchaseMessage returns a new BlockchainMessage used to indicate
+// fulfillmenet of a fiat purchase by an onramp provider.
+func NewFiatOnrampPurchaseMessage(nonce uuid.UUID) (*FiatOnrampPurchaseMessage, error) {
+	return &FiatOnrampPurchaseMessage{
+		Version: 0,
+		Flags:   0,
+		Nonce:   nonce,
+	}, nil
+}
+
+// Encode encodes the FiatOnrampPurchaseMessage into a format compatible with the Solana
+// memo instruction.
+func (m *FiatOnrampPurchaseMessage) Encode() ([]byte, error) {
+	var buffer []byte
+
+	buffer = append(buffer, uint8(FiatOnrampPurchase))
+
+	buffer = append(buffer, m.Version)
+
+	var encodedFlags [4]byte
+	binary.LittleEndian.PutUint32(encodedFlags[:], m.Flags)
+	buffer = append(buffer, encodedFlags[:]...)
+
+	buffer = append(buffer, m.Nonce[:]...)
+
+	// Because memo requires UTF-8, and this is more space efficient than base64
+	return base122.Encode(buffer)
+}
+
+// DecodeFiatOnrampPurchaseMessage attempts to decode a byte payload into a FiatOnrampPurchaseMessage
+func DecodeFiatOnrampPurchaseMessage(payload []byte) (*FiatOnrampPurchaseMessage, error) {
+	errInvalidPayload := errors.New("invalid payload")
+
+	buffer, err := base122.Decode(payload)
+	if err != nil {
+		return nil, errors.Wrap(err, errInvalidPayload.Error())
+	}
+
+	if len(buffer) == 0 {
+		return nil, errInvalidPayload
+	}
+
+	messageType := BlockchainMessageType(buffer[0])
+	if messageType != FiatOnrampPurchase {
+		return nil, errors.Errorf("expected message type %d", FiatOnrampPurchase)
+	}
+
+	// 1  + (messageType)
+	// 1  + (version)
+	// 4  + (flags)
+	// 16  + (nonce)
+	const messageSize = 22
+
+	if len(buffer) != messageSize {
+		return nil, errInvalidPayload
+	}
+
+	version := buffer[1]
+	if version != 0 {
+		return nil, errors.Errorf("version %d is not supported", version)
+	}
+
+	flags := binary.LittleEndian.Uint32(buffer[2:6])
+
+	nonce, err := uuid.FromBytes(buffer[6:])
+	if err != nil {
+		return nil, errors.Wrap(err, "nonce is invalid")
+	}
+
+	return &FiatOnrampPurchaseMessage{
+		Version: version,
+		Flags:   flags,
+		Nonce:   nonce,
+	}, nil
 }
