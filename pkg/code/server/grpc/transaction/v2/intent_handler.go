@@ -2931,6 +2931,10 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 
 // Generically validates fee payments as much as possible, but won't cover any
 // intent-specific nuances (eg. where the fee payment comes from)
+//
+// This assumes source and destination accounts interacting with fees and the
+// remaining amount don't have minimum bucket size requirements. Intent validation
+// logic is responsible for these checks and guarantees.
 func validateFeePayments(
 	ctx context.Context,
 	data code_data.Provider,
