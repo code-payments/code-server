@@ -3246,7 +3246,7 @@ func TestSubmitIntent_PaymentRequest_Validation(t *testing.T) {
 	phone1.conf.simulateAdditionalFees = true
 	phone1.conf.simulateInvalidThirdPartyFeeAmount = true
 	submitIntentCall = phone1.privatelyWithdraw123KinToExternalWallet(t)
-	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: fee payment amount must be for 250 bps of total amount")
+	submitIntentCall.assertInvalidIntentResponse(t, "actions[4]: fee payment amount must be for 349 bps of total amount rounded down to nearest kin")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	phone1.resetConfig()

@@ -3031,8 +3031,9 @@ func validateFeePayments(
 		feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
 
 		requestedAmount := (uint64(additionalRequestedFees[i].BasisPoints) * intentRecord.SendPrivatePaymentMetadata.Quantity) / 10000
+		requestedAmount = requestedAmount - (requestedAmount % kin.QuarksPerKin)
 		if feeAmount != int64(requestedAmount) {
-			return newActionValidationErrorf(additionalFee.Action, "fee payment amount must be for %d bps of total amount", additionalRequestedFees[i].BasisPoints)
+			return newActionValidationErrorf(additionalFee.Action, "fee payment amount must be for %d bps of total amount rounded down to nearest kin", additionalRequestedFees[i].BasisPoints)
 		}
 	}
 

@@ -2647,6 +2647,7 @@ func (p *phoneTestEnv) privatelyWithdraw123KinToExternalWallet(t *testing.T) sub
 		if p.conf.simulateAdditionalFees {
 			for i := 0; i < 3; i++ {
 				requestedFee := (uint64(defaultTestThirdPartyFeeBps) * totalAmount) / 10000
+				requestedFee = requestedFee - (requestedFee % kin.QuarksPerKin)
 				feePayments += requestedFee
 				actions = append(actions, &transactionpb.Action{
 					// Pay any fees when applicable
@@ -3182,6 +3183,7 @@ func (p *phoneTestEnv) privatelyWithdraw777KinToCodeUser(t *testing.T, receiver 
 		if p.conf.simulateAdditionalFees {
 			for i := 0; i < 3; i++ {
 				requestedFee := (uint64(defaultTestThirdPartyFeeBps) * totalAmount) / 10000
+				requestedFee = requestedFee - (requestedFee % kin.QuarksPerKin)
 				feePayments += requestedFee
 				actions = append(actions, &transactionpb.Action{
 					// Pay any fees when applicable
@@ -3336,6 +3338,7 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 		if p.conf.simulateAdditionalFees {
 			for i := 0; i < 3; i++ {
 				requestedFee := (uint64(defaultTestThirdPartyFeeBps) * totalAmount) / 10000
+				requestedFee = requestedFee - (requestedFee % kin.QuarksPerKin)
 				feePayments += requestedFee
 				actions = append(actions, &transactionpb.Action{
 					// Pay any fees when applicable
@@ -4798,7 +4801,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 					bps := defaultTestThirdPartyFeeBps
 					if p.conf.simulateInvalidThirdPartyFeeAmount {
-						bps += 1
+						bps += 100
 					}
 
 					paymentRequestRecord.Fees = append(paymentRequestRecord.Fees, &paymentrequest.Fee{
