@@ -108,7 +108,7 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				return nil
 			}
 
-			blockchainMessage, err := thirdparty.DecodeBlockchainMessage(memoIxn.Data)
+			blockchainMessage, err := thirdparty.DecodeNaclBoxBlockchainMessage(memoIxn.Data)
 			if err != nil {
 				return nil
 			}

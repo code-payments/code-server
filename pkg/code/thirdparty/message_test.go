@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,7 +26,6 @@ func TestNaclBoxBlockchainMessage_RoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	assert.Equal(t, NaclBoxBlockchainMessage, blockchainMessage.Type)
 	assert.EqualValues(t, 0, blockchainMessage.Version)
 	assert.EqualValues(t, 0, blockchainMessage.Flags)
 	assert.Equal(t, senderDomain, blockchainMessage.SenderDomain)
@@ -38,10 +38,9 @@ func TestNaclBoxBlockchainMessage_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, strings.Contains(string(encodedBytes), plaintextMessage))
 
-	decodedBlockchainMessage, err := DecodeBlockchainMessage(encodedBytes)
+	decodedBlockchainMessage, err := DecodeNaclBoxBlockchainMessage(encodedBytes)
 	require.NoError(t, err)
 
-	assert.Equal(t, blockchainMessage.Type, decodedBlockchainMessage.Type)
 	assert.Equal(t, blockchainMessage.Version, decodedBlockchainMessage.Version)
 	assert.Equal(t, blockchainMessage.Flags, decodedBlockchainMessage.Flags)
 	assert.Equal(t, blockchainMessage.SenderDomain, decodedBlockchainMessage.SenderDomain)
@@ -52,4 +51,25 @@ func TestNaclBoxBlockchainMessage_RoundTrip(t *testing.T) {
 	decrypted, err := decryptMessageUsingNaclBox(receiver, sender, decodedBlockchainMessage.EncryptedMessage, [24]byte(decodedBlockchainMessage.Nonce))
 	require.NoError(t, err)
 	assert.Equal(t, plaintextMessage, string(decrypted))
+}
+
+func TestFiatOnrampPurchaseMessage_RoundTrip(t *testing.T) {
+	nonce := uuid.New()
+
+	blockchainMessage, err := NewFiatOnrampPurchaseMessage(nonce)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 0, blockchainMessage.Version)
+	assert.EqualValues(t, 0, blockchainMessage.Flags)
+	assert.Equal(t, nonce, blockchainMessage.Nonce)
+
+	encodedBytes, err := blockchainMessage.Encode()
+	require.NoError(t, err)
+
+	decodedBlockchainMessage, err := DecodeFiatOnrampPurchaseMessage(encodedBytes)
+	require.NoError(t, err)
+
+	assert.Equal(t, blockchainMessage.Version, decodedBlockchainMessage.Version)
+	assert.Equal(t, blockchainMessage.Flags, decodedBlockchainMessage.Flags)
+	assert.Equal(t, blockchainMessage.Nonce, decodedBlockchainMessage.Nonce)
 }
