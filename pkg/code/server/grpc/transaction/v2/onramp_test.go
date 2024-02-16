@@ -46,6 +46,7 @@ func TestDeclareFiatOnrampPurchaseAttempt_InvalidPurchaseAmount(t *testing.T) {
 	nonce := uuid.New()
 
 	assert.Equal(t, transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_UNSUPPORTED_CURRENCY, phone.declareFiatOnRampPurchase(t, "aaa", 10.00, nonce))
+	assert.Equal(t, transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_UNSUPPORTED_CURRENCY, phone.declareFiatOnRampPurchase(t, currency_lib.KIN, 1.00, nonce))
 	assert.Equal(t, transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_AMOUNT_EXCEEDS_MAXIMUM, phone.declareFiatOnRampPurchase(t, currency_lib.USD, 250.01, nonce))
 
 	server.assertFiatOnrampPurchasedDetailsNotSaved(t, nonce)

@@ -2,6 +2,7 @@ package transaction_v2
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,7 +49,7 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 	}
 	log = log.WithField("phone_number", verificationRecord.PhoneNumber)
 
-	currency := currency_lib.Code(req.PurchaseAmount.Currency)
+	currency := currency_lib.Code(strings.ToLower(req.PurchaseAmount.Currency))
 	amount := req.PurchaseAmount.NativeAmount
 
 	nonce, err := uuid.FromBytes(req.Nonce.Value)
@@ -60,7 +61,7 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 
 	// Validate the purchase amount makes sense within defined limits
 	sendLimit, ok := limit.SendLimits[currency]
-	if !ok {
+	if !ok || currency == currency_lib.KIN {
 		return &transactionpb.DeclareFiatOnrampPurchaseAttemptResponse{
 			Result: transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_UNSUPPORTED_CURRENCY,
 		}, nil
