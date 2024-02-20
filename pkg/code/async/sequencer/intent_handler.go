@@ -112,20 +112,20 @@ func (h *SendPrivatePaymentIntentHandler) maybeMarkTempOutgoingAccountActionsAsA
 	// account and optional fee to Code, respectively, all coming from the temp
 	// outgoing account.
 	var paymentToDestinationAction *action.Record
-	var feePaymentAction *action.Record
+	var feePaymentActions []*action.Record
 	for _, actionRecord := range actionsRecords {
 		switch actionRecord.ActionType {
 		case action.NoPrivacyWithdraw:
 			paymentToDestinationAction = actionRecord
 		case action.NoPrivacyTransfer:
-			feePaymentAction = actionRecord
+			feePaymentActions = append(feePaymentActions, actionRecord)
 		}
 	}
 
 	if paymentToDestinationAction == nil {
 		return errors.New("payment to destination action not found")
 	}
-	if feePaymentAction == nil && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+	if len(feePaymentActions) == 0 && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
 		return errors.New("fee payment action not found")
 	}
 
@@ -145,8 +145,8 @@ func (h *SendPrivatePaymentIntentHandler) maybeMarkTempOutgoingAccountActionsAsA
 		paymentToDestinationFulfillment = fulfillmentRecords[0]
 	}
 
-	var feePaymentFulfillment *fulfillment.Record
-	if feePaymentAction != nil {
+	var feePaymentFulfillments []*fulfillment.Record
+	for _, feePaymentAction := range feePaymentActions {
 		fulfillmentRecords, err := h.data.GetAllFulfillmentsByTypeAndAction(
 			ctx,
 			fulfillment.NoPrivacyTransferWithAuthority,
@@ -156,13 +156,13 @@ func (h *SendPrivatePaymentIntentHandler) maybeMarkTempOutgoingAccountActionsAsA
 		if err != nil {
 			return err
 		} else if err == nil && fulfillmentRecords[0].DisableActiveScheduling {
-			feePaymentFulfillment = fulfillmentRecords[0]
+			feePaymentFulfillments = append(feePaymentFulfillments, fulfillmentRecords[0])
 		}
 	}
 
 	// Short circuit if there's nothing to update to avoid redundant intent
 	// state checks spanning all actions.
-	if paymentToDestinationFulfillment == nil && feePaymentFulfillment == nil {
+	if paymentToDestinationFulfillment == nil && len(feePaymentFulfillments) == 0 {
 		return nil
 	}
 
@@ -206,7 +206,7 @@ func (h *SendPrivatePaymentIntentHandler) maybeMarkTempOutgoingAccountActionsAsA
 
 	// Mark fulfillments as actively scheduled when at least all treasury payments
 	// to the temp outgoing account are in flight.
-	if feePaymentFulfillment != nil {
+	for _, feePaymentFulfillment := range feePaymentFulfillments {
 		err = markFulfillmentAsActivelyScheduled(ctx, h.data, feePaymentFulfillment)
 		if err != nil {
 			return err
