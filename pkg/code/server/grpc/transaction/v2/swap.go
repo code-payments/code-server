@@ -153,7 +153,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	if initiateReq.Limit == 0 {
 		amountToSwap = swapSourceBalance
 	} else {
-		amountToSwap = initiateReq.Limit
+		return handleSwapError(streamer, status.Error(codes.InvalidArgument, "only unlimited swap is supported"))
 	}
 	if amountToSwap == 0 {
 		return handleSwapError(streamer, newSwapValidationError("usdc account balance is 0"))

@@ -7,15 +7,13 @@ import (
 	"github.com/pkg/errors"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
-	"github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/localization"
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/usdc"
 )
 
 // SendCodeTeamMessage sends a message to the Code Team chat.
@@ -83,7 +81,11 @@ func NewUsdcBeingConvertedMessage() (*chatpb.ChatMessage, error) {
 
 // ToKinAvailableForUseMessage turns details of a USDC swap transaction into a
 // chat message to be inserted into the Code Team chat.
-func ToKinAvailableForUseMessage(signature string, usdcQuarksSwapped uint64, ts time.Time) (*chatpb.ChatMessage, error) {
+func ToKinAvailableForUseMessage(signature string, ts time.Time, purchases ...*transactionpb.ExchangeDataWithoutRate) (*chatpb.ChatMessage, error) {
+	if len(purchases) == 0 {
+		return nil, errors.New("no purchases for kin available chat message")
+	}
+
 	content := []*chatpb.Content{
 		{
 			Type: &chatpb.Content_Localized{
@@ -92,19 +94,18 @@ func ToKinAvailableForUseMessage(signature string, usdcQuarksSwapped uint64, ts 
 				},
 			},
 		},
-		{
+	}
+	for _, purchase := range purchases {
+		content = append(content, &chatpb.Content{
 			Type: &chatpb.Content_ExchangeData{
 				ExchangeData: &chatpb.ExchangeDataContent{
 					Verb: chatpb.ExchangeDataContent_PURCHASED,
 					ExchangeData: &chatpb.ExchangeDataContent_Partial{
-						Partial: &transaction.ExchangeDataWithoutRate{
-							Currency:     string(currency_lib.USD),
-							NativeAmount: float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc),
-						},
+						Partial: purchase,
 					},
 				},
 			},
-		},
+		})
 	}
 	return newProtoChatMessage(signature, content, ts)
 }
