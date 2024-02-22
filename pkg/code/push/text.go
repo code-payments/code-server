@@ -16,6 +16,7 @@ import (
 // push notification to the devices linked to an owner account. Keys can be provided
 // in either the iOS or Android format, and will be translated accordingly.
 //
+// todo: Deprecate with server-side localization
 // todo: Duplicated code with other send push utitilies
 func sendLocalizedPushNotificationToOwner(
 	ctx context.Context,
@@ -78,8 +79,7 @@ func sendLocalizedPushNotificationToOwner(
 }
 
 // sendBasicPushNotificationToOwner is a generic utility for sending push notification
-// to the devices linked to an owner account. This should be used early in features that
-// don't have localization, since titles & body are the direct English text.
+// to the devices linked to an owner account.
 //
 // todo: Duplicated code with other send push utitilies
 func sendBasicPushNotificationToOwner(
