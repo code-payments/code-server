@@ -3,10 +3,10 @@ package push
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/language"
 	"google.golang.org/protobuf/proto"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
@@ -18,9 +18,13 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
+
+// todo: fetch from a user settings DB table
+var simulatedUserLocale = language.English
 
 // SendDepositPushNotification sends a push notification for received deposits
 func SendDepositPushNotification(
@@ -71,17 +75,28 @@ func SendDepositPushNotification(
 		return errors.Wrap(err, "error getting chat record")
 	}
 
-	titleKey := localization.PushTitleDepositReceived
-	bodyKey := localization.PushSubtitleDepositReceived
-	kinAmountArg := fmt.Sprintf("%d", kin.FromQuarks(quarks))
-	return sendLocalizedPushNotificationToOwner(
+	localizedAmount, err := localization.FormatFiat(simulatedUserLocale, currency_lib.KIN, float64(kin.FromQuarks(quarks)), false)
+	if err != nil {
+		return nil
+	}
+
+	localizedPushTitle, err := localization.LocalizeKey(simulatedUserLocale, localization.PushTitleDepositReceived)
+	if err != nil {
+		return nil
+	}
+
+	localizedPushBody, err := localization.LocalizeKey(simulatedUserLocale, localization.PushSubtitleDepositReceived, localizedAmount)
+	if err != nil {
+		return nil
+	}
+
+	return sendBasicPushNotificationToOwner(
 		ctx,
 		data,
 		pusher,
 		owner,
-		titleKey,
-		bodyKey,
-		kinAmountArg,
+		localizedPushTitle,
+		localizedPushBody,
 	)
 }
 
@@ -134,20 +149,33 @@ func SendGiftCardReturnedPushNotification(
 		return errors.Wrap(err, "error getting chat record")
 	}
 
-	titleKey := localization.PushTitleKinReturned
-	bodyKey := localization.PushSubtitleKinReturned
-	amountArg := getAmountArg(
-		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.NativeAmount,
+	localizedAmount, err := localization.FormatFiat(
+		simulatedUserLocale,
 		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.ExchangeCurrency,
+		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.NativeAmount,
+		true,
 	)
-	return sendLocalizedPushNotificationToOwner(
+	if err != nil {
+		return nil
+	}
+
+	localizedPushTitle, err := localization.LocalizeKey(simulatedUserLocale, localization.PushTitleKinReturned)
+	if err != nil {
+		return nil
+	}
+
+	localizedPushBody, err := localization.LocalizeKey(simulatedUserLocale, localization.PushSubtitleKinReturned, localizedAmount)
+	if err != nil {
+		return nil
+	}
+
+	return sendBasicPushNotificationToOwner(
 		ctx,
 		data,
 		pusher,
 		owner,
-		titleKey,
-		bodyKey,
-		amountArg,
+		localizedPushTitle,
+		localizedPushBody,
 	)
 }
 
@@ -166,18 +194,6 @@ func SendChatMessagePushNotification(
 		"chat":   chatTitle,
 	})
 
-	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
-	if ok {
-		chatTitle = chatProperties.TitleLocalizationKey
-	} else {
-		domainDisplayName, err := thirdparty.GetDomainDisplayName(chatTitle)
-		if err == nil {
-			chatTitle = domainDisplayName
-		} else {
-			log.WithError(err).Warn("failure getting domain display name")
-		}
-	}
-
 	// Best-effort try to update the badge count before pushing message content
 	//
 	// Note: Only chat messages generate badge counts
@@ -186,16 +202,88 @@ func SendChatMessagePushNotification(
 		log.WithError(err).Warn("failure updating badge count on device")
 	}
 
+	var localizedPushTitle string
+
+	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
+	if ok {
+		localized, err := localization.LocalizeKey(simulatedUserLocale, chatProperties.TitleLocalizationKey)
+		if err != nil {
+			return nil
+		}
+		localizedPushTitle = localized
+	} else {
+		domainDisplayName, err := thirdparty.GetDomainDisplayName(chatTitle)
+		if err == nil {
+			localizedPushTitle = domainDisplayName
+		} else {
+			return nil
+		}
+	}
+
 	var anyErrorPushingContent bool
 	for _, content := range chatMessage.Content {
-		marshalledContent, err := proto.Marshal(content)
+		var contentToPush *chatpb.Content
+		switch typedContent := content.Type.(type) {
+		case *chatpb.Content_Localized:
+			localizedPushBody, err := localization.LocalizeKey(simulatedUserLocale, typedContent.Localized.Key)
+			if err != nil {
+				continue
+			}
+
+			contentToPush = &chatpb.Content{
+				Type: &chatpb.Content_Localized{
+					Localized: &chatpb.LocalizedContent{
+						Key: localizedPushBody,
+					},
+				},
+			}
+		case *chatpb.Content_ExchangeData:
+			var currencyCode currency_lib.Code
+			var nativeAmount float64
+			if typedContent.ExchangeData.GetExact() != nil {
+				exchangeData := typedContent.ExchangeData.GetExact()
+				currencyCode = currency_lib.Code(exchangeData.Currency)
+				nativeAmount = exchangeData.NativeAmount
+			} else {
+				exchangeData := typedContent.ExchangeData.GetPartial()
+				currencyCode = currency_lib.Code(exchangeData.Currency)
+				nativeAmount = exchangeData.NativeAmount
+			}
+
+			localizedPushBody, err := localization.LocalizeFiatWithVerb(
+				simulatedUserLocale,
+				typedContent.ExchangeData.Verb,
+				currencyCode,
+				nativeAmount,
+				true,
+			)
+			if err == nil {
+				continue
+			}
+
+			contentToPush = &chatpb.Content{
+				Type: &chatpb.Content_Localized{
+					Localized: &chatpb.LocalizedContent{
+						Key: localizedPushBody,
+					},
+				},
+			}
+		case *chatpb.Content_NaclBox:
+			contentToPush = content
+		}
+
+		if contentToPush == nil {
+			continue
+		}
+
+		marshalledContent, err := proto.Marshal(contentToPush)
 		if err != nil {
 			log.WithError(err).Warn("failure marshalling chat content")
 			return err
 		}
 
 		kvs := map[string]string{
-			"chat_title":      chatTitle,
+			"chat_title":      localizedPushTitle,
 			"message_content": base64.StdEncoding.EncodeToString(marshalledContent),
 		}
 
@@ -213,6 +301,7 @@ func SendChatMessagePushNotification(
 			log.WithError(err).Warn("failure sending data push notification")
 		}
 	}
+
 	if anyErrorPushingContent {
 		return errors.New("at least one piece of content failed to push")
 	}
