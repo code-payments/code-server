@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -33,6 +34,14 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+
+	localization.LoadTestKeys(map[language.Tag]map[string]string{
+		language.English: {
+			localization.ChatTitleCodeTeam: "Code Team",
+			"msg.body.key":                 "localized message body content",
+		},
+	})
+	defer localization.ResetKeys()
 
 	testExternalAppDomain := "test.com"
 
@@ -182,7 +191,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	require.Len(t, getChatsResp.Chats, 4)
 
 	assert.Equal(t, codeTeamChatId[:], getChatsResp.Chats[0].ChatId.Value)
-	assert.Equal(t, localization.ChatTitleCodeTeam, getChatsResp.Chats[0].GetLocalized().KeyOrText)
+	assert.Equal(t, "Code Team", getChatsResp.Chats[0].GetLocalized().KeyOrText)
 	assert.Nil(t, getChatsResp.Chats[0].ReadPointer)
 	assert.EqualValues(t, 1, getChatsResp.Chats[0].NumUnread)
 	assert.False(t, getChatsResp.Chats[0].IsMuted)
@@ -227,6 +236,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	require.Len(t, getMessagesResp.Messages, 1)
 	assert.Equal(t, expectedCodeTeamMessage.MessageId.Value, getMessagesResp.Messages[0].Cursor.Value)
 	getMessagesResp.Messages[0].Cursor = nil
+	expectedCodeTeamMessage.Content[0].GetLocalized().KeyOrText = "localized message body content"
 	assert.True(t, proto.Equal(expectedCodeTeamMessage, getMessagesResp.Messages[0]))
 
 	getMessagesResp, err = env.client.GetMessages(env.ctx, getCashTransactionsMessagesReq)

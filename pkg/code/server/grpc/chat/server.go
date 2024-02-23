@@ -6,6 +6,7 @@ import (
 
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/language"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -27,6 +28,9 @@ import (
 const (
 	maxPageSize = 100
 )
+
+// todo: fetch from a user settings DB table
+var simulatedUserLocale = language.English
 
 type server struct {
 	log  *logrus.Entry
@@ -142,7 +146,11 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
 				Localized: &chatpb.LocalizedContent{
-					KeyOrText: localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
+					KeyOrText: localization.LocalizeKeyWithFallback(
+						simulatedUserLocale,
+						localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
+						chatProperties.TitleLocalizationKey,
+					),
 				},
 			}
 			protoMetadata.CanMute = chatProperties.CanMute
@@ -283,7 +291,11 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		for _, content := range protoChatMessage.Content {
 			switch typed := content.Type.(type) {
 			case *chatpb.Content_Localized:
-				typed.Localized.KeyOrText = localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText)
+				typed.Localized.KeyOrText = localization.LocalizeKeyWithFallback(
+					simulatedUserLocale,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
+					typed.Localized.KeyOrText,
+				)
 			}
 		}
 

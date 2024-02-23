@@ -98,6 +98,35 @@ func LoadKeys(directory string) error {
 	return nil
 }
 
+// LoadTestKeys is a utility for injecting test localization keys
+func LoadTestKeys(kvsByLocale map[language.Tag]map[string]string) {
+	bundleMu.Lock()
+	defer bundleMu.Unlock()
+
+	newBundle := i18n.NewBundle(language.English)
+
+	for locale, kvs := range kvsByLocale {
+		messages := make([]*i18n.Message, 0)
+		for k, v := range kvs {
+			messages = append(messages, &i18n.Message{
+				ID:    k,
+				Other: v,
+			})
+		}
+		newBundle.AddMessages(locale, messages...)
+	}
+
+	bundle = newBundle
+}
+
+// ResetKeys resets localization to an empty mapping
+func ResetKeys() {
+	bundleMu.Lock()
+	defer bundleMu.Unlock()
+
+	bundle = i18n.NewBundle(language.English)
+}
+
 // LocalizeKey localizes a key to the corresponding string in the provided locale.
 // An optional set of string parameters can be provided to be replaced in the string.
 // Currenctly, these arguments must be localized outside of this function.
@@ -117,13 +146,23 @@ func LocalizeKey(locale language.Tag, key string, args ...string) (string, error
 		MessageID: key,
 	}
 
-	value, err := localizer.Localize(&localizeConfigInvite)
+	localized, err := localizer.Localize(&localizeConfigInvite)
 	if err != nil {
 		return "", err
 	}
 
 	for _, arg := range args {
-		value = strings.Replace(value, "%@", arg, 1)
+		localized = strings.Replace(localized, "%@", arg, 1)
 	}
-	return value, nil
+	return localized, nil
+}
+
+// LocalizeKeyWithFallback is like LocalizeKey, but returns defaultValue if
+// localization fails.
+func LocalizeKeyWithFallback(locale language.Tag, defaultValue, key string, args ...string) string {
+	localized, err := LocalizeKey(locale, key, args...)
+	if err != nil {
+		return defaultValue
+	}
+	return localized
 }
