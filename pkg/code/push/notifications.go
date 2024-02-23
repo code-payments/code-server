@@ -24,7 +24,7 @@ import (
 )
 
 // todo: fetch from a user settings DB table
-var simulatedUserLocale = language.English
+var SimulatedUserLocale = language.English
 
 // SendDepositPushNotification sends a push notification for received deposits
 func SendDepositPushNotification(
@@ -75,17 +75,17 @@ func SendDepositPushNotification(
 		return errors.Wrap(err, "error getting chat record")
 	}
 
-	localizedAmount, err := localization.FormatFiat(simulatedUserLocale, currency_lib.KIN, float64(kin.FromQuarks(quarks)), false)
+	localizedAmount, err := localization.FormatFiat(SimulatedUserLocale, currency_lib.KIN, float64(kin.FromQuarks(quarks)), false)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushTitle, err := localization.LocalizeKey(simulatedUserLocale, localization.PushTitleDepositReceived)
+	localizedPushTitle, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushTitleDepositReceived)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushBody, err := localization.LocalizeKey(simulatedUserLocale, localization.PushSubtitleDepositReceived, localizedAmount)
+	localizedPushBody, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushSubtitleDepositReceived, localizedAmount)
 	if err != nil {
 		return nil
 	}
@@ -150,7 +150,7 @@ func SendGiftCardReturnedPushNotification(
 	}
 
 	localizedAmount, err := localization.FormatFiat(
-		simulatedUserLocale,
+		SimulatedUserLocale,
 		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.ExchangeCurrency,
 		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.NativeAmount,
 		true,
@@ -159,12 +159,12 @@ func SendGiftCardReturnedPushNotification(
 		return nil
 	}
 
-	localizedPushTitle, err := localization.LocalizeKey(simulatedUserLocale, localization.PushTitleKinReturned)
+	localizedPushTitle, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushTitleKinReturned)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushBody, err := localization.LocalizeKey(simulatedUserLocale, localization.PushSubtitleKinReturned, localizedAmount)
+	localizedPushBody, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushSubtitleKinReturned, localizedAmount)
 	if err != nil {
 		return nil
 	}
@@ -206,7 +206,7 @@ func SendChatMessagePushNotification(
 
 	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
 	if ok {
-		localized, err := localization.LocalizeKey(simulatedUserLocale, chatProperties.TitleLocalizationKey)
+		localized, err := localization.LocalizeKey(SimulatedUserLocale, chatProperties.TitleLocalizationKey)
 		if err != nil {
 			return nil
 		}
@@ -225,7 +225,7 @@ func SendChatMessagePushNotification(
 		var contentToPush *chatpb.Content
 		switch typedContent := content.Type.(type) {
 		case *chatpb.Content_Localized:
-			localizedPushBody, err := localization.LocalizeKey(simulatedUserLocale, typedContent.Localized.KeyOrText)
+			localizedPushBody, err := localization.LocalizeKey(SimulatedUserLocale, typedContent.Localized.KeyOrText)
 			if err != nil {
 				continue
 			}
@@ -251,7 +251,7 @@ func SendChatMessagePushNotification(
 			}
 
 			localizedPushBody, err := localization.LocalizeFiatWithVerb(
-				simulatedUserLocale,
+				SimulatedUserLocale,
 				typedContent.ExchangeData.Verb,
 				currencyCode,
 				nativeAmount,

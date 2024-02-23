@@ -30,7 +30,7 @@ const (
 )
 
 // todo: fetch from a user settings DB table
-var simulatedUserLocale = language.English
+var SimulatedUserLocale = language.English
 
 type server struct {
 	log  *logrus.Entry
@@ -147,7 +147,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
 				Localized: &chatpb.LocalizedContent{
 					KeyOrText: localization.LocalizeKeyWithFallback(
-						simulatedUserLocale,
+						SimulatedUserLocale,
 						localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
 						chatProperties.TitleLocalizationKey,
 					),
@@ -292,7 +292,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 			switch typed := content.Type.(type) {
 			case *chatpb.Content_Localized:
 				typed.Localized.KeyOrText = localization.LocalizeKeyWithFallback(
-					simulatedUserLocale,
+					SimulatedUserLocale,
 					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
 					typed.Localized.KeyOrText,
 				)
