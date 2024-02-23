@@ -257,7 +257,7 @@ func SendChatMessagePushNotification(
 				nativeAmount,
 				true,
 			)
-			if err == nil {
+			if err != nil {
 				continue
 			}
 
