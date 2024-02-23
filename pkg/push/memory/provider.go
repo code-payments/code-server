@@ -44,7 +44,7 @@ func (p *provider) SendLocalizedAndroidPush(ctx context.Context, pushToken, titl
 	return simulateSendingPush(pushToken)
 }
 
-// SendLocalizedAndroidPush implements push.Provider.SendLocalizedAndroidPush
+// SendMutableAPNSPush implements push.Provider.SendMutableAPNSPush
 func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error {
 	return simulateSendingPush(pushToken)
 }
