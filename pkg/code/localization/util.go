@@ -24,3 +24,7 @@ func isRtlScript(t language.Tag) bool {
 	}
 	return false
 }
+
+func isDefaultLocale(locale language.Tag) bool {
+	return locale.String() == defaultLocale.String()
+}

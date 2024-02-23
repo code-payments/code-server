@@ -65,6 +65,8 @@ const (
 var (
 	bundleMu sync.RWMutex
 	bundle   *i18n.Bundle
+
+	defaultLocale = language.English
 )
 
 // LoadKeys loads localization key-value pairs from the provided directory.
@@ -78,7 +80,7 @@ func LoadKeys(directory string) error {
 	bundleMu.Lock()
 	defer bundleMu.Unlock()
 
-	newBundle := i18n.NewBundle(language.English)
+	newBundle := i18n.NewBundle(defaultLocale)
 
 	dirEntries, err := os.ReadDir(directory)
 	if err != nil {
@@ -127,17 +129,12 @@ func ResetKeys() {
 	bundle = i18n.NewBundle(language.English)
 }
 
-// LocalizeKey localizes a key to the corresponding string in the provided locale.
-// An optional set of string parameters can be provided to be replaced in the string.
-// Currenctly, these arguments must be localized outside of this function.
-//
-// todo: Generic argument handling, so all localization can happen in here
-func LocalizeKey(locale language.Tag, key string, args ...string) (string, error) {
+func localizeKey(locale language.Tag, key string, args ...string) (string, *language.Tag, error) {
 	bundleMu.RLock()
 	defer bundleMu.RUnlock()
 
 	if bundle == nil {
-		return "", errors.New("localization bundle not configured")
+		return "", nil, errors.New("localization bundle not configured")
 	}
 
 	localizer := i18n.NewLocalizer(bundle, locale.String())
@@ -146,21 +143,30 @@ func LocalizeKey(locale language.Tag, key string, args ...string) (string, error
 		MessageID: key,
 	}
 
-	localized, err := localizer.Localize(&localizeConfigInvite)
+	localized, tag, err := localizer.LocalizeWithTag(&localizeConfigInvite)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	for _, arg := range args {
 		localized = strings.Replace(localized, "%@", arg, 1)
 	}
-	return localized, nil
+	return localized, &tag, nil
 }
 
-// LocalizeKeyWithFallback is like LocalizeKey, but returns defaultValue if
-// localization fails.
-func LocalizeKeyWithFallback(locale language.Tag, defaultValue, key string, args ...string) string {
-	localized, err := LocalizeKey(locale, key, args...)
+// Localize localizes a key to the corresponding string in the provided locale.
+// An optional set of string parameters can be provided to be replaced in the string.
+// Currenctly, these arguments must be localized outside of this function.
+//
+// todo: Generic argument handling, so all localization can happen in here
+func Localize(locale language.Tag, key string, args ...string) (string, error) {
+	localized, _, err := localizeKey(locale, key, args...)
+	return localized, err
+}
+
+// LocalizeWithFallback is like Localize, but returns defaultValue on error.
+func LocalizeWithFallback(locale language.Tag, defaultValue, key string, args ...string) string {
+	localized, _, err := localizeKey(locale, key, args...)
 	if err != nil {
 		return defaultValue
 	}

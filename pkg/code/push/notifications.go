@@ -80,12 +80,12 @@ func SendDepositPushNotification(
 		return nil
 	}
 
-	localizedPushTitle, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushTitleDepositReceived)
+	localizedPushTitle, err := localization.Localize(SimulatedUserLocale, localization.PushTitleDepositReceived)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushBody, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushSubtitleDepositReceived, localizedAmount)
+	localizedPushBody, err := localization.Localize(SimulatedUserLocale, localization.PushSubtitleDepositReceived, localizedAmount)
 	if err != nil {
 		return nil
 	}
@@ -159,12 +159,12 @@ func SendGiftCardReturnedPushNotification(
 		return nil
 	}
 
-	localizedPushTitle, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushTitleKinReturned)
+	localizedPushTitle, err := localization.Localize(SimulatedUserLocale, localization.PushTitleKinReturned)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushBody, err := localization.LocalizeKey(SimulatedUserLocale, localization.PushSubtitleKinReturned, localizedAmount)
+	localizedPushBody, err := localization.Localize(SimulatedUserLocale, localization.PushSubtitleKinReturned, localizedAmount)
 	if err != nil {
 		return nil
 	}
@@ -206,7 +206,7 @@ func SendChatMessagePushNotification(
 
 	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
 	if ok {
-		localized, err := localization.LocalizeKey(SimulatedUserLocale, chatProperties.TitleLocalizationKey)
+		localized, err := localization.Localize(SimulatedUserLocale, chatProperties.TitleLocalizationKey)
 		if err != nil {
 			return nil
 		}
@@ -225,7 +225,7 @@ func SendChatMessagePushNotification(
 		var contentToPush *chatpb.Content
 		switch typedContent := content.Type.(type) {
 		case *chatpb.Content_Localized:
-			localizedPushBody, err := localization.LocalizeKey(SimulatedUserLocale, typedContent.Localized.KeyOrText)
+			localizedPushBody, err := localization.Localize(SimulatedUserLocale, typedContent.Localized.KeyOrText)
 			if err != nil {
 				continue
 			}
