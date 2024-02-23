@@ -255,7 +255,11 @@ func TestSendMessage_RequestToReceiveBill_KinValue_HappyPath(t *testing.T) {
 		defer cleanup()
 
 		rendezvousKey := testutil.NewRandomAccount(t)
-		sendMessageCall := env.client2.sendRequestToReceiveKinBillMessage(t, rendezvousKey, tc.usePrimary, tc.useRelationship, tc.disableDomainVerification)
+		sendMessageCall := env.client2.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+			usePrimaryAccount:         tc.usePrimary,
+			useRelationshipAccount:    tc.useRelationship,
+			disableDomainVerification: tc.disableDomainVerification,
+		})
 		sendMessageCall.requireSuccess(t)
 
 		records := env.server1.getMessages(t, rendezvousKey)
@@ -282,6 +286,11 @@ func TestSendMessage_RequestToReceiveBill_KinValue_HappyPath(t *testing.T) {
 			assert.Equal(t, sendMessageCall.req.Message.GetRequestToReceiveBill().Verifier.Value, savedProtoMessage.GetRequestToReceiveBill().Verifier.Value)
 			assert.Equal(t, sendMessageCall.req.Message.GetRequestToReceiveBill().Signature.Value, savedProtoMessage.GetRequestToReceiveBill().Signature.Value)
 			assert.Equal(t, sendMessageCall.req.Message.GetRequestToReceiveBill().RendezvousKey.Value, savedProtoMessage.GetRequestToReceiveBill().RendezvousKey.Value)
+		}
+		require.Len(t, savedProtoMessage.GetRequestToReceiveBill().AdditionalFees, len(sendMessageCall.req.Message.GetRequestToReceiveBill().AdditionalFees))
+		for i, expectedFee := range sendMessageCall.req.Message.GetRequestToReceiveBill().AdditionalFees {
+			assert.Equal(t, expectedFee.Destination.Value, savedProtoMessage.GetRequestToReceiveBill().AdditionalFees[i].Destination.Value)
+			assert.Equal(t, expectedFee.FeeBps, savedProtoMessage.GetRequestToReceiveBill().AdditionalFees[i].FeeBps)
 		}
 		assert.Equal(t, sendMessageCall.req.Signature.Value, savedProtoMessage.SendMessageRequestSignature.Value)
 
@@ -326,7 +335,11 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_HappyPath(t *testing.T) {
 		defer cleanup()
 
 		rendezvousKey := testutil.NewRandomAccount(t)
-		sendMessageCall := env.client2.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, tc.usePrimary, tc.useRelationship, tc.disableDomainVerification)
+		sendMessageCall := env.client2.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+			usePrimaryAccount:         tc.usePrimary,
+			useRelationshipAccount:    tc.useRelationship,
+			disableDomainVerification: tc.disableDomainVerification,
+		})
 		sendMessageCall.requireSuccess(t)
 
 		records := env.server1.getMessages(t, rendezvousKey)
@@ -352,6 +365,11 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_HappyPath(t *testing.T) {
 			assert.Equal(t, sendMessageCall.req.Message.GetRequestToReceiveBill().Signature.Value, savedProtoMessage.GetRequestToReceiveBill().Signature.Value)
 			assert.Equal(t, sendMessageCall.req.Message.GetRequestToReceiveBill().RendezvousKey.Value, savedProtoMessage.GetRequestToReceiveBill().RendezvousKey.Value)
 		}
+		require.Len(t, savedProtoMessage.GetRequestToReceiveBill().AdditionalFees, len(sendMessageCall.req.Message.GetRequestToReceiveBill().AdditionalFees))
+		for i, expectedFee := range sendMessageCall.req.Message.GetRequestToReceiveBill().AdditionalFees {
+			assert.Equal(t, expectedFee.Destination.Value, savedProtoMessage.GetRequestToReceiveBill().AdditionalFees[i].Destination.Value)
+			assert.Equal(t, expectedFee.FeeBps, savedProtoMessage.GetRequestToReceiveBill().AdditionalFees[i].FeeBps)
+		}
 		assert.Equal(t, sendMessageCall.req.Signature.Value, savedProtoMessage.SendMessageRequestSignature.Value)
 
 		env.server1.assertPaymentRequestRecordSaved(t, rendezvousKey, sendMessageCall.req.Message.GetRequestToReceiveBill())
@@ -376,15 +394,19 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidAccountType = true
-	sendMessageCall := env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a code deposit account")
+	sendMessageCall := env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
+	sendMessageCall.assertInvalidMessageError(t, "is not a deposit account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidRelationship = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, true, false)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must have a relationship with getcode.com")
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		useRelationshipAccount: true,
+	})
+	sendMessageCall.assertInvalidMessageError(t, "is not associated with getcode.com")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -394,49 +416,63 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidExchangeRate = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "kin exchange rate must be 1")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidNativeAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "payment native amount and quark value mismatch")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateSmallNativeAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "kin currency has a minimum amount of 5000.00")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateLargeNativeAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "kin currency has a maximum amount of 100000.00")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateFractionalNativeAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "native amount can't include fractional kin")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateFractionalQuarkAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "quark amount can't include fractional kin")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidCurrency = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "exact exchange data is reserved for kin only")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
@@ -447,54 +483,96 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidDomain = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertInvalidMessageError(t, "domain is invalid")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateDoesntOwnDomain = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertPermissionDeniedError(t, "does not own domain getcode.com")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, true, true)
-	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when requestor account is a relationship account")
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		useRelationshipAccount:    true,
+		disableDomainVerification: true,
+	})
+	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when using a relationship account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 4: Signature validation
+	// Part 4: Fee structure validation
+	//
+
+	env.client1.resetConf()
+	env.client1.conf.simulateLargeFeePercentage = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "total fee percentage cannot exceed")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateDuplicatedFeeTaker = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 2 appears multiple times and should be merged")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateFeeTakerIsPaymentDestination = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 0 is the payment destination and should be omitted")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeCodeAccount = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "is not a deposit account")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeRelationship = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "is not associated with getcode.com")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	//
+	// Part 5: Signature validation
 	//
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidMessageSignature = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertUnauthenticatedError(t, "")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 5: Rendezvous key validation
+	// Part 6: Rendezvous key validation
 	//
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidRendezvousKey = true
-	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertInvalidMessageError(t, "rendezvous key mismatch")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 6: Upgrading request with a payment requirement
+	// Part 7: Upgrading request with a payment requirement
 	//
 
 	env.client1.resetConf()
 	originalSendMessageRequest := env.client1.sendRequestToLoginMessage(t, rendezvousKey)
 	originalSendMessageRequest.requireSuccess(t)
-	env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, false, false, false).assertInvalidMessageError(t, "original request doesn't require payment")
+	env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{}).assertInvalidMessageError(t, "original request doesn't require payment")
 	env.server1.assertLoginRequestRecordSaved(t, rendezvousKey, originalSendMessageRequest.req.Message.GetRequestToLogin())
 	messages := env.client1.pollForMessages(t, rendezvousKey)
 	require.Len(t, messages, 1)
@@ -513,15 +591,19 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidAccountType = true
-	sendMessageCall := env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, true)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a code deposit account")
+	sendMessageCall := env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
+	sendMessageCall.assertInvalidMessageError(t, "is not a deposit account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidRelationship = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, true, false)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must have a relationship with getcode.com")
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		useRelationshipAccount: true,
+	})
+	sendMessageCall.assertInvalidMessageError(t, "is not associated with getcode.com")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -531,21 +613,27 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	env.client1.conf.simulateSmallNativeAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "usd currency has a minimum amount of 0.05")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateLargeNativeAmount = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "usd currency has a maximum amount of 1.00")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidCurrency = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, true)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		disableDomainVerification: true,
+	})
 	sendMessageCall.assertInvalidMessageError(t, "partial exchange data is reserved for fiat currencies")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
@@ -556,54 +644,96 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidDomain = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertInvalidMessageError(t, "domain is invalid")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateDoesntOwnDomain = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertPermissionDeniedError(t, "does not own domain getcode.com")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	env.client1.resetConf()
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, true, true)
-	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when requestor account is a relationship account")
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
+		useRelationshipAccount:    true,
+		disableDomainVerification: true,
+	})
+	sendMessageCall.assertInvalidMessageError(t, "domain verification is required when using a relationship account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 4: Signature validation
+	// Part 4: Fee structure validation
+	//
+
+	env.client1.resetConf()
+	env.client1.conf.simulateLargeFeePercentage = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "total fee percentage cannot exceed")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateDuplicatedFeeTaker = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 2 appears multiple times and should be merged")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateFeeTakerIsPaymentDestination = true
+	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "fee taker at index 0 is the payment destination and should be omitted")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeCodeAccount = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "is not a deposit account")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	env.client1.resetConf()
+	env.client1.conf.simulateInvalidFeeRelationship = true
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
+	sendMessageCall.assertInvalidMessageError(t, "is not associated with getcode.com")
+	env.server1.assertNoMessages(t, rendezvousKey)
+	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
+
+	//
+	// Part 5: Signature validation
 	//
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidMessageSignature = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertUnauthenticatedError(t, "")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 5: Rendezvous key validation
+	// Part 6: Rendezvous key validation
 	//
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidRendezvousKey = true
-	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, false)
+	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	sendMessageCall.assertInvalidMessageError(t, "rendezvous key mismatch")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
 	//
-	// Part 6: Upgrading request with a payment requirement
+	// Part 7: Upgrading request with a payment requirement
 	//
 
 	env.client1.resetConf()
 	originalSendMessageRequest := env.client1.sendRequestToLoginMessage(t, rendezvousKey)
 	originalSendMessageRequest.requireSuccess(t)
-	env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, false).assertInvalidMessageError(t, "original request doesn't require payment")
+	env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{}).assertInvalidMessageError(t, "original request doesn't require payment")
 	env.server1.assertLoginRequestRecordSaved(t, rendezvousKey, originalSendMessageRequest.req.Message.GetRequestToLogin())
 	messages := env.client1.pollForMessages(t, rendezvousKey)
 	require.Len(t, messages, 1)
@@ -693,7 +823,7 @@ func TestSendMessage_RequestToLogin_Validation(t *testing.T) {
 	//
 
 	env.client1.resetConf()
-	originalSendMessageRequest := env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, false, false, false)
+	originalSendMessageRequest := env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{})
 	originalSendMessageRequest.requireSuccess(t)
 	env.client1.sendRequestToLoginMessage(t, rendezvousKey).assertInvalidMessageError(t, "original request requires payment")
 	env.server1.assertPaymentRequestRecordSaved(t, rendezvousKey, originalSendMessageRequest.req.Message.GetRequestToReceiveBill())

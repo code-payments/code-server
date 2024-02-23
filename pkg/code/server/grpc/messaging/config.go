@@ -12,10 +12,14 @@ const (
 
 	DisableBlockchainChecksConfigEnvName = envConfigPrefix + "DISABLE_BLOCKCHAIN_CHECKS"
 	defaultDisableBlockchainChecks       = false
+
+	MaxFeeBasisPointsConfigEnvName = envConfigPrefix + "MAX_FEE_BASIS_POINTS"
+	defaultMaxFeeBasisPoints       = 5000
 )
 
 type conf struct {
 	disableBlockchainChecks config.Bool
+	maxFeeBasisPoints       config.Uint64
 }
 
 // ConfigProvider defines how config values are pulled
@@ -26,6 +30,7 @@ func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
 			disableBlockchainChecks: env.NewBoolConfig(DisableBlockchainChecksConfigEnvName, defaultDisableBlockchainChecks),
+			maxFeeBasisPoints:       env.NewUint64Config(MaxFeeBasisPointsConfigEnvName, defaultMaxFeeBasisPoints),
 		}
 	}
 }
@@ -37,6 +42,7 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 	return func() *conf {
 		return &conf{
 			disableBlockchainChecks: wrapper.NewBoolConfig(memory.NewConfig(true), true),
+			maxFeeBasisPoints:       wrapper.NewUint64Config(memory.NewConfig(defaultMaxFeeBasisPoints), defaultMaxFeeBasisPoints),
 		}
 	}
 }

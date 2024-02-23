@@ -3,6 +3,7 @@ package async_geyser
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
@@ -107,7 +108,7 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				return nil
 			}
 
-			blockchainMessage, err := thirdparty.DecodeBlockchainMessage(memoIxn.Data)
+			blockchainMessage, err := thirdparty.DecodeNaclBoxBlockchainMessage(memoIxn.Data)
 			if err != nil {
 				return nil
 			}
@@ -155,7 +156,11 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				return errors.Wrap(err, "invalid owner account")
 			}
 
-			chatMessage, err := chat_util.ToBlockchainMessage(signature, feePayer, blockchainMessage, *txn.BlockTime)
+			blockTime := time.Now()
+			if txn.BlockTime != nil {
+				blockTime = *txn.BlockTime
+			}
+			chatMessage, err := chat_util.ToBlockchainMessage(signature, feePayer, blockchainMessage, blockTime)
 			if err != nil {
 				return errors.Wrap(err, "error creating proto message")
 			}

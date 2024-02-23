@@ -14,10 +14,10 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/limit"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/testutil"
-	"github.com/code-payments/code-server/pkg/code/limit"
 )
 
 func TestGetLimits_SendLimits_HappyPath(t *testing.T) {
@@ -44,9 +44,13 @@ func TestGetLimits_SendLimits_HappyPath(t *testing.T) {
 
 		actual := limitsByCurrency[string(currency_lib.USD)]
 		assert.EqualValues(t, usdLimits.PerTransaction, actual.NextTransaction)
+		assert.EqualValues(t, usdLimits.PerTransaction, actual.MaxPerTransaction)
+		assert.EqualValues(t, usdLimits.Daily, actual.MaxPerDay)
 
 		actual = limitsByCurrency[string(currency_lib.KIN)]
 		assert.EqualValues(t, usdLimits.PerTransaction/usdRate.Rate, actual.NextTransaction)
+		assert.EqualValues(t, usdLimits.PerTransaction/usdRate.Rate, actual.MaxPerTransaction)
+		assert.EqualValues(t, usdLimits.Daily/usdRate.Rate, actual.MaxPerDay)
 
 		sendingPhone.privatelyWithdraw123KinToExternalWallet(t).requireSuccess(t)
 
@@ -58,9 +62,13 @@ func TestGetLimits_SendLimits_HappyPath(t *testing.T) {
 
 	actual := limitsByCurrency[string(currency_lib.USD)]
 	assert.EqualValues(t, usdLimits.Daily-usdSent, actual.NextTransaction)
+	assert.EqualValues(t, usdLimits.PerTransaction, actual.MaxPerTransaction)
+	assert.EqualValues(t, usdLimits.Daily, actual.MaxPerDay)
 
 	actual = limitsByCurrency[string(currency_lib.KIN)]
 	assert.EqualValues(t, (usdLimits.Daily-usdSent)/usdRate.Rate, actual.NextTransaction)
+	assert.EqualValues(t, usdLimits.PerTransaction/usdRate.Rate, actual.MaxPerTransaction)
+	assert.EqualValues(t, usdLimits.Daily/usdRate.Rate, actual.MaxPerDay)
 
 	for {
 		if usdSent > usdLimits.Daily {
@@ -78,9 +86,13 @@ func TestGetLimits_SendLimits_HappyPath(t *testing.T) {
 
 	actual = limitsByCurrency[string(currency_lib.USD)]
 	assert.EqualValues(t, 0, actual.NextTransaction)
+	assert.EqualValues(t, usdLimits.PerTransaction, actual.MaxPerTransaction)
+	assert.EqualValues(t, usdLimits.Daily, actual.MaxPerDay)
 
 	actual = limitsByCurrency[string(currency_lib.KIN)]
 	assert.EqualValues(t, 0, actual.NextTransaction)
+	assert.EqualValues(t, usdLimits.PerTransaction/usdRate.Rate, actual.MaxPerTransaction)
+	assert.EqualValues(t, usdLimits.Daily/usdRate.Rate, actual.MaxPerDay)
 }
 
 func TestGetLimits_DepositLimits_HappyPath_DailyConsumed(t *testing.T) {
@@ -175,6 +187,24 @@ func TestGetLimits_MicroPaymentLimits_HappyPath(t *testing.T) {
 		require.True(t, ok)
 		assert.EqualValues(t, expectedLimit.Max, actualLimits.MaxPerTransaction)
 		assert.EqualValues(t, expectedLimit.Min, actualLimits.MinPerTransaction)
+	}
+}
+
+func TestGetLimits_BuyModuleLimits_HappyPath(t *testing.T) {
+	server, phone, _, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 10000)
+
+	phone.openAccounts(t).requireSuccess(t)
+
+	actualBuyModuleLimits := phone.getBuyModuleLimits(t)
+	assert.Len(t, actualBuyModuleLimits, len(limit.SendLimits))
+	for currency, actualLimits := range actualBuyModuleLimits {
+		sendLimit, ok := limit.SendLimits[currency_lib.Code(currency)]
+		require.True(t, ok)
+		assert.EqualValues(t, sendLimit.PerTransaction, actualLimits.MaxPerTransaction)
+		assert.EqualValues(t, sendLimit.PerTransaction/10, actualLimits.MinPerTransaction)
 	}
 }
 

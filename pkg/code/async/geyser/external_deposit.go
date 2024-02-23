@@ -3,6 +3,7 @@ package async_geyser
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
@@ -21,8 +23,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/onramp"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/push"
+	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -186,6 +190,11 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 		return errors.Wrap(err, "invalid owner account")
 	}
 
+	blockTime := time.Now()
+	if tokenBalances.BlockTime != nil {
+		blockTime = *tokenBalances.BlockTime
+	}
+
 	// Use the account type to determine how we'll process this external deposit
 	//
 	// todo: Below logic is beginning to get messy and might be in need of a
@@ -247,7 +256,19 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 		}
 
 		if isCodeSwap {
-			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, usdcQuarksSwapped, time.Now())
+			purchases, err := getPurchasesFromSwap(
+				ctx,
+				conf,
+				data,
+				signature,
+				usdcSwapAccount,
+				usdcQuarksSwapped,
+			)
+			if err != nil {
+				return errors.Wrap(err, "error getting swap purchases")
+			}
+
+			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, blockTime, purchases...)
 			if err != nil {
 				return errors.Wrap(err, "error creating chat message")
 			}
@@ -306,8 +327,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 	case commonpb.AccountType_SWAP:
 		bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
 
-		// todo: solana client doesn't return block time
-		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), time.Now())
+		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), blockTime)
 		if err != nil {
 			return errors.Wrap(err, "error creating chat message")
 		}
@@ -446,6 +466,185 @@ func getCodeSwapMetadata(ctx context.Context, conf *conf, tokenBalances *solana.
 	}
 
 	return true, usdcAccount, usdcPaid, nil
+}
+
+func getPurchasesFromSwap(
+	ctx context.Context,
+	conf *conf,
+	data code_data.Provider,
+	signature string,
+	usdcSwapAccount *common.Account,
+	usdcQuarksSwapped uint64,
+) ([]*transactionpb.ExchangeDataWithoutRate, error) {
+	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, usdcSwapAccount.PublicKey().ToBase58())
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting account info record")
+	} else if accountInfoRecord.AccountType != commonpb.AccountType_SWAP {
+		return nil, errors.New("usdc account is not a code swap account")
+	}
+
+	cursorValue, err := base58.Decode(signature)
+	if err != nil {
+		return nil, err
+	}
+
+	pageSize := 32
+	history, err := data.GetBlockchainHistory(
+		ctx,
+		usdcSwapAccount.PublicKey().ToBase58(),
+		solana.CommitmentFinalized,
+		query.WithCursor(cursorValue),
+		query.WithLimit(uint64(pageSize)),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting transaction history")
+	}
+
+	purchases, err := func() ([]*transactionpb.ExchangeDataWithoutRate, error) {
+		var res []*transactionpb.ExchangeDataWithoutRate
+		var usdcDeposited uint64
+		for _, historyItem := range history {
+			if historyItem.Err != nil {
+				continue
+			}
+
+			tokenBalances, err := data.GetBlockchainTransactionTokenBalances(ctx, base58.Encode(historyItem.Signature[:]))
+			if err != nil {
+				return nil, errors.Wrap(err, "error getting token balances")
+			}
+			blockTime := time.Now()
+			if historyItem.BlockTime != nil {
+				blockTime = *historyItem.BlockTime
+			}
+
+			isCodeSwap, _, _, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
+			if err != nil {
+				return nil, errors.Wrap(err, "error getting code swap metadata")
+			}
+
+			// Found another swap, so stop searching for purchases
+			if isCodeSwap {
+				// The amount of USDC deposited doesn't equate to the amount we
+				// swapped. There's either a race condition between a swap and
+				// deposit, or the user is manually moving funds in the account.
+				//
+				// Either way, the current algorithm can't properly assign pruchases
+				// to the swap, so return an empty result.
+				if usdcDeposited != usdcQuarksSwapped {
+					return nil, nil
+				}
+
+				return res, nil
+			}
+
+			deltaQuarks, err := getDeltaQuarksFromTokenBalances(usdcSwapAccount, tokenBalances)
+			if err != nil {
+				return nil, errors.Wrap(err, "error getting delta usdc from token balances")
+			}
+
+			// Skip any USDC withdrawals. The average user will not be able to
+			// do this anyways since the swap account is derived off the 12 words.
+			if deltaQuarks <= 0 {
+				continue
+			}
+
+			usdAmount := float64(deltaQuarks) / float64(usdc.QuarksPerUsdc)
+			usdcDeposited += uint64(deltaQuarks)
+
+			// Disregard any USDC deposits for inconsequential amounts to avoid
+			// spam coming through
+			if usdAmount < 0.01 {
+				continue
+			}
+
+			rawUsdPurchase := &transactionpb.ExchangeDataWithoutRate{
+				Currency:     "usd",
+				NativeAmount: usdAmount,
+			}
+
+			// There is no memo for a blockchain message
+			if historyItem.Memo == nil {
+				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				continue
+			}
+
+			// Attempt to parse a blockchain message from the memo, which will contain a
+			// nonce that maps to a fiat purchase from an onramp.
+			memoParts := strings.Split(*historyItem.Memo, " ")
+			memoMessage := memoParts[len(memoParts)-1]
+			blockchainMessage, err := thirdparty.DecodeFiatOnrampPurchaseMessage([]byte(memoMessage))
+			if err != nil {
+				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				continue
+			}
+			onrampRecord, err := data.GetFiatOnrampPurchase(ctx, blockchainMessage.Nonce)
+			if err == onramp.ErrPurchaseNotFound {
+				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				continue
+			} else if err != nil {
+				return nil, errors.Wrap(err, "error getting onramp record")
+			}
+
+			// This nonce is not associated with the owner account linked to the
+			// fiat purchase.
+			if onrampRecord.Owner != accountInfoRecord.OwnerAccount {
+				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				continue
+			}
+
+			// Ensure the amounts make some sense wrt FX rates if we have them. We
+			// allow a generous buffer of 10% to account for fees that might be
+			// taken off of the deposited amount.
+			var usdRate, otherCurrencyRate float64
+			usdRateRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, blockTime)
+			if err == nil {
+				usdRate = usdRateRecord.Rate
+			}
+			otherCurrencyRateRecord, err := data.GetExchangeRate(ctx, currency_lib.Code(onrampRecord.Currency), blockTime)
+			if err == nil {
+				otherCurrencyRate = otherCurrencyRateRecord.Rate
+			}
+			if usdRate != 0 && otherCurrencyRate != 0 {
+				fxRate := otherCurrencyRate / usdRate
+				pctDiff := math.Abs(usdAmount*fxRate-onrampRecord.Amount) / onrampRecord.Amount
+				if pctDiff > 0.1 {
+					res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+					continue
+				}
+			}
+
+			res = append([]*transactionpb.ExchangeDataWithoutRate{
+				{
+					Currency:     onrampRecord.Currency,
+					NativeAmount: onrampRecord.Amount,
+				},
+			}, res...)
+		}
+
+		if len(history) < pageSize {
+			// At the end of history, so return the result
+			return res, nil
+		}
+		// Didn't find another swap, so we didn't find the full purchase history.
+		// Return an empty result.
+		//
+		// todo: Continue looking back into history
+		return nil, nil
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(purchases) == 0 {
+		// No purchases were returned, so defer back to the USDC amount swapped
+		return []*transactionpb.ExchangeDataWithoutRate{
+			{
+				Currency:     "usd",
+				NativeAmount: float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc),
+			},
+		}, nil
+	}
+	return purchases, nil
 }
 
 // Optimistically tries to cache a balance for an external account not managed

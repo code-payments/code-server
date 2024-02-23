@@ -5,12 +5,16 @@ import "strings"
 // todo: Put in a DB somehwere? Or make configurable?
 // todo: Needs tests
 func hasBannedPhoneNumberPrefix(phoneNumber string) bool {
-	for _, prefix := range []string{
-		// Sanctioned countries
-		//
-		// todo: Probably doesn't belong in an antispam package, but it's just a
-		//       convenient place for now
+	// Check that a +7 phone number is not a mobile number from Kazakhstan
+	if strings.HasPrefix(phoneNumber, "+76") || strings.HasPrefix(phoneNumber, "+77") {
+		return false
+	}
 
+	// Sanctioned countries
+	//
+	// todo: Probably doesn't belong in an antispam package, but it's just a
+	//       convenient place for now
+	for _, prefix := range []string{
 		"+7",   // Russia
 		"+30",  // Greece (Balkans)
 		"+40",  // Romania (Balkans)

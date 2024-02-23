@@ -49,7 +49,6 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	if !ok {
 		return nil, nil
 	}
-	exchangeDataMinusFees := getExchangeDataMinusFees(exchangeData, intentRecord, actionRecords)
 
 	type verbAndExchangeData struct {
 		verb         chatpb.ExchangeDataContent_Verb
@@ -74,10 +73,14 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 				verb:         chatpb.ExchangeDataContent_SPENT,
 				exchangeData: exchangeData,
 			}
-			if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) > 0 {
-				verbAndExchangeDataByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
+			receiveByOwner, err := getMicroPaymentReceiveExchangeDataByOwner(ctx, data, exchangeData, intentRecord, actionRecords)
+			if err != nil {
+				return nil, err
+			}
+			for owner, exchangeData := range receiveByOwner {
+				verbAndExchangeDataByMessageReceiver[owner] = &verbAndExchangeData{
 					verb:         chatpb.ExchangeDataContent_RECEIVED,
-					exchangeData: exchangeDataMinusFees,
+					exchangeData: exchangeData,
 				}
 			}
 		} else if intentRecord.SendPrivatePaymentMetadata.IsWithdrawal {

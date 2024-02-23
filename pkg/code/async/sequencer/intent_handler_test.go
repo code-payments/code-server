@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/testutil"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestOpenAccountsIntentHandler_RemainInStatePending(t *testing.T) {
@@ -69,22 +69,35 @@ func TestSendPrivatePaymentIntentHandler_RemainInStatePending(t *testing.T) {
 	env := setupIntentHandlerTestEnv(t)
 
 	intentHandler := env.handlersByType[intent.SendPrivatePayment]
-	intentRecord := env.createIntent(t, intent.SendPrivatePayment)
 
-	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord.IntentId))
-	env.assertIntentState(t, intentRecord.IntentId, intent.StatePending)
+	intentRecord1 := env.createIntent(t, intent.SendPrivatePayment)
+	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord1.IntentId))
+	env.assertIntentState(t, intentRecord1.IntentId, intent.StatePending)
 
-	env.confirmFirstActionOfType(t, intentRecord.IntentId, action.PrivateTransfer)
-	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord.IntentId))
-	env.assertIntentState(t, intentRecord.IntentId, intent.StatePending)
+	env.confirmFirstActionOfType(t, intentRecord1.IntentId, action.PrivateTransfer)
+	env.confirmAllActionsOfType(t, intentRecord1.IntentId, action.NoPrivacyTransfer)
+	env.confirmFirstActionOfType(t, intentRecord1.IntentId, action.NoPrivacyWithdraw)
+	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord1.IntentId))
+	env.assertIntentState(t, intentRecord1.IntentId, intent.StatePending)
 
-	env.confirmFirstActionOfType(t, intentRecord.IntentId, action.NoPrivacyTransfer)
-	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord.IntentId))
-	env.assertIntentState(t, intentRecord.IntentId, intent.StatePending)
+	intentRecord2 := env.createIntent(t, intent.SendPrivatePayment)
+	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord2.IntentId))
+	env.assertIntentState(t, intentRecord2.IntentId, intent.StatePending)
 
-	env.confirmFirstActionOfType(t, intentRecord.IntentId, action.NoPrivacyWithdraw)
-	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord.IntentId))
-	env.assertIntentState(t, intentRecord.IntentId, intent.StatePending)
+	env.confirmAllActionsOfType(t, intentRecord2.IntentId, action.PrivateTransfer)
+	env.confirmFirstActionOfType(t, intentRecord2.IntentId, action.NoPrivacyTransfer)
+	env.confirmFirstActionOfType(t, intentRecord2.IntentId, action.NoPrivacyWithdraw)
+	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord2.IntentId))
+	env.assertIntentState(t, intentRecord2.IntentId, intent.StatePending)
+
+	intentRecord3 := env.createIntent(t, intent.SendPrivatePayment)
+	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord2.IntentId))
+	env.assertIntentState(t, intentRecord3.IntentId, intent.StatePending)
+
+	env.confirmAllActionsOfType(t, intentRecord3.IntentId, action.PrivateTransfer)
+	env.confirmAllActionsOfType(t, intentRecord3.IntentId, action.NoPrivacyTransfer)
+	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord3.IntentId))
+	env.assertIntentState(t, intentRecord3.IntentId, intent.StatePending)
 }
 
 func TestSendPrivatePaymentIntentHandler_TransitionToStateConfirmed(t *testing.T) {
@@ -114,12 +127,16 @@ func TestSendPrivatePaymentIntentHandler_SchedulerPollingOptimizations(t *testin
 	env.assertIntentState(t, intentRecord1.IntentId, intent.StatePending)
 	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 2, false)
 	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 3, false)
+	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 4, false)
+	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 5, false)
 
 	env.scheduleAllFulfillmentsOfType(t, intentRecord1.IntentId, fulfillment.TransferWithCommitment)
 	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord1.IntentId))
 	env.assertIntentState(t, intentRecord1.IntentId, intent.StatePending)
 	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 2, true)
 	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 3, true)
+	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 4, true)
+	env.assertSchedulerPollingState(t, intentRecord1.IntentId, 5, true)
 
 	intentRecord2 := env.createIntent(t, intent.SendPrivatePayment)
 
@@ -127,12 +144,16 @@ func TestSendPrivatePaymentIntentHandler_SchedulerPollingOptimizations(t *testin
 	env.assertIntentState(t, intentRecord2.IntentId, intent.StatePending)
 	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 2, false)
 	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 3, false)
+	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 4, false)
+	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 5, false)
 
 	env.confirmAllFulfillmentsOfType(t, intentRecord2.IntentId, fulfillment.TransferWithCommitment)
 	require.NoError(t, intentHandler.OnActionUpdated(env.ctx, intentRecord2.IntentId))
 	env.assertIntentState(t, intentRecord2.IntentId, intent.StatePending)
 	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 2, true)
 	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 3, true)
+	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 4, true)
+	env.assertSchedulerPollingState(t, intentRecord2.IntentId, 5, true)
 }
 
 func TestSendPrivatePaymentIntentHandler_TransitionToStateFailed(t *testing.T) {
@@ -523,6 +544,32 @@ func (e *intentHandlerTestEnv) createIntent(t *testing.T, intentType intent.Type
 				IntentType: intentType,
 
 				ActionId:   3,
+				ActionType: action.NoPrivacyTransfer,
+
+				Source:      tempOutgoing,
+				Destination: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
+				Quantity:    &feeAmount,
+
+				State: action.StatePending,
+			},
+			&action.Record{
+				Intent:     intentRecord.IntentId,
+				IntentType: intentType,
+
+				ActionId:   4,
+				ActionType: action.NoPrivacyTransfer,
+
+				Source:      tempOutgoing,
+				Destination: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
+				Quantity:    &feeAmount,
+
+				State: action.StatePending,
+			},
+			&action.Record{
+				Intent:     intentRecord.IntentId,
+				IntentType: intentType,
+
+				ActionId:   5,
 				ActionType: action.NoPrivacyWithdraw,
 
 				Source:      tempOutgoing,
@@ -535,7 +582,7 @@ func (e *intentHandlerTestEnv) createIntent(t *testing.T, intentType intent.Type
 				Intent:     intentRecord.IntentId,
 				IntentType: intentType,
 
-				ActionId:   4,
+				ActionId:   6,
 				ActionType: action.OpenAccount,
 
 				Source: newTempOutgoing,
@@ -546,7 +593,7 @@ func (e *intentHandlerTestEnv) createIntent(t *testing.T, intentType intent.Type
 				Intent:     intentRecord.IntentId,
 				IntentType: intentType,
 
-				ActionId:   5,
+				ActionId:   7,
 				ActionType: action.CloseDormantAccount,
 
 				Source: newTempOutgoing,

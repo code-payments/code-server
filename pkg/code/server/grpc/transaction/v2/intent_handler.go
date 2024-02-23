@@ -238,7 +238,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	// Part 6: Validate fee payments
 	//
 
-	return validateFeePayment(ctx, h.data, intentRecord, simResult)
+	return validateFeePayments(ctx, h.data, intentRecord, simResult)
 }
 
 func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
@@ -572,7 +572,7 @@ func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, int
 	// Part 5: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -616,13 +616,12 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	// Part 1.1: Check destination and fee collection accounts are paid exact quark amount from latest temp outgoing account
 	//
 
-	// Minimal validation required here since validateFeePayment generically handles
-	// most metadata that isn't specific to an intent
-	var feePayment *TransferSimulation
-	feePayments := simResult.GetFeePayments()
 	expectedDestinationPayment := int64(metadata.ExchangeData.Quarks)
-	if len(feePayments) > 0 {
-		feePayment = &feePayments[0]
+
+	// Minimal validation required here since validateFeePayments generically handles
+	// most metadata that isn't specific to an intent
+	feePayments := simResult.GetFeePayments()
+	for _, feePayment := range feePayments {
 		expectedDestinationPayment += feePayment.DeltaQuarks
 	}
 
@@ -648,8 +647,10 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "destination account must be paid by temporary outgoing account %s", tempOutgoing)
 	}
 
-	if feePayment != nil && base58.Encode(feePayment.Action.GetFeePayment().Source.Value) != tempOutgoing {
-		return newActionValidationErrorf(feePayment.Action, "fee payment must come from temporary outgoing account %s", tempOutgoing)
+	for _, feePayment := range feePayments {
+		if base58.Encode(feePayment.Action.GetFeePayment().Source.Value) != tempOutgoing {
+			return newActionValidationErrorf(feePayment.Action, "fee payment must come from temporary outgoing account %s", tempOutgoing)
+		}
 	}
 
 	if tempOutgoingSimulation.GetDeltaQuarks() != 0 {
@@ -845,7 +846,8 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		case commonpb.AccountType_TEMPORARY_OUTGOING:
 			expectedPublicTransfers := 1
 			if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
-				expectedPublicTransfers = 2
+				// Code fee, plus any additional configured fee takers
+				expectedPublicTransfers += len(h.cachedPaymentRequestRequest.Fees) + 1
 			}
 			if simulation.CountPublicTransfers() != expectedPublicTransfers {
 				return newIntentValidationErrorf("temporary outgoing account can only have %d public transfers", expectedPublicTransfers)
@@ -1092,7 +1094,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Contex
 	// Part 5: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -1758,7 +1760,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -2103,7 +2105,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -2364,7 +2366,7 @@ func (h *EstablishRelationshipIntentHandler) AllowCreation(ctx context.Context, 
 	// Part 7: Validate fee payments
 	//
 
-	err = validateFeePayment(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -2893,7 +2895,7 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 	requestRecord, err := data.GetRequest(ctx, intentId)
 	if err == nil {
 		if !requestRecord.RequiresPayment() {
-			return newIntentValidationError("request does not require payment")
+			return newIntentValidationError("request doesn't require payment")
 		}
 
 		if proto.Currency != string(*requestRecord.ExchangeCurrency) {
@@ -2929,7 +2931,11 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 
 // Generically validates fee payments as much as possible, but won't cover any
 // intent-specific nuances (eg. where the fee payment comes from)
-func validateFeePayment(
+//
+// This assumes source and destination accounts interacting with fees and the
+// remaining amount don't have minimum bucket size requirements. Intent validation
+// logic is responsible for these checks and guarantees.
+func validateFeePayments(
 	ctx context.Context,
 	data code_data.Provider,
 	intentRecord *intent.Record,
@@ -2953,16 +2959,39 @@ func validateFeePayment(
 		return nil
 	}
 
-	feePayments := simResult.GetFeePayments()
-	if len(feePayments) > 1 {
-		return newIntentValidationError("fee payment must be done in a single action")
+	requestRecord, err := data.GetRequest(ctx, intentRecord.IntentId)
+	if err != nil {
+		return err
 	}
-	feeAmount := feePayments[0].DeltaQuarks
+
+	if !requestRecord.RequiresPayment() {
+		return newIntentValidationError("request doesn't require payment")
+	}
+
+	additionalRequestedFees := requestRecord.Fees
+
+	feePayments := simResult.GetFeePayments()
+	if len(feePayments) != len(additionalRequestedFees)+1 {
+		return newIntentValidationErrorf("expected %d fee payment action", len(additionalRequestedFees)+1)
+	}
+
+	codeFeePayment := feePayments[0]
+
+	if codeFeePayment.Action.GetFeePayment().Type != transactionpb.FeePaymentAction_CODE {
+		return newActionValidationError(codeFeePayment.Action, "fee payment type must be CODE")
+	}
+
+	if codeFeePayment.Action.GetFeePayment().Destination != nil {
+		return newActionValidationError(codeFeePayment.Action, "code fee payment destination is configured by server")
+	}
+
+	feeAmount := codeFeePayment.DeltaQuarks
 	if feeAmount >= 0 {
-		return newIntentValidationError("fee payment is not a payment to code")
+		return newActionValidationError(codeFeePayment.Action, "fee payment amount is negative")
 	}
 	feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
 
+	var foundUsdExchangeRecord bool
 	usdExchangeRecords, err := exchange_rate_util.GetPotentialClientExchangeRates(ctx, data, currency_lib.USD)
 	if err != nil {
 		return err
@@ -2975,11 +3004,43 @@ func validateFeePayment(
 		// todo: Hardcoded as a penny USD, but might want a dynamic amount if we
 		//       have use cases with different fee amounts.
 		if usdValue > 0.0099 && usdValue < 0.0101 {
-			return nil
+			foundUsdExchangeRecord = true
+			break
 		}
 	}
 
-	return newActionValidationError(feePayments[0].Action, "fee payment must be $0.01 USD")
+	if !foundUsdExchangeRecord {
+		return newActionValidationError(codeFeePayment.Action, "code fee payment amount must be $0.01 USD")
+	}
+
+	for i, additionalFee := range feePayments[1:] {
+		if additionalFee.Action.GetFeePayment().Type != transactionpb.FeePaymentAction_THIRD_PARTY {
+			return newActionValidationError(additionalFee.Action, "fee payment type must be THIRD_PARTY")
+		}
+
+		destination := additionalFee.Action.GetFeePayment().Destination
+		if destination == nil {
+			return newActionValidationError(additionalFee.Action, "fee payment destination is required")
+		}
+
+		// The destination should already be validated as a valid payment destination
+		if base58.Encode(destination.Value) != additionalRequestedFees[i].DestinationTokenAccount {
+			return newActionValidationErrorf(additionalFee.Action, "fee payment destination must be %s", additionalRequestedFees[i].DestinationTokenAccount)
+		}
+
+		feeAmount := additionalFee.DeltaQuarks
+		if feeAmount >= 0 {
+			return newActionValidationError(additionalFee.Action, "fee payment amount is negative")
+		}
+		feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
+
+		requestedAmount := (uint64(additionalRequestedFees[i].BasisPoints) * intentRecord.SendPrivatePaymentMetadata.Quantity) / 10000
+		if feeAmount != int64(requestedAmount) {
+			return newActionValidationErrorf(additionalFee.Action, "fee payment amount must be for %d bps of total amount", additionalRequestedFees[i].BasisPoints)
+		}
+	}
+
+	return nil
 }
 
 func validateMinimalTempIncomingAccountUsage(ctx context.Context, data code_data.Provider, accountInfo *account.Record) error {

@@ -30,6 +30,10 @@ import (
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
+var (
+	swapNotificationTimeByOwner = make(map[string]time.Time)
+)
+
 func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) error {
 	ctx, cancel := context.WithTimeout(streamer.Context(), s.conf.swapTimeout.Get(streamer.Context()))
 	defer cancel()
@@ -149,7 +153,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	if initiateReq.Limit == 0 {
 		amountToSwap = swapSourceBalance
 	} else {
-		amountToSwap = initiateReq.Limit
+		return handleSwapError(streamer, status.Error(codes.InvalidArgument, "only unlimited swap is supported"))
 	}
 	if amountToSwap == 0 {
 		return handleSwapError(streamer, newSwapValidationError("usdc account balance is 0"))
@@ -298,8 +302,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Server responds back with parameters, so client can locally construct the
 	// transaction and validate it.
 	serverParameters := &transactionpb.SwapResponse{
-		Response: &transactionpb.SwapResponse_ServerParamenters{
-			ServerParamenters: &transactionpb.SwapResponse_ServerParameters{
+		Response: &transactionpb.SwapResponse_ServerParameters_{
+			ServerParameters: &transactionpb.SwapResponse_ServerParameters{
 				Payer:            s.swapSubsidizer.ToProto(),
 				RecentBlockhash:  &commonpb.Blockhash{Value: blockhash[:]},
 				ComputeUnitLimit: computeUnitLimit,
@@ -415,6 +419,15 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 // Temporary for manual USDC deposit flow
 func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) {
+	// Avoid spamming users chat messages due to retries of the Swap RPC within
+	// small periods of time. Implementation isn't perfect, but we'll be updating
+	// notifications later anyways.
+	lastNotificationTs, ok := swapNotificationTimeByOwner[owner.PublicKey().ToBase58()]
+	if ok && time.Since(lastNotificationTs) < time.Minute {
+		return
+	}
+	swapNotificationTimeByOwner[owner.PublicKey().ToBase58()] = time.Now()
+
 	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
 	if err != nil {
 		return
@@ -451,7 +464,7 @@ func (s *transactionServer) validateSwap(
 		return newSwapValidationError("expected two compute budget instructions")
 	}
 
-	if len(ixns.SetupInstructions) != 0 || ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
+	if ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
 		return newSwapValidationError("unexpected instruction")
 	}
 

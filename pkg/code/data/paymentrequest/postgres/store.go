@@ -21,7 +21,7 @@ func New(db *sql.DB) paymentrequest.Store {
 
 // Put implements paymentrequest.Store.Put
 func (s *store) Put(ctx context.Context, record *paymentrequest.Record) error {
-	m, err := toModel(record)
+	m, err := toRequestModel(record)
 	if err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (s *store) Put(ctx context.Context, record *paymentrequest.Record) error {
 		return err
 	}
 
-	res := fromModel(m)
+	res := fromRequestModel(m)
 	res.CopyTo(record)
 
 	return nil
@@ -43,5 +43,5 @@ func (s *store) Get(ctx context.Context, intentId string) (*paymentrequest.Recor
 	if err != nil {
 		return nil, err
 	}
-	return fromModel(m), nil
+	return fromRequestModel(m), nil
 }

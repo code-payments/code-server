@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	tableName = "codewallet__core_paymentrequest"
+	requestTableName = "codewallet__core_paymentrequest"
+	feesTableName    = "codewallet__core_paymentrequestfees"
 )
 
-type model struct {
+type requestModel struct {
 	Id sql.NullInt64 `db:"id"`
 
 	Intent string `db:"intent"`
@@ -26,6 +27,7 @@ type model struct {
 	NativeAmount            sql.NullFloat64 `db:"native_amount"`
 	ExchangeRate            sql.NullFloat64 `db:"exchange_rate"`
 	Quantity                sql.NullInt64   `db:"quantity"`
+	Fees                    []*feeModel
 
 	Domain     sql.NullString `db:"domain"`
 	IsVerified bool           `db:"is_verified"`
@@ -33,7 +35,14 @@ type model struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
-func toModel(obj *paymentrequest.Record) (*model, error) {
+type feeModel struct {
+	Id                      sql.NullInt64 `db:"id"`
+	Intent                  string        `db:"intent"`
+	DestinationTokenAccount string        `db:"destination_token_account"`
+	BasisPoints             uint16        `db:"bps"`
+}
+
+func toRequestModel(obj *paymentrequest.Record) (*requestModel, error) {
 	if err := obj.Validate(); err != nil {
 		return nil, err
 	}
@@ -42,7 +51,16 @@ func toModel(obj *paymentrequest.Record) (*model, error) {
 		obj.CreatedAt = time.Now().UTC()
 	}
 
-	return &model{
+	fees := make([]*feeModel, len(obj.Fees))
+	for i, fee := range obj.Fees {
+		fees[i] = &feeModel{
+			Intent:                  obj.Intent,
+			DestinationTokenAccount: fee.DestinationTokenAccount,
+			BasisPoints:             fee.BasisPoints,
+		}
+	}
+
+	return &requestModel{
 		Id:     sql.NullInt64{Int64: int64(obj.Id), Valid: true},
 		Intent: obj.Intent,
 		DestinationTokenAccount: sql.NullString{
@@ -65,6 +83,7 @@ func toModel(obj *paymentrequest.Record) (*model, error) {
 			Valid: obj.Quantity != nil,
 			Int64: int64(*pointer.Uint64OrDefault(obj.Quantity, 0)),
 		},
+		Fees: fees,
 		Domain: sql.NullString{
 			Valid:  obj.Domain != nil,
 			String: *pointer.StringOrDefault(obj.Domain, ""),
@@ -74,7 +93,15 @@ func toModel(obj *paymentrequest.Record) (*model, error) {
 	}, nil
 }
 
-func fromModel(obj *model) *paymentrequest.Record {
+func fromRequestModel(obj *requestModel) *paymentrequest.Record {
+	fees := make([]*paymentrequest.Fee, len(obj.Fees))
+	for i, fee := range obj.Fees {
+		fees[i] = &paymentrequest.Fee{
+			DestinationTokenAccount: fee.DestinationTokenAccount,
+			BasisPoints:             fee.BasisPoints,
+		}
+	}
+
 	return &paymentrequest.Record{
 		Id:                      uint64(obj.Id.Int64),
 		Intent:                  obj.Intent,
@@ -83,15 +110,16 @@ func fromModel(obj *model) *paymentrequest.Record {
 		NativeAmount:            pointer.Float64IfValid(obj.NativeAmount.Valid, obj.NativeAmount.Float64),
 		ExchangeRate:            pointer.Float64IfValid(obj.ExchangeRate.Valid, obj.ExchangeRate.Float64),
 		Quantity:                pointer.Uint64IfValid(obj.Quantity.Valid, uint64(obj.Quantity.Int64)),
+		Fees:                    fees,
 		Domain:                  pointer.StringIfValid(obj.Domain.Valid, obj.Domain.String),
 		IsVerified:              obj.IsVerified,
 		CreatedAt:               obj.CreatedAt.UTC(),
 	}
 }
 
-func (m *model) dbPut(ctx context.Context, db *sqlx.DB) error {
+func (m *requestModel) dbPut(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
-		query := `INSERT INTO ` + tableName + `
+		query := `INSERT INTO ` + requestTableName + `
 			(intent, destination_token_account, exchange_currency, exchange_rate, native_amount, quantity, domain, is_verified, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			RETURNING id, intent, destination_token_account, exchange_currency, exchange_rate, native_amount, quantity, domain, is_verified, created_at`
@@ -110,14 +138,39 @@ func (m *model) dbPut(ctx context.Context, db *sqlx.DB) error {
 			m.CreatedAt,
 		).StructScan(m)
 
-		return pgutil.CheckUniqueViolation(err, paymentrequest.ErrPaymentRequestAlreadyExists)
+		err = pgutil.CheckUniqueViolation(err, paymentrequest.ErrPaymentRequestAlreadyExists)
+		if err != nil {
+			return err
+		}
+
+		for _, fee := range m.Fees {
+			query := `INSERT INTO ` + feesTableName + `
+				(intent, destination_token_account, bps)
+				VALUES ($1, $2, $3)
+				RETURNING id, intent, destination_token_account, bps`
+
+			err := tx.QueryRowxContext(
+				ctx,
+				query,
+				fee.Intent,
+				fee.DestinationTokenAccount,
+				fee.BasisPoints,
+			).StructScan(fee)
+
+			err = pgutil.CheckUniqueViolation(err, paymentrequest.ErrInvalidPaymentRequest)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }
 
-func dbGet(ctx context.Context, db *sqlx.DB, intent string) (*model, error) {
-	res := &model{}
+func dbGet(ctx context.Context, db *sqlx.DB, intent string) (*requestModel, error) {
+	res := &requestModel{}
 
-	query := `SELECT id, intent, destination_token_account, exchange_currency, exchange_rate, native_amount, quantity, domain, is_verified, created_at FROM ` + tableName + `
+	query := `SELECT id, intent, destination_token_account, exchange_currency, exchange_rate, native_amount, quantity, domain, is_verified, created_at FROM ` + requestTableName + `
 			WHERE intent = $1`
 
 	err := db.GetContext(
@@ -129,5 +182,19 @@ func dbGet(ctx context.Context, db *sqlx.DB, intent string) (*model, error) {
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, paymentrequest.ErrPaymentRequestNotFound)
 	}
+
+	var fees []*feeModel
+	query = `SELECT id, intent, destination_token_account, bps FROM ` + feesTableName + `
+			WHERE intent = $1
+			ORDER BY id ASC`
+
+	err = db.SelectContext(ctx, &fees, query, intent)
+	err = pgutil.CheckNoRows(err, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res.Fees = fees
+
 	return res, nil
 }

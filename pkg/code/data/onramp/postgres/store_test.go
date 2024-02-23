@@ -8,56 +8,40 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest/tests"
+	"github.com/code-payments/code-server/pkg/code/data/onramp"
+	"github.com/code-payments/code-server/pkg/code/data/onramp/tests"
 
 	postgrestest "github.com/code-payments/code-server/pkg/database/postgres/test"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
+var (
+	testStore onramp.Store
+	teardown  func()
+)
+
 const (
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableCreate = `
-		CREATE TABLE codewallet__core_paymentrequest(
+		CREATE TABLE codewallet__core_fiatonramppurchase (
 			id SERIAL NOT NULL PRIMARY KEY,
 
-			intent TEXT NOT NULL UNIQUE,
+			owner TEXT NOT NULL,
+			currency TEXT NOT NULL,
+			amount numeric(18, 9) NOT NULL,
+			nonce UUID NOT NULL,
 
-			destination_token_account TEXT NULL,
-			exchange_currency VARCHAR(3) NULL,
-			native_amount NUMERIC(18, 9) NULL,
-			exchange_rate NUMERIC(18, 9) NULL,
-			quantity BIGINT NULL CHECK (quantity >= 0),
+			created_at TIMESTAMP WITH TIME ZONE,
 
-			domain TEXT NULL,
-			is_verified BOOL NOT NULL,
-
-			created_at TIMESTAMP WITH TIME ZONE NOT NULL
-		);
-
-		CREATE TABLE codewallet__core_paymentrequestfees(
-			id SERIAL NOT NULL PRIMARY KEY,
-
-			intent TEXT NOT NULL,
-
-			destination_token_account TEXT NULL,
-			bps INTEGER NOT NULL,
-
-			CONSTRAINT codewallet__core_paymentrequestfees__uniq__intent__and__destination_token_account UNIQUE (intent, destination_token_account)
+			CONSTRAINT codewallet__core_fiatonramppurchase__uniq__nonce UNIQUE (nonce)
 		);
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
-		DROP TABLE codewallet__core_paymentrequest;
-		DROP TABLE codewallet__core_paymentrequestfees;
+		DROP TABLE codewallet__core_fiatonramppurchase;
 	`
-)
-
-var (
-	testStore paymentrequest.Store
-	teardown  func()
 )
 
 func TestMain(m *testing.M) {
@@ -102,7 +86,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestPaymentRequestPostgresStore(t *testing.T) {
+func TestOnrampPostgresStore(t *testing.T) {
 	tests.RunTests(t, testStore, teardown)
 }
 

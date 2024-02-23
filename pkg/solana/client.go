@@ -146,6 +146,7 @@ type TransactionTokenBalances struct {
 	PreTokenBalances  []TokenBalance
 	PostTokenBalances []TokenBalance
 	Slot              uint64
+	BlockTime         *time.Time
 }
 
 type ConfirmedTransaction struct {
@@ -642,6 +643,7 @@ func (c *client) GetTransactionTokenBalances(sig Signature) (TransactionTokenBal
 				AccountKeys []string `json:"accountKeys"`
 			} `json:"message"`
 		} `json:"transaction"`
+		BlockTime *int64 `json:"blockTime"`
 	}
 
 	var resp *rpcResp
@@ -665,6 +667,10 @@ func (c *client) GetTransactionTokenBalances(sig Signature) (TransactionTokenBal
 		PreTokenBalances:  resp.Meta.PreTokenBalances,
 		PostTokenBalances: resp.Meta.PostTokenBalances,
 		Slot:              resp.Slot,
+	}
+	if resp.BlockTime != nil {
+		txTime := time.Unix(*resp.BlockTime, 0)
+		tokenBalances.BlockTime = &txTime
 	}
 	return tokenBalances, nil
 }
@@ -698,7 +704,7 @@ func (c *client) GetTokenAccountBalance(account ed25519.PublicKey) (uint64, uint
 		} `json:"context"`
 		Value TokenAmount `json:"value"`
 	}
-	if err := c.call(&resp, "getTokenAccountBalance", base58.Encode(account[:]), CommitmentProcessed); err != nil {
+	if err := c.call(&resp, "getTokenAccountBalance", base58.Encode(account[:]), CommitmentFinalized); err != nil {
 		jsonRPCErr, ok := err.(*jsonrpc.RPCError)
 		if !ok {
 			return 0, 0, errors.Wrapf(err, "getTokenAccountBalance() failed to send request")
