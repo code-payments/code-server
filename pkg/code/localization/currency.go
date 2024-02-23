@@ -141,45 +141,42 @@ var symbolByCode = map[currency_lib.Code]string{
 func FormatFiat(locale language.Tag, code currency_lib.Code, amount float64, ofKin bool) (string, error) {
 	isRtlScript := isRtlScript(locale)
 
-	localizedAmount := func() string {
-		decimals := 2
-		if code == currency_lib.KIN {
-			decimals = 0
-			amount = float64(uint64(amount))
-		}
-
-		printer := message.NewPrinter(locale)
-		amountAsDecimal := number.Decimal(amount, number.Scale(decimals))
-		formattedAmount := printer.Sprint(amountAsDecimal)
-
-		symbol, ok := symbolByCode[code]
-		if ok {
-			if isRtlScript {
-				return formattedAmount + symbol
-			}
-			return symbol + formattedAmount
-		}
-		return formattedAmount
-	}()
-
-	if ofKin {
-		suffixKey := CoreOfKin
-		if code == currency_lib.KIN {
-			suffixKey = CoreKin
-		}
-
-		translatedSuffix, err := LocalizeKey(locale, suffixKey)
-		if err != nil {
-			return "", err
-		}
-
-		if isRtlScript {
-			return translatedSuffix + " " + localizedAmount, nil
-		}
-		return localizedAmount + " " + translatedSuffix, nil
+	decimals := 2
+	if code == currency_lib.KIN {
+		decimals = 0
+		amount = float64(uint64(amount))
 	}
 
-	return localizedAmount, nil
+	printer := message.NewPrinter(locale)
+	amountAsDecimal := number.Decimal(amount, number.Scale(decimals))
+	formattedAmount := printer.Sprint(amountAsDecimal)
+
+	symbol := symbolByCode[code]
+
+	suffixKey := CoreOfKin
+	if code == currency_lib.KIN {
+		suffixKey = CoreKin
+	}
+
+	localizedSuffix, localizedIn, err := localizeKey(locale, suffixKey)
+	if err != nil {
+		return "", err
+	}
+	if !ofKin {
+		localizedSuffix = ""
+	}
+
+	if isRtlScript && !isDefaultLocale(*localizedIn) {
+		if len(localizedSuffix) > 0 {
+			localizedSuffix = localizedSuffix + " "
+		}
+		return localizedSuffix + formattedAmount + symbol, nil
+	}
+
+	if len(localizedSuffix) > 0 {
+		localizedSuffix = " " + localizedSuffix
+	}
+	return symbol + formattedAmount + localizedSuffix, nil
 }
 
 // LocalizeFiatWithVerb is like FormatFiat, but includes a verb for the interaction
@@ -216,12 +213,12 @@ func LocalizeFiatWithVerb(locale language.Tag, verb chatpb.ExchangeDataContent_V
 		return "", errors.Errorf("verb %s is not supported", verb)
 	}
 
-	localizedVerbText, err := LocalizeKey(locale, key)
+	localizedVerbText, localizedIn, err := localizeKey(locale, key)
 	if err != nil {
 		return "", err
 	}
 
-	if isRtlScript(locale) {
+	if isRtlScript(locale) && !isDefaultLocale(*localizedIn) {
 		isAmountBeforeVerb = !isAmountBeforeVerb
 	}
 
