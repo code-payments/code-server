@@ -130,6 +130,28 @@ func (p *provider) SendLocalizedAndroidPush(ctx context.Context, pushToken, titl
 	})
 }
 
+// SendMutableAPNSPush implements push.Provider.SendMutableAPNSPush
+func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error {
+	defer metrics.TraceMethodCall(ctx, metricsStructName, "SendMutableAPNSPush").End()
+
+	_, err := p.client.Send(ctx, &messaging.Message{
+		Token: pushToken,
+		Data:  kvs,
+		APNS: &messaging.APNSConfig{
+			Payload: &messaging.APNSPayload{
+				Aps: &messaging.Aps{
+					Alert: &messaging.ApsAlert{
+						TitleLocKey: titleKey,
+						Body:        "...",
+					},
+					MutableContent: true,
+				},
+			},
+		},
+	})
+	return err
+}
+
 // SendDataPush implements push.Provider.SendDataPush
 func (p *provider) SendDataPush(ctx context.Context, pushToken string, kvs map[string]string) error {
 	defer metrics.TraceMethodCall(ctx, metricsStructName, "SendDataPush").End()

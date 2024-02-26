@@ -14,6 +14,10 @@ type Provider interface {
 	// SendLocalizedAPNSPush sends a localized APNS push
 	SendLocalizedAPNSPush(ctx context.Context, pushToken, titleKey, bodyKey string, bodyArgs ...string) error
 
+	// SendMutableAPNSPush sends a push over APNS with a text body that's mutable
+	// on the client using custom key value pairs
+	SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error
+
 	// SendLocalizedAndroidPush sends a localized Android push
 	SendLocalizedAndroidPush(ctx context.Context, pushToken, titleKey, bodyKey string, bodyArgs ...string) error
 
