@@ -3,12 +3,14 @@ package user
 import (
 	"context"
 	"crypto/ed25519"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 	xrate "golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,13 +29,13 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
+	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	transaction_server "github.com/code-payments/code-server/pkg/code/server/grpc/transaction/v2"
-	"github.com/code-payments/code-server/pkg/currency"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -751,7 +753,7 @@ func TestGetUser_AirdropStatus(t *testing.T) {
 						DestinationTokenAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 						Quantity:                kin.ToQuarks(1),
 
-						ExchangeCurrency: currency.USD,
+						ExchangeCurrency: currency_lib.USD,
 						ExchangeRate:     1.0,
 						NativeAmount:     1.0,
 						UsdMarketValue:   1.0,
@@ -793,6 +795,81 @@ func TestGetUser_AirdropStatus(t *testing.T) {
 				assert.Equal(t, transactionpb.AirdropType_GET_FIRST_KIN, resp.EligibleAirdrops[0])
 			}
 		}
+	}
+}
+
+func TestUpdatePreferences_Locale_HappyPath(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	containerId := generateNewDataContainer(t, env, ownerAccount)
+
+	for _, expected := range []string{
+		"fr",
+		"fr-CA",
+		"fr_CA",
+		"en",
+		"en-US",
+		"en_US",
+		"mni-Beng_IN",
+	} {
+		req := &userpb.UpdatePreferencesRequest{
+			OwnerAccountId: ownerAccount.ToProto(),
+			ContainerId:    containerId.Proto(),
+			Locale: &commonpb.Locale{
+				Value: expected,
+			},
+		}
+
+		reqBytes, err := proto.Marshal(req)
+		require.NoError(t, err)
+
+		req.Signature = &commonpb.Signature{
+			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
+		}
+
+		resp, err := env.client.UpdatePreferences(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, userpb.UpdatePreferencesResponse_OK, resp.Result)
+
+		preferencesRecord, err := env.data.GetUserPreferences(env.ctx, containerId)
+		require.NoError(t, err)
+		assert.Equal(t, strings.Replace(expected, "_", "-", -1), preferencesRecord.Locale.String())
+	}
+}
+
+func TestUpdatePreferences_Locale_InvalidLocale(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	ownerAccount := testutil.NewRandomAccount(t)
+	containerId := generateNewDataContainer(t, env, ownerAccount)
+
+	for _, invalidValue := range []string{
+		"zz",
+	} {
+		req := &userpb.UpdatePreferencesRequest{
+			OwnerAccountId: ownerAccount.ToProto(),
+			ContainerId:    containerId.Proto(),
+			Locale: &commonpb.Locale{
+				Value: invalidValue,
+			},
+		}
+
+		reqBytes, err := proto.Marshal(req)
+		require.NoError(t, err)
+
+		req.Signature = &commonpb.Signature{
+			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
+		}
+
+		resp, err := env.client.UpdatePreferences(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, userpb.UpdatePreferencesResponse_INVALID_LOCALE, resp.Result)
+
+		_, err = env.data.GetUserPreferences(env.ctx, containerId)
+		assert.Equal(t, preferences.ErrPreferencesNotFound, err)
 	}
 }
 
@@ -1374,16 +1451,17 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
+	validAccount := testutil.NewRandomAccount(t)
+	maliciousAccount := testutil.NewRandomAccount(t)
+
 	intentId := testutil.NewRandomAccount(t)
+	containerId := generateNewDataContainer(t, env, validAccount)
 
 	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
 		Intent:     intentId.PublicKey().ToBase58(),
 		Domain:     pointer.String("example.com"),
 		IsVerified: true,
 	}))
-
-	validAccount := testutil.NewRandomAccount(t)
-	maliciousAccount := testutil.NewRandomAccount(t)
 
 	linkReq := &userpb.LinkAccountRequest{
 		OwnerAccountId: validAccount.ToProto(),
@@ -1426,6 +1504,21 @@ func TestUnauthenticatedRPC(t *testing.T) {
 		Value: signature,
 	}
 
+	updatePreferencesReq := &userpb.UpdatePreferencesRequest{
+		OwnerAccountId: validAccount.ToProto(),
+		ContainerId:    containerId.Proto(),
+		Locale: &commonpb.Locale{
+			Value: language.CanadianFrench.String(),
+		},
+	}
+
+	reqBytes, err = proto.Marshal(updatePreferencesReq)
+	require.NoError(t, err)
+
+	updatePreferencesReq.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
 	loginReq := &userpb.LoginToThirdPartyAppRequest{
 		IntentId: &commonpb.IntentId{
 			Value: intentId.ToProto().Value,
@@ -1460,11 +1553,64 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	_, err = env.client.GetUser(env.ctx, getUserReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 
+	_, err = env.client.UpdatePreferences(env.ctx, updatePreferencesReq)
+	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
 	_, err = env.client.LoginToThirdPartyApp(env.ctx, loginReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 
 	_, err = env.client.GetLoginForThirdPartyApp(env.ctx, getLoginReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+}
+
+func TestUnauthorizedDataAccess(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	validAccount := testutil.NewRandomAccount(t)
+	maliciousAccount := testutil.NewRandomAccount(t)
+
+	intentId := testutil.NewRandomAccount(t)
+	containerId := generateNewDataContainer(t, env, validAccount)
+
+	require.NoError(t, env.data.CreateRequest(env.ctx, &paymentrequest.Record{
+		Intent:     intentId.PublicKey().ToBase58(),
+		Domain:     pointer.String("example.com"),
+		IsVerified: true,
+	}))
+
+	updatePreferencesReq := &userpb.UpdatePreferencesRequest{
+		OwnerAccountId: maliciousAccount.ToProto(),
+		ContainerId:    containerId.Proto(),
+		Locale: &commonpb.Locale{
+			Value: language.CanadianFrench.String(),
+		},
+	}
+
+	reqBytes, err := proto.Marshal(updatePreferencesReq)
+	require.NoError(t, err)
+
+	updatePreferencesReq.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	_, err = env.client.UpdatePreferences(env.ctx, updatePreferencesReq)
+	testutil.AssertStatusErrorWithCode(t, err, codes.PermissionDenied)
+}
+
+func generateNewDataContainer(t *testing.T, env testEnv, ownerAccount *common.Account) *user.DataContainerID {
+	phoneNumber := "+12223334444"
+
+	container := &storage.Record{
+		ID:           user.NewDataContainerID(),
+		OwnerAccount: ownerAccount.PublicKey().ToBase58(),
+		IdentifyingFeatures: &user.IdentifyingFeatures{
+			PhoneNumber: &phoneNumber,
+		},
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, env.data.PutUserDataContainer(env.ctx, container))
+	return container.ID
 }
 
 func mockDomainVerifier(ctx context.Context, owner *common.Account, domain string) (bool, error) {

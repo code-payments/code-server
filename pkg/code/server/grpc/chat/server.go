@@ -14,14 +14,14 @@ import (
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/grpc/client"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/grpc/client"
 )
 
 const (
@@ -142,7 +142,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
 				Localized: &chatpb.LocalizedContent{
-					Key: localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
+					KeyOrText: localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
 				},
 			}
 			protoMetadata.CanMute = chatProperties.CanMute
@@ -283,7 +283,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		for _, content := range protoChatMessage.Content {
 			switch typed := content.Type.(type) {
 			case *chatpb.Content_Localized:
-				typed.Localized.Key = localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.Key)
+				typed.Localized.KeyOrText = localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText)
 			}
 		}
 

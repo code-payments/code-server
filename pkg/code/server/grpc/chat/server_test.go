@@ -89,7 +89,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 			{
 				Type: &chatpb.Content_Localized{
 					Localized: &chatpb.LocalizedContent{
-						Key: "msg.body.key",
+						KeyOrText: "msg.body.key",
 					},
 				},
 			},
@@ -182,7 +182,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	require.Len(t, getChatsResp.Chats, 4)
 
 	assert.Equal(t, codeTeamChatId[:], getChatsResp.Chats[0].ChatId.Value)
-	assert.Equal(t, localization.ChatTitleCodeTeam, getChatsResp.Chats[0].GetLocalized().Key)
+	assert.Equal(t, localization.ChatTitleCodeTeam, getChatsResp.Chats[0].GetLocalized().KeyOrText)
 	assert.Nil(t, getChatsResp.Chats[0].ReadPointer)
 	assert.EqualValues(t, 1, getChatsResp.Chats[0].NumUnread)
 	assert.False(t, getChatsResp.Chats[0].IsMuted)
@@ -192,7 +192,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	assert.True(t, getChatsResp.Chats[0].IsVerified)
 
 	assert.Equal(t, cashTransactionsChatId[:], getChatsResp.Chats[1].ChatId.Value)
-	assert.Equal(t, localization.ChatTitleCashTransactions, getChatsResp.Chats[1].GetLocalized().Key)
+	assert.Equal(t, localization.ChatTitleCashTransactions, getChatsResp.Chats[1].GetLocalized().KeyOrText)
 	assert.Nil(t, getChatsResp.Chats[1].ReadPointer)
 	assert.EqualValues(t, 0, getChatsResp.Chats[1].NumUnread)
 	assert.False(t, getChatsResp.Chats[1].IsMuted)
@@ -273,7 +273,7 @@ func TestChatHistoryReadState_HappyPath(t *testing.T) {
 				{
 					Type: &chatpb.Content_Localized{
 						Localized: &chatpb.LocalizedContent{
-							Key: fmt.Sprintf("msg.body.key%d", i),
+							KeyOrText: fmt.Sprintf("msg.body.key%d", i),
 						},
 					},
 				},
@@ -330,7 +330,7 @@ func TestChatHistoryReadState_NegativeProgress(t *testing.T) {
 				{
 					Type: &chatpb.Content_Localized{
 						Localized: &chatpb.LocalizedContent{
-							Key: fmt.Sprintf("msg.body.key%d", i),
+							KeyOrText: fmt.Sprintf("msg.body.key%d", i),
 						},
 					},
 				},
@@ -412,7 +412,7 @@ func TestChatHistoryReadState_MessageNotFound(t *testing.T) {
 			{
 				Type: &chatpb.Content_Localized{
 					Localized: &chatpb.LocalizedContent{
-						Key: "msg.body.key",
+						KeyOrText: "msg.body.key",
 					},
 				},
 			},
@@ -720,7 +720,7 @@ func TestUnauthorizedAccess(t *testing.T) {
 			{
 				Type: &chatpb.Content_Localized{
 					Localized: &chatpb.LocalizedContent{
-						Key: "msg.body.key",
+						KeyOrText: "msg.body.key",
 					},
 				},
 			},
