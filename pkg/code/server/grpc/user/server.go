@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/language"
 	xrate "golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,6 +24,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
+	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
@@ -392,6 +394,59 @@ func (s *identityServer) GetUser(ctx context.Context, req *userpb.GetUserRequest
 		},
 		EnableInternalFlags: isStaff,
 		EligibleAirdrops:    eligibleAirdrops,
+	}, nil
+}
+
+func (s *identityServer) UpdatePreferences(ctx context.Context, req *userpb.UpdatePreferencesRequest) (*userpb.UpdatePreferencesResponse, error) {
+	log := s.log.WithField("method", "UpdatePreferences")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	ownerAccount, err := common.NewAccountFromProto(req.OwnerAccountId)
+	if err != nil {
+		log.WithError(err).Warn("owner account is invalid")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner_account", ownerAccount.PublicKey().ToBase58())
+
+	containerID, err := user.GetDataContainerIDFromProto(req.ContainerId)
+	if err != nil {
+		log.WithError(err).Warn("failure parsing data container id as uuid")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("data_container", containerID.String())
+
+	signature := req.Signature
+	req.Signature = nil
+	if err := s.auth.AuthorizeDataAccess(ctx, containerID, ownerAccount, req, signature); err != nil {
+		return nil, err
+	}
+
+	locale, err := language.Parse(req.Locale.Value)
+	if err != nil {
+		log.WithError(err).Info("client provided an invalid locale")
+		return &userpb.UpdatePreferencesResponse{
+			Result: userpb.UpdatePreferencesResponse_INVALID_LOCALE,
+		}, nil
+	}
+
+	record, err := s.data.GetUserPreferences(ctx, containerID)
+	if err == preferences.ErrPreferencesNotFound {
+		record = preferences.GetDefaultPreferences(containerID)
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting preferences record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	record.Locale = locale
+
+	err = s.data.SaveUserPreferences(ctx, record)
+	if err != nil {
+		log.WithError(err).Warn("failure saving preferences record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	return &userpb.UpdatePreferencesResponse{
+		Result: userpb.UpdatePreferencesResponse_OK,
 	}, nil
 }
 

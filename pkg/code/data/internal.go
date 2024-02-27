@@ -38,6 +38,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/paywall"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
+	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/push"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
@@ -71,6 +72,7 @@ import (
 	paymentrequest_memory_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/memory"
 	paywall_memory_client "github.com/code-payments/code-server/pkg/code/data/paywall/memory"
 	phone_memory_client "github.com/code-payments/code-server/pkg/code/data/phone/memory"
+	preferences_memory_client "github.com/code-payments/code-server/pkg/code/data/preferences/memory"
 	push_memory_client "github.com/code-payments/code-server/pkg/code/data/push/memory"
 	rendezvous_memory_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/memory"
 	timelock_memory_client "github.com/code-payments/code-server/pkg/code/data/timelock/memory"
@@ -102,6 +104,7 @@ import (
 	paymentrequest_postgres_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/postgres"
 	paywall_postgres_client "github.com/code-payments/code-server/pkg/code/data/paywall/postgres"
 	phone_postgres_client "github.com/code-payments/code-server/pkg/code/data/phone/postgres"
+	preferences_postgres_client "github.com/code-payments/code-server/pkg/code/data/preferences/postgres"
 	push_postgres_client "github.com/code-payments/code-server/pkg/code/data/push/postgres"
 	rendezvous_postgres_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/postgres"
 	timelock_postgres_client "github.com/code-payments/code-server/pkg/code/data/timelock/postgres"
@@ -401,6 +404,11 @@ type DatabaseData interface {
 	PutFiatOnrampPurchase(ctx context.Context, record *onramp.Record) error
 	GetFiatOnrampPurchase(ctx context.Context, nonce uuid.UUID) (*onramp.Record, error)
 
+	// User Preferences
+	// --------------------------------------------------------------------------------
+	SaveUserPreferences(ctx context.Context, record *preferences.Record) error
+	GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -441,6 +449,7 @@ type DatabaseProvider struct {
 	login          login.Store
 	balance        balance.Store
 	onramp         onramp.Store
+	preferences    preferences.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -500,6 +509,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		login:          login_postgres_client.New(db),
 		balance:        balance_postgres_client.New(db),
 		onramp:         onramp_postgres_client.New(db),
+		preferences:    preferences_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -540,6 +550,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		login:          login_memory_client.New(),
 		balance:        balance_memory_client.New(),
 		onramp:         onramp_memory_client.New(),
+		preferences:    preferences_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1434,4 +1445,13 @@ func (dp *DatabaseProvider) PutFiatOnrampPurchase(ctx context.Context, record *o
 }
 func (dp *DatabaseProvider) GetFiatOnrampPurchase(ctx context.Context, nonce uuid.UUID) (*onramp.Record, error) {
 	return dp.onramp.Get(ctx, nonce)
+}
+
+// User Preferences
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) SaveUserPreferences(ctx context.Context, record *preferences.Record) error {
+	return dp.preferences.Save(ctx, record)
+}
+func (dp *DatabaseProvider) GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error) {
+	return dp.preferences.Get(ctx, id)
 }
