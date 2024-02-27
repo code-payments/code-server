@@ -6,7 +6,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/text/language"
 	"google.golang.org/protobuf/proto"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
@@ -22,9 +21,6 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
-
-// todo: fetch from a user settings DB table
-var SimulatedUserLocale = language.English
 
 // SendDepositPushNotification sends a push notification for received deposits
 func SendDepositPushNotification(
@@ -75,17 +71,23 @@ func SendDepositPushNotification(
 		return errors.Wrap(err, "error getting chat record")
 	}
 
-	localizedAmount, err := localization.FormatFiat(SimulatedUserLocale, currency_lib.KIN, float64(kin.FromQuarks(quarks)), false)
+	locale, err := data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return err
+	}
+
+	localizedAmount, err := localization.FormatFiat(locale, currency_lib.KIN, float64(kin.FromQuarks(quarks)), false)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushTitle, err := localization.Localize(SimulatedUserLocale, localization.PushTitleDepositReceived)
+	localizedPushTitle, err := localization.Localize(locale, localization.PushTitleDepositReceived)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushBody, err := localization.Localize(SimulatedUserLocale, localization.PushSubtitleDepositReceived, localizedAmount)
+	localizedPushBody, err := localization.Localize(locale, localization.PushSubtitleDepositReceived, localizedAmount)
 	if err != nil {
 		return nil
 	}
@@ -149,8 +151,14 @@ func SendGiftCardReturnedPushNotification(
 		return errors.Wrap(err, "error getting chat record")
 	}
 
+	locale, err := data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return err
+	}
+
 	localizedAmount, err := localization.FormatFiat(
-		SimulatedUserLocale,
+		locale,
 		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.ExchangeCurrency,
 		originalGiftCardIssuedIntent.SendPrivatePaymentMetadata.NativeAmount,
 		true,
@@ -159,12 +167,12 @@ func SendGiftCardReturnedPushNotification(
 		return nil
 	}
 
-	localizedPushTitle, err := localization.Localize(SimulatedUserLocale, localization.PushTitleKinReturned)
+	localizedPushTitle, err := localization.Localize(locale, localization.PushTitleKinReturned)
 	if err != nil {
 		return nil
 	}
 
-	localizedPushBody, err := localization.Localize(SimulatedUserLocale, localization.PushSubtitleKinReturned, localizedAmount)
+	localizedPushBody, err := localization.Localize(locale, localization.PushSubtitleKinReturned, localizedAmount)
 	if err != nil {
 		return nil
 	}
@@ -202,11 +210,17 @@ func SendChatMessagePushNotification(
 		log.WithError(err).Warn("failure updating badge count on device")
 	}
 
+	locale, err := data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return err
+	}
+
 	var localizedPushTitle string
 
 	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
 	if ok {
-		localized, err := localization.Localize(SimulatedUserLocale, chatProperties.TitleLocalizationKey)
+		localized, err := localization.Localize(locale, chatProperties.TitleLocalizationKey)
 		if err != nil {
 			return nil
 		}
@@ -225,7 +239,7 @@ func SendChatMessagePushNotification(
 		var contentToPush *chatpb.Content
 		switch typedContent := content.Type.(type) {
 		case *chatpb.Content_Localized:
-			localizedPushBody, err := localization.Localize(SimulatedUserLocale, typedContent.Localized.KeyOrText)
+			localizedPushBody, err := localization.Localize(locale, typedContent.Localized.KeyOrText)
 			if err != nil {
 				continue
 			}
@@ -251,7 +265,7 @@ func SendChatMessagePushNotification(
 			}
 
 			localizedPushBody, err := localization.LocalizeFiatWithVerb(
-				SimulatedUserLocale,
+				locale,
 				typedContent.ExchangeData.Verb,
 				currencyCode,
 				nativeAmount,

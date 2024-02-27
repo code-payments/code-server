@@ -59,3 +59,8 @@ func GetDefaultPreferences(id *user.DataContainerID) *Record {
 		LastUpdatedAt:   time.Now(),
 	}
 }
+
+// GetDefaultLocale returns the default locale setting
+func GetDefaultLocale() language.Tag {
+	return defaultLocale
+}
