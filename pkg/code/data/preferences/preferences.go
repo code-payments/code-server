@@ -3,6 +3,7 @@ package preferences
 import (
 	"time"
 
+	"github.com/pkg/errors"
 	"golang.org/x/text/language"
 
 	"github.com/code-payments/code-server/pkg/code/data/user"
@@ -23,6 +24,14 @@ type Record struct {
 }
 
 func (r *Record) Validate() error {
+	if err := r.DataContainerId.Validate(); err != nil {
+		return errors.Wrap(err, "invalid data container id")
+	}
+
+	if r.Locale.String() == language.Und.String() {
+		return errors.New("locale is undefined")
+	}
+
 	return nil
 }
 
