@@ -14,11 +14,11 @@ import (
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestSendChatMessage_HappyPath(t *testing.T) {
@@ -161,7 +161,7 @@ func newRandomChatMessage(t *testing.T, contentLength int) *chatpb.ChatMessage {
 		content = append(content, &chatpb.Content{
 			Type: &chatpb.Content_Localized{
 				Localized: &chatpb.LocalizedContent{
-					Key: fmt.Sprintf("key%d", rand.Uint32()),
+					KeyOrText: fmt.Sprintf("key%d", rand.Uint32()),
 				},
 			},
 		})

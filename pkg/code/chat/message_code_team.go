@@ -51,7 +51,7 @@ func ToUsdcDepositedMessage(signature string, quarks uint64, ts time.Time) (*cha
 		{
 			Type: &chatpb.Content_Localized{
 				Localized: &chatpb.LocalizedContent{
-					Key: localization.ChatMessageUsdcDeposited,
+					KeyOrText: localization.ChatMessageUsdcDeposited,
 				},
 			},
 		},
@@ -71,7 +71,7 @@ func NewUsdcBeingConvertedMessage() (*chatpb.ChatMessage, error) {
 		{
 			Type: &chatpb.Content_Localized{
 				Localized: &chatpb.LocalizedContent{
-					Key: localization.ChatMessageUsdcBeingConverted,
+					KeyOrText: localization.ChatMessageUsdcBeingConverted,
 				},
 			},
 		},
@@ -90,7 +90,7 @@ func ToKinAvailableForUseMessage(signature string, ts time.Time, purchases ...*t
 		{
 			Type: &chatpb.Content_Localized{
 				Localized: &chatpb.LocalizedContent{
-					Key: localization.ChatMessageKinAvailableForUse,
+					KeyOrText: localization.ChatMessageKinAvailableForUse,
 				},
 			},
 		},
@@ -120,7 +120,7 @@ func newIncentiveMessage(localizedTextKey string, intentRecord *intent.Record) (
 		{
 			Type: &chatpb.Content_Localized{
 				Localized: &chatpb.LocalizedContent{
-					Key: localizedTextKey,
+					KeyOrText: localizedTextKey,
 				},
 			},
 		},
