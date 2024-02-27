@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
+	"github.com/code-payments/code-server/pkg/code/data/phone"
+	"github.com/code-payments/code-server/pkg/code/data/preferences"
+	"github.com/code-payments/code-server/pkg/code/data/user"
+	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/testutil"
@@ -34,6 +39,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	localization.LoadTestKeys(map[language.Tag]map[string]string{
 		language.English: {
@@ -269,6 +275,7 @@ func TestChatHistoryReadState_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId(chat_util.CodeTeamName, owner.PublicKey().ToBase58(), true)
 
@@ -326,6 +333,7 @@ func TestChatHistoryReadState_NegativeProgress(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId(chat_util.CodeTeamName, owner.PublicKey().ToBase58(), true)
 
@@ -385,6 +393,7 @@ func TestChatHistoryReadState_ChatNotFound(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId(chat_util.CodeTeamName, owner.PublicKey().ToBase58(), true)
 
@@ -451,6 +460,7 @@ func TestChatMuteState_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	testExternalAppDomain := "test.com"
 
@@ -505,6 +515,7 @@ func TestChatMuteState_ChatNotFound(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId("test.com", owner.PublicKey().ToBase58(), false)
 
@@ -525,6 +536,7 @@ func TestChatMuteState_CantMute(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId(chat_util.TestCantMuteName, owner.PublicKey().ToBase58(), true)
 
@@ -581,6 +593,7 @@ func TestChatSubscriptionState_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	testExternalAppDomain := "test.com"
 
@@ -641,6 +654,7 @@ func TestChatSubscriptionState_ChatNotFound(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId("test.com", owner.PublicKey().ToBase58(), false)
 
@@ -661,6 +675,7 @@ func TestChatSubscriptionState_CantUnsubscribe(t *testing.T) {
 	defer cleanup()
 
 	owner := testutil.NewRandomAccount(t)
+	env.setupUserWithLocale(t, owner, language.English)
 
 	chatId := chat.GetChatId(chat_util.TestCantUnsubscribeName, owner.PublicKey().ToBase58(), true)
 
@@ -885,6 +900,33 @@ func (e *testEnv) sendExternalAppChatMessage(t *testing.T, msg *chatpb.ChatMessa
 func (e *testEnv) sendInternalChatMessage(t *testing.T, msg *chatpb.ChatMessage, chatTitle string, recipient *common.Account) {
 	_, err := chat_util.SendChatMessage(e.ctx, e.data, chatTitle, chat.ChatTypeInternal, true, recipient, msg, false)
 	require.NoError(t, err)
+}
+
+func (e *testEnv) setupUserWithLocale(t *testing.T, owner *common.Account, locale language.Tag) {
+	phoneNumber := "+12223334444"
+	containerId := user.NewDataContainerID()
+
+	phoneVerificationRecord := &phone.Verification{
+		PhoneNumber:    phoneNumber,
+		OwnerAccount:   owner.PublicKey().ToBase58(),
+		LastVerifiedAt: time.Now(),
+		CreatedAt:      time.Now(),
+	}
+	require.NoError(t, e.data.SavePhoneVerification(e.ctx, phoneVerificationRecord))
+
+	containerRecord := &storage.Record{
+		ID:           containerId,
+		OwnerAccount: owner.PublicKey().ToBase58(),
+		IdentifyingFeatures: &user.IdentifyingFeatures{
+			PhoneNumber: &phoneNumber,
+		},
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, e.data.PutUserDataContainer(e.ctx, containerRecord))
+
+	userPreferencesRecord := preferences.GetDefaultPreferences(containerId)
+	userPreferencesRecord.Locale = locale
+	require.NoError(t, e.data.SaveUserPreferences(e.ctx, userPreferencesRecord))
 }
 
 func signProtoMessage(t *testing.T, msg proto.Message, signer *common.Account, simulateInvalidSignature bool) *commonpb.Signature {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/text/language"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -28,9 +27,6 @@ import (
 const (
 	maxPageSize = 100
 )
-
-// todo: fetch from a user settings DB table
-var SimulatedUserLocale = language.English
 
 type server struct {
 	log  *logrus.Entry
@@ -108,6 +104,12 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	locale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return nil, status.Error(codes.Internal, "")
+	}
+
 	var protoMetadatas []*chatpb.ChatMetadata
 	for _, chatRecord := range chatRecords {
 		log := log.WithField("chat_id", chatRecord.ChatId.String())
@@ -147,7 +149,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
 				Localized: &chatpb.LocalizedContent{
 					KeyOrText: localization.LocalizeWithFallback(
-						SimulatedUserLocale,
+						locale,
 						localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
 						chatProperties.TitleLocalizationKey,
 					),
@@ -279,6 +281,12 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	locale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return nil, status.Error(codes.Internal, "")
+	}
+
 	var protoChatMessages []*chatpb.ChatMessage
 	for _, messageRecord := range messageRecords {
 		var protoChatMessage chatpb.ChatMessage
@@ -292,7 +300,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 			switch typed := content.Type.(type) {
 			case *chatpb.Content_Localized:
 				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
-					SimulatedUserLocale,
+					locale,
 					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
 					typed.Localized.KeyOrText,
 				)
