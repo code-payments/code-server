@@ -44,7 +44,7 @@ func ToReferralBonusMessage(intentRecord *intent.Record) (*chatpb.ChatMessage, e
 
 // ToUsdcDepositedMessage turns details of a USDC deposit transaction into a chat
 // message to be inserted into the Code Team chat.
-func ToUsdcDepositedMessage(signature string, quarks uint64, ts time.Time) (*chatpb.ChatMessage, error) {
+func ToUsdcDepositedMessage(signature string, ts time.Time) (*chatpb.ChatMessage, error) {
 	// todo: Don't have a way of propagating quarks, but that's probably ok since
 	//       this is a temporary message for testing swaps.
 	content := []*chatpb.Content{
@@ -57,26 +57,6 @@ func ToUsdcDepositedMessage(signature string, quarks uint64, ts time.Time) (*cha
 		},
 	}
 	return newProtoChatMessage(signature, content, ts)
-}
-
-// NewUsdcBeingConvertedMessage generates a new message generated upon initiating
-// a USDC swap to be inserted into the Code Team chat.
-func NewUsdcBeingConvertedMessage() (*chatpb.ChatMessage, error) {
-	messageId, err := common.NewRandomAccount()
-	if err != nil {
-		return nil, err
-	}
-
-	content := []*chatpb.Content{
-		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
-					KeyOrText: localization.ChatMessageUsdcBeingConverted,
-				},
-			},
-		},
-	}
-	return newProtoChatMessage(messageId.PublicKey().ToBase58(), content, time.Now())
 }
 
 // ToKinAvailableForUseMessage turns details of a USDC swap transaction into a
