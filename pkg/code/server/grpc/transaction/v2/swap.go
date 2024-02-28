@@ -16,10 +16,8 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/balance"
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	push_util "github.com/code-payments/code-server/pkg/code/push"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/jupiter"
@@ -28,10 +26,6 @@ import (
 	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
 	swap_validator "github.com/code-payments/code-server/pkg/solana/swapvalidator"
 	"github.com/code-payments/code-server/pkg/usdc"
-)
-
-var (
-	swapNotificationTimeByOwner = make(map[string]time.Time)
 )
 
 func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) error {
@@ -370,8 +364,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	log.Debug("submitted transaction")
 
-	s.bestEffortNotifyUserOfSwapInProgress(ctx, owner)
-
 	if !initiateReq.WaitForBlockchainStatus {
 		err = streamer.Send(&transactionpb.SwapResponse{
 			Response: &transactionpb.SwapResponse_Success_{
@@ -414,39 +406,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		case <-ctx.Done():
 			return handleSwapError(streamer, ctx.Err())
 		}
-	}
-}
-
-// Temporary for manual USDC deposit flow
-func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) {
-	// Avoid spamming users chat messages due to retries of the Swap RPC within
-	// small periods of time. Implementation isn't perfect, but we'll be updating
-	// notifications later anyways.
-	lastNotificationTs, ok := swapNotificationTimeByOwner[owner.PublicKey().ToBase58()]
-	if ok && time.Since(lastNotificationTs) < time.Minute {
-		return
-	}
-	swapNotificationTimeByOwner[owner.PublicKey().ToBase58()] = time.Now()
-
-	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
-	if err != nil {
-		return
-	}
-
-	canPush, err := chat_util.SendCodeTeamMessage(ctx, s.data, owner, chatMessage)
-	if err != nil {
-		return
-	}
-
-	if canPush {
-		push_util.SendChatMessagePushNotification(
-			ctx,
-			s.data,
-			s.pusher,
-			chat_util.CodeTeamName,
-			owner,
-			chatMessage,
-		)
 	}
 }
 

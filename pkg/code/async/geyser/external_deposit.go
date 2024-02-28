@@ -327,28 +327,16 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 	case commonpb.AccountType_SWAP:
 		bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
 
-		chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, uint64(deltaQuarks), blockTime)
-		if err != nil {
-			return errors.Wrap(err, "error creating chat message")
-		}
-
-		canPush, err := chat_util.SendCodeTeamMessage(ctx, data, chatMessageReceiver, chatMessage)
-		switch err {
-		case nil:
-			if canPush {
-				push.SendChatMessagePushNotification(
-					ctx,
-					data,
-					pusher,
-					chat_util.CodeTeamName,
-					chatMessageReceiver,
-					chatMessage,
-				)
-			}
-		case chat.ErrMessageAlreadyExists:
-		default:
-			return errors.Wrap(err, "error sending chat message")
-		}
+		go delayedUsdcDepositProcessing(
+			ctx,
+			conf,
+			data,
+			pusher,
+			chatMessageReceiver,
+			tokenAccount,
+			signature,
+			blockTime,
+		)
 
 		syncedDepositCache.Insert(cacheKey, true, 1)
 
@@ -645,6 +633,75 @@ func getPurchasesFromSwap(
 		}, nil
 	}
 	return purchases, nil
+}
+
+func delayedUsdcDepositProcessing(
+	ctx context.Context,
+	conf *conf,
+	data code_data.Provider,
+	pusher push_lib.Provider,
+	ownerAccount *common.Account,
+	tokenAccount *common.Account,
+	signature string,
+	blockTime time.Time,
+) {
+	// todo: configurable
+	time.Sleep(2 * time.Minute)
+
+	history, err := data.GetBlockchainHistory(ctx, tokenAccount.PublicKey().ToBase58(), solana.CommitmentFinalized, query.WithLimit(32))
+	if err != nil {
+		return
+	}
+
+	var historyToCheck []*solana.TransactionSignature
+	for _, historyItem := range history {
+		if base58.Encode(historyItem.Signature[:]) == signature {
+			break
+		}
+
+		if historyItem.Err == nil {
+			historyToCheck = append(historyToCheck, historyItem)
+		}
+	}
+
+	for _, historyItem := range historyToCheck {
+		tokenBalances, err := data.GetBlockchainTransactionTokenBalances(ctx, base58.Encode(historyItem.Signature[:]))
+		if err != nil {
+			continue
+		}
+
+		isCodeSwap, _, _, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
+		if err != nil {
+			continue
+		}
+
+		if isCodeSwap {
+			return
+		}
+	}
+
+	chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, blockTime)
+	if err != nil {
+		return
+	}
+
+	canPush, err := chat_util.SendCodeTeamMessage(ctx, data, ownerAccount, chatMessage)
+	switch err {
+	case nil:
+		if canPush {
+			push.SendChatMessagePushNotification(
+				ctx,
+				data,
+				pusher,
+				chat_util.CodeTeamName,
+				ownerAccount,
+				chatMessage,
+			)
+		}
+	case chat.ErrMessageAlreadyExists:
+	default:
+		return
+	}
 }
 
 // Optimistically tries to cache a balance for an external account not managed
