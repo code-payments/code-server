@@ -273,7 +273,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 				return errors.Wrap(err, "error creating chat message")
 			}
 
-			canPush, err := chat_util.SendCodeTeamMessage(ctx, data, chatMessageReceiver, chatMessage)
+			canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, chatMessageReceiver, chatMessage)
 			switch err {
 			case nil:
 				if canPush {
@@ -281,7 +281,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 						ctx,
 						data,
 						pusher,
-						chat_util.CodeTeamName,
+						chat_util.KinPurchasesName,
 						chatMessageReceiver,
 						chatMessage,
 					)
@@ -692,7 +692,7 @@ func delayedUsdcDepositProcessing(
 		return
 	}
 
-	canPush, err := chat_util.SendCodeTeamMessage(ctx, data, ownerAccount, chatMessage)
+	canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, ownerAccount, chatMessage)
 	switch err {
 	case nil:
 		if canPush {
@@ -700,7 +700,7 @@ func delayedUsdcDepositProcessing(
 				ctx,
 				data,
 				pusher,
-				chat_util.CodeTeamName,
+				chat_util.KinPurchasesName,
 				ownerAccount,
 				chatMessage,
 			)

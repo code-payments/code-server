@@ -5,6 +5,7 @@ import "github.com/code-payments/code-server/pkg/code/localization"
 const (
 	CashTransactionsName = "Cash Transactions" // Renamed to Cash Payments on client
 	CodeTeamName         = "Code Team"
+	KinPurchasesName     = "Kin Purchases"
 	PaymentsName         = "Payments" // Renamed to Web Payments on client
 
 	// Test chats used for unit/integration testing only
@@ -25,6 +26,11 @@ var (
 		},
 		CodeTeamName: {
 			TitleLocalizationKey: localization.ChatTitleCodeTeam,
+			CanMute:              true,
+			CanUnsubscribe:       false,
+		},
+		KinPurchasesName: {
+			TitleLocalizationKey: localization.ChatTitleKinPurchases,
 			CanMute:              true,
 			CanUnsubscribe:       false,
 		},
