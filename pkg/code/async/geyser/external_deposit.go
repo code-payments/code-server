@@ -653,15 +653,22 @@ func delayedUsdcDepositProcessing(
 		return
 	}
 
+	var foundSignature bool
 	var historyToCheck []*solana.TransactionSignature
 	for _, historyItem := range history {
 		if base58.Encode(historyItem.Signature[:]) == signature {
+			foundSignature = true
 			break
 		}
 
 		if historyItem.Err == nil {
 			historyToCheck = append(historyToCheck, historyItem)
 		}
+	}
+
+	// The deposit is too far in the past in history, so we opt to skip processing it.
+	if !foundSignature {
+		return
 	}
 
 	for _, historyItem := range historyToCheck {
