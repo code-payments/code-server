@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,16 +19,25 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-// Reference: https://station.jup.ag/docs/apis/swap-api
+// Reference: https://station.jup.ag/docs/apis/swap-api + https://www.jupiterapi.com
 
-const (
-	DefaultApiBaseUrl = "https://quote-api.jup.ag/v6/"
+var (
+	DefaultApiBaseUrl = getEnv("JUPITER_API_BASE_URL", "https://public.jupiterapi.com/")
 
 	quoteEndpointName            = "quote"
 	swapInstructionsEndpointName = "swap-instructions"
 
 	metricsStructName = "jupiter.client"
 )
+
+// getEnv tries to get the value of an environment variable named key
+// and returns the value if found, or fallback value if not found.
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
+}
 
 type Client struct {
 	baseUrl    string
