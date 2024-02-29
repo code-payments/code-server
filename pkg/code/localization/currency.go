@@ -1,6 +1,8 @@
 package localization
 
 import (
+	"strings"
+
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"golang.org/x/text/number"
@@ -165,6 +167,7 @@ func FormatFiat(locale language.Tag, code currency_lib.Code, amount float64, ofK
 	if !ofKin {
 		localizedSuffix = ""
 	}
+	localizedSuffix = strings.TrimSpace(localizedSuffix)
 
 	if isRtlScript && !isDefaultLocale(*localizedIn) {
 		if len(localizedSuffix) > 0 {
