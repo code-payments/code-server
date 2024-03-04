@@ -22,7 +22,7 @@ import (
 // Reference: https://station.jup.ag/docs/apis/swap-api + https://www.jupiterapi.com
 
 var (
-	DefaultApiBaseUrl = getEnv("JUPITER_API_BASE_URL", "https://public.jupiterapi.com/")
+	DefaultApiBaseUrl = getEnv("JUPITER_API_BASE_URL", "https://quote-api.jup.ag/v6/")
 
 	quoteEndpointName            = "quote"
 	swapInstructionsEndpointName = "swap-instructions"
