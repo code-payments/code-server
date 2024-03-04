@@ -104,6 +104,12 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	locale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return nil, status.Error(codes.Internal, "")
+	}
+
 	var protoMetadatas []*chatpb.ChatMetadata
 	for _, chatRecord := range chatRecords {
 		log := log.WithField("chat_id", chatRecord.ChatId.String())
@@ -142,7 +148,11 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
 				Localized: &chatpb.LocalizedContent{
-					KeyOrText: localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
+					KeyOrText: localization.LocalizeWithFallback(
+						locale,
+						localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
+						chatProperties.TitleLocalizationKey,
+					),
 				},
 			}
 			protoMetadata.CanMute = chatProperties.CanMute
@@ -271,6 +281,12 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	locale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return nil, status.Error(codes.Internal, "")
+	}
+
 	var protoChatMessages []*chatpb.ChatMessage
 	for _, messageRecord := range messageRecords {
 		var protoChatMessage chatpb.ChatMessage
@@ -283,7 +299,11 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		for _, content := range protoChatMessage.Content {
 			switch typed := content.Type.(type) {
 			case *chatpb.Content_Localized:
-				typed.Localized.KeyOrText = localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText)
+				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
+					locale,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
+					typed.Localized.KeyOrText,
+				)
 			}
 		}
 

@@ -2,15 +2,12 @@ package push
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/pkg/errors"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	push_data "github.com/code-payments/code-server/pkg/code/data/push"
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
 
@@ -41,19 +38,4 @@ func onPushError(ctx context.Context, data code_data.Provider, pusher push_lib.P
 		data.DeletePushToken(ctx, pushTokenRecord.PushToken)
 	}
 	return isValid, err
-}
-
-func getAmountArg(nativeAmount float64, currency currency_lib.Code) string {
-	amountArg := fmt.Sprintf(
-		"%d Kin",
-		uint64(nativeAmount),
-	)
-	if currency != currency_lib.KIN {
-		amountArg = fmt.Sprintf(
-			"%s %.2f of Kin",
-			strings.ToUpper(string(currency)),
-			nativeAmount,
-		)
-	}
-	return amountArg
 }
