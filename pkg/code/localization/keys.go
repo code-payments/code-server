@@ -36,6 +36,7 @@ const (
 
 	ChatTitleCashTransactions = "title.chat.cashTransactions"
 	ChatTitleCodeTeam         = "title.chat.codeTeam"
+	ChatTitleKinPurchases     = "title.chat.kinPurchases"
 	ChatTitlePayments         = "title.chat.payments"
 
 	// Message Bodies
