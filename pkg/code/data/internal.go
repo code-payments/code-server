@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
+	"golang.org/x/text/language"
 
 	"github.com/code-payments/code-server/pkg/cache"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -408,6 +410,7 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	SaveUserPreferences(ctx context.Context, record *preferences.Record) error
 	GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error)
+	GetUserLocale(ctx context.Context, owner string) (language.Tag, error)
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -1454,4 +1457,25 @@ func (dp *DatabaseProvider) SaveUserPreferences(ctx context.Context, record *pre
 }
 func (dp *DatabaseProvider) GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error) {
 	return dp.preferences.Get(ctx, id)
+}
+func (dp *DatabaseProvider) GetUserLocale(ctx context.Context, owner string) (language.Tag, error) {
+	verificationRecord, err := dp.GetLatestPhoneVerificationForAccount(ctx, owner)
+	if err != nil {
+		return language.Und, errors.Wrap(err, "error getting latest phone verification record")
+	}
+
+	dataContainerRecord, err := dp.GetUserDataContainerByPhone(ctx, owner, verificationRecord.PhoneNumber)
+	if err != nil {
+		return language.Und, errors.Wrap(err, "error getting data container record")
+	}
+
+	userPreferencesRecord, err := dp.GetUserPreferences(ctx, dataContainerRecord.ID)
+	switch err {
+	case nil:
+		return userPreferencesRecord.Locale, nil
+	case preferences.ErrPreferencesNotFound:
+		return preferences.GetDefaultLocale(), nil
+	default:
+		return language.Und, errors.Wrap(err, "error getting user preferences record")
+	}
 }

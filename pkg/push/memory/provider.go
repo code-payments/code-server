@@ -34,16 +34,6 @@ func (p *provider) SendPush(ctx context.Context, pushToken, title, body string) 
 	return simulateSendingPush(pushToken)
 }
 
-// SendLocalizedAPNSPush implements push.Provider.SendLocalizedAPNSPush
-func (p *provider) SendLocalizedAPNSPush(ctx context.Context, pushToken, titleKey, bodyKey string, bodyArgs ...string) error {
-	return simulateSendingPush(pushToken)
-}
-
-// SendLocalizedAndroidPush implements push.Provider.SendLocalizedAndroidPush
-func (p *provider) SendLocalizedAndroidPush(ctx context.Context, pushToken, titleKey, bodyKey string, bodyArgs ...string) error {
-	return simulateSendingPush(pushToken)
-}
-
 // SendMutableAPNSPush implements push.Provider.SendMutableAPNSPush
 func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error {
 	return simulateSendingPush(pushToken)
