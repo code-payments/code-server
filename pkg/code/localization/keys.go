@@ -138,14 +138,23 @@ func localizeKey(locale language.Tag, key string, args ...string) (string, *lang
 		return "", nil, errors.New("localization bundle not configured")
 	}
 
-	localizer := i18n.NewLocalizer(bundle, locale.String())
-
 	localizeConfigInvite := i18n.LocalizeConfig{
 		MessageID: key,
 	}
 
+	localizer := i18n.NewLocalizer(bundle, locale.String())
 	localized, tag, err := localizer.LocalizeWithTag(&localizeConfigInvite)
-	if err != nil {
+	switch err.(type) {
+	case *i18n.MessageNotFoundErr:
+		// Fall back to default locale if the key doesn't exist for the requested
+		// locale
+		localizer := i18n.NewLocalizer(bundle, defaultLocale.String())
+		localized, tag, err = localizer.LocalizeWithTag(&localizeConfigInvite)
+		if err != nil {
+			return "", nil, err
+		}
+	case nil:
+	default:
 		return "", nil, err
 	}
 
