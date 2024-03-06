@@ -11,15 +11,20 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 )
 
-func TestNaclBox_Ed25519ToCurve25519(t *testing.T) {
+func TestNaclBox_Ed25519ToCurve25519_PrivateKey(t *testing.T) {
 	account, err := common.NewAccountFromPrivateKeyString("4vXZTu7W8FKV2cNB7t2MTp8KXrWpJRCodzUPoyPy1MWZiZQqVVXUrycCdoagzPN6YE9w9pyTbZVzVw9iLDUT7adR")
 	require.NoError(t, err)
 
 	curve25519PrivateKey := ed25519ToCurve25519PrivateKey(account)
 	assert.Equal(t, "F197LA9gxNFgu6bwmHFuBJWU4yuA3wRsBDky9twjeoJr", base58.Encode(curve25519PrivateKey[:]))
+}
+
+func TestNaclBox_Ed25519ToCurve25519_PublicKey(t *testing.T) {
+	account, err := common.NewAccountFromPublicKeyString("GV6Aow3jPRXFQiC36EGc1BabhFVY1mEwKPEuwZorGh3R")
+	require.NoError(t, err)
 
 	curve25519PublicKey := ed25519ToCurve25519PublicKey(account)
-	assert.Equal(t, "nRwUgVGq7NUAodgaByFjTXPRAWcT6W3dtaphzWTq7tp", base58.Encode(curve25519PublicKey[:]))
+	assert.Equal(t, "37asXhXd7c8vUNCxHHxAMMrAGPCpYrAtJ8L1fvu4rxzU", base58.Encode(curve25519PublicKey[:]))
 }
 
 func TestNaclBox_SharedKey(t *testing.T) {
