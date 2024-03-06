@@ -49,6 +49,17 @@ func (t *Transaction) Unmarshal(b []byte) error {
 }
 
 func (m Message) Marshal() []byte {
+	switch m.version {
+	case MessageVersionLegacy:
+		return m.marshalLegacy()
+	case MessageVersion0:
+		return m.marshalV0()
+	default:
+		panic("unsupported message version")
+	}
+}
+
+func (m Message) marshalLegacy() []byte {
 	b := bytes.NewBuffer(nil)
 
 	// Header
@@ -82,7 +93,60 @@ func (m Message) Marshal() []byte {
 	return b.Bytes()
 }
 
+func (m Message) marshalV0() []byte {
+	b := bytes.NewBuffer(nil)
+
+	// Version Number
+	_ = b.WriteByte(byte(m.version + 127))
+
+	// Header
+	_ = b.WriteByte(m.Header.NumSignatures)
+	_ = b.WriteByte(m.Header.NumReadonlySigned)
+	_ = b.WriteByte(m.Header.NumReadOnly)
+
+	// Accounts
+	_, _ = shortvec.EncodeLen(b, len(m.Accounts))
+	for _, a := range m.Accounts {
+		_, _ = b.Write(a)
+	}
+
+	// Recent Blockhash
+	_, _ = b.Write(m.RecentBlockhash[:])
+
+	// Instructions
+	_, _ = shortvec.EncodeLen(b, len(m.Instructions))
+	for _, i := range m.Instructions {
+		_ = b.WriteByte(i.ProgramIndex)
+
+		// Accounts
+		_, _ = shortvec.EncodeLen(b, len(i.Accounts))
+		_, _ = b.Write(i.Accounts)
+
+		// Data
+		_, _ = shortvec.EncodeLen(b, len(i.Data))
+		_, _ = b.Write(i.Data)
+	}
+
+	_, _ = shortvec.EncodeLen(b, len(m.AddressTableLookups))
+	for _, addressTableLookup := range m.AddressTableLookups {
+		_, _ = b.Write(addressTableLookup.PublicKey)
+
+		_, _ = shortvec.EncodeLen(b, len(addressTableLookup.WritableIndexes))
+		_, _ = b.Write(addressTableLookup.WritableIndexes)
+
+		_, _ = shortvec.EncodeLen(b, len(addressTableLookup.ReadonlyIndexes))
+		_, _ = b.Write(addressTableLookup.ReadonlyIndexes)
+	}
+
+	return b.Bytes()
+}
+
 func (m *Message) Unmarshal(b []byte) (err error) {
+	// todo: double check this is correct
+	if b[0] > 127 {
+		return errors.New("versioned messages not supported")
+	}
+
 	buf := bytes.NewBuffer(b)
 
 	// Header
