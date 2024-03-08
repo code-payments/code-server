@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestGetAsciiBaseDomain(t *testing.T) {
@@ -121,7 +122,7 @@ func TestGetDomainDisplayValue(t *testing.T) {
 func TestVerifyDomainNameOwnership(t *testing.T) {
 	ctx := context.Background()
 
-	validAuthority, err := common.NewAccountFromPublicKeyString("McS32C1q6Rv1odkEoR5g1xtFBN7TdbkLFvGeyvQtzLF")
+	validAuthority, err := common.NewAccountFromPublicKeyString("7W6XCJmwXmVmzfkzSFUZ41cPtyvR35dPKF2sctLLEFDr")
 	require.NoError(t, err)
 
 	maliciousAuthority := testutil.NewRandomAccount(t)

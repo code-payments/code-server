@@ -75,3 +75,28 @@ func TestNaclBox_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, plaintextMessage, decryptedValue)
 }
+
+// Transaction: 3Bq7yAtxkTMPRq26mooL6vnBueD77rP3o8VaZfviWA8iJJb24SXnpLNEMqa116CJXpP3Tvbo9T257Y7U7W5R5bQn
+//
+// Note: Decrypts from the sender's PoV
+func TestNaclBox_DecryptRealBlockchainMessage(t *testing.T) {
+	sender, err := common.NewAccountFromPrivateKeyString("3Jf1WGPZ32PJL53nmpA8hQwDGTGy9pGhVoYwYLeS2nBKDPk9PyifujJdQFEZo3b3UzkGU2ACjx3Sk6KbrmY7sKNF")
+	require.NoError(t, err)
+
+	receiver, err := common.NewAccountFromPublicKeyString("8jfEgvVh77eHeEJQRP1YEJu1ckF7QnKw1JQsi8pznpJx")
+	require.NoError(t, err)
+
+	var nonce naclBoxNonce
+	decodedNonce, err := base58.Decode("PjgJtLTPZmHGCqJ6Sj1X4ZN8wVbinW4nU")
+	require.NoError(t, err)
+	require.Len(t, decodedNonce, len(nonce))
+	copy(nonce[:], decodedNonce)
+
+	encryptedValue, err := base58.Decode("2BRs8n3fqqDUXVjEdup3d5zoxFALbvs6KcKnMCgpoJ6iafXjikwqbjnbehyha")
+	require.NoError(t, err)
+
+	expectedDecryptedValue := "Blockchain messaging is 🔥"
+	decryptedValue, err := decryptMessageUsingNaclBox(receiver, sender, encryptedValue, nonce)
+	require.NoError(t, err)
+	assert.Equal(t, expectedDecryptedValue, decryptedValue)
+}
