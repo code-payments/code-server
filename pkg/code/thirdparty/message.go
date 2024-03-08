@@ -229,7 +229,7 @@ func encryptMessageUsingNaclBox(sender, receiver *common.Account, plaintextMessa
 	return encryptMessageUsingNaclBoxWithProvidedNonce(sender, receiver, plaintextMessage, nonce), nonce
 }
 
-// Nonce should always be random. Use encryptMessageUsingN`aclBox, unless testing
+// Nonce should always be random. Use encryptMessageUsingNaclBox, unless testing
 // hardcoded values.
 func encryptMessageUsingNaclBoxWithProvidedNonce(sender, receiver *common.Account, plaintextMessage string, nonce naclBoxNonce) []byte {
 	curve25519PrivateKey := ed25519ToCurve25519PrivateKey(sender)
