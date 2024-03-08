@@ -53,9 +53,11 @@ func TestNaclBox_SharedKey(t *testing.T) {
 func TestNaclBox_RoundTrip(t *testing.T) {
 	plaintextMessage := "super secret message"
 
+	// Public key: 3hpSY5ibVa87dDLJhLdVAy7QVso2Edhr28ZEJmpDF7UQ
 	sender, err := common.NewAccountFromPrivateKeyString("2tKSW5f1dag1pGzDSsM9yo32KSMNcTkBAvXEfZ1u2pcqkmo8oYcbtsnA8m9YVd8EUzVJeU5mvjFKjPQF2m4Xifg8")
 	require.NoError(t, err)
 
+	// Public key: 6Hsb5k8UjjsowqXgRBr1BR3EKFPeYjA8Nn9prYDU24v6
 	receiver, err := common.NewAccountFromPrivateKeyString("38EyWg6Eay5bhcZR465FD2agT2bf7BhyWNJJ64ypfdQGTb6mHU3an2f8pvWapSrE3j3hEFu1h7HYoa6eykAHUBJr")
 	require.NoError(t, err)
 
