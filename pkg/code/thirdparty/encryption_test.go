@@ -28,9 +28,11 @@ func TestNaclBox_Ed25519ToCurve25519_PublicKey(t *testing.T) {
 }
 
 func TestNaclBox_SharedKey(t *testing.T) {
+	// Public key: eMTkrsg1acVKyk8jp4b6JQM3TK2fSxwaZV3gZqCmxsp
 	account1, err := common.NewAccountFromPrivateKeyString("2fJLfaTREkNBiDbB26dL4syDozhCEf2pNMorXvBf7593yC59d1kDFsXAA9cN63Bb5MDUgSeU5AhsfS2aTZQHoNyU")
 	require.NoError(t, err)
 
+	// Public key: J1uvrtrg42Yw3zA7v7VK1wBahW8XkTLxqsnKksZab9wS
 	account2, err := common.NewAccountFromPrivateKeyString("3GKRCGo814rSVa6XkFARZGq13Rb7DSGwF2c6SSRSzMfyQ3wuDAPoELzhsvH6r5A1PFACpFuesDaRHUEoL1PFAxRa")
 	require.NoError(t, err)
 
