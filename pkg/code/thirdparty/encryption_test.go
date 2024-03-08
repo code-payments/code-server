@@ -1,6 +1,7 @@
 package thirdparty
 
 import (
+	"crypto/ed25519"
 	"testing"
 
 	"github.com/mr-tron/base58"
@@ -77,13 +78,13 @@ func TestNaclBox_RoundTrip(t *testing.T) {
 }
 
 // Transaction: 3Bq7yAtxkTMPRq26mooL6vnBueD77rP3o8VaZfviWA8iJJb24SXnpLNEMqa116CJXpP3Tvbo9T257Y7U7W5R5bQn
-//
-// Note: Decrypts from the sender's PoV
 func TestNaclBox_DecryptRealBlockchainMessage(t *testing.T) {
-	sender, err := common.NewAccountFromPrivateKeyString("3Jf1WGPZ32PJL53nmpA8hQwDGTGy9pGhVoYwYLeS2nBKDPk9PyifujJdQFEZo3b3UzkGU2ACjx3Sk6KbrmY7sKNF")
+	sender, err := common.NewAccountFromPublicKeyString("McS32C1q6Rv1odkEoR5g1xtFBN7TdbkLFvGeyvQtzLF")
 	require.NoError(t, err)
 
-	receiver, err := common.NewAccountFromPublicKeyString("8jfEgvVh77eHeEJQRP1YEJu1ckF7QnKw1JQsi8pznpJx")
+	seed, err := base58.Decode("CADTR1JPf4KzQ9fuYJMRaaWbfshB8qSb38RpFzC8mtjq")
+	require.NoError(t, err)
+	receiver, err := common.NewAccountFromPrivateKeyBytes(ed25519.NewKeyFromSeed(seed))
 	require.NoError(t, err)
 
 	var nonce naclBoxNonce
@@ -96,7 +97,7 @@ func TestNaclBox_DecryptRealBlockchainMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedDecryptedValue := "Blockchain messaging is 🔥"
-	decryptedValue, err := decryptMessageUsingNaclBox(receiver, sender, encryptedValue, nonce)
+	decryptedValue, err := decryptMessageUsingNaclBox(sender, receiver, encryptedValue, nonce)
 	require.NoError(t, err)
 	assert.Equal(t, expectedDecryptedValue, decryptedValue)
 }
