@@ -28,23 +28,6 @@ func UpdateBadgeCount(
 		"owner":  owner.PublicKey().ToBase58(),
 	})
 
-	verificationRecord, err := data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
-	if err != nil {
-		return errors.Wrap(err, "error getting phone verification record")
-	}
-	log = log.WithField("phone_number", verificationRecord.PhoneNumber)
-
-	// Gate badge counts to internal staff users. This can't be enabled more
-	// broadly until threaded transactions is released publicly with badge
-	// count support.
-	userIdentityRecord, err := data.GetUserByPhoneView(ctx, verificationRecord.PhoneNumber)
-	if err != nil {
-		log.WithError(err).Warn("failure getting user identity record")
-		return err
-	} else if !userIdentityRecord.IsStaffUser {
-		return nil
-	}
-
 	// todo: Propagate this logic to other push sending utilities once login
 	//       detection is made public.
 	loginRecord, err := data.GetLatestLoginByOwner(ctx, owner.PublicKey().ToBase58())
