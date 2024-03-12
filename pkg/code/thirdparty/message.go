@@ -224,40 +224,47 @@ func DecodeNaclBoxBlockchainMessage(payload []byte) (*NaclBoxBlockchainMessage, 
 }
 
 func encryptMessageUsingNaclBox(sender, receiver *common.Account, plaintextMessage string) ([]byte, naclBoxNonce) {
-	var nonce [24]byte
+	var nonce naclBoxNonce
 	rand.Read(nonce[:])
-
-	var curve25519PrivateKey [32]byte
-	var ed25519PrivateKey [64]byte
-	copy(ed25519PrivateKey[:], sender.PrivateKey().ToBytes())
-	extra25519.PrivateKeyToCurve25519(&curve25519PrivateKey, &ed25519PrivateKey)
-
-	var curve25519PublicKey [32]byte
-	var ed25519PublicKey [32]byte
-	copy(ed25519PublicKey[:], receiver.PublicKey().ToBytes())
-	extra25519.PublicKeyToCurve25519(&curve25519PublicKey, &ed25519PublicKey)
-
-	encrypted := box.Seal(nil, []byte(plaintextMessage), &nonce, &curve25519PublicKey, &curve25519PrivateKey)
-
-	return encrypted, nonce
+	return encryptMessageUsingNaclBoxWithProvidedNonce(sender, receiver, plaintextMessage, nonce), nonce
 }
 
-func decryptMessageUsingNaclBox(receiver, sender *common.Account, encryptedPayload []byte, nonce [24]byte) (string, error) {
-	var curve25519PrivateKey [32]byte
-	var ed25519PrivateKey [64]byte
-	copy(ed25519PrivateKey[:], receiver.PrivateKey().ToBytes())
-	extra25519.PrivateKeyToCurve25519(&curve25519PrivateKey, &ed25519PrivateKey)
+// Nonce should always be random. Use encryptMessageUsingNaclBox, unless testing
+// hardcoded values.
+func encryptMessageUsingNaclBoxWithProvidedNonce(sender, receiver *common.Account, plaintextMessage string, nonce naclBoxNonce) []byte {
+	curve25519PrivateKey := ed25519ToCurve25519PrivateKey(sender)
+	curve25519PublicKey := ed25519ToCurve25519PublicKey(receiver)
 
-	var curve25519PublicKey [32]byte
-	var ed25519PublicKey [32]byte
-	copy(ed25519PublicKey[:], sender.PublicKey().ToBytes())
-	extra25519.PublicKeyToCurve25519(&curve25519PublicKey, &ed25519PublicKey)
+	encrypted := box.Seal(nil, []byte(plaintextMessage), (*[naclBoxNonceLength]byte)(&nonce), &curve25519PublicKey, &curve25519PrivateKey)
 
-	message, opened := box.Open(nil, encryptedPayload, &nonce, &curve25519PublicKey, &curve25519PrivateKey)
+	return encrypted
+}
+
+func decryptMessageUsingNaclBox(sender, receiver *common.Account, encryptedPayload []byte, nonce naclBoxNonce) (string, error) {
+	curve25519PrivateKey := ed25519ToCurve25519PrivateKey(receiver)
+	curve25519PublicKey := ed25519ToCurve25519PublicKey(sender)
+
+	message, opened := box.Open(nil, encryptedPayload, (*[naclBoxNonceLength]byte)(&nonce), &curve25519PublicKey, &curve25519PrivateKey)
 	if !opened {
 		return "", errors.New("failed decrypting payload")
 	}
 	return string(message), nil
+}
+
+func ed25519ToCurve25519PublicKey(account *common.Account) [32]byte {
+	var curve25519PublicKey [32]byte
+	var ed25519PublicKey [32]byte
+	copy(ed25519PublicKey[:], account.PublicKey().ToBytes())
+	extra25519.PublicKeyToCurve25519(&curve25519PublicKey, &ed25519PublicKey)
+	return curve25519PublicKey
+}
+
+func ed25519ToCurve25519PrivateKey(account *common.Account) [32]byte {
+	var curve25519PrivateKey [32]byte
+	var ed25519PrivateKey [64]byte
+	copy(ed25519PrivateKey[:], account.PrivateKey().ToBytes())
+	extra25519.PrivateKeyToCurve25519(&curve25519PrivateKey, &ed25519PrivateKey)
+	return curve25519PrivateKey
 }
 
 type FiatOnrampPurchaseMessage struct {
