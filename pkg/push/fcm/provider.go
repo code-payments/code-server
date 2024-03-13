@@ -89,7 +89,12 @@ func (p *provider) SendPush(ctx context.Context, pushToken, title, body string) 
 }
 
 // SendMutableAPNSPush implements push.Provider.SendMutableAPNSPush
-func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error {
+func (p *provider) SendMutableAPNSPush(
+	ctx context.Context,
+	pushToken,
+	titleKey, category, threadId string,
+	kvs map[string]string,
+) error {
 	defer metrics.TraceMethodCall(ctx, metricsStructName, "SendMutableAPNSPush").End()
 
 	_, err := p.client.Send(ctx, &messaging.Message{
@@ -102,6 +107,8 @@ func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey 
 						TitleLocKey: titleKey,
 						Body:        "...",
 					},
+					Category:       category,
+					ThreadID:       threadId,
 					MutableContent: true,
 				},
 			},

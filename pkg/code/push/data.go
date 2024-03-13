@@ -115,6 +115,8 @@ func sendMutableNotificationToOwner(
 				ctx,
 				pushTokenRecord.PushToken,
 				titleKey,
+				string(notificationType),
+				titleKey, // All mutable pushes have a thread ID that's the title
 				kvs,
 			)
 		case push_data.TokenTypeFcmAndroid:
