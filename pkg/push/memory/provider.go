@@ -35,7 +35,12 @@ func (p *provider) SendPush(ctx context.Context, pushToken, title, body string) 
 }
 
 // SendMutableAPNSPush implements push.Provider.SendMutableAPNSPush
-func (p *provider) SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error {
+func (p *provider) SendMutableAPNSPush(
+	ctx context.Context,
+	pushToken,
+	titleKey, category, threadId string,
+	kvs map[string]string,
+) error {
 	return simulateSendingPush(pushToken)
 }
 
