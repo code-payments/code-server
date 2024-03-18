@@ -3,6 +3,7 @@ package android
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"google.golang.org/api/playintegrity/v1"
 
@@ -52,6 +53,11 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 
 		if resp.ServerResponse.HTTPStatusCode != http.StatusOK {
 			return false, errors.Errorf("received http status %d", resp.ServerResponse.HTTPStatusCode)
+		}
+
+		requestedAt := time.UnixMilli(resp.TokenPayloadExternal.RequestDetails.TimestampMillis)
+		if time.Since(requestedAt) > time.Minute {
+			return false, nil
 		}
 
 		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
