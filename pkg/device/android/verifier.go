@@ -2,9 +2,13 @@ package android
 
 import (
 	"context"
+	"net/http"
+
+	"google.golang.org/api/playintegrity/v1"
 
 	"github.com/code-payments/code-server/pkg/device"
 	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -12,22 +16,53 @@ const (
 )
 
 type androidDeviceVerifier struct {
+	playIntegrity *playintegrity.Service
+	packageName   string
 }
 
 // NewAndroidDeviceVerifier returns a new device.Verifier for Android devices
-func NewAndroidDeviceVerifier() (device.Verifier, error) {
-	return &androidDeviceVerifier{}, nil
+//
+// Requires GOOGLE_APPLICATION_CREDENTIALS to be set
+func NewAndroidDeviceVerifier(packageName string) (device.Verifier, error) {
+	ctx := context.Background()
+
+	playintegrityService, err := playintegrity.NewService(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &androidDeviceVerifier{
+		playIntegrity: playintegrityService,
+		packageName:   packageName,
+	}, nil
 }
 
 // IsValid implements device.Verifier.IsValid
-//
-// todo: implement me
 func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "IsValid")
 	defer tracer.End()
 
 	isValid, err := func() (bool, error) {
-		return false, nil
+		resp, err := v.playIntegrity.V1.DecodeIntegrityToken(v.packageName, &playintegrity.DecodeIntegrityTokenRequest{
+			IntegrityToken: token,
+		}).Do()
+		if err != nil {
+			return false, err
+		}
+
+		if resp.ServerResponse.HTTPStatusCode != http.StatusOK {
+			return false, errors.Errorf("received http status %d", resp.ServerResponse.HTTPStatusCode)
+		}
+
+		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
+			return false, nil
+		}
+
+		if resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict != "PLAY_RECOGNIZED" {
+			return false, nil
+		}
+
+		return true, nil
 	}()
 
 	if err != nil {
