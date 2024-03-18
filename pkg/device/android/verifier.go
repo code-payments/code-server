@@ -46,7 +46,7 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 	isValid, err := func() (bool, error) {
 		resp, err := v.playIntegrity.V1.DecodeIntegrityToken(v.packageName, &playintegrity.DecodeIntegrityTokenRequest{
 			IntegrityToken: token,
-		}).Do()
+		}).Context(ctx).Do()
 		if err != nil {
 			return false, err
 		}
