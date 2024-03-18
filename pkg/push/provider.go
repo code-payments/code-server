@@ -13,7 +13,12 @@ type Provider interface {
 
 	// SendMutableAPNSPush sends a push over APNS with a text body that's mutable
 	// on the client using custom key value pairs
-	SendMutableAPNSPush(ctx context.Context, pushToken, titleKey string, kvs map[string]string) error
+	SendMutableAPNSPush(
+		ctx context.Context,
+		pushToken,
+		titleKey, category, threadId string,
+		kvs map[string]string,
+	) error
 
 	// SendDataPush sends a data push
 	SendDataPush(ctx context.Context, pushToken string, kvs map[string]string) error
