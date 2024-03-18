@@ -60,11 +60,11 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 			return false, nil
 		}
 
-		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
+		if resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict != "PLAY_RECOGNIZED" {
 			return false, nil
 		}
 
-		if resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict != "PLAY_RECOGNIZED" {
+		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
 			return false, nil
 		}
 
