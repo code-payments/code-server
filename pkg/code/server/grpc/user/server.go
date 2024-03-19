@@ -363,8 +363,10 @@ func (s *identityServer) GetUser(ctx context.Context, req *userpb.GetUserRequest
 	}
 
 	// todo: Start centralizing airdrop intent logic somewhere
-	eligibleAirdrops := []transactionpb.AirdropType{
-		transactionpb.AirdropType_GET_FIRST_KIN,
+	var eligibleAirdrops []transactionpb.AirdropType
+	userAgent, err := client.GetUserAgent(ctx)
+	if err == nil && userAgent.DeviceType == client.DeviceTypeIOS {
+		eligibleAirdrops = append(eligibleAirdrops, transactionpb.AirdropType_GET_FIRST_KIN)
 	}
 	for _, intentId := range []string{
 		transaction_server.GetNewAirdropIntentId(transaction_server.AirdropTypeGetFirstKin, ownerAccount.PublicKey().ToBase58()),

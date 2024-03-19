@@ -56,8 +56,12 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 	conn, serv, err := testutil.NewServer()
 	require.NoError(t, err)
 
+	// Force iOS user agent to pass airdrop tests
+	iosConn, err := grpc.Dial(conn.Target(), grpc.WithInsecure(), grpc.WithUserAgent("Code/iOS/1.0.0"))
+	require.NoError(t, err)
+
 	env.ctx = context.Background()
-	env.client = userpb.NewIdentityClient(conn)
+	env.client = userpb.NewIdentityClient(iosConn)
 	env.data = code_data.NewTestDataProvider()
 
 	antispamGuard := antispam.NewGuard(env.data, memory_device_verifier.NewMemoryDeviceVerifier(), nil)
