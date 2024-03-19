@@ -63,6 +63,16 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 			return false, "device token is too old", nil
 		}
 
+		if resp.TokenPayloadExternal.AccountDetails == nil {
+			return false, "account details missing", nil
+		}
+		if resp.TokenPayloadExternal.AppIntegrity == nil {
+			return false, "app integrity missing", nil
+		}
+		if resp.TokenPayloadExternal.DeviceIntegrity == nil {
+			return false, "device integrity missing", nil
+		}
+
 		if resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict != "PLAY_RECOGNIZED" {
 			return false, fmt.Sprintf("app recognition verdict is %s", resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict), nil
 		}
