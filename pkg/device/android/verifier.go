@@ -2,6 +2,7 @@ package android
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -41,61 +42,61 @@ func NewAndroidDeviceVerifier(packageName string, minVersion int64) (device.Veri
 }
 
 // IsValid implements device.Verifier.IsValid
-func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool, error) {
+func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool, string, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "IsValid")
 	defer tracer.End()
 
-	isValid, err := func() (bool, error) {
+	isValid, reason, err := func() (bool, string, error) {
 		resp, err := v.playIntegrity.V1.DecodeIntegrityToken(v.packageName, &playintegrity.DecodeIntegrityTokenRequest{
 			IntegrityToken: token,
 		}).Context(ctx).Do()
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 
 		if resp.ServerResponse.HTTPStatusCode != http.StatusOK {
-			return false, errors.Errorf("received http status %d", resp.ServerResponse.HTTPStatusCode)
+			return false, "", errors.Errorf("received http status %d", resp.ServerResponse.HTTPStatusCode)
 		}
 
 		requestedAt := time.UnixMilli(resp.TokenPayloadExternal.RequestDetails.TimestampMillis)
 		if time.Since(requestedAt) > time.Minute {
-			return false, nil
+			return false, "device token is too old", nil
 		}
 
 		if resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict != "PLAY_RECOGNIZED" {
-			return false, nil
+			return false, fmt.Sprintf("app recognition verdict is %s", resp.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict), nil
 		}
 
 		if resp.TokenPayloadExternal.AccountDetails.AppLicensingVerdict != "LICENSED" {
-			return false, nil
+			return false, fmt.Sprintf("app licensing verdict is %s", resp.TokenPayloadExternal.AccountDetails.AppLicensingVerdict), nil
 		}
 
 		if len(resp.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict) == 0 {
-			return false, nil
+			return false, "no device recognition verdicts", nil
 		}
 
 		for _, deviceRecognitionVerdict := range resp.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict {
 			switch deviceRecognitionVerdict {
 			case "MEETS_VIRTUAL_INTEGRITY", "UNKNOWN":
-				return false, nil
+				return false, fmt.Sprintf("device recognition verdict is %s", deviceRecognitionVerdict), nil
 			}
 		}
 
 		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
-			return false, nil
+			return false, fmt.Sprintf("package name is is %s", resp.TokenPayloadExternal.AppIntegrity.PackageName), nil
 		}
 
 		if resp.TokenPayloadExternal.AppIntegrity.VersionCode < v.minVersion {
-			return false, nil
+			return false, "minimum client version not met", nil
 		}
 
-		return true, nil
+		return true, "", nil
 	}()
 
 	if err != nil {
 		tracer.OnError(err)
 	}
-	return isValid, err
+	return isValid, reason, err
 }
 
 // HasCreatedFreeAccount implements device.Verifier.HasCreatedFreeAccount
