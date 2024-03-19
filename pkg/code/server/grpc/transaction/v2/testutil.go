@@ -199,9 +199,13 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 
 	var phoneEnvs []phoneTestEnv
 	for i := 0; i < 2; i++ {
+		// Force iOS user agent to pass airdrop tests
+		iosGrpcClientConn, err := grpc.Dial(grpcClientConn.Target(), grpc.WithInsecure(), grpc.WithUserAgent("Code/iOS/1.0.0"))
+		require.NoError(t, err)
+
 		phoneEnv := phoneTestEnv{
 			ctx:                    context.Background(),
-			client:                 transactionpb.NewTransactionClient(grpcClientConn),
+			client:                 transactionpb.NewTransactionClient(iosGrpcClientConn),
 			parentAccount:          testutil.NewRandomAccount(t),
 			currentDerivedAccounts: make(map[commonpb.AccountType]*common.Account),
 			verifiedPhoneNumber:    fmt.Sprintf("+1800555000%d", i),

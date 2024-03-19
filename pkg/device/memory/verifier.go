@@ -22,8 +22,13 @@ func NewMemoryDeviceVerifier() device.Verifier {
 }
 
 // IsValid implements device.Verifier.IsValid
-func (v *memoryDeviceVerifier) IsValid(_ context.Context, token string) (bool, error) {
-	return token == ValidDeviceToken, nil
+func (v *memoryDeviceVerifier) IsValid(_ context.Context, token string) (bool, string, error) {
+	var reason string
+	if token != ValidDeviceToken {
+		reason = "invalid test device token"
+	}
+
+	return token == ValidDeviceToken, reason, nil
 }
 
 // HasCreatedFreeAccount implements device.Verifier.HasCreatedFreeAccount

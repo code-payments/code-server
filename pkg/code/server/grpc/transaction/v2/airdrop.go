@@ -95,6 +95,17 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 		}, nil
 	}
 
+	isEligible, err := s.data.IsEligibleForAirdrop(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting airdrop eligibility for owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+	if !isEligible {
+		return &transactionpb.AirdropResponse{
+			Result: transactionpb.AirdropResponse_UNAVAILABLE,
+		}, nil
+	}
+
 	ownerLock := s.ownerLocks.Get(owner.PublicKey().ToBytes())
 	ownerLock.Lock()
 	defer ownerLock.Unlock()
@@ -285,8 +296,18 @@ func (s *transactionServer) maybeAirdropForSendingUserTheirFirstKin(ctx context.
 	log = log.WithFields(logrus.Fields{
 		"owner_to_airdrop":                 ownerToAirdrop.PublicKey().ToBase58(),
 		"owner_to_check_for_first_receive": ownerToCheckForFirstReceive.PublicKey().ToBase58(),
-		"exchanged_in":                     exchangedIn,
 	})
+
+	for _, owner := range []*common.Account{ownerToAirdrop, ownerToCheckForFirstReceive} {
+		isEligible, err := s.data.IsEligibleForAirdrop(ctx, owner.PublicKey().ToBase58())
+		if err != nil {
+			log.WithError(err).Warn("failure getting airdrop eligibility for owner account")
+			return err
+		}
+		if !isEligible {
+			return nil
+		}
+	}
 
 	isFirstReceive, err := s.isFirstReceiveFromOtherCodeUser(ctx, intentRecord.IntentId, ownerToCheckForFirstReceive)
 	if err != nil {

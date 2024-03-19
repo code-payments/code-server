@@ -69,12 +69,12 @@ func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber strin
 			recordDenialEvent(ctx, actionNewPhoneVerification, "device token missing")
 			return false, nil
 		}
-		isValidDeviceToken, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
+		isValidDeviceToken, reason, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
 		if err != nil {
 			log.WithError(err).Warn("failure performing device check")
 			return false, err
 		} else if !isValidDeviceToken {
-			log.Info("denying fake device")
+			log.WithField("reason", reason).Info("denying fake device")
 			recordDenialEvent(ctx, actionNewPhoneVerification, "fake device")
 			return false, nil
 		}

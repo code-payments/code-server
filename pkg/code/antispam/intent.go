@@ -100,12 +100,12 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 			return false, nil, nil
 		}
 
-		isValidDeviceToken, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
+		isValidDeviceToken, reason, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
 		if err != nil {
 			log.WithError(err).Warn("failure performing device validation check")
 			return false, nil, err
 		} else if !isValidDeviceToken {
-			log.Info("denying fake device")
+			log.WithField("reason", reason).Info("denying fake device")
 			recordDenialEvent(ctx, actionOpenAccounts, "fake device")
 			return false, nil, nil
 		}

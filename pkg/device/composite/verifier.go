@@ -34,23 +34,23 @@ func NewCompositeDeviceVerifier(verifiers map[client.DeviceType]device.Verifier)
 }
 
 // IsValid implements device.Verifier.IsValid
-func (v *compositeDeviceVerifier) IsValid(ctx context.Context, token string) (bool, error) {
+func (v *compositeDeviceVerifier) IsValid(ctx context.Context, token string) (bool, string, error) {
 	// Enforce one-time use tokens, even when the third-party verifier doesn't
 	// do a good job of doing so.
 	if _, ok := v.usedTokenCache.Retrieve(token); ok {
-		return false, nil
+		return false, "device token already consumed", nil
 	}
 
 	verifier, ok := v.getDeviceVerifier(ctx)
 	if !ok {
-		return false, nil
+		return false, "no device verifier for user agent", nil
 	}
 
-	isValid, err := verifier.IsValid(ctx, token)
+	isValid, reason, err := verifier.IsValid(ctx, token)
 	if isValid {
 		v.usedTokenCache.Insert(token, true, 1)
 	}
-	return isValid, err
+	return isValid, reason, err
 }
 
 // HasCreatedFreeAccount implements device.Verifier.HasCreatedFreeAccount

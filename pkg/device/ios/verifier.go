@@ -62,27 +62,27 @@ func NewIOSDeviceVerifier(
 }
 
 // IsValid implements device.Verifier.IsValid
-func (v *iOSDeviceVerifier) IsValid(ctx context.Context, token string) (bool, error) {
+func (v *iOSDeviceVerifier) IsValid(ctx context.Context, token string) (bool, string, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "IsValid")
 	defer tracer.End()
 
-	isValid, err := func() (bool, error) {
+	isValid, reason, err := func() (bool, string, error) {
 		userAgent, err := client.GetUserAgent(ctx)
 		if err != nil {
-			return false, nil
+			return false, "user agent not set", nil
 		}
 
 		if userAgent.DeviceType != client.DeviceTypeIOS {
-			return false, nil
+			return false, "user agent is not ios", nil
 		}
 
 		if userAgent.Version.Before(v.minVersion) {
-			return false, nil
+			return false, "minimum client version not met", nil
 		}
 
 		err = v.client.ValidateDeviceToken(token)
 		if err == nil {
-			return true, nil
+			return true, "", nil
 		}
 
 		// Need to parse for the "bad device token" type of errors. Otherwise, we
@@ -91,17 +91,17 @@ func (v *iOSDeviceVerifier) IsValid(ctx context.Context, token string) (bool, er
 		// https://developer.apple.com/documentation/devicecheck/accessing_and_modifying_per-device_data#2910408
 		errorString := strings.ToLower(err.Error())
 		if strings.Contains(errorString, "bad device token") {
-			return false, nil
+			return false, "invalid device token", nil
 		} else if strings.Contains(errorString, "missing or incorrectly formatted device token payload") {
-			return false, nil
+			return false, "invalid device token", nil
 		}
-		return false, err
+		return false, "", err
 	}()
 
 	if err != nil {
 		tracer.OnError(err)
 	}
-	return isValid, err
+	return isValid, reason, err
 }
 
 // HasCreatedFreeAccount implements device.Verifier.HasCreatedFreeAccount

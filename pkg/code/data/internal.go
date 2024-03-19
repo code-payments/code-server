@@ -22,6 +22,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/airdrop"
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
@@ -54,6 +55,7 @@ import (
 
 	account_memory_client "github.com/code-payments/code-server/pkg/code/data/account/memory"
 	action_memory_client "github.com/code-payments/code-server/pkg/code/data/action/memory"
+	airdrop_memory_client "github.com/code-payments/code-server/pkg/code/data/airdrop/memory"
 	badgecount_memory_client "github.com/code-payments/code-server/pkg/code/data/badgecount/memory"
 	balance_memory_client "github.com/code-payments/code-server/pkg/code/data/balance/memory"
 	chat_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/memory"
@@ -87,6 +89,7 @@ import (
 
 	account_postgres_client "github.com/code-payments/code-server/pkg/code/data/account/postgres"
 	action_postgres_client "github.com/code-payments/code-server/pkg/code/data/action/postgres"
+	airdrop_postgres_client "github.com/code-payments/code-server/pkg/code/data/airdrop/postgres"
 	badgecount_postgres_client "github.com/code-payments/code-server/pkg/code/data/badgecount/postgres"
 	balance_postgres_client "github.com/code-payments/code-server/pkg/code/data/balance/postgres"
 	chat_postgres_client "github.com/code-payments/code-server/pkg/code/data/chat/postgres"
@@ -412,6 +415,11 @@ type DatabaseData interface {
 	GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error)
 	GetUserLocale(ctx context.Context, owner string) (language.Tag, error)
 
+	// Airdrop
+	// --------------------------------------------------------------------------------
+	MarkIneligibleForAirdrop(ctx context.Context, owner string) error
+	IsEligibleForAirdrop(ctx context.Context, owner string) (bool, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -453,6 +461,7 @@ type DatabaseProvider struct {
 	balance        balance.Store
 	onramp         onramp.Store
 	preferences    preferences.Store
+	airdrop        airdrop.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -513,6 +522,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		balance:        balance_postgres_client.New(db),
 		onramp:         onramp_postgres_client.New(db),
 		preferences:    preferences_postgres_client.New(db),
+		airdrop:        airdrop_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -554,6 +564,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		balance:        balance_memory_client.New(),
 		onramp:         onramp_memory_client.New(),
 		preferences:    preferences_memory_client.New(),
+		airdrop:        airdrop_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1478,4 +1489,13 @@ func (dp *DatabaseProvider) GetUserLocale(ctx context.Context, owner string) (la
 	default:
 		return language.Und, errors.Wrap(err, "error getting user preferences record")
 	}
+}
+
+// Airdrop
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) MarkIneligibleForAirdrop(ctx context.Context, owner string) error {
+	return dp.airdrop.MarkIneligible(ctx, owner)
+}
+func (dp *DatabaseProvider) IsEligibleForAirdrop(ctx context.Context, owner string) (bool, error) {
+	return dp.airdrop.IsEligible(ctx, owner)
 }
