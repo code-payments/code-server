@@ -19,12 +19,13 @@ const (
 type androidDeviceVerifier struct {
 	playIntegrity *playintegrity.Service
 	packageName   string
+	minVersion    int64
 }
 
 // NewAndroidDeviceVerifier returns a new device.Verifier for Android devices
 //
 // Requires GOOGLE_APPLICATION_CREDENTIALS to be set
-func NewAndroidDeviceVerifier(packageName string) (device.Verifier, error) {
+func NewAndroidDeviceVerifier(packageName string, minVersion int64) (device.Verifier, error) {
 	ctx := context.Background()
 
 	playIntegrityService, err := playintegrity.NewService(ctx)
@@ -35,6 +36,7 @@ func NewAndroidDeviceVerifier(packageName string) (device.Verifier, error) {
 	return &androidDeviceVerifier{
 		playIntegrity: playIntegrityService,
 		packageName:   packageName,
+		minVersion:    minVersion,
 	}, nil
 }
 
@@ -64,7 +66,26 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 			return false, nil
 		}
 
+		if resp.TokenPayloadExternal.AccountDetails.AppLicensingVerdict != "LICENSED" {
+			return false, nil
+		}
+
+		if len(resp.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict) == 0 {
+			return false, nil
+		}
+
+		for _, deviceRecognitionVerdict := range resp.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict {
+			switch deviceRecognitionVerdict {
+			case "MEETS_VIRTUAL_INTEGRITY", "UNKNOWN":
+				return false, nil
+			}
+		}
+
 		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
+			return false, nil
+		}
+
+		if resp.TokenPayloadExternal.AppIntegrity.VersionCode < v.minVersion {
 			return false, nil
 		}
 
