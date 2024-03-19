@@ -101,7 +101,7 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 
 // HasCreatedFreeAccount implements device.Verifier.HasCreatedFreeAccount
 //
-// todo: implement me
+// todo: Currently impossible to implement without a stable device ID
 func (v *androidDeviceVerifier) HasCreatedFreeAccount(ctx context.Context, token string) (bool, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "HasCreatedFreeAccount")
 	defer tracer.End()
@@ -118,7 +118,7 @@ func (v *androidDeviceVerifier) HasCreatedFreeAccount(ctx context.Context, token
 
 // MarkCreatedFreeAccount implements device.Verifier.MarkCreatedFreeAccount
 //
-// todo: implement me
+// todo: Currently impossible to implement without a stable device ID
 func (v *androidDeviceVerifier) MarkCreatedFreeAccount(ctx context.Context, token string) error {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "MarkCreatedFreeAccount")
 	defer tracer.End()
