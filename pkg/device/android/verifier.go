@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	"google.golang.org/api/playintegrity/v1"
 
 	"github.com/code-payments/code-server/pkg/device"
 	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -27,13 +27,13 @@ type androidDeviceVerifier struct {
 func NewAndroidDeviceVerifier(packageName string) (device.Verifier, error) {
 	ctx := context.Background()
 
-	playintegrityService, err := playintegrity.NewService(ctx)
+	playIntegrityService, err := playintegrity.NewService(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	return &androidDeviceVerifier{
-		playIntegrity: playintegrityService,
+		playIntegrity: playIntegrityService,
 		packageName:   packageName,
 	}, nil
 }
