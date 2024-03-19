@@ -74,7 +74,6 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 		if len(resp.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict) == 0 {
 			return false, "no device recognition verdicts", nil
 		}
-
 		for _, deviceRecognitionVerdict := range resp.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict {
 			switch deviceRecognitionVerdict {
 			case "MEETS_VIRTUAL_INTEGRITY", "UNKNOWN":
@@ -83,7 +82,7 @@ func (v *androidDeviceVerifier) IsValid(ctx context.Context, token string) (bool
 		}
 
 		if resp.TokenPayloadExternal.AppIntegrity.PackageName != v.packageName {
-			return false, fmt.Sprintf("package name is is %s", resp.TokenPayloadExternal.AppIntegrity.PackageName), nil
+			return false, fmt.Sprintf("package name is %s", resp.TokenPayloadExternal.AppIntegrity.PackageName), nil
 		}
 
 		if resp.TokenPayloadExternal.AppIntegrity.VersionCode < v.minVersion {
