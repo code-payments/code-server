@@ -14,6 +14,17 @@ type MicroPaymentLimit struct {
 	Max float64
 }
 
+func init() {
+	newMicroPaymentLimits := make(map[currency_lib.Code]MicroPaymentLimit)
+	for currency, limit := range MicroPaymentLimits {
+		newMicroPaymentLimits[currency] = MicroPaymentLimit{
+			Min: limit.Min,
+			Max: 5.0 * limit.Max,
+		}
+	}
+	MicroPaymentLimits = newMicroPaymentLimits
+}
+
 // todo: Better way of managing all of this
 var (
 	SendLimits = map[currency_lib.Code]SendLimit{
@@ -259,7 +270,7 @@ var (
 		"kes": {Min: 5.00, Max: 100.00},
 		"kgs": {Min: 2.00, Max: 40.00},
 		"khr": {Min: 200.00, Max: 4000.00},
-		"kin": {Min: 5000.00, Max: 100000.00},
+		"kin": {Min: 2500.00, Max: 50000.00},
 		"kmf": {Min: 20.00, Max: 400.00},
 		"kpw": {Min: 50.00, Max: 1000.00},
 		"krw": {Min: 50.00, Max: 1000.00},

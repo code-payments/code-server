@@ -497,7 +497,7 @@ func TestCodify_AmountValidation(t *testing.T) {
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
 
-	for _, amount := range []float64{0.01, 1.01} {
+	for _, amount := range []float64{0.01, 5.01} {
 		codifyReq := &micropaymentpb.CodifyRequest{
 			OwnerAccount:   owner.ToProto(),
 			PrimaryAccount: destination.ToProto(),
