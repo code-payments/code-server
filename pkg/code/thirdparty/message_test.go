@@ -73,3 +73,16 @@ func TestFiatOnrampPurchaseMessage_RoundTrip(t *testing.T) {
 	assert.Equal(t, blockchainMessage.Flags, decodedBlockchainMessage.Flags)
 	assert.Equal(t, blockchainMessage.Nonce, decodedBlockchainMessage.Nonce)
 }
+
+func TestFiatOnrampPurchase_CrossPlatform(t *testing.T) {
+	nonce, err := uuid.Parse("c24a3bf2-ad4f-4756-944e-81948ff10882")
+	require.NoError(t, err)
+
+	msg, err := NewFiatOnrampPurchaseMessage(nonce)
+	require.NoError(t, err)
+
+	expected := "AQAAAAAAwko78q1PR1aUToGUj/EIgg=="
+	actual, err := msg.Encode()
+	require.NoError(t, err)
+	assert.Equal(t, expected, string(actual))
+}

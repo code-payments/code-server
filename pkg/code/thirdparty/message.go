@@ -3,6 +3,7 @@ package thirdparty
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"strings"
 	"time"
@@ -299,14 +300,14 @@ func (m *FiatOnrampPurchaseMessage) Encode() ([]byte, error) {
 	buffer = append(buffer, m.Nonce[:]...)
 
 	// Because memo requires UTF-8, and this is more space efficient than base64
-	return base122.Encode(buffer)
+	return []byte(base64.StdEncoding.EncodeToString(buffer)), nil
 }
 
 // DecodeFiatOnrampPurchaseMessage attempts to decode a byte payload into a FiatOnrampPurchaseMessage
 func DecodeFiatOnrampPurchaseMessage(payload []byte) (*FiatOnrampPurchaseMessage, error) {
 	errInvalidPayload := errors.New("invalid payload")
 
-	buffer, err := base122.Decode(payload)
+	buffer, err := base64.StdEncoding.DecodeString(string(payload))
 	if err != nil {
 		return nil, errors.Wrap(err, errInvalidPayload.Error())
 	}
