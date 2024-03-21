@@ -658,8 +658,8 @@ func (c *clientEnv) sendRequestToReceiveKinBillMessage(
 		exchangeData.Quarks = kin.ToQuarks(1)
 	}
 	if c.conf.simulateLargeNativeAmount {
-		exchangeData.NativeAmount = 100_001
-		exchangeData.Quarks = kin.ToQuarks(100_001)
+		exchangeData.NativeAmount = 250_001
+		exchangeData.Quarks = kin.ToQuarks(250_001)
 	}
 	if c.conf.simulateFractionalNativeAmount {
 		exchangeData.NativeAmount += 0.1
@@ -843,7 +843,7 @@ func (c *clientEnv) sendRequestToReceiveFiatBillMessage(
 		exchangeData.NativeAmount = 0.01
 	}
 	if c.conf.simulateLargeNativeAmount {
-		exchangeData.NativeAmount = 1.01
+		exchangeData.NativeAmount = 5.01
 	}
 
 	additionalFees := []*transactionpb.AdditionalFeePayment{

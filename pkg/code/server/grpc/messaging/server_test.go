@@ -437,7 +437,7 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
 		disableDomainVerification: true,
 	})
-	sendMessageCall.assertInvalidMessageError(t, "kin currency has a minimum amount of 5000.00")
+	sendMessageCall.assertInvalidMessageError(t, "kin currency has a minimum amount of 2500.00")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -446,7 +446,7 @@ func TestSendMessage_RequestToReceiveBill_KinValue_Validation(t *testing.T) {
 	sendMessageCall = env.client1.sendRequestToReceiveKinBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
 		disableDomainVerification: true,
 	})
-	sendMessageCall.assertInvalidMessageError(t, "kin currency has a maximum amount of 100000.00")
+	sendMessageCall.assertInvalidMessageError(t, "kin currency has a maximum amount of 250000.00")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
@@ -625,7 +625,7 @@ func TestSendMessage_RequestToReceiveBill_FiatValue_Validation(t *testing.T) {
 	sendMessageCall = env.client1.sendRequestToReceiveFiatBillMessage(t, rendezvousKey, &testRequestToReceiveBillConf{
 		disableDomainVerification: true,
 	})
-	sendMessageCall.assertInvalidMessageError(t, "usd currency has a maximum amount of 1.00")
+	sendMessageCall.assertInvalidMessageError(t, "usd currency has a maximum amount of 5.00")
 	env.server1.assertNoMessages(t, rendezvousKey)
 	env.server1.assertRequestRecordNotSaved(t, rendezvousKey)
 
