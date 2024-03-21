@@ -547,7 +547,7 @@ func getPurchasesFromSwap(
 
 			rawUsdPurchase := &transactionpb.ExchangeDataWithoutRate{
 				Currency:     "usd",
-				NativeAmount: usdAmount,
+				NativeAmount: math.Round(usdAmount), // Round to nearest $1 since we don't support decimals in app yet
 			}
 
 			// There is no memo for a blockchain message
