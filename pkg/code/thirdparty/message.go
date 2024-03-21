@@ -299,7 +299,6 @@ func (m *FiatOnrampPurchaseMessage) Encode() ([]byte, error) {
 
 	buffer = append(buffer, m.Nonce[:]...)
 
-	// Because memo requires UTF-8, and this is more space efficient than base64
 	return []byte(base64.StdEncoding.EncodeToString(buffer)), nil
 }
 
