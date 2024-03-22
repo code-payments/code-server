@@ -56,7 +56,7 @@ func (c *Client) GetUserById(ctx context.Context, id string) (*User, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetUserById")
 	defer tracer.End()
 
-	user, err := c.getUser(getUserByIdUrl + id)
+	user, err := c.getUser(ctx, getUserByIdUrl+id)
 	if err != nil {
 		tracer.OnError(err)
 	}
@@ -69,18 +69,20 @@ func (c *Client) GetUserByUsername(ctx context.Context, username string) (*User,
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetUserByUsername")
 	defer tracer.End()
 
-	user, err := c.getUser(getUserByUsernameUrl + username)
+	user, err := c.getUser(ctx, getUserByUsernameUrl+username)
 	if err != nil {
 		tracer.OnError(err)
 	}
 	return user, err
 }
 
-func (c *Client) getUser(fromUrl string) (*User, error) {
+func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
 	req, err := http.NewRequest("GET", fromUrl+"?user.fields=profile_image_url,public_metrics", nil)
 	if err != nil {
 		return nil, err
 	}
+
+	req = req.WithContext(ctx)
 
 	req.Header.Add("Authorization", "Bearer "+c.apiToken)
 
