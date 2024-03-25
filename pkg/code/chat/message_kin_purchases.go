@@ -15,6 +15,12 @@ import (
 	"github.com/code-payments/code-server/pkg/code/localization"
 )
 
+// GetKinPurchasesChatId returns the chat ID for the Kin Purchases chat for a
+// given owner account
+func GetKinPurchasesChatId(owner *common.Account) chat.ChatId {
+	return chat.GetChatId(KinPurchasesName, owner.PublicKey().ToBase58(), true)
+}
+
 // SendKinPurchasesMessage sends a message to the Kin Purchases chat.
 func SendKinPurchasesMessage(ctx context.Context, data code_data.Provider, receiver *common.Account, chatMessage *chatpb.ChatMessage) (bool, error) {
 	return SendChatMessage(

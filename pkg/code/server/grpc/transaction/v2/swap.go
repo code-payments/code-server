@@ -11,7 +11,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
+	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
@@ -19,8 +21,11 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/code/data/chat"
+	"github.com/code-payments/code-server/pkg/code/localization"
 	push_util "github.com/code-payments/code-server/pkg/code/push"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/jupiter"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -492,6 +497,31 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 		return
 	}
 	swapNotificationTimeByOwner[owner.PublicKey().ToBase58()] = time.Now()
+
+	chatId := chat_util.GetKinPurchasesChatId(owner)
+
+	// Inspect the chat history for a USDC deposited message. If that message
+	// doesn't exist, then avoid sending the swap in progress chat message, since
+	// it can lead to user confusion.
+	chatMessageRecords, err := s.data.GetAllChatMessages(ctx, chatId, query.WithDirection(query.Descending), query.WithLimit(1))
+	switch err {
+	case nil:
+		var protoChatMessage chatpb.ChatMessage
+		err := proto.Unmarshal(chatMessageRecords[0].Data, &protoChatMessage)
+		if err != nil {
+			return
+		}
+
+		switch typed := protoChatMessage.Content[0].Type.(type) {
+		case *chatpb.Content_Localized:
+			if typed.Localized.KeyOrText != localization.ChatMessageUsdcDeposited {
+				return
+			}
+		}
+	case chat.ErrMessageNotFound:
+	default:
+		return
+	}
 
 	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
 	if err != nil {
