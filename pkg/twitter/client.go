@@ -109,13 +109,15 @@ func (c *Client) GetUserTweets(ctx context.Context, userId string, maxResults in
 	return tweets, err
 }
 
-// SearchUserTweets searches for tweets made by a user
-func (c *Client) SearchUserTweets(ctx context.Context, userId, searchString string, maxResults int) ([]*Tweet, error) {
+// SearchRecentUserTweets searches for tweets made by a user within the last 7 days
+//
+// todo: Doesn't support paging, so only the most recent ones are returned
+func (c *Client) SearchRecentUserTweets(ctx context.Context, userId, searchString string, maxResults int) ([]*Tweet, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "SearchUserTweets")
 	defer tracer.End()
 
 	url := fmt.Sprintf(
-		baseUrl+"tweets/search/all?query=%s&max_results=%d",
+		baseUrl+"tweets/search/recent?query=%s&max_results=%d",
 		url.QueryEscape(fmt.Sprintf("from:%s %s", userId, searchString)),
 		maxResults,
 	)
