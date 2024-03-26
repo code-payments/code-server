@@ -100,51 +100,9 @@ func (c *Client) GetUserTweets(ctx context.Context, userId string, maxResults in
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetUserTweets")
 	defer tracer.End()
 
-	tweets, err := func() ([]*Tweet, error) {
-		bearerToken, err := c.getBearerToken(c.clientId, c.clientSecret)
-		if err != nil {
-			return nil, err
-		}
+	url := fmt.Sprintf(baseUrl+"users/"+userId+"/tweets?max_results=%d", maxResults)
 
-		url := fmt.Sprintf(baseUrl+"users/"+userId+"/tweets?max_results=%d", maxResults)
-
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Add("Authorization", "Bearer "+bearerToken)
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
-		}
-
-		var result struct {
-			Data   []*Tweet        `json:"data"`
-			Errors []*twitterError `json:"errors"`
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, err
-		}
-
-		if len(result.Errors) > 0 {
-			return nil, result.Errors[0].toError()
-		}
-		return result.Data, nil
-	}()
-
+	tweets, err := c.getTweets(ctx, url)
 	if err != nil {
 		tracer.OnError(err)
 	}
@@ -156,55 +114,13 @@ func (c *Client) SearchUserTweets(ctx context.Context, userId, searchString stri
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "SearchUserTweets")
 	defer tracer.End()
 
-	tweets, err := func() ([]*Tweet, error) {
-		bearerToken, err := c.getBearerToken(c.clientId, c.clientSecret)
-		if err != nil {
-			return nil, err
-		}
+	url := fmt.Sprintf(
+		baseUrl+"tweets/search/all?query=%s&max_results=%d",
+		url.QueryEscape(fmt.Sprintf("from:%s %s", userId, searchString)),
+		maxResults,
+	)
 
-		url := fmt.Sprintf(
-			baseUrl+"tweets/search/all?query=%s&max_results=%d",
-			url.QueryEscape(fmt.Sprintf("from:%s %s", userId, searchString)),
-			maxResults,
-		)
-
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Add("Authorization", "Bearer "+bearerToken)
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
-		}
-
-		var result struct {
-			Data   []*Tweet        `json:"data"`
-			Errors []*twitterError `json:"errors"`
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, err
-		}
-
-		if len(result.Errors) > 0 {
-			return nil, result.Errors[0].toError()
-		}
-		return result.Data, nil
-	}()
-
+	tweets, err := c.getTweets(ctx, url)
 	if err != nil {
 		tracer.OnError(err)
 	}
@@ -238,6 +154,51 @@ func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
 
 	var result struct {
 		Data   *User           `json:"data"`
+		Errors []*twitterError `json:"errors"`
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	if len(result.Errors) > 0 {
+		return nil, result.Errors[0].toError()
+	}
+	return result.Data, nil
+}
+
+func (c *Client) getTweets(ctx context.Context, fromUrl string) ([]*Tweet, error) {
+	bearerToken, err := c.getBearerToken(c.clientId, c.clientSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", fromUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req = req.WithContext(ctx)
+
+	req.Header.Add("Authorization", "Bearer "+bearerToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data   []*Tweet        `json:"data"`
 		Errors []*twitterError `json:"errors"`
 	}
 
