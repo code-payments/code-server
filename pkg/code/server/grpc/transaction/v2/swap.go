@@ -375,7 +375,10 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	log.Debug("submitted transaction")
 
-	s.bestEffortNotifyUserOfSwapInProgress(ctx, owner)
+	err = s.bestEffortNotifyUserOfSwapInProgress(ctx, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure notifying user of swap in progress")
+	}
 
 	if !initiateReq.WaitForBlockchainStatus {
 		err = streamer.Send(&transactionpb.SwapResponse{
@@ -488,13 +491,13 @@ func (s *transactionServer) validateSwap(
 	return nil
 }
 
-func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) {
+func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) error {
 	// Avoid spamming users chat messages due to retries of the Swap RPC within
 	// small periods of time. Implementation isn't perfect, but we'll be updating
 	// notifications later anyways.
 	lastNotificationTs, ok := swapNotificationTimeByOwner[owner.PublicKey().ToBase58()]
 	if ok && time.Since(lastNotificationTs) < time.Minute {
-		return
+		return nil
 	}
 	swapNotificationTimeByOwner[owner.PublicKey().ToBase58()] = time.Now()
 
@@ -509,28 +512,28 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 		var protoChatMessage chatpb.ChatMessage
 		err := proto.Unmarshal(chatMessageRecords[0].Data, &protoChatMessage)
 		if err != nil {
-			return
+			return errors.Wrap(err, "error unmarshalling proto chat message")
 		}
 
 		switch typed := protoChatMessage.Content[0].Type.(type) {
 		case *chatpb.Content_Localized:
 			if typed.Localized.KeyOrText != localization.ChatMessageUsdcDeposited {
-				return
+				return nil
 			}
 		}
 	case chat.ErrMessageNotFound:
 	default:
-		return
+		return errors.Wrap(err, "error fetching chat messages")
 	}
 
 	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
 	if err != nil {
-		return
+		return errors.Wrap(err, "error creating chat message")
 	}
 
 	canPush, err := chat_util.SendKinPurchasesMessage(ctx, s.data, owner, chatMessage)
 	if err != nil {
-		return
+		return errors.Wrap(err, "error sending chat message")
 	}
 
 	if canPush {
@@ -543,6 +546,8 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 			chatMessage,
 		)
 	}
+
+	return nil
 }
 
 func (s *transactionServer) mustLoadSwapSubsidizer(ctx context.Context) {
