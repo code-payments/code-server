@@ -49,6 +49,7 @@ type User struct {
 	ID              string        `json:"id"`
 	Username        string        `json:"username"`
 	Name            string        `json:"name"`
+	VerifiedType    string        `json:"verified_type"`
 	ProfileImageUrl string        `json:"profile_image_url"`
 	PublicMetrics   PublicMetrics `json:"public_metrics"`
 }
@@ -135,7 +136,7 @@ func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", fromUrl+"?user.fields=profile_image_url,public_metrics", nil)
+	req, err := http.NewRequest("GET", fromUrl+"?user.fields=profile_image_url,public_metrics,verified_type", nil)
 	if err != nil {
 		return nil, err
 	}
