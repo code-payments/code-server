@@ -47,6 +47,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
@@ -82,6 +83,7 @@ import (
 	timelock_memory_client "github.com/code-payments/code-server/pkg/code/data/timelock/memory"
 	transaction_memory_client "github.com/code-payments/code-server/pkg/code/data/transaction/memory"
 	treasury_memory_client "github.com/code-payments/code-server/pkg/code/data/treasury/memory"
+	twitter_memory_client "github.com/code-payments/code-server/pkg/code/data/twitter/memory"
 	user_identity_memory_client "github.com/code-payments/code-server/pkg/code/data/user/identity/memory"
 	user_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/user/storage/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
@@ -115,6 +117,7 @@ import (
 	timelock_postgres_client "github.com/code-payments/code-server/pkg/code/data/timelock/postgres"
 	transaction_postgres_client "github.com/code-payments/code-server/pkg/code/data/transaction/postgres"
 	treasury_postgres_client "github.com/code-payments/code-server/pkg/code/data/treasury/postgres"
+	twitter_postgres_client "github.com/code-payments/code-server/pkg/code/data/twitter/postgres"
 	user_identity_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/identity/postgres"
 	user_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/storage/postgres"
 	vault_postgres_client "github.com/code-payments/code-server/pkg/code/data/vault/postgres"
@@ -420,6 +423,11 @@ type DatabaseData interface {
 	MarkIneligibleForAirdrop(ctx context.Context, owner string) error
 	IsEligibleForAirdrop(ctx context.Context, owner string) (bool, error)
 
+	// Twitter
+	// --------------------------------------------------------------------------------
+	SaveTwitterUser(ctx context.Context, record *twitter.Record) error
+	GetTwitterUser(ctx context.Context, username string) (*twitter.Record, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -462,6 +470,7 @@ type DatabaseProvider struct {
 	onramp         onramp.Store
 	preferences    preferences.Store
 	airdrop        airdrop.Store
+	twitter        twitter.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -523,6 +532,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		onramp:         onramp_postgres_client.New(db),
 		preferences:    preferences_postgres_client.New(db),
 		airdrop:        airdrop_postgres_client.New(db),
+		twitter:        twitter_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -565,6 +575,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		onramp:         onramp_memory_client.New(),
 		preferences:    preferences_memory_client.New(),
 		airdrop:        airdrop_memory_client.New(),
+		twitter:        twitter_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1498,4 +1509,13 @@ func (dp *DatabaseProvider) MarkIneligibleForAirdrop(ctx context.Context, owner 
 }
 func (dp *DatabaseProvider) IsEligibleForAirdrop(ctx context.Context, owner string) (bool, error) {
 	return dp.airdrop.IsEligible(ctx, owner)
+}
+
+// Twitter
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) SaveTwitterUser(ctx context.Context, record *twitter.Record) error {
+	return dp.twitter.Save(ctx, record)
+}
+func (dp *DatabaseProvider) GetTwitterUser(ctx context.Context, username string) (*twitter.Record, error) {
+	return dp.twitter.Get(ctx, username)
 }

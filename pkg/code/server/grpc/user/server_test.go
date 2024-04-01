@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
@@ -30,6 +31,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/preferences"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
@@ -1449,6 +1451,37 @@ func TestGetLoginForThirdPartyApp_RelationshipNotEstablished(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, userpb.GetLoginForThirdPartyAppResponse_NO_USER_LOGGED_IN, resp.Result)
 	assert.Nil(t, resp.UserId)
+}
+
+func TestGetTwitterUser_HappyPath(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	req := &userpb.GetTwitterUserRequest{
+		Username: "jeffyanta",
+	}
+	resp, err := env.client.GetTwitterUser(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetTwitterUserResponse_NOT_FOUND, resp.Result)
+
+	record := &twitter.Record{
+		Username:      req.Username,
+		Name:          "Jeff",
+		ProfilePicUrl: "https://pbs.twimg.com/profile_images/1728595562285441024/GM-aLyh__normal.jpg",
+		VerifiedType:  userpb.GetTwitterUserResponse_BLUE,
+		FollowerCount: 200,
+		TipAddress:    testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+	}
+	require.NoError(t, env.data.SaveTwitterUser(env.ctx, record))
+
+	resp, err = env.client.GetTwitterUser(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetTwitterUserResponse_OK, resp.Result)
+	assert.Equal(t, record.TipAddress, base58.Encode(resp.TipAddress.Value))
+	assert.Equal(t, record.Name, resp.Name)
+	assert.Equal(t, record.ProfilePicUrl, resp.ProfilePicUrl)
+	assert.Equal(t, record.VerifiedType, resp.VerifiedType)
+	assert.Equal(t, record.FollowerCount, resp.FollowerCount)
 }
 
 func TestUnauthenticatedRPC(t *testing.T) {

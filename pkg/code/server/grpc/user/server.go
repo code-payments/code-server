@@ -25,6 +25,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/preferences"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
@@ -668,6 +669,41 @@ func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *user
 		log.WithError(err).Warn("failure getting relationship account info record")
 		return nil, status.Error(codes.Internal, "")
 	}
+}
+
+func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwitterUserRequest) (*userpb.GetTwitterUserResponse, error) {
+	log := s.log.WithFields(logrus.Fields{
+		"method":   "GetTwitterUser",
+		"username": req.Username,
+	})
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	record, err := s.data.GetTwitterUser(ctx, req.Username)
+	switch err {
+	case nil:
+		tipAddress, err := common.NewAccountFromPublicKeyString(record.TipAddress)
+		if err != nil {
+			log.WithError(err).Warn("tip address is invalid")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		return &userpb.GetTwitterUserResponse{
+			Result:        userpb.GetTwitterUserResponse_OK,
+			TipAddress:    tipAddress.ToProto(),
+			Name:          record.Name,
+			ProfilePicUrl: record.ProfilePicUrl,
+			VerifiedType:  record.VerifiedType,
+			FollowerCount: record.FollowerCount,
+		}, nil
+	case twitter.ErrUserNotFound:
+		return &userpb.GetTwitterUserResponse{
+			Result: userpb.GetTwitterUserResponse_NOT_FOUND,
+		}, nil
+	default:
+		log.WithError(err).Warn("failure getting twitter user info")
+		return nil, status.Error(codes.Internal, "")
+	}
+
 }
 
 func (s *identityServer) markWebhookAsPending(ctx context.Context, id string) error {
