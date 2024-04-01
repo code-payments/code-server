@@ -64,8 +64,17 @@ type PublicMetrics struct {
 
 // Tweet represents the structure for a tweet in the Twitter API response
 type Tweet struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID       string  `json:"id"`
+	Text     string  `json:"text"`
+	AuthorID *string `json:"author_id"`
+
+	AdditionalMetadata AdditionalTweetMetadata
+}
+
+// AdditionalTweetMetadata adds additinal metadata to a tweet that isn't directly
+// represented in the Twitter API response
+type AdditionalTweetMetadata struct {
+	Author *User
 }
 
 // GetUserById makes a request to the Twitter API and returns the user's information
@@ -95,39 +104,42 @@ func (c *Client) GetUserByUsername(ctx context.Context, username string) (*User,
 }
 
 // GetUserTweets gets tweets for a given user
-//
-// todo: Doesn't support paging, so only the most recent ones are returned
-func (c *Client) GetUserTweets(ctx context.Context, userId string, maxResults int) ([]*Tweet, error) {
+func (c *Client) GetUserTweets(ctx context.Context, userId string, maxResults int, nextToken *string) ([]*Tweet, *string, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetUserTweets")
 	defer tracer.End()
 
 	url := fmt.Sprintf(baseUrl+"users/"+userId+"/tweets?max_results=%d", maxResults)
+	if nextToken != nil {
+		url = fmt.Sprintf("%s&next_token=%s", url, *nextToken)
+	}
 
-	tweets, err := c.getTweets(ctx, url)
+	tweets, nextToken, err := c.getTweets(ctx, url)
 	if err != nil {
 		tracer.OnError(err)
 	}
-	return tweets, err
+	return tweets, nextToken, err
 }
 
-// SearchRecentUserTweets searches for tweets made by a user within the last 7 days
-//
-// todo: Doesn't support paging, so only the most recent ones are returned
-func (c *Client) SearchRecentUserTweets(ctx context.Context, userId, searchString string, maxResults int) ([]*Tweet, error) {
+// SearchRecentTweets searches for recent tweets within the last 7 days matching
+// a search string.
+func (c *Client) SearchRecentTweets(ctx context.Context, searchString string, maxResults int, nextToken *string) ([]*Tweet, *string, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "SearchUserTweets")
 	defer tracer.End()
 
 	url := fmt.Sprintf(
-		baseUrl+"tweets/search/recent?query=%s&max_results=%d",
-		url.QueryEscape(fmt.Sprintf("from:%s %s", userId, searchString)),
+		baseUrl+"tweets/search/recent?query=%s&expansions=author_id&user.fields=username&max_results=%d",
+		url.QueryEscape(searchString),
 		maxResults,
 	)
+	if nextToken != nil {
+		url = fmt.Sprintf("%s&next_token=%s", url, *nextToken)
+	}
 
-	tweets, err := c.getTweets(ctx, url)
+	tweets, nextToken, err := c.getTweets(ctx, url)
 	if err != nil {
 		tracer.OnError(err)
 	}
-	return tweets, err
+	return tweets, nextToken, err
 }
 
 func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
@@ -175,15 +187,15 @@ func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
 	return result.Data, nil
 }
 
-func (c *Client) getTweets(ctx context.Context, fromUrl string) ([]*Tweet, error) {
+func (c *Client) getTweets(ctx context.Context, fromUrl string) ([]*Tweet, *string, error) {
 	bearerToken, err := c.getBearerToken(c.clientId, c.clientSecret)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req, err := http.NewRequest("GET", fromUrl, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req = req.WithContext(ctx)
@@ -192,32 +204,52 @@ func (c *Client) getTweets(ctx context.Context, fromUrl string) ([]*Tweet, error
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
 	}
 
 	var result struct {
 		Data   []*Tweet        `json:"data"`
 		Errors []*twitterError `json:"errors"`
+		Meta   struct {
+			NextToken *string `json:"next_token"`
+		} `json:"meta"`
+		Includes struct {
+			Users []User `json:"users"`
+		} `json:"includes"`
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(result.Errors) > 0 {
-		return nil, result.Errors[0].toError()
+		return nil, nil, result.Errors[0].toError()
 	}
-	return result.Data, nil
+
+	for _, tweet := range result.Data {
+		if tweet.AuthorID == nil {
+			continue
+		}
+
+		for _, user := range result.Includes.Users {
+			if user.ID == *tweet.AuthorID {
+				tweet.AdditionalMetadata.Author = &user
+				break
+			}
+		}
+	}
+
+	return result.Data, result.Meta.NextToken, nil
 }
 
 func (c *Client) getBearerToken(clientId, clientSecret string) (string, error) {
