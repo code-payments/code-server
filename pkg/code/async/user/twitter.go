@@ -103,6 +103,7 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 
 	err := func() error {
 		var pageToken *string
+		processedUsernames := make(map[string]any)
 		for {
 			tweets, nextPageToken, err := p.twitterClient.SearchRecentTweets(
 				ctx,
@@ -114,7 +115,6 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 				return errors.Wrap(err, "error searching tweets")
 			}
 
-			processedUsernames := make(map[string]any)
 			for _, tweet := range tweets {
 				if tweet.AdditionalMetadata.Author == nil {
 					return errors.Errorf("author missing in tweet %s", tweet.ID)
