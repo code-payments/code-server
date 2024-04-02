@@ -127,7 +127,7 @@ func (c *Client) SearchRecentTweets(ctx context.Context, searchString string, ma
 	defer tracer.End()
 
 	url := fmt.Sprintf(
-		baseUrl+"tweets/search/recent?query=%s&expansions=author_id&user.fields=username&max_results=%d",
+		baseUrl+"tweets/search/recent?query=%s&expansions=author_id&user.fields=username,profile_image_url,public_metrics,verified_type&max_results=%d",
 		url.QueryEscape(searchString),
 		maxResults,
 	)

@@ -40,11 +40,21 @@ const (
 
 			CONSTRAINT codewallet__core_twitteruser__uniq__username UNIQUE (username)
 		);
+
+		CREATE TABLE codewallet__core_processedtweets (
+			id SERIAL NOT NULL PRIMARY KEY,
+
+			tweet_id TEXT NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+
+			CONSTRAINT codewallet__core_processedtweets__uniq__tweet_id UNIQUE (tweet_id)
+		);
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
 		DROP TABLE codewallet__core_twitteruser;
+		DROP TABLE codewallet__core_processedtweets;
 	`
 )
 

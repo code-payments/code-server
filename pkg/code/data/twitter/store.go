@@ -3,6 +3,7 @@ package twitter
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -10,9 +11,18 @@ var (
 )
 
 type Store interface {
-	// Save saves a Twitter user's information
-	Save(ctx context.Context, record *Record) error
+	// SaveUser saves a Twitter user's information
+	SaveUser(ctx context.Context, record *Record) error
 
-	// Get gets a Twitter user's information
-	Get(ctx context.Context, username string) (*Record, error)
+	// GetUser gets a Twitter user's information
+	GetUser(ctx context.Context, username string) (*Record, error)
+
+	// GetStaleUsers gets user that have their last updated timestamp older than minAge
+	GetStaleUsers(ctx context.Context, minAge time.Duration, limit int) ([]*Record, error)
+
+	// MarkTweetAsProcessed marks a tweet as being processed
+	MarkTweetAsProcessed(ctx context.Context, tweetId string) error
+
+	// IsTweetProcessed returns whether a tweet is processed
+	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
 }
