@@ -197,15 +197,18 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 	mu.Lock()
 	defer mu.Unlock()
 
-	accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, newTipAccount.PublicKey().ToBase58())
-	switch err {
-	case nil:
-		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-			return nil
+	// Validate the new tip account if it's provided
+	if newTipAccount != nil {
+		accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, newTipAccount.PublicKey().ToBase58())
+		switch err {
+		case nil:
+			if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
+				return nil
+			}
+		case account.ErrAccountInfoNotFound:
+		default:
+			return errors.Wrap(err, "error getting account info")
 		}
-	case account.ErrAccountInfoNotFound:
-	default:
-		return errors.Wrap(err, "error getting account info")
 	}
 
 	record, err := p.data.GetTwitterUser(ctx, user.Username)
