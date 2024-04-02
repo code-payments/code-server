@@ -206,6 +206,7 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 				return nil
 			}
 		case account.ErrAccountInfoNotFound:
+			return nil
 		default:
 			return errors.Wrap(err, "error getting account info")
 		}
