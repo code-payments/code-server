@@ -57,6 +57,47 @@ func (p *service) twitterRegistrationWorker(serviceCtx context.Context, interval
 	return err
 }
 
+func (p *service) twitterUserInfoUpdateWorker(serviceCtx context.Context, interval time.Duration) error {
+	log := p.log.WithField("method", "twitterUserInfoUpdateWorker")
+
+	delay := interval
+
+	err := retry.Loop(
+		func() (err error) {
+			time.Sleep(delay)
+
+			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			m := nr.StartTransaction("async__user_service__handle_twitter_user_info_update")
+			defer m.End()
+			tracedCtx := newrelic.NewContext(serviceCtx, m)
+
+			// todo: configurable parameters
+			records, err := p.data.GetStaleTwitterUsers(tracedCtx, 7*24*time.Hour, 32)
+			if err == twitter.ErrUserNotFound {
+				return nil
+			} else if err != nil {
+				m.NoticeError(err)
+				log.WithError(err).Warn("failure getting stale twitter users")
+				return err
+			}
+
+			for _, record := range records {
+				err := p.refreshTwitterUserInfo(tracedCtx, record.Username)
+				if err != nil {
+					m.NoticeError(err)
+					log.WithError(err).Warn("failure refreshing twitter user info")
+					return err
+				}
+			}
+
+			return nil
+		},
+		retry.NonRetriableErrors(context.Canceled),
+	)
+
+	return err
+}
+
 func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 	var newlyProcessedTweets []string
 
@@ -109,7 +150,7 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 
 				err = p.updateCachedTwitterUser(ctx, tweet.AdditionalMetadata.Author, tipAccount)
 				if err != nil {
-					return err
+					return errors.Wrap(err, "error updating cached user state")
 				}
 			}
 
@@ -138,12 +179,25 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 	return nil
 }
 
-func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib.User, tipAccount *common.Account) error {
+func (p *service) refreshTwitterUserInfo(ctx context.Context, username string) error {
+	user, err := p.twitterClient.GetUserByUsername(ctx, username)
+	if err != nil {
+		return errors.Wrap(err, "error getting user info from twitter")
+	}
+
+	err = p.updateCachedTwitterUser(ctx, user, nil)
+	if err != nil {
+		return errors.Wrap(err, "error updating cached user state")
+	}
+	return nil
+}
+
+func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib.User, newTipAccount *common.Account) error {
 	mu := p.userLocks.Get([]byte(user.Username))
 	mu.Lock()
 	defer mu.Unlock()
 
-	accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, tipAccount.PublicKey().ToBase58())
+	accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, newTipAccount.PublicKey().ToBase58())
 	switch err {
 	case nil:
 		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
@@ -157,16 +211,24 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 	record, err := p.data.GetTwitterUser(ctx, user.Username)
 	switch err {
 	case twitter.ErrUserNotFound:
+		if newTipAccount == nil {
+			return errors.New("tip account must be present for newly registered twitter users")
+		}
+
 		record = &twitter.Record{
 			Username: user.Username,
 		}
+
 		fallthrough
 	case nil:
-		record.TipAddress = tipAccount.PublicKey().ToBase58()
 		record.Name = user.Name
 		record.ProfilePicUrl = user.ProfileImageUrl
 		record.VerifiedType = toProtoVerifiedType(user.VerifiedType)
 		record.FollowerCount = uint32(user.PublicMetrics.FollowersCount)
+
+		if newTipAccount != nil {
+			record.TipAddress = newTipAccount.PublicKey().ToBase58()
+		}
 	default:
 		return errors.Wrap(err, "error getting cached twitter user")
 	}

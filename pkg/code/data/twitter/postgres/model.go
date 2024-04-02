@@ -104,7 +104,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	})
 }
 
-func dbGet(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
+func dbGetUser(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
 	res := &model{}
 
 	query := `SELECT
@@ -116,6 +116,26 @@ func dbGet(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
 	err := db.GetContext(ctx, res, query, username)
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, twitter.ErrUserNotFound)
+	}
+	return res, nil
+}
+
+func dbGetStaleUsers(ctx context.Context, db *sqlx.DB, minAge time.Duration, limit int) ([]*model, error) {
+	res := []*model{}
+
+	query := `SELECT
+		id, username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at
+		FROM ` + userTableName + `
+		WHERE last_updated_at < $1
+		ORDER BY last_updated_at ASC
+		LIMIT $2`
+
+	err := db.SelectContext(ctx, &res, query, time.Now().Add(-1*minAge), limit)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, twitter.ErrUserNotFound)
+	}
+	if len(res) == 0 {
+		return nil, twitter.ErrUserNotFound
 	}
 	return res, nil
 }

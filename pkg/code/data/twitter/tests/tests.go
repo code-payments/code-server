@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ func RunTests(t *testing.T, s twitter.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s twitter.Store){
 		testUserHappyPath,
 		testTweetHappyPath,
+		testGetStaleUsers,
 	} {
 		tf(t, s)
 		teardown()
@@ -89,6 +91,52 @@ func testTweetHappyPath(t *testing.T, s twitter.Store) {
 			require.NoError(t, err)
 			assert.False(t, isProcessed)
 		}
+	})
+}
+
+func testGetStaleUsers(t *testing.T, s twitter.Store) {
+	t.Run("testGetStaleUsers", func(t *testing.T) {
+		ctx := context.Background()
+
+		_, err := s.GetStaleUsers(ctx, time.Minute, 10)
+		assert.Equal(t, twitter.ErrUserNotFound, err)
+
+		start := time.Now()
+		delayPerUpdate := 100 * time.Millisecond
+
+		for i := 0; i < 5; i++ {
+			require.NoError(t, s.SaveUser(ctx, &twitter.Record{
+				Username:      fmt.Sprintf("username%d", i),
+				Name:          fmt.Sprintf("name%d", i),
+				ProfilePicUrl: fmt.Sprintf("profile_pic_%d", i),
+				VerifiedType:  userpb.GetTwitterUserResponse_NONE,
+				FollowerCount: 0,
+				TipAddress:    fmt.Sprintf("tip_address_%d", i),
+			}))
+
+			// todo: get rid of time.Sleep()
+			time.Sleep(delayPerUpdate)
+		}
+
+		res, err := s.GetStaleUsers(ctx, 0, 10)
+		require.NoError(t, err)
+		require.Len(t, res, 5)
+		for i, actual := range res {
+			assert.Equal(t, fmt.Sprintf("username%d", i), actual.Username)
+		}
+
+		res, err = s.GetStaleUsers(ctx, 0, 3)
+		require.NoError(t, err)
+		require.Len(t, res, 3)
+		for i, actual := range res {
+			assert.Equal(t, fmt.Sprintf("username%d", i), actual.Username)
+		}
+
+		res, err = s.GetStaleUsers(ctx, time.Since(start)-delayPerUpdate/2, 10)
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		assert.Equal(t, "username0", res[0].Username)
+
 	})
 }
 

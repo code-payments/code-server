@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/jmoiron/sqlx"
@@ -39,11 +40,25 @@ func (s *store) SaveUser(ctx context.Context, record *twitter.Record) error {
 
 // GetUser implements twitter.Store.GetUser
 func (s *store) GetUser(ctx context.Context, username string) (*twitter.Record, error) {
-	model, err := dbGet(ctx, s.db, username)
+	model, err := dbGetUser(ctx, s.db, username)
 	if err != nil {
 		return nil, err
 	}
 	return fromModel(model), nil
+}
+
+// GetStaleUsers implements twitter.Store.GetStaleUsers
+func (s *store) GetStaleUsers(ctx context.Context, minAge time.Duration, limit int) ([]*twitter.Record, error) {
+	models, err := dbGetStaleUsers(ctx, s.db, minAge, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]*twitter.Record, len(models))
+	for i, model := range models {
+		res[i] = fromModel(model)
+	}
+	return res, nil
 }
 
 // MarkTweetAsProcessed implements twitter.Store.MarkTweetAsProcessed

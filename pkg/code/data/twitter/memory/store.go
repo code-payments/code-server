@@ -2,11 +2,18 @@ package memory
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 )
+
+type ByLastUpdatedAt []*twitter.Record
+
+func (a ByLastUpdatedAt) Len() int           { return len(a) }
+func (a ByLastUpdatedAt) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByLastUpdatedAt) Less(i, j int) bool { return a[i].LastUpdatedAt.Before(a[j].LastUpdatedAt) }
 
 type store struct {
 	mu              sync.Mutex
@@ -32,7 +39,7 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 	defer s.mu.Unlock()
 
 	s.last++
-	if item := s.find(data); item != nil {
+	if item := s.findUser(data); item != nil {
 		data.LastUpdatedAt = time.Now()
 
 		item.Name = data.Name
@@ -62,13 +69,33 @@ func (s *store) GetUser(_ context.Context, username string) (*twitter.Record, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	item := s.findByUsername(username)
+	item := s.findUserByUsername(username)
 	if item == nil {
 		return nil, twitter.ErrUserNotFound
 	}
 
 	cloned := item.Clone()
 	return &cloned, nil
+}
+
+// GetStaleUsers implements twitter.Store.GetStaleUsers
+func (s *store) GetStaleUsers(ctx context.Context, minAge time.Duration, limit int) ([]*twitter.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findStaleUsers(minAge)
+
+	sorted := ByLastUpdatedAt(items)
+	sort.Sort(sorted)
+
+	if len(items) > limit {
+		sorted = sorted[:limit]
+	}
+
+	if len(sorted) == 0 {
+		return nil, twitter.ErrUserNotFound
+	}
+	return userSliceCopy(sorted), nil
 }
 
 // MarkTweetAsProcessed implements twitter.Store.MarkTweetAsProcessed
@@ -89,7 +116,7 @@ func (s *store) IsTweetProcessed(_ context.Context, tweetId string) (bool, error
 	return ok, nil
 }
 
-func (s *store) find(data *twitter.Record) *twitter.Record {
+func (s *store) findUser(data *twitter.Record) *twitter.Record {
 	for _, item := range s.userRecords {
 		if item.Id == data.Id {
 			return item
@@ -102,7 +129,7 @@ func (s *store) find(data *twitter.Record) *twitter.Record {
 	return nil
 }
 
-func (s *store) findByUsername(username string) *twitter.Record {
+func (s *store) findUserByUsername(username string) *twitter.Record {
 	for _, item := range s.userRecords {
 		if username == item.Username {
 			return item
@@ -112,6 +139,16 @@ func (s *store) findByUsername(username string) *twitter.Record {
 	return nil
 }
 
+func (s *store) findStaleUsers(minAge time.Duration) []*twitter.Record {
+	var res []*twitter.Record
+	for _, item := range s.userRecords {
+		if time.Since(item.LastUpdatedAt) > minAge {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
 func (s *store) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -119,4 +156,13 @@ func (s *store) reset() {
 	s.userRecords = nil
 	s.processedTweets = make(map[string]any)
 	s.last = 0
+}
+
+func userSliceCopy(items []*twitter.Record) []*twitter.Record {
+	res := make([]*twitter.Record, len(items))
+	for i, item := range items {
+		cloned := item.Clone()
+		res[i] = &cloned
+	}
+	return res
 }

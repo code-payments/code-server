@@ -28,11 +28,19 @@ func New(twitterClient *twitter.Client, data code_data.Provider) async.Service {
 	}
 }
 
+// todo: split out interval for each worker
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	go func() {
 		err := p.twitterRegistrationWorker(ctx, interval)
 		if err != nil && err != context.Canceled {
 			p.log.WithError(err).Warn("twitter registration processing loop terminated unexpectedly")
+		}
+	}()
+
+	go func() {
+		err := p.twitterUserInfoUpdateWorker(ctx, interval)
+		if err != nil && err != context.Canceled {
+			p.log.WithError(err).Warn("twitter user info processing loop terminated unexpectedly")
 		}
 	}()
 
