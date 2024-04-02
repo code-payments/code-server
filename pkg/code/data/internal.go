@@ -427,6 +427,8 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	SaveTwitterUser(ctx context.Context, record *twitter.Record) error
 	GetTwitterUser(ctx context.Context, username string) (*twitter.Record, error)
+	MarkTweetAsProcessed(ctx context.Context, tweetId string) error
+	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -1514,8 +1516,14 @@ func (dp *DatabaseProvider) IsEligibleForAirdrop(ctx context.Context, owner stri
 // Twitter
 // --------------------------------------------------------------------------------
 func (dp *DatabaseProvider) SaveTwitterUser(ctx context.Context, record *twitter.Record) error {
-	return dp.twitter.Save(ctx, record)
+	return dp.twitter.SaveUser(ctx, record)
 }
 func (dp *DatabaseProvider) GetTwitterUser(ctx context.Context, username string) (*twitter.Record, error) {
-	return dp.twitter.Get(ctx, username)
+	return dp.twitter.GetUser(ctx, username)
+}
+func (dp *DatabaseProvider) MarkTweetAsProcessed(ctx context.Context, tweetId string) error {
+	return dp.twitter.MarkTweetAsProcessed(ctx, tweetId)
+}
+func (dp *DatabaseProvider) IsTweetProcessed(ctx context.Context, tweetId string) (bool, error) {
+	return dp.twitter.IsTweetProcessed(ctx, tweetId)
 }

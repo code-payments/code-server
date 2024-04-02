@@ -8,13 +8,13 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/code-payments/code-protobuf-api/generated/go/user/v1"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
 
 const (
-	tableName = "codewallet__core_twitteruser"
+	userTableName            = "codewallet__core_twitteruser"
+	processedTweetsTableName = "codewallet__core_processedtweets"
 )
 
 type model struct {
@@ -70,17 +70,17 @@ func fromModel(m *model) *twitter.Record {
 
 func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
-		query := `INSERT INTO ` + tableName + `
+		query := `INSERT INTO ` + userTableName + `
 			(username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 
 			ON CONFLICT (username)
 			DO UPDATE
 				SET name = $2, profile_pic_url = $3, verified_type = $4, follower_count = $5, tip_address = $6, created_at = $7, last_updated_at = $8
-				WHERE ` + tableName + `.username = $1 
+				WHERE ` + userTableName + `.username = $1 
 
 			RETURNING
-			id, username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at`
+				id, username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at`
 
 		if m.CreatedAt.IsZero() {
 			m.CreatedAt = time.Now()
@@ -100,7 +100,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.LastUpdatedAt,
 		).StructScan(m)
 
-		return pgutil.CheckNoRows(err, intent.ErrInvalidIntent)
+		return err
 	})
 }
 
@@ -109,7 +109,7 @@ func dbGet(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
 
 	query := `SELECT
 		id, username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at
-		FROM ` + tableName + `
+		FROM ` + userTableName + `
 		WHERE username = $1
 		LIMIT 1`
 
@@ -118,4 +118,47 @@ func dbGet(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
 		return nil, pgutil.CheckNoRows(err, twitter.ErrUserNotFound)
 	}
 	return res, nil
+}
+
+func dbMarkTweetAsProcessed(ctx context.Context, db *sqlx.DB, tweetId string) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		query := `INSERT INTO ` + processedTweetsTableName + `
+			(tweet_id, created_at)
+			VALUES ($1, $2)
+
+			ON CONFLICT (tweet_id) DO NOTHING
+
+			RETURNING
+				id, tweet_id, created_at`
+
+		_, err := tx.ExecContext(
+			ctx,
+			query,
+			tweetId,
+			time.Now(),
+		)
+		return pgutil.CheckNoRows(err, nil)
+	})
+}
+
+func dbIsTweetProcessed(ctx context.Context, db *sqlx.DB, tweetId string) (bool, error) {
+	res := struct {
+		Count int `db:"count"`
+	}{}
+
+	query := `SELECT COUNT(*) AS count
+		FROM ` + processedTweetsTableName + `
+		WHERE tweet_id = $1
+		LIMIT 1`
+
+	err := db.GetContext(
+		ctx,
+		&res,
+		query,
+		tweetId,
+	)
+	if err != nil {
+		return false, err
+	}
+	return res.Count > 0, nil
 }

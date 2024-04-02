@@ -15,20 +15,21 @@ import (
 
 func RunTests(t *testing.T, s twitter.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s twitter.Store){
-		testHappyPath,
+		testUserHappyPath,
+		testTweetHappyPath,
 	} {
 		tf(t, s)
 		teardown()
 	}
 }
 
-func testHappyPath(t *testing.T, s twitter.Store) {
-	t.Run("testHappyPath", func(t *testing.T) {
+func testUserHappyPath(t *testing.T, s twitter.Store) {
+	t.Run("testUserHappyPath", func(t *testing.T) {
 		ctx := context.Background()
 
 		username := "jeffyanta"
 
-		_, err := s.Get(ctx, username)
+		_, err := s.GetUser(ctx, username)
 		assert.Equal(t, twitter.ErrUserNotFound, err)
 
 		expected := &twitter.Record{
@@ -42,12 +43,12 @@ func testHappyPath(t *testing.T, s twitter.Store) {
 		cloned := expected.Clone()
 
 		start := time.Now()
-		require.NoError(t, s.Save(ctx, expected))
+		require.NoError(t, s.SaveUser(ctx, expected))
 		assert.EqualValues(t, 1, expected.Id)
 		assert.True(t, expected.CreatedAt.After(start))
 		assert.True(t, expected.LastUpdatedAt.After(start))
 
-		actual, err := s.Get(ctx, username)
+		actual, err := s.GetUser(ctx, username)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
@@ -57,12 +58,37 @@ func testHappyPath(t *testing.T, s twitter.Store) {
 		expected.FollowerCount = 1000
 		expected.TipAddress = "tip_address_2"
 		cloned = expected.Clone()
-		require.NoError(t, s.Save(ctx, expected))
+		require.NoError(t, s.SaveUser(ctx, expected))
 		assert.True(t, expected.LastUpdatedAt.After(expected.CreatedAt))
 
-		actual, err = s.Get(ctx, username)
+		actual, err = s.GetUser(ctx, username)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
+	})
+}
+
+func testTweetHappyPath(t *testing.T, s twitter.Store) {
+	t.Run("testTweetHappyPath", func(t *testing.T) {
+		ctx := context.Background()
+
+		tweet1 := "tweet1"
+		tweet2 := "tweet2"
+
+		isProcessed, err := s.IsTweetProcessed(ctx, tweet1)
+		require.NoError(t, err)
+		assert.False(t, isProcessed)
+
+		for i := 0; i < 3; i++ {
+			require.NoError(t, s.MarkTweetAsProcessed(ctx, tweet1))
+
+			isProcessed, err = s.IsTweetProcessed(ctx, tweet1)
+			require.NoError(t, err)
+			assert.True(t, isProcessed)
+
+			isProcessed, err = s.IsTweetProcessed(ctx, tweet2)
+			require.NoError(t, err)
+			assert.False(t, isProcessed)
+		}
 	})
 }
 
