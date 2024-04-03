@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"time"
 
 	"github.com/mr-tron/base58"
@@ -373,7 +374,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		)
 	}
 
-	log.Debug("submitted transaction")
+	log.WithField("txn", base64.StdEncoding.EncodeToString(txn.Marshal())).Info("transaction submitted")
 
 	err = s.bestEffortNotifyUserOfSwapInProgress(ctx, owner)
 	if err != nil {
