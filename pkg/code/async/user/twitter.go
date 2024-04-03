@@ -137,6 +137,7 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 					continue
 				}
 
+				// Attempt to find a tip account from the registration tweet
 				tipAccount, err := findTipAccountRegisteredInTweet(tweet)
 				switch err {
 				case nil:
@@ -144,6 +145,20 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 					continue
 				default:
 					return errors.Wrapf(err, "unexpected error processing tweet %s", tweet.ID)
+				}
+
+				// Validate the new tip account
+				accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, tipAccount.PublicKey().ToBase58())
+				switch err {
+				case nil:
+					// todo: potentially use a relationship account instead
+					if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
+						continue
+					}
+				case account.ErrAccountInfoNotFound:
+					continue
+				default:
+					return errors.Wrap(err, "error getting account info")
 				}
 
 				processedUsernames[tweet.AdditionalMetadata.Author.Username] = struct{}{}
@@ -196,21 +211,6 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 	mu := p.userLocks.Get([]byte(user.Username))
 	mu.Lock()
 	defer mu.Unlock()
-
-	// Validate the new tip account if it's provided
-	if newTipAccount != nil {
-		accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, newTipAccount.PublicKey().ToBase58())
-		switch err {
-		case nil:
-			if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-				return nil
-			}
-		case account.ErrAccountInfoNotFound:
-			return nil
-		default:
-			return errors.Wrap(err, "error getting account info")
-		}
-	}
 
 	record, err := p.data.GetTwitterUser(ctx, user.Username)
 	switch err {
