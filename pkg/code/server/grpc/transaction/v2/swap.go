@@ -36,10 +36,6 @@ import (
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
-var (
-	swapNotificationTimeByOwner = make(map[string]time.Time)
-)
-
 func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) error {
 	ctx, cancel := context.WithTimeout(streamer.Context(), s.conf.swapTimeout.Get(streamer.Context()))
 	defer cancel()
@@ -493,15 +489,6 @@ func (s *transactionServer) validateSwap(
 }
 
 func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) error {
-	// Avoid spamming users chat messages due to retries of the Swap RPC within
-	// small periods of time. Implementation isn't perfect, but we'll be updating
-	// notifications later anyways.
-	lastNotificationTs, ok := swapNotificationTimeByOwner[owner.PublicKey().ToBase58()]
-	if ok && time.Since(lastNotificationTs) < time.Minute {
-		return nil
-	}
-	swapNotificationTimeByOwner[owner.PublicKey().ToBase58()] = time.Now()
-
 	chatId := chat_util.GetKinPurchasesChatId(owner)
 
 	// Inspect the chat history for a USDC deposited message. If that message
