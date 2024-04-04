@@ -20,8 +20,6 @@ import (
 // don't belong in the Cash Transactions chat will be ignored.
 //
 // Note: Tests covered in SubmitIntent history tests
-//
-// todo: How are we handling relationship account flows?
 func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) error {
 	messageId := intentRecord.IntentId
 
@@ -35,6 +33,9 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 	case intent.SendPrivatePayment:
 		if intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
 			// Micro payment messages exist in merchant domain-specific chats
+			return nil
+		} else if intentRecord.SendPrivatePaymentMetadata.IsTip {
+			// Tip messages exist in a tip-specific chat
 			return nil
 		} else if intentRecord.SendPrivatePaymentMetadata.IsWithdrawal {
 			if intentRecord.InitiatorOwnerAccount == intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount {

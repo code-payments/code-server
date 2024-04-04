@@ -7,6 +7,7 @@ const (
 	CodeTeamName         = "Code Team"
 	KinPurchasesName     = "Kin Purchases"
 	PaymentsName         = "Payments" // Renamed to Web Payments on client
+	TipsName             = "Tips"
 
 	// Test chats used for unit/integration testing only
 	TestCantMuteName        = "TestCantMute"
@@ -36,6 +37,11 @@ var (
 		},
 		PaymentsName: {
 			TitleLocalizationKey: localization.ChatTitlePayments,
+			CanMute:              true,
+			CanUnsubscribe:       false,
+		},
+		TipsName: {
+			TitleLocalizationKey: localization.ChatTitleTips,
 			CanMute:              true,
 			CanUnsubscribe:       false,
 		},
