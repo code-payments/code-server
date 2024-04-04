@@ -38,6 +38,7 @@ const (
 	ChatTitleCodeTeam         = "title.chat.codeTeam"
 	ChatTitleKinPurchases     = "title.chat.kinPurchases"
 	ChatTitlePayments         = "title.chat.payments"
+	ChatTitleTips             = "title.chat.tips"
 
 	// Message Bodies
 
@@ -52,15 +53,17 @@ const (
 	// Verbs
 	//
 
-	VerbGave      = "subtitle.youGave"
-	VerbReceived  = "subtitle.youReceived"
-	VerbWithdrew  = "subtitle.youWithdrew"
-	VerbDeposited = "subtitle.youDeposited"
-	VerbSent      = "subtitle.youSent"
-	VerbSpent     = "subtitle.youSpent"
-	VerbPaid      = "subtitle.youPaid"
-	VerbPurchased = "subtitle.youPurchased"
-	VerbReturned  = "subtitle.wasReturnedToYou"
+	VerbGave        = "subtitle.youGave"
+	VerbReceived    = "subtitle.youReceived"
+	VerbWithdrew    = "subtitle.youWithdrew"
+	VerbDeposited   = "subtitle.youDeposited"
+	VerbSent        = "subtitle.youSent"
+	VerbSpent       = "subtitle.youSpent"
+	VerbPaid        = "subtitle.youPaid"
+	VerbPurchased   = "subtitle.youPurchased"
+	VerbReturned    = "subtitle.wasReturnedToYou"
+	VerbReceivedTip = "subtitle.receivedTip"
+	VerbSentTip     = "subtitle.sentTip"
 )
 
 var (
