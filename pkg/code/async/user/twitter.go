@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	tipCardRegistrationPrefix = "accountForX="
+	tipCardRegistrationPrefix = "CodeAccount:"
 	maxTweetSearchResults     = 100 // maximum allowed
 )
 
