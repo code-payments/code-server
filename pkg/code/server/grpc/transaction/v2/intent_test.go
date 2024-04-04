@@ -408,6 +408,20 @@ func TestSubmitIntent_SendPrivatePayment_SelfPayment(t *testing.T) {
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &sendingPhone)
 }
 
+func TestSubmitIntent_SendPrivatePayment_TipCodeUser_HappyPath(t *testing.T) {
+	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	server.generateAvailableNonces(t, 100)
+
+	sendingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.openAccounts(t).requireSuccess(t)
+
+	submitIntentCall := sendingPhone.tip456KinToCodeUser(t, receivingPhone)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
+}
+
 func TestSubmitIntent_SendPrivatePayment_AntispamGuard(t *testing.T) {
 	server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{
 		enableAntispamChecks: true,

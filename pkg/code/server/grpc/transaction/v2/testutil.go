@@ -662,6 +662,7 @@ func (s serverTestEnv) assertIntentRecordSaved(t *testing.T, intentId string, pr
 		assert.Equal(t, 0.1*float64(typed.SendPrivatePayment.ExchangeData.Quarks)/kin.QuarksPerKin, intentRecord.SendPrivatePaymentMetadata.UsdMarketValue)
 		assert.Equal(t, typed.SendPrivatePayment.IsWithdrawal, intentRecord.SendPrivatePaymentMetadata.IsWithdrawal)
 		assert.Equal(t, typed.SendPrivatePayment.IsRemoteSend, intentRecord.SendPrivatePaymentMetadata.IsRemoteSend)
+		assert.Equal(t, typed.SendPrivatePayment.IsTip, intentRecord.SendPrivatePaymentMetadata.IsTip)
 	case *transactionpb.Metadata_ReceivePaymentsPrivately:
 		assert.Equal(t, intent.ReceivePaymentsPrivately, intentRecord.IntentType)
 		require.NotNil(t, intentRecord.ReceivePaymentsPrivatelyMetadata)
@@ -3412,6 +3413,124 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 					Quarks:       totalAmount,
 				},
 				IsWithdrawal: true,
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	if !isSubmitIntentError(resp, err) {
+		p.currentTempOutgoingIndex = nextIndex
+		p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING] = nextDerivedAccount.value
+	}
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
+func (p *phoneTestEnv) tip456KinToCodeUser(t *testing.T, receiver phoneTestEnv) submitIntentCallMetadata {
+	totalAmount := kin.ToQuarks(456)
+
+	destination := receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0)
+
+	nextIndex := p.currentTempOutgoingIndex + 1
+	nextDerivedAccount := derivedAccount{
+		accountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+		index:       nextIndex,
+		value:       testutil.NewRandomAccount(t),
+	}
+	p.allDerivedAccounts = append(p.allDerivedAccounts, nextDerivedAccount)
+
+	actions := []*transactionpb.Action{
+		// Send bucketed amounts to temporary outgoing account
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_1_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(6),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(50),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_100_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_100_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(400),
+			},
+		}},
+	}
+
+	actions = append(
+		actions,
+		// Send full payment from temporary outgoing account to payment destination,
+		// minus any fees
+		&transactionpb.Action{Type: &transactionpb.Action_NoPrivacyWithdraw{
+			NoPrivacyWithdraw: &transactionpb.NoPrivacyWithdrawAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Destination: destination.ToProto(),
+				Amount:      totalAmount,
+				ShouldClose: true,
+			},
+		}},
+
+		// Re-organize bucket accounts (example)
+		&transactionpb.Action{Type: &transactionpb.Action_TemporaryPrivacyExchange{
+			TemporaryPrivacyExchange: &transactionpb.TemporaryPrivacyExchangeAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(10),
+			},
+		}},
+
+		// Rotate to new temporary outgoing account
+		&transactionpb.Action{Type: &transactionpb.Action_OpenAccount{
+			OpenAccount: &transactionpb.OpenAccountAction{
+				AccountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+				Owner:       p.parentAccount.ToProto(),
+				Authority:   nextDerivedAccount.value.ToProto(),
+				Token:       getTimelockVault(t, nextDerivedAccount.value).ToProto(),
+				Index:       nextIndex,
+			},
+		}},
+		&transactionpb.Action{Type: &transactionpb.Action_CloseDormantAccount{
+			CloseDormantAccount: &transactionpb.CloseDormantAccountAction{
+				AccountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+				Authority:   nextDerivedAccount.value.ToProto(),
+				Token:       getTimelockVault(t, nextDerivedAccount.value).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+			},
+		}},
+	)
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPrivatePayment{
+			SendPrivatePayment: &transactionpb.SendPrivatePaymentMetadata{
+				Destination: destination.ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "usd",
+					ExchangeRate: 0.1,
+					NativeAmount: 45.6,
+					Quarks:       totalAmount,
+				},
+				IsWithdrawal: true,
+				IsTip:        true,
 			},
 		},
 	}

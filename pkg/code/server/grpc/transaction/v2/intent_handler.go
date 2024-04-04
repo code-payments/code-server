@@ -472,6 +472,7 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 		IsWithdrawal:     typedProtoMetadata.IsWithdrawal,
 		IsRemoteSend:     typedProtoMetadata.IsRemoteSend,
 		IsMicroPayment:   isMicroPayment,
+		IsTip:            typedProtoMetadata.IsTip,
 	}
 
 	if destinationAccountInfo != nil {
@@ -677,14 +678,24 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 1.2: Check destination account based on withdrawal and remote send flags
+	// Part 1.2: Check destination account based on withdrawal, remote send and tip flags
 	//
 
-	// The account type isn't defined for these use cases
-	if metadata.IsWithdrawal && metadata.IsRemoteSend {
+	// Invalid combination of various payment flags
+	if metadata.IsRemoteSend && metadata.IsWithdrawal {
 		return newIntentValidationError("withdrawal and remote send flags cannot both be true set at the same time")
-	} else if metadata.IsRemoteSend && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+	}
+	if metadata.IsRemoteSend && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
 		return newIntentValidationError("remote send cannot be used for micro payments")
+	}
+	if metadata.IsRemoteSend && metadata.IsTip {
+		return newIntentValidationError("remote send cannot be used for tips")
+	}
+	if metadata.IsTip && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		return newIntentValidationError("tips cannot be used for micro payments")
+	}
+	if metadata.IsTip && !metadata.IsWithdrawal {
+		return newIntentValidationError("tips must be a private withdrawal")
 	}
 
 	// Note: Assumes account info only stores Code user accounts
@@ -703,6 +714,11 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		//       has already been validated by the messaging service.
 		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY && destinationAccountInfo.AccountType != commonpb.AccountType_RELATIONSHIP {
 			return newIntentValidationError("destination account must be a deposit account")
+		}
+
+		// todo: potentially use a relationship account instead
+		if metadata.IsTip && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
+			return newIntentValidationError("destination account must be a primary account")
 		}
 
 		if !metadata.IsWithdrawal {
