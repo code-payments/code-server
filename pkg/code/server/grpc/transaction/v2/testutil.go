@@ -1940,6 +1940,8 @@ type phoneConf struct {
 	simulateFlippingRemoteSendFlag bool
 	simulateUsingGiftCardAccount   bool
 
+	simulateFlippingTipFlag bool
+
 	//
 	// Simulations for EstablishRelationship intent validation
 	//
@@ -3787,6 +3789,10 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 		if p.conf.simulateFlippingRemoteSendFlag {
 			typed.SendPrivatePayment.IsRemoteSend = !typed.SendPrivatePayment.IsRemoteSend
+		}
+
+		if p.conf.simulateFlippingTipFlag {
+			typed.SendPrivatePayment.IsTip = true
 		}
 
 		if p.conf.simulateNotClosingTempAccount {

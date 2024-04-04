@@ -151,7 +151,6 @@ func (p *service) findNewTwitterRegistrations(ctx context.Context) error {
 				accountInfoRecord, err := p.data.GetAccountInfoByTokenAddress(ctx, tipAccount.PublicKey().ToBase58())
 				switch err {
 				case nil:
-					// todo: potentially use a relationship account instead
 					if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
 						continue
 					}

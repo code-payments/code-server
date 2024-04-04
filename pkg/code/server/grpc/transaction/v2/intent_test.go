@@ -637,6 +637,18 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	submitIntentCall.assertInvalidIntentResponse(t, "must open one account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
+	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateFlippingTipFlag = true
+	submitIntentCall = sendingPhone.send42KinToGiftCardAccount(t, testutil.NewRandomAccount(t))
+	submitIntentCall.assertInvalidIntentResponse(t, "remote send cannot be used for tips")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateFlippingWithdrawFlag = true
+	submitIntentCall = sendingPhone.tip456KinToCodeUser(t, receivingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "tips must be a private withdrawal")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
 	//
 	// Part 3: Validate how funds are sent to destination
 	//
@@ -791,6 +803,13 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	sendingPhone.conf.simulateUsingGiftCardAccount = true
 	submitIntentCall = sendingPhone.privatelyWithdraw123KinToExternalWallet(t)
 	submitIntentCall.assertInvalidIntentResponse(t, "actions[7]: source is not a latest owned account")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateFlippingWithdrawFlag = true
+	sendingPhone.conf.simulateFlippingTipFlag = true
+	submitIntentCall = sendingPhone.send42KinToCodeUser(t, receivingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "destination account must be a primary account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//
