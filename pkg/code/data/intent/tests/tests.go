@@ -195,6 +195,7 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 				IsWithdrawal:     true,
 				IsRemoteSend:     true,
 				IsMicroPayment:   true,
+				IsTip:            true,
 			},
 			State:     intent.StateUnknown,
 			CreatedAt: time.Now(),
@@ -220,6 +221,7 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsWithdrawal, actual.SendPrivatePaymentMetadata.IsWithdrawal)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsRemoteSend, actual.SendPrivatePaymentMetadata.IsRemoteSend)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsMicroPayment, actual.SendPrivatePaymentMetadata.IsMicroPayment)
+		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsTip, actual.SendPrivatePaymentMetadata.IsTip)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)

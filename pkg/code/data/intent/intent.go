@@ -106,6 +106,7 @@ type SendPrivatePaymentMetadata struct {
 	IsWithdrawal   bool
 	IsRemoteSend   bool
 	IsMicroPayment bool
+	IsTip          bool
 }
 
 type ReceivePaymentsPrivatelyMetadata struct {
@@ -557,6 +558,7 @@ func (m *SendPrivatePaymentMetadata) Clone() SendPrivatePaymentMetadata {
 		IsWithdrawal:     m.IsWithdrawal,
 		IsRemoteSend:     m.IsRemoteSend,
 		IsMicroPayment:   m.IsMicroPayment,
+		IsTip:            m.IsTip,
 	}
 }
 
@@ -572,6 +574,7 @@ func (m *SendPrivatePaymentMetadata) CopyTo(dst *SendPrivatePaymentMetadata) {
 	dst.IsWithdrawal = m.IsWithdrawal
 	dst.IsRemoteSend = m.IsRemoteSend
 	dst.IsMicroPayment = m.IsMicroPayment
+	dst.IsTip = m.IsTip
 }
 
 func (m *SendPrivatePaymentMetadata) Validate() error {
