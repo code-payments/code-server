@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/currency"
 )
@@ -192,10 +193,16 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 				ExchangeRate:     0.00073,
 				NativeAmount:     0.00073 * 12345,
 				UsdMarketValue:   0.00042,
-				IsWithdrawal:     true,
-				IsRemoteSend:     true,
-				IsMicroPayment:   true,
-				IsTip:            true,
+
+				IsWithdrawal:   true,
+				IsRemoteSend:   true,
+				IsMicroPayment: true,
+				IsTip:          true,
+
+				TipMetadata: &intent.TipMetadata{
+					Platform: transaction.TippedUser_TWITTER,
+					Username: "tipme",
+				},
 			},
 			State:     intent.StateUnknown,
 			CreatedAt: time.Now(),
@@ -222,6 +229,9 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsRemoteSend, actual.SendPrivatePaymentMetadata.IsRemoteSend)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsMicroPayment, actual.SendPrivatePaymentMetadata.IsMicroPayment)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.IsTip, actual.SendPrivatePaymentMetadata.IsTip)
+		require.NotNil(t, actual.SendPrivatePaymentMetadata.TipMetadata)
+		assert.Equal(t, cloned.SendPrivatePaymentMetadata.TipMetadata.Platform, actual.SendPrivatePaymentMetadata.TipMetadata.Platform)
+		assert.Equal(t, cloned.SendPrivatePaymentMetadata.TipMetadata.Username, actual.SendPrivatePaymentMetadata.TipMetadata.Username)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)

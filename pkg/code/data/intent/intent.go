@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
 	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/phone"
 )
@@ -107,6 +109,14 @@ type SendPrivatePaymentMetadata struct {
 	IsRemoteSend   bool
 	IsMicroPayment bool
 	IsTip          bool
+
+	// Set when IsTip = true
+	TipMetadata *TipMetadata
+}
+
+type TipMetadata struct {
+	Platform transactionpb.TippedUser_Platform
+	Username string
 }
 
 type ReceivePaymentsPrivatelyMetadata struct {
@@ -546,6 +556,14 @@ func (m *OpenAccountsMetadata) Validate() error {
 }
 
 func (m *SendPrivatePaymentMetadata) Clone() SendPrivatePaymentMetadata {
+	var tipMetadata *TipMetadata
+	if m.TipMetadata != nil {
+		tipMetadata = &TipMetadata{
+			Platform: m.TipMetadata.Platform,
+			Username: m.TipMetadata.Username,
+		}
+	}
+
 	return SendPrivatePaymentMetadata{
 		DestinationOwnerAccount: m.DestinationOwnerAccount,
 		DestinationTokenAccount: m.DestinationTokenAccount,
@@ -555,14 +573,25 @@ func (m *SendPrivatePaymentMetadata) Clone() SendPrivatePaymentMetadata {
 		ExchangeRate:     m.ExchangeRate,
 		NativeAmount:     m.NativeAmount,
 		UsdMarketValue:   m.UsdMarketValue,
-		IsWithdrawal:     m.IsWithdrawal,
-		IsRemoteSend:     m.IsRemoteSend,
-		IsMicroPayment:   m.IsMicroPayment,
-		IsTip:            m.IsTip,
+
+		IsWithdrawal:   m.IsWithdrawal,
+		IsRemoteSend:   m.IsRemoteSend,
+		IsMicroPayment: m.IsMicroPayment,
+		IsTip:          m.IsTip,
+
+		TipMetadata: tipMetadata,
 	}
 }
 
 func (m *SendPrivatePaymentMetadata) CopyTo(dst *SendPrivatePaymentMetadata) {
+	var tipMetadata *TipMetadata
+	if m.TipMetadata != nil {
+		tipMetadata = &TipMetadata{
+			Platform: m.TipMetadata.Platform,
+			Username: m.TipMetadata.Username,
+		}
+	}
+
 	dst.DestinationOwnerAccount = m.DestinationOwnerAccount
 	dst.DestinationTokenAccount = m.DestinationTokenAccount
 	dst.Quantity = m.Quantity
@@ -571,10 +600,13 @@ func (m *SendPrivatePaymentMetadata) CopyTo(dst *SendPrivatePaymentMetadata) {
 	dst.ExchangeRate = m.ExchangeRate
 	dst.NativeAmount = m.NativeAmount
 	dst.UsdMarketValue = m.UsdMarketValue
+
 	dst.IsWithdrawal = m.IsWithdrawal
 	dst.IsRemoteSend = m.IsRemoteSend
 	dst.IsMicroPayment = m.IsMicroPayment
 	dst.IsTip = m.IsTip
+
+	dst.TipMetadata = tipMetadata
 }
 
 func (m *SendPrivatePaymentMetadata) Validate() error {
@@ -600,6 +632,22 @@ func (m *SendPrivatePaymentMetadata) Validate() error {
 
 	if m.UsdMarketValue == 0 {
 		return errors.New("usd market value cannot be zero")
+	}
+
+	if m.IsTip {
+		if m.TipMetadata == nil {
+			return errors.New("tip metadata required for tips")
+		}
+
+		if m.TipMetadata.Platform == transactionpb.TippedUser_UNKNOWN {
+			return errors.New("tip platform is required")
+		}
+
+		if len(m.TipMetadata.Username) == 0 {
+			return errors.New("tip username is required")
+		}
+	} else if m.TipMetadata != nil {
+		return errors.New("tip metadata can only be set for tips")
 	}
 
 	return nil

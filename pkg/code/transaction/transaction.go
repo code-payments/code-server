@@ -3,9 +3,10 @@ package transaction
 import (
 	"errors"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/solana/memo"
 )
 
 var (
@@ -78,10 +79,25 @@ func MakeCloseAccountWithBalanceTransaction(
 
 	source *common.TimelockAccounts,
 	destination *common.Account,
+
+	additionalMemo *string,
 ) (solana.Transaction, error) {
-	memoInstruction, err := MakeKreMemoInstruction()
+	originalMemoInstruction, err := MakeKreMemoInstruction()
 	if err != nil {
 		return solana.Transaction{}, err
+	}
+
+	memoInstructions := []solana.Instruction{
+		originalMemoInstruction,
+	}
+
+	if additionalMemo != nil {
+		if len(*additionalMemo) == 0 {
+			return solana.Transaction{}, errors.New("additional memo is empty")
+		}
+
+		additionalMemoInstruction := memo.Instruction(*additionalMemo)
+		memoInstructions = append(memoInstructions, additionalMemoInstruction)
 	}
 
 	revokeLockInstruction, err := source.GetRevokeLockWithAuthorityInstruction()
@@ -104,13 +120,13 @@ func MakeCloseAccountWithBalanceTransaction(
 		return solana.Transaction{}, err
 	}
 
-	instructions := []solana.Instruction{
-		memoInstruction,
+	instructions := append(
+		memoInstructions,
 		revokeLockInstruction,
 		deactivateLockInstruction,
 		withdrawInstruction,
 		closeInstruction,
-	}
+	)
 	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 

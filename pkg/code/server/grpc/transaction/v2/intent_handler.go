@@ -470,10 +470,22 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 		ExchangeRate:     exchangeData.ExchangeRate,
 		NativeAmount:     typedProtoMetadata.ExchangeData.NativeAmount,
 		UsdMarketValue:   usdExchangeRecord.Rate * float64(kin.FromQuarks(exchangeData.Quarks)),
-		IsWithdrawal:     typedProtoMetadata.IsWithdrawal,
-		IsRemoteSend:     typedProtoMetadata.IsRemoteSend,
-		IsMicroPayment:   isMicroPayment,
-		IsTip:            typedProtoMetadata.IsTip,
+
+		IsWithdrawal:   typedProtoMetadata.IsWithdrawal,
+		IsRemoteSend:   typedProtoMetadata.IsRemoteSend,
+		IsMicroPayment: isMicroPayment,
+		IsTip:          typedProtoMetadata.IsTip,
+	}
+
+	if typedProtoMetadata.IsTip {
+		if typedProtoMetadata.TippedUser == nil {
+			return newIntentValidationError("tipped user metadata is missing")
+		}
+
+		intentRecord.SendPrivatePaymentMetadata.TipMetadata = &intent.TipMetadata{
+			Platform: typedProtoMetadata.TippedUser.Platform,
+			Username: typedProtoMetadata.TippedUser.Username,
+		}
 	}
 
 	if destinationAccountInfo != nil {

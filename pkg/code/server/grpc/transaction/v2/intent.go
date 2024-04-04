@@ -459,7 +459,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			log = log.WithField("action_type", "no_privacy_withdraw")
 			actionType = action.NoPrivacyWithdraw
-			actionHandler, err = NewNoPrivacyWithdrawActionHandler(intentRecord.IntentType, typed.NoPrivacyWithdraw)
+			actionHandler, err = NewNoPrivacyWithdrawActionHandler(intentRecord, typed.NoPrivacyWithdraw)
 		case *transactionpb.Action_TemporaryPrivacyTransfer:
 			log = log.WithField("action_type", "temporary_privacy_transfer")
 			actionType = action.PrivateTransfer
