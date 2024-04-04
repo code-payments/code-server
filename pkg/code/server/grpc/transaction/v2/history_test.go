@@ -26,9 +26,11 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	merchantDomain := "example.com"
+	twitterUsername := "tipthisuser"
 
 	server.generateAvailableNonces(t, 1000)
 	server.setupAirdropper(t, kin.ToQuarks(1_500_000_000))
+	server.simulateTwitterRegistration(t, twitterUsername, receivingPhone.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0))
 
 	amountForPrivacyMigration := kin.ToQuarks(23)
 	legacyTimelockVault, err := sendingPhone.parentAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
@@ -138,7 +140,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	// [Verified Merchant] receivingPhone RECEIVED 12,345 Kin
 	server.simulateExternalDepositHistoryItem(t, receivingPhone.parentAccount, getTimelockVault(t, receivingPhone.getAuthorityForRelationshipAccount(t, merchantDomain)), kin.ToQuarks(12_345))
 
-	sendingPhone.tip456KinToCodeUser(t, receivingPhone).requireSuccess(t)
+	sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername).requireSuccess(t)
 
 	chatMessageRecords, err := server.data.GetAllChatMessages(server.ctx, chat.GetChatId(chat_util.CashTransactionsName, sendingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)

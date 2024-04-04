@@ -412,12 +412,16 @@ func TestSubmitIntent_SendPrivatePayment_TipCodeUser_HappyPath(t *testing.T) {
 	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
+	twitterUsername := "tipthisuser"
+
 	server.generateAvailableNonces(t, 100)
+
+	server.simulateTwitterRegistration(t, twitterUsername, receivingPhone.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0))
 
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
 
-	submitIntentCall := sendingPhone.tip456KinToCodeUser(t, receivingPhone)
+	submitIntentCall := sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername)
 	submitIntentCall.requireSuccess(t)
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
 }
@@ -530,7 +534,11 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
+	twitterUsername := "twitteraccount"
+
 	server.generateAvailableNonces(t, 100)
+
+	server.simulateTwitterRegistration(t, twitterUsername, receivingPhone.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0))
 
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
@@ -645,8 +653,14 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 
 	sendingPhone.resetConfig()
 	sendingPhone.conf.simulateFlippingWithdrawFlag = true
-	submitIntentCall = sendingPhone.tip456KinToCodeUser(t, receivingPhone)
+	submitIntentCall = sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername)
 	submitIntentCall.assertInvalidIntentResponse(t, "tips must be a private withdrawal")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	server.simulateTwitterRegistration(t, twitterUsername, sendingPhone.parentAccount)
+	submitIntentCall = sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername)
+	submitIntentCall.assertInvalidIntentResponse(t, "tip destination must be")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//

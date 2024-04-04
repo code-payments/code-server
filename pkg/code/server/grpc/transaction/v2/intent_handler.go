@@ -24,6 +24,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	event_util "github.com/code-payments/code-server/pkg/code/event"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/lawenforcement"
@@ -707,8 +708,17 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 			return newIntentValidationError("remote send must be to a brand new gift card account")
 		}
 
+		if metadata.IsTip && metadata.TippedUser == nil {
+			return newIntentValidationError("tipped user metadata is missing")
+		}
 		if metadata.IsTip && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
 			return newIntentValidationError("destination account must be a primary account")
+		}
+		if metadata.IsTip {
+			err = validateTipDestination(ctx, h.data, metadata.TippedUser, destination)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Code->Code withdrawals must be sent to a deposit account. We allow the
@@ -3206,6 +3216,32 @@ func validateIntentIdIsNotRequest(ctx context.Context, data code_data.Provider, 
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
+	return nil
+}
+
+func validateTipDestination(ctx context.Context, data code_data.Provider, tippedUser *transactionpb.TippedUser, actualDestination *common.Account) error {
+	var expectedDestination *common.Account
+	switch tippedUser.Platform {
+	case transactionpb.TippedUser_TWITTER:
+		record, err := data.GetTwitterUser(ctx, tippedUser.Username)
+		if err == twitter.ErrUserNotFound {
+			return newIntentValidationError("twitter user is not registered with code")
+		} else if err != nil {
+			return err
+		}
+
+		expectedDestination, err = common.NewAccountFromPublicKeyString(record.TipAddress)
+		if err != nil {
+			return err
+		}
+	default:
+		return newIntentValidationErrorf("tip platform %s is not supported", tippedUser.Platform.String())
+	}
+
+	if !bytes.Equal(expectedDestination.PublicKey().ToBytes(), actualDestination.PublicKey().ToBytes()) {
+		return newIntentValidationErrorf("tip destination must be %s", expectedDestination.PublicKey().ToBase58())
+	}
+
 	return nil
 }
 

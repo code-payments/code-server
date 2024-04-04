@@ -50,6 +50,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
@@ -597,6 +598,16 @@ func (s *serverTestEnv) simulateExpiredGiftCard(t *testing.T, giftCardAccount *c
 
 		State: intent.StateConfirmed,
 	}))
+}
+
+func (s *serverTestEnv) simulateTwitterRegistration(t *testing.T, username string, destination *common.Account) {
+	record := &twitter.Record{
+		Username:      username,
+		Name:          "name",
+		ProfilePicUrl: "url",
+		TipAddress:    destination.PublicKey().ToBase58(),
+	}
+	require.NoError(t, s.data.SaveTwitterUser(s.ctx, record))
 }
 
 // Captures the majority of intent submission validation, but highly intent-specific
@@ -3436,7 +3447,7 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 	}
 }
 
-func (p *phoneTestEnv) tip456KinToCodeUser(t *testing.T, receiver phoneTestEnv) submitIntentCallMetadata {
+func (p *phoneTestEnv) tip456KinToCodeUser(t *testing.T, receiver phoneTestEnv, username string) submitIntentCallMetadata {
 	totalAmount := kin.ToQuarks(456)
 
 	destination := receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0)
@@ -3533,6 +3544,10 @@ func (p *phoneTestEnv) tip456KinToCodeUser(t *testing.T, receiver phoneTestEnv) 
 				},
 				IsWithdrawal: true,
 				IsTip:        true,
+				TippedUser: &transactionpb.TippedUser{
+					Platform: transactionpb.TippedUser_TWITTER,
+					Username: username,
+				},
 			},
 		},
 	}
@@ -3793,6 +3808,10 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 		if p.conf.simulateFlippingTipFlag {
 			typed.SendPrivatePayment.IsTip = true
+			typed.SendPrivatePayment.TippedUser = &transactionpb.TippedUser{
+				Platform: transactionpb.TippedUser_TWITTER,
+				Username: "twitteraccount",
+			}
 		}
 
 		if p.conf.simulateNotClosingTempAccount {
