@@ -39,6 +39,12 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 	defer s.mu.Unlock()
 
 	s.last++
+
+	itemByTipAddress := s.findUserByTipAddress(data.TipAddress)
+	if itemByTipAddress != nil && data.Username != itemByTipAddress.Username {
+		return twitter.ErrDuplicateTipAddress
+	}
+
 	if item := s.findUser(data); item != nil {
 		data.LastUpdatedAt = time.Now()
 
@@ -49,11 +55,6 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 		item.TipAddress = data.TipAddress
 		item.LastUpdatedAt = data.LastUpdatedAt
 	} else {
-		itemByTipAddress := s.findUserByTipAddress(data.TipAddress)
-		if itemByTipAddress != nil && data.Username != itemByTipAddress.Username {
-			return twitter.ErrDuplicateTipAddress
-		}
-
 		if data.Id == 0 {
 			data.Id = s.last
 		}
