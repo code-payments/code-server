@@ -1453,22 +1453,25 @@ func TestGetLoginForThirdPartyApp_RelationshipNotEstablished(t *testing.T) {
 	assert.Nil(t, resp.UserId)
 }
 
-func TestGetTwitterUser_HappyPath(t *testing.T) {
+func TestGetTwitterUser_ByUsername_HappyPath(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
 	req := &userpb.GetTwitterUserRequest{
-		Username: "jeffyanta",
+		Query: &userpb.GetTwitterUserRequest_Username{
+			Username: "jeffyanta",
+		},
 	}
 	resp, err := env.client.GetTwitterUser(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, userpb.GetTwitterUserResponse_NOT_FOUND, resp.Result)
+	assert.Nil(t, resp.TwitterUser)
 
 	record := &twitter.Record{
-		Username:      req.Username,
+		Username:      req.GetUsername(),
 		Name:          "Jeff",
 		ProfilePicUrl: "https://pbs.twimg.com/profile_images/1728595562285441024/GM-aLyh__normal.jpg",
-		VerifiedType:  userpb.GetTwitterUserResponse_BLUE,
+		VerifiedType:  userpb.TwitterUser_BLUE,
 		FollowerCount: 200,
 		TipAddress:    testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 	}
@@ -1477,11 +1480,49 @@ func TestGetTwitterUser_HappyPath(t *testing.T) {
 	resp, err = env.client.GetTwitterUser(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, userpb.GetTwitterUserResponse_OK, resp.Result)
-	assert.Equal(t, record.TipAddress, base58.Encode(resp.TipAddress.Value))
-	assert.Equal(t, record.Name, resp.Name)
-	assert.Equal(t, record.ProfilePicUrl, resp.ProfilePicUrl)
-	assert.Equal(t, record.VerifiedType, resp.VerifiedType)
-	assert.Equal(t, record.FollowerCount, resp.FollowerCount)
+	assert.Equal(t, record.TipAddress, base58.Encode(resp.TwitterUser.TipAddress.Value))
+	assert.Equal(t, record.Username, resp.TwitterUser.Username)
+	assert.Equal(t, record.Name, resp.TwitterUser.Name)
+	assert.Equal(t, record.ProfilePicUrl, resp.TwitterUser.ProfilePicUrl)
+	assert.Equal(t, record.VerifiedType, resp.TwitterUser.VerifiedType)
+	assert.Equal(t, record.FollowerCount, resp.TwitterUser.FollowerCount)
+}
+
+func TestGetTwitterUser_ByTipAddress_HappyPath(t *testing.T) {
+	env, cleanup := setup(t)
+	defer cleanup()
+
+	tipAddress := testutil.NewRandomAccount(t)
+
+	req := &userpb.GetTwitterUserRequest{
+		Query: &userpb.GetTwitterUserRequest_TipAddress{
+			TipAddress: tipAddress.ToProto(),
+		},
+	}
+	resp, err := env.client.GetTwitterUser(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetTwitterUserResponse_NOT_FOUND, resp.Result)
+	assert.Nil(t, resp.TwitterUser)
+
+	record := &twitter.Record{
+		Username:      "jeffyanta",
+		Name:          "Jeff",
+		ProfilePicUrl: "https://pbs.twimg.com/profile_images/1728595562285441024/GM-aLyh__normal.jpg",
+		VerifiedType:  userpb.TwitterUser_BLUE,
+		FollowerCount: 200,
+		TipAddress:    tipAddress.PublicKey().ToBase58(),
+	}
+	require.NoError(t, env.data.SaveTwitterUser(env.ctx, record))
+
+	resp, err = env.client.GetTwitterUser(env.ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, userpb.GetTwitterUserResponse_OK, resp.Result)
+	assert.Equal(t, record.TipAddress, base58.Encode(resp.TwitterUser.TipAddress.Value))
+	assert.Equal(t, record.Username, resp.TwitterUser.Username)
+	assert.Equal(t, record.Name, resp.TwitterUser.Name)
+	assert.Equal(t, record.ProfilePicUrl, resp.TwitterUser.ProfilePicUrl)
+	assert.Equal(t, record.VerifiedType, resp.TwitterUser.VerifiedType)
+	assert.Equal(t, record.FollowerCount, resp.TwitterUser.FollowerCount)
 }
 
 func TestUnauthenticatedRPC(t *testing.T) {

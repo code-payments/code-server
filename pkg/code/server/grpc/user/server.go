@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/mr-tron/base58/base58"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/language"
 	xrate "golang.org/x/time/rate"
@@ -672,13 +673,22 @@ func (s *identityServer) GetLoginForThirdPartyApp(ctx context.Context, req *user
 }
 
 func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwitterUserRequest) (*userpb.GetTwitterUserResponse, error) {
-	log := s.log.WithFields(logrus.Fields{
-		"method":   "GetTwitterUser",
-		"username": req.Username,
-	})
+	log := s.log.WithField("method", "GetTwitterUser")
 	log = client.InjectLoggingMetadata(ctx, log)
 
-	record, err := s.data.GetTwitterUser(ctx, req.Username)
+	var record *twitter.Record
+	var err error
+	switch typed := req.Query.(type) {
+	case *userpb.GetTwitterUserRequest_Username:
+		log = log.WithField("username", typed.Username)
+		record, err = s.data.GetTwitterUserByUsername(ctx, typed.Username)
+	case *userpb.GetTwitterUserRequest_TipAddress:
+		log = log.WithField("tip_address", base58.Encode(typed.TipAddress.Value))
+		record, err = s.data.GetTwitterUserByTipAddress(ctx, base58.Encode(typed.TipAddress.Value))
+	default:
+		return nil, status.Error(codes.InvalidArgument, "req.query must be set")
+	}
+
 	switch err {
 	case nil:
 		tipAddress, err := common.NewAccountFromPublicKeyString(record.TipAddress)
@@ -688,12 +698,15 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 		}
 
 		return &userpb.GetTwitterUserResponse{
-			Result:        userpb.GetTwitterUserResponse_OK,
-			TipAddress:    tipAddress.ToProto(),
-			Name:          record.Name,
-			ProfilePicUrl: record.ProfilePicUrl,
-			VerifiedType:  record.VerifiedType,
-			FollowerCount: record.FollowerCount,
+			Result: userpb.GetTwitterUserResponse_OK,
+			TwitterUser: &userpb.TwitterUser{
+				TipAddress:    tipAddress.ToProto(),
+				Username:      record.Username,
+				Name:          record.Name,
+				ProfilePicUrl: record.ProfilePicUrl,
+				VerifiedType:  record.VerifiedType,
+				FollowerCount: record.FollowerCount,
+			},
 		}, nil
 	case twitter.ErrUserNotFound:
 		return &userpb.GetTwitterUserResponse{
