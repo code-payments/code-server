@@ -38,7 +38,8 @@ const (
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 			last_updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
-			CONSTRAINT codewallet__core_twitteruser__uniq__username UNIQUE (username)
+			CONSTRAINT codewallet__core_twitteruser__uniq__username UNIQUE (username),
+			CONSTRAINT codewallet__core_twitteruser__uniq__tip_address UNIQUE (tip_address)
 		);
 
 		CREATE TABLE codewallet__core_processedtweets (

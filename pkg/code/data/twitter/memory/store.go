@@ -49,6 +49,11 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 		item.TipAddress = data.TipAddress
 		item.LastUpdatedAt = data.LastUpdatedAt
 	} else {
+		itemByTipAddress := s.findUserByTipAddress(data.TipAddress)
+		if itemByTipAddress != nil && data.Username != itemByTipAddress.Username {
+			return twitter.ErrDuplicateTipAddress
+		}
+
 		if data.Id == 0 {
 			data.Id = s.last
 		}
@@ -64,12 +69,26 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 	return nil
 }
 
-// GetUser implements twitter.Store.GetUser
-func (s *store) GetUser(_ context.Context, username string) (*twitter.Record, error) {
+// GetUserByUsername implements twitter.Store.GetUserByUsername
+func (s *store) GetUserByUsername(_ context.Context, username string) (*twitter.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	item := s.findUserByUsername(username)
+	if item == nil {
+		return nil, twitter.ErrUserNotFound
+	}
+
+	cloned := item.Clone()
+	return &cloned, nil
+}
+
+// GetUserByTipAddress implements twitter.Store.GetUserByTipAddress
+func (s *store) GetUserByTipAddress(ctx context.Context, tipAddress string) (*twitter.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item := s.findUserByTipAddress(tipAddress)
 	if item == nil {
 		return nil, twitter.ErrUserNotFound
 	}
@@ -132,6 +151,16 @@ func (s *store) findUser(data *twitter.Record) *twitter.Record {
 func (s *store) findUserByUsername(username string) *twitter.Record {
 	for _, item := range s.userRecords {
 		if username == item.Username {
+			return item
+		}
+	}
+
+	return nil
+}
+
+func (s *store) findUserByTipAddress(tipAddress string) *twitter.Record {
+	for _, item := range s.userRecords {
+		if tipAddress == item.TipAddress {
 			return item
 		}
 	}

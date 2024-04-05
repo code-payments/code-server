@@ -58,7 +58,7 @@ func fromModel(m *model) *twitter.Record {
 		Username:      m.Username,
 		Name:          m.Name,
 		ProfilePicUrl: m.ProfilePicUrl,
-		VerifiedType:  user.GetTwitterUserResponse_VerifiedType(m.VerifiedType),
+		VerifiedType:  user.TwitterUser_VerifiedType(m.VerifiedType),
 		FollowerCount: m.FollowerCount,
 
 		TipAddress: m.TipAddress,
@@ -100,11 +100,11 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.LastUpdatedAt,
 		).StructScan(m)
 
-		return err
+		return pgutil.CheckUniqueViolation(err, twitter.ErrDuplicateTipAddress)
 	})
 }
 
-func dbGetUser(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
+func dbGetUserByUsername(ctx context.Context, db *sqlx.DB, username string) (*model, error) {
 	res := &model{}
 
 	query := `SELECT
@@ -114,6 +114,22 @@ func dbGetUser(ctx context.Context, db *sqlx.DB, username string) (*model, error
 		LIMIT 1`
 
 	err := db.GetContext(ctx, res, query, username)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, twitter.ErrUserNotFound)
+	}
+	return res, nil
+}
+
+func dbGetUserByTipAddress(ctx context.Context, db *sqlx.DB, tipAddress string) (*model, error) {
+	res := &model{}
+
+	query := `SELECT
+		id, username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at
+		FROM ` + userTableName + `
+		WHERE tip_address = $1
+		LIMIT 1`
+
+	err := db.GetContext(ctx, res, query, tipAddress)
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, twitter.ErrUserNotFound)
 	}

@@ -30,17 +30,22 @@ func testUserHappyPath(t *testing.T, s twitter.Store) {
 		ctx := context.Background()
 
 		username := "jeffyanta"
+		tipAddress1 := "tip_address_1"
+		tipAddress2 := "tip_address_2"
 
-		_, err := s.GetUser(ctx, username)
+		_, err := s.GetUserByUsername(ctx, username)
+		assert.Equal(t, twitter.ErrUserNotFound, err)
+
+		_, err = s.GetUserByTipAddress(ctx, tipAddress1)
 		assert.Equal(t, twitter.ErrUserNotFound, err)
 
 		expected := &twitter.Record{
 			Username:      username,
 			Name:          "Jeff",
 			ProfilePicUrl: "https://pbs.twimg.com/profile_images/1728595562285441024/GM-aLyh__normal.jpg",
-			VerifiedType:  userpb.GetTwitterUserResponse_BLUE,
+			VerifiedType:  userpb.TwitterUser_BLUE,
 			FollowerCount: 200,
-			TipAddress:    "tip_address_1",
+			TipAddress:    tipAddress1,
 		}
 		cloned := expected.Clone()
 
@@ -50,22 +55,55 @@ func testUserHappyPath(t *testing.T, s twitter.Store) {
 		assert.True(t, expected.CreatedAt.After(start))
 		assert.True(t, expected.LastUpdatedAt.After(start))
 
-		actual, err := s.GetUser(ctx, username)
+		actual, err := s.GetUserByUsername(ctx, username)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		actual, err = s.GetUserByTipAddress(ctx, tipAddress1)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
 		expected.Name = "Jeff Yanta"
 		expected.ProfilePicUrl = "https://pbs.twimg.com/profile_images/1728595562285441024/GM-aLyh__highres.jpg"
-		expected.VerifiedType = userpb.GetTwitterUserResponse_NONE
+		expected.VerifiedType = userpb.TwitterUser_NONE
 		expected.FollowerCount = 1000
-		expected.TipAddress = "tip_address_2"
 		cloned = expected.Clone()
 		require.NoError(t, s.SaveUser(ctx, expected))
 		assert.True(t, expected.LastUpdatedAt.After(expected.CreatedAt))
 
-		actual, err = s.GetUser(ctx, username)
+		actual, err = s.GetUserByUsername(ctx, username)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
+
+		actual, err = s.GetUserByTipAddress(ctx, tipAddress1)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		expected.TipAddress = tipAddress2
+		cloned = expected.Clone()
+		require.NoError(t, s.SaveUser(ctx, expected))
+		assert.True(t, expected.LastUpdatedAt.After(expected.CreatedAt))
+
+		actual, err = s.GetUserByUsername(ctx, username)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		_, err = s.GetUserByTipAddress(ctx, tipAddress1)
+		assert.Equal(t, twitter.ErrUserNotFound, err)
+
+		actual, err = s.GetUserByTipAddress(ctx, tipAddress2)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		duplicatedTipAddressRecord := &twitter.Record{
+			Username:      "anotheruser",
+			Name:          "Another User",
+			ProfilePicUrl: "https://pbs.twimg.com/profile_images/1728595562285441024/GM-aLyh__normal.jpg",
+			VerifiedType:  userpb.TwitterUser_NONE,
+			FollowerCount: 8,
+			TipAddress:    tipAddress2,
+		}
+		assert.Equal(t, twitter.ErrDuplicateTipAddress, s.SaveUser(ctx, duplicatedTipAddressRecord))
 	})
 }
 
@@ -109,7 +147,7 @@ func testGetStaleUsers(t *testing.T, s twitter.Store) {
 				Username:      fmt.Sprintf("username%d", i),
 				Name:          fmt.Sprintf("name%d", i),
 				ProfilePicUrl: fmt.Sprintf("profile_pic_%d", i),
-				VerifiedType:  userpb.GetTwitterUserResponse_NONE,
+				VerifiedType:  userpb.TwitterUser_NONE,
 				FollowerCount: 0,
 				TipAddress:    fmt.Sprintf("tip_address_%d", i),
 			}))
