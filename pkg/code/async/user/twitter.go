@@ -212,7 +212,7 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 	mu.Lock()
 	defer mu.Unlock()
 
-	record, err := p.data.GetTwitterUser(ctx, user.Username)
+	record, err := p.data.GetTwitterUserByUsername(ctx, user.Username)
 	switch err {
 	case twitter.ErrUserNotFound:
 		if newTipAccount == nil {
@@ -272,15 +272,15 @@ func findTipAccountRegisteredInTweet(tweet *twitter_lib.Tweet) (*common.Account,
 	return nil, errTwitterRegistrationNotFound
 }
 
-func toProtoVerifiedType(value string) userpb.GetTwitterUserResponse_VerifiedType {
+func toProtoVerifiedType(value string) userpb.TwitterUser_VerifiedType {
 	switch value {
 	case "blue":
-		return userpb.GetTwitterUserResponse_BLUE
+		return userpb.TwitterUser_BLUE
 	case "business":
-		return userpb.GetTwitterUserResponse_BUSINESS
+		return userpb.TwitterUser_BUSINESS
 	case "government":
-		return userpb.GetTwitterUserResponse_GOVERNMENT
+		return userpb.TwitterUser_GOVERNMENT
 	default:
-		return userpb.GetTwitterUserResponse_NONE
+		return userpb.TwitterUser_NONE
 	}
 }
