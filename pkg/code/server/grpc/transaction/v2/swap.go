@@ -290,7 +290,9 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	//
 
 	computeUnitLimit, _ := compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
+
 	computeUnitPrice, _ := compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
+	computeUnitPrice = uint64(s.conf.swapPriorityFeeMultiple.Get(ctx) * float64(computeUnitPrice))
 
 	var protoSwapIxnAccounts []*commonpb.InstructionAccount
 	for _, ixnAccount := range jupiterSwapIxns.SwapInstruction.Accounts {

@@ -24,6 +24,9 @@ const (
 	SwapTimeoutConfigEnvName = envConfigPrefix + "SWAP_TIMEOUT"
 	defaultSwapTimeout       = 60 * time.Second
 
+	SwapPriorityFeeMultiple        = envConfigPrefix + "SWAP_PRIORITY_FEE_MULTIPLE"
+	defaultSwapPriorityFeeMultiple = 1.0
+
 	ClientReceiveTimeoutConfigEnvName = envConfigPrefix + "CLIENT_RECEIVE_TIMEOUT"
 	defaultClientReceiveTimeout       = time.Second
 
@@ -68,6 +71,7 @@ type conf struct {
 	enableAsyncAirdropProcessing         config.Bool
 	airdropperOwnerPublicKey             config.String
 	swapSubsidizerOwnerPublicKey         config.String
+	swapPriorityFeeMultiple              config.Float64
 	treasuryPoolOneKinBucket             config.String
 	treasuryPoolTenKinBucket             config.String
 	treasuryPoolHundredKinBucket         config.String
@@ -99,6 +103,7 @@ func WithEnvConfigs() ConfigProvider {
 			enableAsyncAirdropProcessing:         wrapper.NewBoolConfig(memory.NewConfig(true), true),
 			airdropperOwnerPublicKey:             env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
 			swapSubsidizerOwnerPublicKey:         env.NewStringConfig(SwapSubsidizerOwnerPublicKeyEnvName, defaultSwapSubsidizerOwnerPublicKey),
+			swapPriorityFeeMultiple:              env.NewFloat64Config(SwapPriorityFeeMultiple, defaultSwapPriorityFeeMultiple),
 			treasuryPoolOneKinBucket:             env.NewStringConfig(TreasuryPoolOneKinBucketConfigEnvName, defaultTreasuryPoolName),
 			treasuryPoolTenKinBucket:             env.NewStringConfig(TreasuryPoolTenKinBucketConfigEnvName, defaultTreasuryPoolName),
 			treasuryPoolHundredKinBucket:         env.NewStringConfig(TreasuryPoolHundredKinBucketConfigEnvName, defaultTreasuryPoolName),
@@ -144,6 +149,7 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 			enableAsyncAirdropProcessing:         wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			airdropperOwnerPublicKey:             wrapper.NewStringConfig(memory.NewConfig(defaultAirdropperOwnerPublicKey), defaultAirdropperOwnerPublicKey),
 			swapSubsidizerOwnerPublicKey:         wrapper.NewStringConfig(memory.NewConfig(defaultSwapSubsidizerOwnerPublicKey), defaultSwapSubsidizerOwnerPublicKey),
+			swapPriorityFeeMultiple:              wrapper.NewFloat64Config(memory.NewConfig(defaultSwapPriorityFeeMultiple), defaultSwapPriorityFeeMultiple),
 			treasuryPoolOneKinBucket:             wrapper.NewStringConfig(memory.NewConfig(overrides.treasuryPoolOneKinBucket), defaultTreasuryPoolName),
 			treasuryPoolTenKinBucket:             wrapper.NewStringConfig(memory.NewConfig(overrides.treasuryPoolTenKinBucket), defaultTreasuryPoolName),
 			treasuryPoolHundredKinBucket:         wrapper.NewStringConfig(memory.NewConfig(overrides.treasuryPoolHundredKinBucket), defaultTreasuryPoolName),
