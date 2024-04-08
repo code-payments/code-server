@@ -51,14 +51,14 @@ const (
 			CONSTRAINT codewallet__core_processedtweets__uniq__tweet_id UNIQUE (tweet_id)
 		);
 
-		CREATE TABLE codewallet__core_usednonces (
+		CREATE TABLE codewallet__core_usedtwitternonces (
 			id SERIAL NOT NULL PRIMARY KEY,
 
 			nonce UUID NOT NULL,
 			tweet_id TEXT NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
-			CONSTRAINT codewallet__core_usednonces__uniq__tweet_id UNIQUE (nonce)
+			CONSTRAINT codewallet__core_usedtwitternonces__uniq__tweet_id UNIQUE (nonce)
 		);
 	`
 
@@ -66,7 +66,7 @@ const (
 	tableDestroy = `
 		DROP TABLE codewallet__core_twitteruser;
 		DROP TABLE codewallet__core_processedtweets;
-		DROP TABLE codewallet__core_usednonces;
+		DROP TABLE codewallet__core_usedtwitternonces;
 	`
 )
 

@@ -16,7 +16,7 @@ import (
 const (
 	userTableName            = "codewallet__core_twitteruser"
 	processedTweetsTableName = "codewallet__core_processedtweets"
-	usedNoncesTableName      = "codewallet__core_usednonces"
+	usedNoncesTableName      = "codewallet__core_usedtwitternonces"
 )
 
 type model struct {
