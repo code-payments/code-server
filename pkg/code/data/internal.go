@@ -431,6 +431,7 @@ type DatabaseData interface {
 	GetStaleTwitterUsers(ctx context.Context, minAge time.Duration, limit int) ([]*twitter.Record, error)
 	MarkTweetAsProcessed(ctx context.Context, tweetId string) error
 	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
+	MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -1534,4 +1535,7 @@ func (dp *DatabaseProvider) MarkTweetAsProcessed(ctx context.Context, tweetId st
 }
 func (dp *DatabaseProvider) IsTweetProcessed(ctx context.Context, tweetId string) (bool, error) {
 	return dp.twitter.IsTweetProcessed(ctx, tweetId)
+}
+func (dp *DatabaseProvider) MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error {
+	return dp.twitter.MarkNonceAsUsed(ctx, tweetId, nonce)
 }

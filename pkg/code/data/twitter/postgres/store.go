@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -78,4 +79,9 @@ func (s *store) MarkTweetAsProcessed(ctx context.Context, tweetId string) error 
 // IsTweetProcessed implements twitter.Store.IsTweetProcessed
 func (s *store) IsTweetProcessed(ctx context.Context, tweetId string) (bool, error) {
 	return dbIsTweetProcessed(ctx, s.db, tweetId)
+}
+
+// MarkNonceAsUsed implements twitter.Store.MarkNonceAsUsed
+func (s *store) MarkNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error {
+	return dbMarkNonceAsUsed(ctx, s.db, tweetId, nonce)
 }

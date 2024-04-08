@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/code-payments/code-protobuf-api/generated/go/user/v1"
@@ -15,6 +16,7 @@ import (
 const (
 	userTableName            = "codewallet__core_twitteruser"
 	processedTweetsTableName = "codewallet__core_processedtweets"
+	usedNoncesTableName      = "codewallet__core_usednonces"
 )
 
 type model struct {
@@ -197,4 +199,24 @@ func dbIsTweetProcessed(ctx context.Context, db *sqlx.DB, tweetId string) (bool,
 		return false, err
 	}
 	return res.Count > 0, nil
+}
+
+func dbMarkNonceAsUsed(ctx context.Context, db *sqlx.DB, tweetId string, nonce uuid.UUID) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		query := `INSERT INTO ` + usedNoncesTableName + `
+			(tweet_id, nonce, created_at)
+			VALUES ($1, $2, $3)
+
+			RETURNING
+				id, tweet_id, nonce, created_at`
+
+		_, err := tx.ExecContext(
+			ctx,
+			query,
+			tweetId,
+			nonce,
+			time.Now(),
+		)
+		return pgutil.CheckUniqueViolation(err, twitter.ErrDuplicateNonce)
+	})
 }

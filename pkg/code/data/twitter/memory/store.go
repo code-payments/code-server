@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 )
 
@@ -19,6 +21,7 @@ type store struct {
 	mu              sync.Mutex
 	userRecords     []*twitter.Record
 	processedTweets map[string]any
+	usedNonces      map[string]any
 	last            uint64
 }
 
@@ -26,6 +29,7 @@ type store struct {
 func New() twitter.Store {
 	return &store{
 		processedTweets: make(map[string]any),
+		usedNonces:      make(map[string]any),
 	}
 }
 
@@ -136,6 +140,19 @@ func (s *store) IsTweetProcessed(_ context.Context, tweetId string) (bool, error
 	return ok, nil
 }
 
+func (s *store) MarkNonceAsUsed(_ context.Context, _ string, nonce uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.usedNonces[nonce.String()]
+	if ok {
+		return twitter.ErrDuplicateNonce
+	}
+
+	s.usedNonces[nonce.String()] = struct{}{}
+	return nil
+}
+
 func (s *store) findUser(data *twitter.Record) *twitter.Record {
 	for _, item := range s.userRecords {
 		if item.Id == data.Id {
@@ -185,6 +202,7 @@ func (s *store) reset() {
 
 	s.userRecords = nil
 	s.processedTweets = make(map[string]any)
+	s.usedNonces = make(map[string]any)
 	s.last = 0
 }
 

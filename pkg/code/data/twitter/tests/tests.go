@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +19,7 @@ func RunTests(t *testing.T, s twitter.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s twitter.Store){
 		testUserHappyPath,
 		testTweetHappyPath,
+		testNonceHappyPath,
 		testGetStaleUsers,
 	} {
 		tf(t, s)
@@ -128,6 +130,20 @@ func testTweetHappyPath(t *testing.T, s twitter.Store) {
 			isProcessed, err = s.IsTweetProcessed(ctx, tweet2)
 			require.NoError(t, err)
 			assert.False(t, isProcessed)
+		}
+	})
+}
+
+func testNonceHappyPath(t *testing.T, s twitter.Store) {
+	t.Run("testNonceHappyPath", func(t *testing.T) {
+		ctx := context.Background()
+
+		nonce := uuid.New()
+
+		require.NoError(t, s.MarkNonceAsUsed(ctx, "tweet1", nonce))
+
+		for i := 0; i < 3; i++ {
+			assert.Equal(t, twitter.ErrDuplicateNonce, s.MarkNonceAsUsed(ctx, "tweet2", nonce))
 		}
 	})
 }

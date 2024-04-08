@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
 	ErrUserNotFound        = errors.New("twitter user not found")
 	ErrDuplicateTipAddress = errors.New("duplicate tip address")
+	ErrDuplicateNonce      = errors.New("duplicate nonce")
 )
 
 type Store interface {
@@ -29,4 +32,8 @@ type Store interface {
 
 	// IsTweetProcessed returns whether a tweet is processed
 	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
+
+	// MarkNonceAsUsed marks a registration nonce as being used and assigned
+	// to the provided tweet.
+	MarkNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error
 }
