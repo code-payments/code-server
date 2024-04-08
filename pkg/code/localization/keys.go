@@ -29,6 +29,13 @@ const (
 	CoreKin   = "core.kin"
 
 	//
+	// Section: Pushes
+	//
+
+	PushTitleTwitterAccountConnected    = "title.push.twitterAccountConnected"
+	PushSubtitleTwitterAccountConnected = "subtitle.push.twitterAccountConnected"
+
+	//
 	// Section: Chats
 	//
 

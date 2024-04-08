@@ -18,6 +18,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
+	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
 	twitter_lib "github.com/code-payments/code-server/pkg/twitter"
@@ -122,8 +123,7 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 			return errors.Wrapf(err, "unexpected error processing tweet %s", tweet.ID)
 		}
 
-		// Save the updated tipping information. Any race conditions with duplicate
-		// nonces or tip addresses will be caught and ignored later.
+		// Save the updated tipping information
 		err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 			err = p.data.MarkTwitterNonceAsUsed(ctx, tweet.ID, *registrationNonce)
 			if err != nil {
@@ -144,7 +144,12 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 		})
 
 		switch err {
-		case nil, twitter.ErrDuplicateTipAddress, twitter.ErrDuplicateNonce:
+		case nil:
+			go push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+		case twitter.ErrDuplicateTipAddress, twitter.ErrDuplicateNonce:
+			// Any race conditions with duplicate nonces or tip addresses will are ignored
+			//
+			// todo: In the future, support multiple tip address mappings
 		default:
 			return errors.Wrap(err, "error saving new registration")
 		}

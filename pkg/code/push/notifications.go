@@ -187,6 +187,60 @@ func SendGiftCardReturnedPushNotification(
 	)
 }
 
+// SendTwitterAccountConnectedPushNotification sends a push notification for newly
+// connected Twitter accounts
+func SendTwitterAccountConnectedPushNotification(
+	ctx context.Context,
+	data code_data.Provider,
+	pusher push_lib.Provider,
+	tipAccount *common.Account,
+) error {
+	log := logrus.StandardLogger().WithFields(logrus.Fields{
+		"method":      "SendTwitterAccountConnectedPushNotification",
+		"tip_account": tipAccount.PublicKey().ToBase58(),
+	})
+
+	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, tipAccount.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting account info record")
+		return errors.Wrap(err, "error getting account info record")
+	}
+	if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
+		return nil
+	}
+
+	owner, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return errors.Wrap(err, "invalid owner account")
+	}
+
+	locale, err := data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return err
+	}
+
+	localizedPushTitle, err := localization.Localize(locale, localization.PushTitleTwitterAccountConnected)
+	if err != nil {
+		return nil
+	}
+
+	localizedPushBody, err := localization.Localize(locale, localization.PushSubtitleTwitterAccountConnected)
+	if err != nil {
+		return nil
+	}
+
+	return sendBasicPushNotificationToOwner(
+		ctx,
+		data,
+		pusher,
+		owner,
+		localizedPushTitle,
+		localizedPushBody,
+	)
+}
+
 // SendChatMessagePushNotification sends a push notification for chat messages
 func SendChatMessagePushNotification(
 	ctx context.Context,
