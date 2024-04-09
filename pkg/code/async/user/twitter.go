@@ -283,10 +283,14 @@ func (p *service) findVerifiedTipAccountRegisteredInTweet(ctx context.Context, t
 		}
 		tipAccount, _ := common.NewAccountFromPublicKeyBytes(decodedAddress)
 
-		nonce, err := uuid.Parse(nonceString)
+		decodedNonce, err := base58.Decode(nonceString)
 		if err != nil {
 			return nil, nil, errTwitterInvalidRegistrationValue
 		}
+		if len(decodedNonce) != 16 {
+			return nil, nil, errTwitterInvalidRegistrationValue
+		}
+		nonce, _ := uuid.FromBytes(decodedNonce)
 
 		decodedSignature, err := base58.Decode(signatureString)
 		if err != nil {
