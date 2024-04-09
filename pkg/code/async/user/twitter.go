@@ -261,7 +261,7 @@ func (p *service) findVerifiedTipAccountRegisteredInTweet(ctx context.Context, t
 		}
 
 		addressString := registrationParts[1]
-		nonceString := registrationParts[2] // todo: ensure it's unique (maybe not here)
+		nonceString := registrationParts[2]
 		signatureString := registrationParts[3]
 
 		decodedAddress, err := base58.Decode(addressString)
