@@ -13,7 +13,7 @@ type Record struct {
 	Username      string
 	Name          string
 	ProfilePicUrl string
-	VerifiedType  userpb.GetTwitterUserResponse_VerifiedType
+	VerifiedType  userpb.TwitterUser_VerifiedType
 	FollowerCount uint32
 
 	TipAddress string

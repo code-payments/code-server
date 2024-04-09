@@ -426,10 +426,12 @@ type DatabaseData interface {
 	// Twitter
 	// --------------------------------------------------------------------------------
 	SaveTwitterUser(ctx context.Context, record *twitter.Record) error
-	GetTwitterUser(ctx context.Context, username string) (*twitter.Record, error)
+	GetTwitterUserByUsername(ctx context.Context, username string) (*twitter.Record, error)
+	GetTwitterUserByTipAddress(ctx context.Context, tipAddress string) (*twitter.Record, error)
 	GetStaleTwitterUsers(ctx context.Context, minAge time.Duration, limit int) ([]*twitter.Record, error)
 	MarkTweetAsProcessed(ctx context.Context, tweetId string) error
 	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
+	MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -1519,8 +1521,11 @@ func (dp *DatabaseProvider) IsEligibleForAirdrop(ctx context.Context, owner stri
 func (dp *DatabaseProvider) SaveTwitterUser(ctx context.Context, record *twitter.Record) error {
 	return dp.twitter.SaveUser(ctx, record)
 }
-func (dp *DatabaseProvider) GetTwitterUser(ctx context.Context, username string) (*twitter.Record, error) {
-	return dp.twitter.GetUser(ctx, username)
+func (dp *DatabaseProvider) GetTwitterUserByUsername(ctx context.Context, username string) (*twitter.Record, error) {
+	return dp.twitter.GetUserByUsername(ctx, username)
+}
+func (dp *DatabaseProvider) GetTwitterUserByTipAddress(ctx context.Context, tipAddress string) (*twitter.Record, error) {
+	return dp.twitter.GetUserByTipAddress(ctx, tipAddress)
 }
 func (dp *DatabaseProvider) GetStaleTwitterUsers(ctx context.Context, minAge time.Duration, limit int) ([]*twitter.Record, error) {
 	return dp.twitter.GetStaleUsers(ctx, minAge, limit)
@@ -1530,4 +1535,7 @@ func (dp *DatabaseProvider) MarkTweetAsProcessed(ctx context.Context, tweetId st
 }
 func (dp *DatabaseProvider) IsTweetProcessed(ctx context.Context, tweetId string) (bool, error) {
 	return dp.twitter.IsTweetProcessed(ctx, tweetId)
+}
+func (dp *DatabaseProvider) MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error {
+	return dp.twitter.MarkNonceAsUsed(ctx, tweetId, nonce)
 }

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 )
 
@@ -19,6 +21,7 @@ type store struct {
 	mu              sync.Mutex
 	userRecords     []*twitter.Record
 	processedTweets map[string]any
+	usedNonces      map[string]any
 	last            uint64
 }
 
@@ -26,6 +29,7 @@ type store struct {
 func New() twitter.Store {
 	return &store{
 		processedTweets: make(map[string]any),
+		usedNonces:      make(map[string]any),
 	}
 }
 
@@ -39,6 +43,12 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 	defer s.mu.Unlock()
 
 	s.last++
+
+	itemByTipAddress := s.findUserByTipAddress(data.TipAddress)
+	if itemByTipAddress != nil && data.Username != itemByTipAddress.Username {
+		return twitter.ErrDuplicateTipAddress
+	}
+
 	if item := s.findUser(data); item != nil {
 		data.LastUpdatedAt = time.Now()
 
@@ -64,12 +74,26 @@ func (s *store) SaveUser(_ context.Context, data *twitter.Record) error {
 	return nil
 }
 
-// GetUser implements twitter.Store.GetUser
-func (s *store) GetUser(_ context.Context, username string) (*twitter.Record, error) {
+// GetUserByUsername implements twitter.Store.GetUserByUsername
+func (s *store) GetUserByUsername(_ context.Context, username string) (*twitter.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	item := s.findUserByUsername(username)
+	if item == nil {
+		return nil, twitter.ErrUserNotFound
+	}
+
+	cloned := item.Clone()
+	return &cloned, nil
+}
+
+// GetUserByTipAddress implements twitter.Store.GetUserByTipAddress
+func (s *store) GetUserByTipAddress(ctx context.Context, tipAddress string) (*twitter.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item := s.findUserByTipAddress(tipAddress)
 	if item == nil {
 		return nil, twitter.ErrUserNotFound
 	}
@@ -116,6 +140,19 @@ func (s *store) IsTweetProcessed(_ context.Context, tweetId string) (bool, error
 	return ok, nil
 }
 
+func (s *store) MarkNonceAsUsed(_ context.Context, _ string, nonce uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.usedNonces[nonce.String()]
+	if ok {
+		return twitter.ErrDuplicateNonce
+	}
+
+	s.usedNonces[nonce.String()] = struct{}{}
+	return nil
+}
+
 func (s *store) findUser(data *twitter.Record) *twitter.Record {
 	for _, item := range s.userRecords {
 		if item.Id == data.Id {
@@ -139,6 +176,16 @@ func (s *store) findUserByUsername(username string) *twitter.Record {
 	return nil
 }
 
+func (s *store) findUserByTipAddress(tipAddress string) *twitter.Record {
+	for _, item := range s.userRecords {
+		if tipAddress == item.TipAddress {
+			return item
+		}
+	}
+
+	return nil
+}
+
 func (s *store) findStaleUsers(minAge time.Duration) []*twitter.Record {
 	var res []*twitter.Record
 	for _, item := range s.userRecords {
@@ -155,6 +202,7 @@ func (s *store) reset() {
 
 	s.userRecords = nil
 	s.processedTweets = make(map[string]any)
+	s.usedNonces = make(map[string]any)
 	s.last = 0
 }
 
