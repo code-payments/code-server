@@ -135,21 +135,31 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 				return err
 			}
 
-			err = p.data.MarkTweetAsProcessed(ctx, tweet.ID)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return p.data.MarkTweetAsProcessed(ctx, tweet.ID)
 		})
 
 		switch err {
 		case nil:
 			go push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
-		case twitter.ErrDuplicateTipAddress, twitter.ErrDuplicateNonce:
-			// Any race conditions with duplicate nonces or tip addresses will are ignored
-			//
-			// todo: In the future, support multiple tip address mappings
+		case twitter.ErrDuplicateTipAddress:
+			err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+				err = p.data.MarkTwitterNonceAsUsed(ctx, tweet.ID, *registrationNonce)
+				if err != nil {
+					return err
+				}
+
+				return p.data.MarkTweetAsProcessed(ctx, tweet.ID)
+			})
+			if err != nil {
+				return errors.Wrap(err, "error saving tweet with duplicate tip address metadata")
+			}
+			return nil
+		case twitter.ErrDuplicateNonce:
+			err = p.data.MarkTweetAsProcessed(ctx, tweet.ID)
+			if err != nil {
+				return errors.Wrap(err, "error marking tweet with duplicate nonce as processed")
+			}
+			return nil
 		default:
 			return errors.Wrap(err, "error saving new registration")
 		}
