@@ -81,7 +81,7 @@ func TestFiatOnrampPurchase_CrossPlatform(t *testing.T) {
 	msg, err := NewFiatOnrampPurchaseMessage(nonce)
 	require.NoError(t, err)
 
-	expected := "AQAAAAAAwko78q1PR1aUToGUj/EIgg=="
+	expected := "Gk2Yb7W6BypLsdRoJqMAqXHDoV2jT"
 	actual, err := msg.Encode()
 	require.NoError(t, err)
 	assert.Equal(t, expected, string(actual))
