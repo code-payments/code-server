@@ -960,7 +960,7 @@ func (s serverTestEnv) assertFulfillmentRecordsSaved(t *testing.T, intentId stri
 
 			var additionalMemo *string
 			if intentRecord.IntentType == intent.SendPrivatePayment && intentRecord.SendPrivatePaymentMetadata.IsTip {
-				tipMemo, err := getTipMemo(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
+				tipMemo, err := transaction_util.GetTipMemoValue(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
 				require.NoError(t, err)
 				additionalMemo = &tipMemo
 			}
@@ -5618,7 +5618,7 @@ func (p *phoneTestEnv) getNoPrivacyWithdrawTransactionToSign(
 	switch typed := intentMetadata.Type.(type) {
 	case *transactionpb.Metadata_SendPrivatePayment:
 		if typed.SendPrivatePayment.TippedUser != nil {
-			tipMemo, err := getTipMemo(typed.SendPrivatePayment.TippedUser.Platform, typed.SendPrivatePayment.TippedUser.Username)
+			tipMemo, err := transaction_util.GetTipMemoValue(typed.SendPrivatePayment.TippedUser.Platform, typed.SendPrivatePayment.TippedUser.Username)
 			require.NoError(t, err)
 			additionalMemo = &tipMemo
 		}

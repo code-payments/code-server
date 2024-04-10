@@ -576,7 +576,7 @@ func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction 
 	switch intentRecord.IntentType {
 	case intent.SendPrivatePayment:
 		if intentRecord.SendPrivatePaymentMetadata.IsTip {
-			tipMemo, err := getTipMemo(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
+			tipMemo, err := transaction_util.GetTipMemoValue(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
 			if err != nil {
 				return nil, err
 			}
@@ -1103,16 +1103,4 @@ func getTransript(
 	hasher := sha256.New()
 	hasher.Write([]byte(transcript))
 	return hasher.Sum(nil)
-}
-
-func getTipMemo(platform transactionpb.TippedUser_Platform, username string) (string, error) {
-	var platformName string
-	switch platform {
-	case transactionpb.TippedUser_TWITTER:
-		platformName = "X"
-	default:
-		return "", errors.New("unexpeted tip platform")
-	}
-
-	return fmt.Sprintf("%s:%s", platformName, username), nil
 }
