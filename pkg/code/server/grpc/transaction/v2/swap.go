@@ -214,6 +214,11 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Transaction construction
 	//
 
+	computeUnitLimit, _ := compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
+
+	computeUnitPrice, _ := compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
+	computeUnitPrice = uint64(s.conf.swapPriorityFeeMultiple.Get(ctx) * float64(computeUnitPrice))
+
 	swapNonce, err := common.NewRandomAccount()
 	if err != nil {
 		log.WithError(err).Warn("failure generating swap nonce")
@@ -272,11 +277,14 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		},
 	).ToLegacyInstruction()
 
-	var ixns []solana.Instruction
-	ixns = append(ixns, jupiterSwapIxns.ComputeBudgetInstructions...)
-	ixns = append(ixns, preSwapIxn, jupiterSwapIxns.SwapInstruction, postSwapIxn)
-
-	txn := solana.NewTransaction(s.swapSubsidizer.PublicKey().ToBytes(), ixns...)
+	txn := solana.NewTransaction(
+		s.swapSubsidizer.PublicKey().ToBytes(),
+		compute_budget.SetComputeUnitLimit(computeUnitLimit),
+		compute_budget.SetComputeUnitPrice(computeUnitPrice),
+		preSwapIxn,
+		jupiterSwapIxns.SwapInstruction,
+		postSwapIxn,
+	)
 
 	blockhash, err := s.data.GetBlockchainLatestBlockhash(ctx)
 	if err != nil {
@@ -288,9 +296,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	//
 	// Section: Server parameters
 	//
-
-	computeUnitLimit, _ := compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
-	computeUnitPrice, _ := compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
 
 	var protoSwapIxnAccounts []*commonpb.InstructionAccount
 	for _, ixnAccount := range jupiterSwapIxns.SwapInstruction.Accounts {

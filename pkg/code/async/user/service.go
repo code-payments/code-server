@@ -8,6 +8,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	push_lib "github.com/code-payments/code-server/pkg/push"
 	"github.com/code-payments/code-server/pkg/sync"
 	"github.com/code-payments/code-server/pkg/twitter"
 )
@@ -15,14 +16,16 @@ import (
 type service struct {
 	log           *logrus.Entry
 	data          code_data.Provider
+	pusher        push_lib.Provider
 	twitterClient *twitter.Client
 	userLocks     *sync.StripedLock
 }
 
-func New(twitterClient *twitter.Client, data code_data.Provider) async.Service {
+func New(data code_data.Provider, pusher push_lib.Provider, twitterClient *twitter.Client) async.Service {
 	return &service{
 		log:           logrus.StandardLogger().WithField("service", "user"),
 		data:          data,
+		pusher:        pusher,
 		twitterClient: twitterClient,
 		userLocks:     sync.NewStripedLock(1024),
 	}

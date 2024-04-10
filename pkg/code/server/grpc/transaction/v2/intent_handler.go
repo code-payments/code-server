@@ -3235,7 +3235,7 @@ func validateTipDestination(ctx context.Context, data code_data.Provider, tipped
 	var expectedDestination *common.Account
 	switch tippedUser.Platform {
 	case transactionpb.TippedUser_TWITTER:
-		record, err := data.GetTwitterUser(ctx, tippedUser.Username)
+		record, err := data.GetTwitterUserByUsername(ctx, tippedUser.Username)
 		if err == twitter.ErrUserNotFound {
 			return newIntentValidationError("twitter user is not registered with code")
 		} else if err != nil {
