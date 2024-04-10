@@ -50,6 +50,9 @@ const (
 
 			relationship_to TEXT NULL,
 
+			tip_platform INTEGER NULL,
+			tipped_username TEXT NULL,
+
 			phone_number text NULL,
 
 			state integer NOT NULL,
