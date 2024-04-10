@@ -11,6 +11,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/currency"
 
@@ -44,6 +46,9 @@ type intentModel struct {
 	IsReturned              bool           `db:"is_returned"`
 	IsIssuerVoidingGiftCard bool           `db:"is_issuer_voiding_gift_card"`
 	IsMicroPayment          bool           `db:"is_micro_payment"`
+	IsTip                   bool           `db:"is_tip"`
+	TipPlatform             sql.NullInt16  `db:"tip_platform"`
+	TippedUsername          sql.NullString `db:"tipped_username"`
 	RelationshipTo          sql.NullString `db:"relationship_to"`
 	InitiatorPhoneNumber    sql.NullString `db:"phone_number"` // todo: rename the DB field to initiator_phone_number
 	State                   uint           `db:"state"`
@@ -100,6 +105,18 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 		m.IsWithdrawal = obj.SendPrivatePaymentMetadata.IsWithdrawal
 		m.IsRemoteSend = obj.SendPrivatePaymentMetadata.IsRemoteSend
 		m.IsMicroPayment = obj.SendPrivatePaymentMetadata.IsMicroPayment
+		m.IsTip = obj.SendPrivatePaymentMetadata.IsTip
+
+		if m.IsTip {
+			m.TipPlatform = sql.NullInt16{
+				Valid: true,
+				Int16: int16(obj.SendPrivatePaymentMetadata.TipMetadata.Platform),
+			}
+			m.TippedUsername = sql.NullString{
+				Valid:  true,
+				String: obj.SendPrivatePaymentMetadata.TipMetadata.Username,
+			}
+		}
 	case intent.ReceivePaymentsPrivately:
 		m.Source = obj.ReceivePaymentsPrivatelyMetadata.Source
 		m.Quantity = obj.ReceivePaymentsPrivatelyMetadata.Quantity
@@ -206,6 +223,14 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 			IsWithdrawal:   obj.IsWithdrawal,
 			IsRemoteSend:   obj.IsRemoteSend,
 			IsMicroPayment: obj.IsMicroPayment,
+			IsTip:          obj.IsTip,
+		}
+
+		if record.SendPrivatePaymentMetadata.IsTip {
+			record.SendPrivatePaymentMetadata.TipMetadata = &intent.TipMetadata{
+				Platform: transactionpb.TippedUser_Platform(obj.TipPlatform.Int16),
+				Username: obj.TippedUsername.String,
+			}
 		}
 	case intent.ReceivePaymentsPrivately:
 		record.ReceivePaymentsPrivatelyMetadata = &intent.ReceivePaymentsPrivatelyMetadata{
@@ -275,16 +300,16 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 func (m *intentModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + intentTableName + `
-			(intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+			(intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 
 			ON CONFLICT (intent_id)
 			DO UPDATE
-				SET state = $22
+				SET state = $25
 				WHERE ` + intentTableName + `.intent_id = $1 
 
 			RETURNING
-				id, intent_id, intent_type, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at`
+				id, intent_id, intent_type, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at`
 
 		err := tx.QueryRowxContext(
 			ctx,
@@ -308,7 +333,10 @@ func (m *intentModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.IsReturned,
 			m.IsIssuerVoidingGiftCard,
 			m.IsMicroPayment,
+			m.IsTip,
 			m.RelationshipTo,
+			m.TipPlatform,
+			m.TippedUsername,
 			m.InitiatorPhoneNumber,
 			m.State,
 			m.CreatedAt,
@@ -321,7 +349,7 @@ func (m *intentModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 func dbGetIntent(ctx context.Context, db *sqlx.DB, intentID string) (*intentModel, error) {
 	res := &intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at
 		FROM ` + intentTableName + `
 		WHERE intent_id = $1
 		LIMIT 1`
@@ -336,7 +364,7 @@ func dbGetIntent(ctx context.Context, db *sqlx.DB, intentID string) (*intentMode
 func dbGetLatestByInitiatorAndType(ctx context.Context, db *sqlx.DB, intentType intent.Type, owner string) (*intentModel, error) {
 	res := &intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at
 		FROM ` + intentTableName + `
 		WHERE owner = $1 AND intent_type = $2
 		ORDER BY created_at DESC
@@ -353,7 +381,7 @@ func dbGetLatestByInitiatorAndType(ctx context.Context, db *sqlx.DB, intentType 
 func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*intentModel, error) {
 	res := []*intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at
 		FROM ` + intentTableName + `
 		WHERE (owner = $1 OR destination_owner = $1) AND (intent_type != $2 AND intent_type != $3)
 	`
@@ -514,7 +542,7 @@ func dbGetNetBalanceFromPrePrivacy2022Intents(ctx context.Context, db *sqlx.DB, 
 func dbGetLatestSaveRecentRootIntentForTreasury(ctx context.Context, db *sqlx.DB, treasury string) (*intentModel, error) {
 	res := &intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at
 		FROM ` + intentTableName + `
 		WHERE treasury_pool = $1 and intent_type = $2
 		ORDER BY id DESC
@@ -531,7 +559,7 @@ func dbGetLatestSaveRecentRootIntentForTreasury(ctx context.Context, db *sqlx.DB
 func dbGetOriginalGiftCardIssuedIntent(ctx context.Context, db *sqlx.DB, giftCardVault string) (*intentModel, error) {
 	res := []*intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at
 		FROM ` + intentTableName + `
 		WHERE destination = $1 and intent_type = $2 AND state != $3 AND is_remote_send IS TRUE
 		LIMIT 2
@@ -563,7 +591,7 @@ func dbGetOriginalGiftCardIssuedIntent(ctx context.Context, db *sqlx.DB, giftCar
 func dbGetGiftCardClaimedIntent(ctx context.Context, db *sqlx.DB, giftCardVault string) (*intentModel, error) {
 	res := []*intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, relationship_to, phone_number, state, created_at
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, treasury_pool, recent_root, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, is_tip, relationship_to, tip_platform, tipped_username, phone_number, state, created_at
 		FROM ` + intentTableName + `
 		WHERE source = $1 and intent_type = $2 AND state != $3 AND is_remote_send IS TRUE
 		LIMIT 2

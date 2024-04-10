@@ -11,6 +11,7 @@ import (
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -18,6 +19,12 @@ import (
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 )
+
+type MessageWithOwner struct {
+	Owner   *common.Account
+	Title   string
+	Message *chatpb.ChatMessage
+}
 
 func newProtoChatMessage(
 	messageId string,

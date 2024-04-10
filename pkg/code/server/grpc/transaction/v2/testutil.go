@@ -50,6 +50,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
@@ -599,6 +600,16 @@ func (s *serverTestEnv) simulateExpiredGiftCard(t *testing.T, giftCardAccount *c
 	}))
 }
 
+func (s *serverTestEnv) simulateTwitterRegistration(t *testing.T, username string, destination *common.Account) {
+	record := &twitter.Record{
+		Username:      username,
+		Name:          "name",
+		ProfilePicUrl: "url",
+		TipAddress:    destination.PublicKey().ToBase58(),
+	}
+	require.NoError(t, s.data.SaveTwitterUser(s.ctx, record))
+}
+
 // Captures the majority of intent submission validation, but highly intent-specific
 // edge cases will likely be captured elsewhere
 func (s serverTestEnv) assertIntentSubmitted(t *testing.T, intentId string, protoMetadata *transactionpb.Metadata, protoActions []*transactionpb.Action, sourcePhone phoneTestEnv, destinationPhone *phoneTestEnv) {
@@ -662,6 +673,7 @@ func (s serverTestEnv) assertIntentRecordSaved(t *testing.T, intentId string, pr
 		assert.Equal(t, 0.1*float64(typed.SendPrivatePayment.ExchangeData.Quarks)/kin.QuarksPerKin, intentRecord.SendPrivatePaymentMetadata.UsdMarketValue)
 		assert.Equal(t, typed.SendPrivatePayment.IsWithdrawal, intentRecord.SendPrivatePaymentMetadata.IsWithdrawal)
 		assert.Equal(t, typed.SendPrivatePayment.IsRemoteSend, intentRecord.SendPrivatePaymentMetadata.IsRemoteSend)
+		assert.Equal(t, typed.SendPrivatePayment.IsTip, intentRecord.SendPrivatePaymentMetadata.IsTip)
 	case *transactionpb.Metadata_ReceivePaymentsPrivately:
 		assert.Equal(t, intent.ReceivePaymentsPrivately, intentRecord.IntentType)
 		require.NotNil(t, intentRecord.ReceivePaymentsPrivatelyMetadata)
@@ -883,7 +895,7 @@ func (s serverTestEnv) assertFulfillmentRecordsSaved(t *testing.T, intentId stri
 				assert.True(t, fulfillmentRecord.DisableActiveScheduling)
 				s.assertSignedTransaction(t, fulfillmentRecord)
 				s.assertNoncedTransaction(t, fulfillmentRecord)
-				s.assertExpectedCloseTimelockAccountWithBalanceTransaction(t, intentRecord.IntentType, fulfillmentRecord, authorityAccount, destinationAccount)
+				s.assertExpectedCloseTimelockAccountWithBalanceTransaction(t, intentRecord.IntentType, fulfillmentRecord, authorityAccount, destinationAccount, nil)
 			} else {
 				assert.Empty(t, fulfillmentRecords)
 			}
@@ -946,6 +958,13 @@ func (s serverTestEnv) assertFulfillmentRecordsSaved(t *testing.T, intentId stri
 			destinationAccount, err := common.NewAccountFromProto(typed.NoPrivacyWithdraw.Destination)
 			require.NoError(t, err)
 
+			var additionalMemo *string
+			if intentRecord.IntentType == intent.SendPrivatePayment && intentRecord.SendPrivatePaymentMetadata.IsTip {
+				tipMemo, err := transaction_util.GetTipMemoValue(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
+				require.NoError(t, err)
+				additionalMemo = &tipMemo
+			}
+
 			fulfillmentRecord := fulfillmentRecords[0]
 			assert.Equal(t, fulfillment.NoPrivacyWithdraw, fulfillmentRecord.FulfillmentType)
 			assert.Equal(t, base58.Encode(typed.NoPrivacyWithdraw.Source.Value), actionRecord.Source)
@@ -956,7 +975,7 @@ func (s serverTestEnv) assertFulfillmentRecordsSaved(t *testing.T, intentId stri
 			assert.Equal(t, intentRecord.IntentType == intent.SendPrivatePayment, fulfillmentRecord.DisableActiveScheduling)
 			s.assertSignedTransaction(t, fulfillmentRecord)
 			s.assertNoncedTransaction(t, fulfillmentRecord)
-			s.assertExpectedCloseTimelockAccountWithBalanceTransaction(t, intentRecord.IntentType, fulfillmentRecord, authorityAccount, destinationAccount)
+			s.assertExpectedCloseTimelockAccountWithBalanceTransaction(t, intentRecord.IntentType, fulfillmentRecord, authorityAccount, destinationAccount, additionalMemo)
 		case *transactionpb.Action_TemporaryPrivacyTransfer, *transactionpb.Action_TemporaryPrivacyExchange:
 			require.Len(t, fulfillmentRecords, 2)
 
@@ -1628,16 +1647,31 @@ func (s serverTestEnv) assertExpectedCloseEmptyTimelockAccountTransaction(t *tes
 	}
 }
 
-func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(t *testing.T, intentType intent.Type, fulfillmentRecord *fulfillment.Record, authority, destination *common.Account) {
+func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(t *testing.T, intentType intent.Type, fulfillmentRecord *fulfillment.Record, authority, destination *common.Account, expectedAdditionalMemo *string) {
 	var txn solana.Transaction
 	require.NoError(t, txn.Unmarshal(fulfillmentRecord.Data))
 
-	require.Len(t, txn.Message.Instructions, 6)
+	expectedInstructionCount := 6
+	if expectedAdditionalMemo != nil {
+		expectedInstructionCount = 7
+	}
+	require.Len(t, txn.Message.Instructions, expectedInstructionCount)
 
-	_, err := system.DecompileAdvanceNonce(txn.Message, 0)
+	nextIxnIndex := 0
+
+	_, err := system.DecompileAdvanceNonce(txn.Message, nextIxnIndex)
 	require.NoError(t, err)
+	nextIxnIndex++
 
-	assertExpectedKreMemoInstruction(t, txn, 1)
+	assertExpectedKreMemoInstruction(t, txn, nextIxnIndex)
+	nextIxnIndex++
+
+	if expectedAdditionalMemo != nil {
+		memo, err := memo.DecompileMemo(txn.Message, nextIxnIndex)
+		require.NoError(t, err)
+		assert.Equal(t, *expectedAdditionalMemo, string(memo.Data))
+		nextIxnIndex++
+	}
 
 	dataVersion := timelock_token_v1.DataVersion1
 	if intentType == intent.MigrateToPrivacy2022 {
@@ -1648,7 +1682,7 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 	require.NoError(t, err)
 
 	if dataVersion == timelock_token_v1.DataVersion1 {
-		revokeIxnArgs, revokeIxnAccounts, err := timelock_token_v1.RevokeLockWithAuthorityFromLegacyInstruction(txn, 2)
+		revokeIxnArgs, revokeIxnAccounts, err := timelock_token_v1.RevokeLockWithAuthorityFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, revokeIxnArgs.TimelockBump)
@@ -1658,7 +1692,9 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), revokeIxnAccounts.TimeAuthority)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), revokeIxnAccounts.Payer)
 
-		deactivateIxnArgs, deactivateIxnAccounts, err := timelock_token_v1.DeactivateInstructionFromLegacyInstruction(txn, 3)
+		nextIxnIndex++
+
+		deactivateIxnArgs, deactivateIxnAccounts, err := timelock_token_v1.DeactivateInstructionFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, deactivateIxnArgs.TimelockBump)
@@ -1667,7 +1703,9 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, timelockAccounts.VaultOwner.PublicKey().ToBytes(), deactivateIxnAccounts.VaultOwner)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), deactivateIxnAccounts.Payer)
 
-		withdrawIxnArgs, withdrawIxnAccounts, err := timelock_token_v1.WithdrawInstructionFromLegacyInstruction(txn, 4)
+		nextIxnIndex++
+
+		withdrawIxnArgs, withdrawIxnAccounts, err := timelock_token_v1.WithdrawInstructionFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, withdrawIxnArgs.TimelockBump)
@@ -1678,7 +1716,9 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, destination.PublicKey().ToBytes(), withdrawIxnAccounts.Destination)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), withdrawIxnAccounts.Payer)
 
-		closeIxnArgs, closeIxnAccounts, err := timelock_token_v1.CloseAccountsInstructionFromLegacyInstruction(txn, 5)
+		nextIxnIndex++
+
+		closeIxnArgs, closeIxnAccounts, err := timelock_token_v1.CloseAccountsInstructionFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, closeIxnArgs.TimelockBump)
@@ -1688,7 +1728,7 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), closeIxnAccounts.CloseAuthority)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), closeIxnAccounts.Payer)
 	} else {
-		revokeIxnArgs, revokeIxnAccounts, err := timelock_token_legacy.RevokeLockWithAuthorityFromLegacyInstruction(txn, 2)
+		revokeIxnArgs, revokeIxnAccounts, err := timelock_token_legacy.RevokeLockWithAuthorityFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, revokeIxnArgs.TimelockBump)
@@ -1698,7 +1738,9 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), revokeIxnAccounts.TimeAuthority)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), revokeIxnAccounts.Payer)
 
-		deactivateIxnArgs, deactivateIxnAccounts, err := timelock_token_legacy.DeactivateInstructionFromLegacyInstruction(txn, 3)
+		nextIxnIndex++
+
+		deactivateIxnArgs, deactivateIxnAccounts, err := timelock_token_legacy.DeactivateInstructionFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, deactivateIxnArgs.TimelockBump)
@@ -1707,7 +1749,9 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, timelockAccounts.VaultOwner.PublicKey().ToBytes(), deactivateIxnAccounts.VaultOwner)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), deactivateIxnAccounts.Payer)
 
-		withdrawIxnArgs, withdrawIxnAccounts, err := timelock_token_legacy.WithdrawInstructionFromLegacyInstruction(txn, 4)
+		nextIxnIndex++
+
+		withdrawIxnArgs, withdrawIxnAccounts, err := timelock_token_legacy.WithdrawInstructionFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, withdrawIxnArgs.TimelockBump)
@@ -1718,7 +1762,9 @@ func (s serverTestEnv) assertExpectedCloseTimelockAccountWithBalanceTransaction(
 		assert.EqualValues(t, destination.PublicKey().ToBytes(), withdrawIxnAccounts.Destination)
 		assert.EqualValues(t, s.subsidizer.PublicKey().ToBytes(), withdrawIxnAccounts.Payer)
 
-		closeIxnArgs, closeIxnAccounts, err := timelock_token_legacy.CloseAccountsInstructionFromLegacyInstruction(txn, 5)
+		nextIxnIndex++
+
+		closeIxnArgs, closeIxnAccounts, err := timelock_token_legacy.CloseAccountsInstructionFromLegacyInstruction(txn, nextIxnIndex)
 		require.NoError(t, err)
 
 		assert.Equal(t, timelockAccounts.StateBump, closeIxnArgs.TimelockBump)
@@ -1938,6 +1984,8 @@ type phoneConf struct {
 
 	simulateFlippingRemoteSendFlag bool
 	simulateUsingGiftCardAccount   bool
+
+	simulateFlippingTipFlag bool
 
 	//
 	// Simulations for EstablishRelationship intent validation
@@ -3433,6 +3481,128 @@ func (p *phoneTestEnv) privatelyWithdraw321KinToCodeUserRelationshipAccount(t *t
 	}
 }
 
+func (p *phoneTestEnv) tip456KinToCodeUser(t *testing.T, receiver phoneTestEnv, username string) submitIntentCallMetadata {
+	totalAmount := kin.ToQuarks(456)
+
+	destination := receiver.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0)
+
+	nextIndex := p.currentTempOutgoingIndex + 1
+	nextDerivedAccount := derivedAccount{
+		accountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+		index:       nextIndex,
+		value:       testutil.NewRandomAccount(t),
+	}
+	p.allDerivedAccounts = append(p.allDerivedAccounts, nextDerivedAccount)
+
+	actions := []*transactionpb.Action{
+		// Send bucketed amounts to temporary outgoing account
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_1_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(6),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(50),
+			},
+		}},
+		{Type: &transactionpb.Action_TemporaryPrivacyTransfer{
+			TemporaryPrivacyTransfer: &transactionpb.TemporaryPrivacyTransferAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_100_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_100_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Amount:      kin.ToQuarks(400),
+			},
+		}},
+	}
+
+	actions = append(
+		actions,
+		// Send full payment from temporary outgoing account to payment destination,
+		// minus any fees
+		&transactionpb.Action{Type: &transactionpb.Action_NoPrivacyWithdraw{
+			NoPrivacyWithdraw: &transactionpb.NoPrivacyWithdrawAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_TEMPORARY_OUTGOING, p.currentTempOutgoingIndex).ToProto(),
+				Destination: destination.ToProto(),
+				Amount:      totalAmount,
+				ShouldClose: true,
+			},
+		}},
+
+		// Re-organize bucket accounts (example)
+		&transactionpb.Action{Type: &transactionpb.Action_TemporaryPrivacyExchange{
+			TemporaryPrivacyExchange: &transactionpb.TemporaryPrivacyExchangeAction{
+				Authority:   p.currentDerivedAccounts[commonpb.AccountType_BUCKET_10_KIN].ToProto(),
+				Source:      p.getTimelockVault(t, commonpb.AccountType_BUCKET_10_KIN, 0).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_BUCKET_1_KIN, 0).ToProto(),
+				Amount:      kin.ToQuarks(10),
+			},
+		}},
+
+		// Rotate to new temporary outgoing account
+		&transactionpb.Action{Type: &transactionpb.Action_OpenAccount{
+			OpenAccount: &transactionpb.OpenAccountAction{
+				AccountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+				Owner:       p.parentAccount.ToProto(),
+				Authority:   nextDerivedAccount.value.ToProto(),
+				Token:       getTimelockVault(t, nextDerivedAccount.value).ToProto(),
+				Index:       nextIndex,
+			},
+		}},
+		&transactionpb.Action{Type: &transactionpb.Action_CloseDormantAccount{
+			CloseDormantAccount: &transactionpb.CloseDormantAccountAction{
+				AccountType: commonpb.AccountType_TEMPORARY_OUTGOING,
+				Authority:   nextDerivedAccount.value.ToProto(),
+				Token:       getTimelockVault(t, nextDerivedAccount.value).ToProto(),
+				Destination: p.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0).ToProto(),
+			},
+		}},
+	)
+
+	metadata := &transactionpb.Metadata{
+		Type: &transactionpb.Metadata_SendPrivatePayment{
+			SendPrivatePayment: &transactionpb.SendPrivatePaymentMetadata{
+				Destination: destination.ToProto(),
+				ExchangeData: &transactionpb.ExchangeData{
+					Currency:     "usd",
+					ExchangeRate: 0.1,
+					NativeAmount: 45.6,
+					Quarks:       totalAmount,
+				},
+				IsWithdrawal: true,
+				IsTip:        true,
+				TippedUser: &transactionpb.TippedUser{
+					Platform: transactionpb.TippedUser_TWITTER,
+					Username: username,
+				},
+			},
+		},
+	}
+
+	rendezvousKey := testutil.NewRandomAccount(t)
+	intentId := rendezvousKey.PublicKey().ToBase58()
+	resp, err := p.submitIntent(t, intentId, metadata, actions)
+	if !isSubmitIntentError(resp, err) {
+		p.currentTempOutgoingIndex = nextIndex
+		p.currentDerivedAccounts[commonpb.AccountType_TEMPORARY_OUTGOING] = nextDerivedAccount.value
+	}
+	return submitIntentCallMetadata{
+		intentId:      intentId,
+		rendezvousKey: rendezvousKey,
+		protoMetadata: metadata,
+		protoActions:  actions,
+		resp:          resp,
+		err:           err,
+	}
+}
+
 func (p *phoneTestEnv) migrateToPrivacy2022(t *testing.T, quarks uint64) submitIntentCallMetadata {
 	actions := []*transactionpb.Action{}
 
@@ -3668,6 +3838,14 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 		if p.conf.simulateFlippingRemoteSendFlag {
 			typed.SendPrivatePayment.IsRemoteSend = !typed.SendPrivatePayment.IsRemoteSend
+		}
+
+		if p.conf.simulateFlippingTipFlag {
+			typed.SendPrivatePayment.IsTip = true
+			typed.SendPrivatePayment.TippedUser = &transactionpb.TippedUser{
+				Platform: transactionpb.TippedUser_TWITTER,
+				Username: "twitteraccount",
+			}
 		}
 
 		if p.conf.simulateNotClosingTempAccount {
@@ -5383,6 +5561,7 @@ func (p *phoneTestEnv) getCloseDormantAccountTransactionToSign(
 		bh,
 		timelockAccounts,
 		destination,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -5434,8 +5613,15 @@ func (p *phoneTestEnv) getNoPrivacyWithdrawTransactionToSign(
 	action *transactionpb.NoPrivacyWithdrawAction,
 	intentMetadata *transactionpb.Metadata,
 ) txnToSign {
+	var additionalMemo *string
 	dataVersion := timelock_token_v1.DataVersion1
-	switch intentMetadata.Type.(type) {
+	switch typed := intentMetadata.Type.(type) {
+	case *transactionpb.Metadata_SendPrivatePayment:
+		if typed.SendPrivatePayment.TippedUser != nil {
+			tipMemo, err := transaction_util.GetTipMemoValue(typed.SendPrivatePayment.TippedUser.Platform, typed.SendPrivatePayment.TippedUser.Username)
+			require.NoError(t, err)
+			additionalMemo = &tipMemo
+		}
 	case *transactionpb.Metadata_MigrateToPrivacy_2022:
 		dataVersion = timelock_token_v1.DataVersionLegacy
 	}
@@ -5460,6 +5646,7 @@ func (p *phoneTestEnv) getNoPrivacyWithdrawTransactionToSign(
 		bh,
 		timelockAccounts,
 		destination,
+		additionalMemo,
 	)
 	require.NoError(t, err)
 

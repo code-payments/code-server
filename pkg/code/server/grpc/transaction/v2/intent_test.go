@@ -408,6 +408,24 @@ func TestSubmitIntent_SendPrivatePayment_SelfPayment(t *testing.T) {
 	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &sendingPhone)
 }
 
+func TestSubmitIntent_SendPrivatePayment_TipCodeUser_HappyPath(t *testing.T) {
+	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
+	defer cleanup()
+
+	twitterUsername := "tipthisuser"
+
+	server.generateAvailableNonces(t, 100)
+
+	server.simulateTwitterRegistration(t, twitterUsername, receivingPhone.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0))
+
+	sendingPhone.openAccounts(t).requireSuccess(t)
+	receivingPhone.openAccounts(t).requireSuccess(t)
+
+	submitIntentCall := sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername)
+	submitIntentCall.requireSuccess(t)
+	server.assertIntentSubmitted(t, submitIntentCall.intentId, submitIntentCall.protoMetadata, submitIntentCall.protoActions, sendingPhone, &receivingPhone)
+}
+
 func TestSubmitIntent_SendPrivatePayment_AntispamGuard(t *testing.T) {
 	server, sendingPhone, _, cleanup := setupTestEnv(t, &testOverrides{
 		enableAntispamChecks: true,
@@ -516,7 +534,11 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
 	defer cleanup()
 
+	twitterUsername := "twitteraccount"
+
 	server.generateAvailableNonces(t, 100)
+
+	server.simulateTwitterRegistration(t, twitterUsername, receivingPhone.getTimelockVault(t, commonpb.AccountType_PRIMARY, 0))
 
 	sendingPhone.openAccounts(t).requireSuccess(t)
 	receivingPhone.openAccounts(t).requireSuccess(t)
@@ -621,6 +643,24 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	sendingPhone.conf.simulateFlippingRemoteSendFlag = true
 	submitIntentCall = sendingPhone.send42KinToGiftCardAccount(t, testutil.NewRandomAccount(t))
 	submitIntentCall.assertInvalidIntentResponse(t, "must open one account")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateFlippingTipFlag = true
+	submitIntentCall = sendingPhone.send42KinToGiftCardAccount(t, testutil.NewRandomAccount(t))
+	submitIntentCall.assertInvalidIntentResponse(t, "remote send cannot be used for tips")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateFlippingWithdrawFlag = true
+	submitIntentCall = sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername)
+	submitIntentCall.assertInvalidIntentResponse(t, "tips must be a private withdrawal")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	server.simulateTwitterRegistration(t, twitterUsername, sendingPhone.parentAccount)
+	submitIntentCall = sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername)
+	submitIntentCall.assertInvalidIntentResponse(t, "tip destination must be")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//
@@ -777,6 +817,13 @@ func TestSubmitIntent_SendPrivatePayment_Validation_Actions(t *testing.T) {
 	sendingPhone.conf.simulateUsingGiftCardAccount = true
 	submitIntentCall = sendingPhone.privatelyWithdraw123KinToExternalWallet(t)
 	submitIntentCall.assertInvalidIntentResponse(t, "actions[7]: source is not a latest owned account")
+	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
+
+	sendingPhone.resetConfig()
+	sendingPhone.conf.simulateFlippingWithdrawFlag = true
+	sendingPhone.conf.simulateFlippingTipFlag = true
+	submitIntentCall = sendingPhone.send42KinToCodeUser(t, receivingPhone)
+	submitIntentCall.assertInvalidIntentResponse(t, "destination account must be a primary account")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 
 	//

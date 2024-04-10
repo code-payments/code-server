@@ -24,6 +24,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	event_util "github.com/code-payments/code-server/pkg/code/event"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/lawenforcement"
@@ -469,9 +470,22 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 		ExchangeRate:     exchangeData.ExchangeRate,
 		NativeAmount:     typedProtoMetadata.ExchangeData.NativeAmount,
 		UsdMarketValue:   usdExchangeRecord.Rate * float64(kin.FromQuarks(exchangeData.Quarks)),
-		IsWithdrawal:     typedProtoMetadata.IsWithdrawal,
-		IsRemoteSend:     typedProtoMetadata.IsRemoteSend,
-		IsMicroPayment:   isMicroPayment,
+
+		IsWithdrawal:   typedProtoMetadata.IsWithdrawal,
+		IsRemoteSend:   typedProtoMetadata.IsRemoteSend,
+		IsMicroPayment: isMicroPayment,
+		IsTip:          typedProtoMetadata.IsTip,
+	}
+
+	if typedProtoMetadata.IsTip {
+		if typedProtoMetadata.TippedUser == nil {
+			return newIntentValidationError("tipped user metadata is missing")
+		}
+
+		intentRecord.SendPrivatePaymentMetadata.TipMetadata = &intent.TipMetadata{
+			Platform: typedProtoMetadata.TippedUser.Platform,
+			Username: typedProtoMetadata.TippedUser.Username,
+		}
 	}
 
 	if destinationAccountInfo != nil {
@@ -677,14 +691,24 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 1.2: Check destination account based on withdrawal and remote send flags
+	// Part 1.2: Check destination account based on withdrawal, remote send and tip flags
 	//
 
-	// The account type isn't defined for these use cases
-	if metadata.IsWithdrawal && metadata.IsRemoteSend {
+	// Invalid combination of various payment flags
+	if metadata.IsRemoteSend && metadata.IsWithdrawal {
 		return newIntentValidationError("withdrawal and remote send flags cannot both be true set at the same time")
-	} else if metadata.IsRemoteSend && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+	}
+	if metadata.IsRemoteSend && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
 		return newIntentValidationError("remote send cannot be used for micro payments")
+	}
+	if metadata.IsRemoteSend && metadata.IsTip {
+		return newIntentValidationError("remote send cannot be used for tips")
+	}
+	if metadata.IsTip && intentRecord.SendPrivatePaymentMetadata.IsMicroPayment {
+		return newIntentValidationError("tips cannot be used for micro payments")
+	}
+	if metadata.IsTip && !metadata.IsWithdrawal {
+		return newIntentValidationError("tips must be a private withdrawal")
 	}
 
 	// Note: Assumes account info only stores Code user accounts
@@ -694,6 +718,19 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		// The remote send gift card cannot exist. It must be created as part of this intent.
 		if metadata.IsRemoteSend {
 			return newIntentValidationError("remote send must be to a brand new gift card account")
+		}
+
+		if metadata.IsTip && metadata.TippedUser == nil {
+			return newIntentValidationError("tipped user metadata is missing")
+		}
+		if metadata.IsTip && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
+			return newIntentValidationError("destination account must be a primary account")
+		}
+		if metadata.IsTip {
+			err = validateTipDestination(ctx, h.data, metadata.TippedUser, destination)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Code->Code withdrawals must be sent to a deposit account. We allow the
@@ -3191,6 +3228,32 @@ func validateIntentIdIsNotRequest(ctx context.Context, data code_data.Provider, 
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
+	return nil
+}
+
+func validateTipDestination(ctx context.Context, data code_data.Provider, tippedUser *transactionpb.TippedUser, actualDestination *common.Account) error {
+	var expectedDestination *common.Account
+	switch tippedUser.Platform {
+	case transactionpb.TippedUser_TWITTER:
+		record, err := data.GetTwitterUserByUsername(ctx, tippedUser.Username)
+		if err == twitter.ErrUserNotFound {
+			return newIntentValidationError("twitter user is not registered with code")
+		} else if err != nil {
+			return err
+		}
+
+		expectedDestination, err = common.NewAccountFromPublicKeyString(record.TipAddress)
+		if err != nil {
+			return err
+		}
+	default:
+		return newIntentValidationErrorf("tip platform %s is not supported", tippedUser.Platform.String())
+	}
+
+	if !bytes.Equal(expectedDestination.PublicKey().ToBytes(), actualDestination.PublicKey().ToBytes()) {
+		return newIntentValidationErrorf("tip destination must be %s", expectedDestination.PublicKey().ToBase58())
+	}
+
 	return nil
 }
 

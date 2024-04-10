@@ -212,6 +212,10 @@ func LocalizeFiatWithVerb(locale language.Tag, verb chatpb.ExchangeDataContent_V
 		key = VerbPaid
 	case chatpb.ExchangeDataContent_PURCHASED:
 		key = VerbPurchased
+	case chatpb.ExchangeDataContent_RECEIVED_TIP:
+		key = VerbReceivedTip
+	case chatpb.ExchangeDataContent_SENT_TIP:
+		key = VerbSentTip
 	default:
 		return "", errors.Errorf("verb %s is not supported", verb)
 	}

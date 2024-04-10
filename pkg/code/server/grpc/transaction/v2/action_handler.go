@@ -388,6 +388,7 @@ func (h *CloseDormantAccountActionHandler) MakeNewSolanaTransaction(
 			bh,
 			h.source,
 			h.destination,
+			nil,
 		)
 		if err != nil {
 			return nil, err
@@ -560,22 +561,40 @@ func (h *NoPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) error {
 }
 
 type NoPrivacyWithdrawActionHandler struct {
-	source      *common.TimelockAccounts
-	destination *common.Account
-	amount      uint64
-	intentType  intent.Type
+	source                  *common.TimelockAccounts
+	destination             *common.Account
+	amount                  uint64
+	additionalMemo          *string
+	disableActiveScheduling bool
 }
 
-func NewNoPrivacyWithdrawActionHandler(intentType intent.Type, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
+func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
+	dataVersion := timelock_token_v1.DataVersion1
+	var additionalMemo *string
+	var disableActiveScheduling bool
+
+	switch intentRecord.IntentType {
+	case intent.SendPrivatePayment:
+		if intentRecord.SendPrivatePaymentMetadata.IsTip {
+			tipMemo, err := transaction_util.GetTipMemoValue(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
+			if err != nil {
+				return nil, err
+			}
+			additionalMemo = &tipMemo
+		}
+
+		// Technically we should do this for public receives too, but we don't
+		// yet have a great way of doing cross intent fulfillment polling hints.
+		disableActiveScheduling = true
+	case intent.MigrateToPrivacy2022:
+		dataVersion = timelock_token_v1.DataVersionLegacy
+	}
+
 	sourceAuthority, err := common.NewAccountFromProto(protoAction.Authority)
 	if err != nil {
 		return nil, err
 	}
 
-	dataVersion := timelock_token_v1.DataVersion1
-	if intentType == intent.MigrateToPrivacy2022 {
-		dataVersion = timelock_token_v1.DataVersionLegacy
-	}
 	source, err := sourceAuthority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
 	if err != nil {
 		return nil, err
@@ -587,10 +606,11 @@ func NewNoPrivacyWithdrawActionHandler(intentType intent.Type, protoAction *tran
 	}
 
 	return &NoPrivacyWithdrawActionHandler{
-		source:      source,
-		destination: destination,
-		amount:      protoAction.Amount,
-		intentType:  intentType,
+		source:                  source,
+		destination:             destination,
+		amount:                  protoAction.Amount,
+		additionalMemo:          additionalMemo,
+		disableActiveScheduling: disableActiveScheduling,
 	}, nil
 }
 
@@ -634,6 +654,7 @@ func (h *NoPrivacyWithdrawActionHandler) MakeNewSolanaTransaction(
 			bh,
 			h.source,
 			h.destination,
+			h.additionalMemo,
 		)
 		if err != nil {
 			return nil, err
@@ -647,9 +668,7 @@ func (h *NoPrivacyWithdrawActionHandler) MakeNewSolanaTransaction(
 			destination:              h.destination,
 			fulfillmentOrderingIndex: 0,
 
-			// Technically we should do this for public receives too, but we don't
-			// yet have a great way of doing cross intent fulfillment polling hints.
-			disableActiveScheduling: h.intentType == intent.SendPrivatePayment,
+			disableActiveScheduling: h.disableActiveScheduling,
 		}, nil
 	default:
 		return nil, errors.New("invalid transaction index")

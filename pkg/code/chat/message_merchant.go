@@ -17,12 +17,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
-type MessageWithOwner struct {
-	Owner   *common.Account
-	Title   string
-	Message *chatpb.ChatMessage
-}
-
 // SendMerchantExchangeMessage sends a message to the merchant's chat with
 // exchange data content related to the submitted intent. Intents that
 // don't belong in the merchant chat will be ignored. The set of chat messages

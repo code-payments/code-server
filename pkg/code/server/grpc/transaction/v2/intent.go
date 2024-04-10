@@ -459,7 +459,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			log = log.WithField("action_type", "no_privacy_withdraw")
 			actionType = action.NoPrivacyWithdraw
-			actionHandler, err = NewNoPrivacyWithdrawActionHandler(intentRecord.IntentType, typed.NoPrivacyWithdraw)
+			actionHandler, err = NewNoPrivacyWithdrawActionHandler(intentRecord, typed.NoPrivacyWithdraw)
 		case *transactionpb.Action_TemporaryPrivacyTransfer:
 			log = log.WithField("action_type", "temporary_privacy_transfer")
 			actionType = action.PrivateTransfer
@@ -887,11 +887,20 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				log.WithError(err).Warn("failure updating cash transaction chat")
 				return err
 			}
-			chatMessagesToPush, err = chat_util.SendMerchantExchangeMessage(ctx, s.data, intentRecord, actionRecords)
+
+			tipMessagesToPush, err := chat_util.SendTipsExchangeMessage(ctx, s.data, intentRecord)
+			if err != nil {
+				log.WithError(err).Warn("failure updating tips chat")
+				return err
+			}
+			chatMessagesToPush = append(chatMessagesToPush, tipMessagesToPush...)
+
+			merchantMessagesToPush, err := chat_util.SendMerchantExchangeMessage(ctx, s.data, intentRecord, actionRecords)
 			if err != nil {
 				log.WithError(err).Warn("failure updating merchant chat")
 				return err
 			}
+			chatMessagesToPush = append(chatMessagesToPush, merchantMessagesToPush...)
 
 			// Mark the intent as pending once everything else has succeeded
 			err = s.markIntentAsPending(ctx, intentRecord)
