@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -304,6 +305,11 @@ func (c *Client) getBearerToken(clientId, clientSecret string) (string, error) {
 	c.lastBearerTokenRefresh = time.Now()
 
 	return result.AccessToken, nil
+}
+
+// IsRetweet returns whether the tweet is a retweet
+func (t *Tweet) IsRetweet() bool {
+	return strings.HasPrefix(t.Text, "RT @")
 }
 
 type twitterError struct {

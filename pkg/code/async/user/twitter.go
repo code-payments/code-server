@@ -254,6 +254,10 @@ func (p *service) findNewRegistrationTweets(ctx context.Context) ([]*twitter_lib
 }
 
 func (p *service) findVerifiedTipAccountRegisteredInTweet(ctx context.Context, tweet *twitter_lib.Tweet) (*common.Account, *uuid.UUID, error) {
+	if tweet.IsRetweet() {
+		return nil, nil, errTwitterRegistrationNotFound
+	}
+
 	tweetParts := strings.Fields(tweet.Text)
 	for _, tweetPart := range tweetParts {
 		// Look for the well-known prefix to indicate a potential registration value
