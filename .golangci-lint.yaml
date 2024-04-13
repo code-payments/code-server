@@ -5,6 +5,7 @@ linters:
   enable:
     - errcheck
     - ineffassign
+    - govet
 
 issues:
   exclude-rules:

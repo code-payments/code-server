@@ -8,10 +8,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/kin"
 )
 
 // todo: any other treasury-related things we can put here?
@@ -126,7 +126,9 @@ func (s *transactionServer) treasuryPoolMonitor(ctx context.Context, name string
 			defer cancel()
 
 			start := time.Now()
-			defer time.Sleep(s.conf.treasuryPoolStatsRefreshInterval.Get(ctx) - time.Since(start))
+			defer func() {
+				time.Sleep(s.conf.treasuryPoolStatsRefreshInterval.Get(ctx) - time.Since(start))
+			}()
 
 			if treasuryPoolRecord == nil {
 				treasuryPoolRecord, err = s.data.GetTreasuryPoolByName(ctx, name)
