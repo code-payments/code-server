@@ -375,7 +375,6 @@ func TestAllowReceivePayments_StaffUser(t *testing.T) {
 			}))
 
 			for _, ownerAccount := range []*common.Account{ownerAccount1, ownerAccount2} {
-
 				verification := &phone.Verification{
 					PhoneNumber:    phoneNumber,
 					OwnerAccount:   ownerAccount.PublicKey().ToBase58(),
@@ -508,7 +507,6 @@ func TestAllowOpenAccounts_StaffUser(t *testing.T) {
 		}))
 
 		for _, ownerAccount := range []*common.Account{ownerAccount1, ownerAccount2} {
-
 			verification := &phone.Verification{
 				PhoneNumber:    phoneNumber,
 				OwnerAccount:   ownerAccount.PublicKey().ToBase58(),

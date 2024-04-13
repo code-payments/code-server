@@ -74,7 +74,6 @@ func (p *service) worker(serviceCtx context.Context, state nonce.State, interval
 }
 
 func (p *service) handle(ctx context.Context, record *nonce.Record) error {
-
 	/*
 		Finite state machine:
 			States:

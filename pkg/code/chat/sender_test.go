@@ -221,13 +221,11 @@ func (e *testEnv) assertBadgeCount(t *testing.T, owner *common.Account, expected
 func (e *testEnv) assertChatRecordNotSaved(t *testing.T, chatId chat.ChatId) {
 	_, err := e.data.GetChatById(e.ctx, chatId)
 	assert.Equal(t, chat.ErrChatNotFound, err)
-
 }
 
 func (e *testEnv) assertChatMessageRecordNotSaved(t *testing.T, chatId chat.ChatId, messageId *chatpb.ChatMessageId) {
 	_, err := e.data.GetChatMessage(e.ctx, chatId, base58.Encode(messageId.Value))
 	assert.Equal(t, chat.ErrMessageNotFound, err)
-
 }
 
 func (e *testEnv) muteChat(t *testing.T, chatId chat.ChatId) {

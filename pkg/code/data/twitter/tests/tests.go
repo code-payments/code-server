@@ -190,7 +190,6 @@ func testGetStaleUsers(t *testing.T, s twitter.Store) {
 		require.NoError(t, err)
 		require.Len(t, res, 1)
 		assert.Equal(t, "username0", res[0].Username)
-
 	})
 }
 

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -168,9 +168,9 @@ func (s *store) GetAllForAccountByType(ctx context.Context, account string, curs
 	// not ideal, but this is for testing purposes and s.paymentRecord should be small
 	all := make([]*payment.Record, 0)
 	for _, record := range s.paymentRecords {
-		if (paymentType == payment.PaymentType_Send && record.Source == account) ||
-			(paymentType == payment.PaymentType_Receive && record.Destination == account) {
-
+		isSender := paymentType == payment.PaymentType_Send && record.Source == account
+		isReceiver := paymentType == payment.PaymentType_Receive && record.Destination == account
+		if isSender || isReceiver {
 			if ordering == query.Ascending {
 				if record.Id > cursor {
 					all = append(all, record)
@@ -217,9 +217,9 @@ func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account st
 			continue
 		}
 
-		if (paymentType == payment.PaymentType_Send && record.Source == account) ||
-			(paymentType == payment.PaymentType_Receive && record.Destination == account) {
-
+		isSender := paymentType == payment.PaymentType_Send && record.Source == account
+		isReceiver := paymentType == payment.PaymentType_Receive && record.Destination == account
+		if isSender || isReceiver {
 			if ordering == query.Ascending {
 				if record.Id > cursor {
 					all = append(all, record)
@@ -266,9 +266,9 @@ func (s *store) GetAllForAccountByTypeWithinBlockRange(ctx context.Context, acco
 			continue
 		}
 
-		if (paymentType == payment.PaymentType_Send && record.Source == account) ||
-			(paymentType == payment.PaymentType_Receive && record.Destination == account) {
-
+		isSender := paymentType == payment.PaymentType_Send && record.Source == account
+		isReceiver := paymentType == payment.PaymentType_Receive && record.Destination == account
+		if isSender || isReceiver {
 			if ordering == query.Ascending {
 				if record.Id > cursor {
 					all = append(all, record)

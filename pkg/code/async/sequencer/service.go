@@ -43,7 +43,6 @@ func New(data code_data.Provider, scheduler Scheduler, configProvider ConfigProv
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-
 	// Setup workers to watch for fulfillment state changes on the Solana side
 	for _, item := range []fulfillment.State{
 		fulfillment.StateUnknown,
@@ -55,7 +54,6 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		// fulfillment.StateRevoked,
 	} {
 		go func(state fulfillment.State) {
-
 			// todo: Note to our future selves that there are some components of
 			//       the scheduler (ie. subsidizer balance checks) that won't
 			//       work perfectly in a multi-threaded or multi-node environment.
@@ -63,7 +61,6 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("fulfillment processing loop terminated unexpectedly for state %d", state)
 			}
-
 		}(item)
 	}
 

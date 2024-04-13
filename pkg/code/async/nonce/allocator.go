@@ -12,7 +12,6 @@ import (
 )
 
 func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
-
 	hasWarnedUser := false
 	err := retry.Loop(
 		func() (err error) {
@@ -70,7 +69,6 @@ func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
 			}
 
 			return nil
-
 		},
 		retry.NonRetriableErrors(context.Canceled, ErrInvalidNonceLimitExceeded),
 	)

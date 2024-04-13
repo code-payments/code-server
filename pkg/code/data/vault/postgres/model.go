@@ -44,7 +44,6 @@ func toKeyModel(obj *vault.Record) (*vaultModel, error) {
 }
 
 func fromKeyModel(obj *vaultModel) *vault.Record {
-
 	return &vault.Record{
 		Id:         uint64(obj.Id.Int64),
 		PublicKey:  obj.PublicKey,

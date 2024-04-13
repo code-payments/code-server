@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type TestData struct {
@@ -144,5 +144,4 @@ func testGetRange(t *testing.T, s payment.Store) {
 	assert.Equal(t, 2, len(results))
 	CompareTestDataToPayment(t, testPayments[4], results[0])
 	CompareTestDataToPayment(t, testPayments[5], results[1])
-
 }

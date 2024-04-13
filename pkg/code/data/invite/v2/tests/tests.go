@@ -319,7 +319,6 @@ func testInfluencerCodeClaim(t *testing.T, s invite.Store) {
 
 		// Test multiple claims
 		for i := uint32(influencerCode.InvitesSent + 1); i <= influencerCode.InviteCount; i++ {
-
 			// Claim the influencer code
 			err = s.ClaimInfluencerCode(ctx, inviteCode)
 			assert.NoError(t, err)
@@ -425,7 +424,6 @@ func testInfluencerCodePutUser(t *testing.T, s invite.Store) {
 
 		// Test multiple claims
 		for i := uint32(influencerCode.InvitesSent + 1); i <= influencerCode.InviteCount; i++ {
-
 			// Put a user to claim the code
 			phoneNumber := fmt.Sprintf("+1800555000%d", i)
 			invitedUser := &invite.User{

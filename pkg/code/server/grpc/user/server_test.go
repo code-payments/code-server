@@ -1276,7 +1276,6 @@ func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 		{paymentRequestRecord, paymentIntentRecord},
 		{loginRequestRecord, loginIntentRecord},
 	} {
-
 		env, cleanup := setup(t)
 		defer cleanup()
 

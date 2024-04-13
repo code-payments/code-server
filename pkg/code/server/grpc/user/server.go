@@ -717,7 +717,6 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 		log.WithError(err).Warn("failure getting twitter user info")
 		return nil, status.Error(codes.Internal, "")
 	}
-
 }
 
 func (s *identityServer) markWebhookAsPending(ctx context.Context, id string) error {

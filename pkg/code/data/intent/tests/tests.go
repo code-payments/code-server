@@ -652,7 +652,6 @@ func testGetLatestByInitiatorAndType(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.Equal(t, "t4", actual.IntentId)
 	})
-
 }
 
 func testGetCountForAntispam(t *testing.T, s intent.Store) {

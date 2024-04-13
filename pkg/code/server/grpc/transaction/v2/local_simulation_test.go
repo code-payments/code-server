@@ -640,7 +640,6 @@ func TestLocalSimulation_InvalidTimelockVault(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "token must be"))
 	}
-
 }
 
 type localSimulationTestEnv struct {

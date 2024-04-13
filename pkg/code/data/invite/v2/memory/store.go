@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/phone"
 	"github.com/code-payments/code-server/pkg/code/data/invite/v2"
+	"github.com/code-payments/code-server/pkg/phone"
 )
 
 type store struct {
@@ -61,7 +61,6 @@ func (s *store) PutUser(ctx context.Context, user *invite.User) error {
 	}
 
 	if copy.InvitedBy != nil {
-
 		if phone.IsE164Format(*copy.InvitedBy) {
 			sender, ok := s.usersByPhoneNumber[*copy.InvitedBy]
 			if !ok || sender.InvitesSent >= sender.InviteCount || sender.IsRevoked {
@@ -158,7 +157,6 @@ func (s *store) FilterInvitedNumbers(ctx context.Context, phoneNumbers []string)
 	}
 
 	return filtered, nil
-
 }
 
 // PutOnWaitlist implements invite.v2.Store.PutOnWaitlist

@@ -29,9 +29,13 @@ const (
 //
 //	 PaginateQuery(query, opts, cursor, limit, direction)
 //	 > "SELECT * FROM table WHERE (state = $1 OR age > $2) AND cursor > $3 ORDER BY id ASC LIMIT 10"
-func PaginateQuery(query string, opts []interface{},
-	cursor Cursor, limit uint64, direction Ordering) (string, []interface{}) {
-
+func PaginateQuery(
+	query string,
+	opts []interface{},
+	cursor Cursor,
+	limit uint64,
+	direction Ordering,
+) (string, []interface{}) {
 	if len(cursor) > 0 {
 		v := strconv.Itoa(len(opts) + 1)
 

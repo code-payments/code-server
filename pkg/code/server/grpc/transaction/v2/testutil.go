@@ -2163,7 +2163,6 @@ func (p *phoneTestEnv) openAccounts(t *testing.T) submitIntentCallMetadata {
 }
 
 func (p *phoneTestEnv) send42KinToGiftCardAccount(t *testing.T, giftCardAccount *common.Account) submitIntentCallMetadata {
-
 	// Generate a new random gift card account (no derivation logic, index, etc...)
 	p.allGiftCardAccounts = append(p.allGiftCardAccounts, giftCardAccount)
 

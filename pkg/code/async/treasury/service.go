@@ -35,12 +35,10 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		// treasury.TreasuryPoolStateDeprecated,
 	} {
 		go func(state treasury.TreasuryPoolState) {
-
 			err := p.worker(ctx, state, interval)
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("pool processing loop terminated unexpectedly for state %d", state)
 			}
-
 		}(item)
 	}
 

@@ -76,7 +76,6 @@ func findPotentialExternalDeposits(ctx context.Context, data code_data.Provider,
 	var cursor []byte
 	var totalTransactionsFound int
 	for {
-
 		history, err := data.GetBlockchainHistory(
 			ctx,
 			vault.PublicKey().ToBase58(),
@@ -201,7 +200,6 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 	// todo: Below logic is beginning to get messy and might be in need of a
 	//       refactor soon
 	switch accountInfoRecord.AccountType {
-
 	case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
 		// Check whether we've previously processed this external deposit
 		_, err = data.GetExternalDeposit(ctx, signature, tokenAccount.PublicKey().ToBase58())

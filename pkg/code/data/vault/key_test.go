@@ -10,7 +10,6 @@ import (
 )
 
 func TestCreateKey(t *testing.T) {
-
 	for i := 0; i < 100; i++ {
 		actual, err := vault.CreateKey()
 		require.NoError(t, err)
@@ -22,7 +21,6 @@ func TestCreateKey(t *testing.T) {
 		_, err = base58.Decode(actual.PrivateKey)
 		require.NoError(t, err)
 	}
-
 }
 
 func TestGrindKey(t *testing.T) {

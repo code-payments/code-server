@@ -664,11 +664,9 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 
 	var messageHandler MessageHandler
 	switch req.Message.Kind.(type) {
-
 	//
 	// Section: Cash
 	//
-
 	case *messagingpb.Message_RequestToGrabBill:
 		log = log.WithField("message_type", "request_to_grab_bill")
 		messageHandler = NewRequestToGrabBillMessageHandler(s.data)
@@ -676,7 +674,6 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 	//
 	// Section: Payment Request
 	//
-
 	case *messagingpb.Message_RequestToReceiveBill:
 		log = log.WithField("message_type", "request_to_receive_bill")
 		messageHandler = NewRequestToReceiveBillMessageHandler(s.conf, s.data, s.rpcSignatureVerifier, s.domainVerifier)
@@ -694,7 +691,6 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 	//
 	// Section: Login
 	//
-
 	case *messagingpb.Message_RequestToLogin:
 		log = log.WithField("message_type", "request_to_login")
 		messageHandler = NewRequestToLoginMessageHandler(s.data, s.rpcSignatureVerifier, s.domainVerifier)
@@ -705,7 +701,6 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 	//
 	// Section: Airdrops
 	//
-
 	case *messagingpb.Message_AirdropReceived:
 		return nil, status.Error(codes.InvalidArgument, "message.kind cannot be airdrop_received")
 

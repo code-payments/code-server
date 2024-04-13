@@ -1232,7 +1232,6 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 			return err
 		}
 	} else {
-
 		// There's one opened account, and it must be the new temporary incoming account.
 		if len(openedAccounts) != 1 {
 			return newIntentValidationError("must open one account")
@@ -2967,7 +2966,6 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 		// exact exchange data requirements, which has already been validated at time
 		// of payment intent creation. We do leave the ability open to reserve an exchange
 		// rate, but no use cases warrant that atm.
-
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}

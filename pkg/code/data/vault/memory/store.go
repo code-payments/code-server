@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -146,7 +146,6 @@ func (s *store) Get(ctx context.Context, sig string) (*vault.Record, error) {
 	defer s.mu.Unlock()
 
 	if item := s.findPublicKey(sig); item != nil {
-
 		val, err := vault.Decrypt(item.PrivateKey, item.PublicKey)
 		if err != nil {
 			return nil, err
