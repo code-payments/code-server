@@ -152,7 +152,7 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 			ctx,
 			data,
 			CashTransactionsName,
-			chat.ChatTypeInternal,
+			chat.TypeInternal,
 			true,
 			receiver,
 			protoMessage,

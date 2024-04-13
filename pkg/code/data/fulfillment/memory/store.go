@@ -358,7 +358,7 @@ func (s *store) CountByStateGroupedByType(ctx context.Context, state fulfillment
 
 	res := make(map[fulfillment.Type]uint64)
 	for _, item := range items {
-		res[item.FulfillmentType] += 1
+		res[item.FulfillmentType]++
 	}
 	return res, nil
 }
@@ -423,7 +423,7 @@ func (s *store) CountPendingByType(ctx context.Context) (map[fulfillment.Type]ui
 
 	res := make(map[fulfillment.Type]uint64)
 	for _, item := range items {
-		res[item.FulfillmentType] += 1
+		res[item.FulfillmentType]++
 	}
 	return res, nil
 }
@@ -551,7 +551,7 @@ func (s *store) ActivelyScheduleTreasuryAdvances(ctx context.Context, treasury s
 
 		data.DisableActiveScheduling = false
 
-		updateCount += 1
+		updateCount++
 		if updateCount >= uint64(limit) {
 			return updateCount, nil
 		}

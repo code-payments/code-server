@@ -64,14 +64,14 @@ func (s *store) SaveVerification(ctx context.Context, newVerification *phone.Ver
 		break
 	}
 	if !alreadyExists {
-		copy := &phone.Verification{
+		cpy := &phone.Verification{
 			OwnerAccount:   newVerification.OwnerAccount,
 			PhoneNumber:    newVerification.PhoneNumber,
 			CreatedAt:      newVerification.CreatedAt,
 			LastVerifiedAt: newVerification.LastVerifiedAt,
 		}
-		s.verificationsByAccount[copy.OwnerAccount] = append(s.verificationsByAccount[copy.OwnerAccount], copy)
-		s.verificationsByNumber[copy.PhoneNumber] = append(s.verificationsByNumber[copy.PhoneNumber], copy)
+		s.verificationsByAccount[cpy.OwnerAccount] = append(s.verificationsByAccount[cpy.OwnerAccount], cpy)
+		s.verificationsByNumber[cpy.PhoneNumber] = append(s.verificationsByNumber[cpy.PhoneNumber], cpy)
 	}
 
 	currentByAccount = s.verificationsByAccount[newVerification.OwnerAccount]
@@ -154,14 +154,14 @@ func (s *store) SaveLinkingToken(ctx context.Context, token *phone.LinkingToken)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := &phone.LinkingToken{
+	cpy := &phone.LinkingToken{
 		PhoneNumber:       token.PhoneNumber,
 		Code:              token.Code,
 		ExpiresAt:         token.ExpiresAt,
 		CurrentCheckCount: token.CurrentCheckCount,
 		MaxCheckCount:     token.MaxCheckCount,
 	}
-	s.linkingTokensByNumber[copy.PhoneNumber] = copy
+	s.linkingTokensByNumber[cpy.PhoneNumber] = cpy
 
 	return nil
 }
@@ -231,17 +231,17 @@ func (s *store) SaveOwnerAccountSetting(ctx context.Context, phoneNumber string,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := &phone.Settings{
+	cpy := &phone.Settings{
 		PhoneNumber:    phoneNumber,
 		ByOwnerAccount: make(map[string]*phone.OwnerAccountSetting),
 	}
 
 	phoneSettings, ok := s.settingsByNumber[phoneNumber]
 	if ok {
-		copy = phoneSettings
+		cpy = phoneSettings
 	}
 
-	currentSettings, ok := copy.ByOwnerAccount[newSettings.OwnerAccount]
+	currentSettings, ok := cpy.ByOwnerAccount[newSettings.OwnerAccount]
 	if ok {
 		if newSettings.IsUnlinked != nil {
 			flagCopy := *newSettings.IsUnlinked
@@ -251,13 +251,13 @@ func (s *store) SaveOwnerAccountSetting(ctx context.Context, phoneNumber string,
 		return nil
 	}
 
-	copy.ByOwnerAccount[newSettings.OwnerAccount] = &phone.OwnerAccountSetting{
+	cpy.ByOwnerAccount[newSettings.OwnerAccount] = &phone.OwnerAccountSetting{
 		OwnerAccount:  newSettings.OwnerAccount,
 		IsUnlinked:    newSettings.IsUnlinked,
 		CreatedAt:     newSettings.CreatedAt,
 		LastUpdatedAt: newSettings.LastUpdatedAt,
 	}
-	s.settingsByNumber[phoneNumber] = copy
+	s.settingsByNumber[phoneNumber] = cpy
 
 	return nil
 }
@@ -274,7 +274,7 @@ func (s *store) PutEvent(ctx context.Context, event *phone.Event) error {
 	eventsByNumber := s.eventsByNumber[event.PhoneNumber]
 	eventsByVerification := s.eventsByVerification[event.VerificationId]
 
-	copy := &phone.Event{
+	cpy := &phone.Event{
 		Type:           event.Type,
 		VerificationId: event.VerificationId,
 		PhoneNumber:    event.PhoneNumber,
@@ -282,10 +282,10 @@ func (s *store) PutEvent(ctx context.Context, event *phone.Event) error {
 		CreatedAt:      event.CreatedAt,
 	}
 
-	eventsByNumber = append(eventsByNumber, copy)
+	eventsByNumber = append(eventsByNumber, cpy)
 	s.eventsByNumber[event.PhoneNumber] = eventsByNumber
 
-	eventsByVerification = append(eventsByVerification, copy)
+	eventsByVerification = append(eventsByVerification, cpy)
 	s.eventsByVerification[event.VerificationId] = eventsByVerification
 
 	return nil
@@ -327,7 +327,7 @@ func (s *store) CountEventsForVerificationByType(ctx context.Context, verificati
 
 	for _, event := range s.eventsByVerification[verification] {
 		if event.Type == eventType {
-			count += 1
+			count++
 		}
 	}
 
@@ -350,7 +350,7 @@ func (s *store) CountEventsForNumberByTypeSinceTimestamp(ctx context.Context, ph
 			continue
 		}
 
-		count += 1
+		count++
 	}
 
 	return count, nil

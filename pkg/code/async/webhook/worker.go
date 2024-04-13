@@ -140,8 +140,8 @@ func (p *service) setupNextAttempt(ctx context.Context, record *webhook.Record) 
 		return false, p.updateWebhookRecord(ctx, &cloned)
 	}
 
-	record.Attempts += 1
-	cloned.Attempts += 1
+	record.Attempts++
+	cloned.Attempts++
 	cloned.NextAttemptAt = pointer.Time(time.Now().Add(delay))
 
 	return true, p.updateWebhookRecord(ctx, &cloned)
@@ -155,7 +155,7 @@ func (p *service) onWebhookExecuted(ctx context.Context, record *webhook.Record,
 	// Save success state immediately
 	if isSuccess {
 		p.metricsMu.Lock()
-		p.successfulWebhooks += 1
+		p.successfulWebhooks++
 		p.metricsMu.Unlock()
 
 		record.State = webhook.StateConfirmed
@@ -164,7 +164,7 @@ func (p *service) onWebhookExecuted(ctx context.Context, record *webhook.Record,
 	}
 
 	p.metricsMu.Lock()
-	p.failedWebhooks += 1
+	p.failedWebhooks++
 	p.metricsMu.Unlock()
 
 	// Otherwise, save failure state only if we're on the last attempt

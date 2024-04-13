@@ -24,7 +24,7 @@ var (
 	treasuryPoolLock sync.Mutex
 )
 
-func (p *service) worker(serviceCtx context.Context, state treasury.TreasuryPoolState, interval time.Duration) error {
+func (p *service) worker(serviceCtx context.Context, state treasury.PoolState, interval time.Duration) error {
 	delay := interval
 	var cursor query.Cursor
 
@@ -82,7 +82,7 @@ func (p *service) worker(serviceCtx context.Context, state treasury.TreasuryPool
 
 func (p *service) handle(ctx context.Context, record *treasury.Record) error {
 	switch record.State {
-	case treasury.TreasuryPoolStateAvailable:
+	case treasury.PoolStateAvailable:
 		return p.handleAvailable(ctx, record)
 	default:
 		return nil

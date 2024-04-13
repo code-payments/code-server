@@ -136,7 +136,7 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 
 			SolanaBlock: 123,
 
-			State: treasury.TreasuryPoolStateAvailable,
+			State: treasury.PoolStateAvailable,
 		}
 		serverEnv.treasuryPoolByAddress[treasuryPoolRecord.Address] = treasuryPoolRecord
 		serverEnv.treasuryPoolByBucket[bucket] = treasuryPoolRecord
@@ -244,7 +244,7 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 		require.NoError(t, serverEnv.data.SavePhoneVerification(serverEnv.ctx, verificationRecord))
 
 		userIdentityRecord := &user_identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneEnv.verifiedPhoneNumber,
 			},
@@ -268,7 +268,7 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 		require.NoError(t, err)
 		timelockRecord := legacyTimelockAccounts.ToDBRecord()
 		timelockRecord.VaultState = timelock_token_v1.StateLocked
-		timelockRecord.Block += 1
+		timelockRecord.Block++
 		require.NoError(t, serverEnv.data.SaveTimelock(serverEnv.ctx, timelockRecord))
 
 		// Simulate a swap account being created
@@ -540,7 +540,7 @@ func (s *serverTestEnv) simulateTimelockAccountInState(t *testing.T, vault *comm
 	require.NoError(t, err)
 
 	timelockRecord.VaultState = state
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, s.data.SaveTimelock(s.ctx, timelockRecord))
 }
 
@@ -3792,9 +3792,9 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		isPrivateTransferIntent = true
 
 		if p.conf.simulateSendingTooLittle {
-			typed.SendPrivatePayment.ExchangeData.Quarks += 1
+			typed.SendPrivatePayment.ExchangeData.Quarks++
 		} else if p.conf.simulateSendingTooMuch {
-			typed.SendPrivatePayment.ExchangeData.Quarks -= 1
+			typed.SendPrivatePayment.ExchangeData.Quarks--
 		}
 
 		if p.conf.simulateInvalidExchangeRate {
@@ -4138,9 +4138,9 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		isPrivateTransferIntent = true
 
 		if p.conf.simulateReceivingTooLittle {
-			typed.ReceivePaymentsPrivately.Quarks += 1
+			typed.ReceivePaymentsPrivately.Quarks++
 		} else if p.conf.simulateReceivingTooMuch {
-			typed.ReceivePaymentsPrivately.Quarks -= 1
+			typed.ReceivePaymentsPrivately.Quarks--
 		}
 
 		if p.conf.simulateFundingTempAccountTooMuch {
@@ -4313,7 +4313,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			for _, action := range actions {
 				switch typed := action.Type.(type) {
 				case *transactionpb.Action_NoPrivacyWithdraw:
-					typed.NoPrivacyWithdraw.Amount += 1
+					typed.NoPrivacyWithdraw.Amount++
 				}
 			}
 		}
@@ -4373,9 +4373,9 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		}
 	case *transactionpb.Metadata_SendPublicPayment:
 		if p.conf.simulateSendingTooLittle {
-			typed.SendPublicPayment.ExchangeData.Quarks += 1
+			typed.SendPublicPayment.ExchangeData.Quarks++
 		} else if p.conf.simulateSendingTooMuch {
-			typed.SendPublicPayment.ExchangeData.Quarks -= 1
+			typed.SendPublicPayment.ExchangeData.Quarks--
 		}
 
 		if p.conf.simulateInvalidExchangeRate {
@@ -4447,15 +4447,15 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 		}
 
 		if typed.ReceivePaymentsPublicly.IsRemoteSend && p.conf.simulateClaimingTooLittleFromGiftCard {
-			typed.ReceivePaymentsPublicly.Quarks += 1
+			typed.ReceivePaymentsPublicly.Quarks++
 		} else if typed.ReceivePaymentsPublicly.IsRemoteSend && p.conf.simulateClaimingTooMuchFromGiftCard {
-			typed.ReceivePaymentsPublicly.Quarks -= 1
+			typed.ReceivePaymentsPublicly.Quarks--
 		}
 
 		if p.conf.simulateReceivingTooLittle {
-			actions[0].GetNoPrivacyWithdraw().Amount -= 1
+			actions[0].GetNoPrivacyWithdraw().Amount--
 		} else if p.conf.simulateReceivingTooMuch {
-			actions[0].GetNoPrivacyWithdraw().Amount += 1
+			actions[0].GetNoPrivacyWithdraw().Amount++
 		}
 
 		if p.conf.simulateNotReceivingFromSource {
@@ -4575,7 +4575,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			}
 
 			if p.conf.simulateInvalidIndexForOpenPrimaryAccountAction && typed.OpenAccount.AccountType == commonpb.AccountType_PRIMARY {
-				typed.OpenAccount.Index += 1
+				typed.OpenAccount.Index++
 			}
 
 			if p.conf.simulateInvalidAccountTypeForOpenNonPrimaryAccountAction && typed.OpenAccount.AccountType != commonpb.AccountType_PRIMARY {
@@ -4598,7 +4598,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 			}
 
 			if p.conf.simulateInvalidIndexForOpenNonPrimaryAccountAction && typed.OpenAccount.AccountType != commonpb.AccountType_PRIMARY {
-				typed.OpenAccount.Index += 1
+				typed.OpenAccount.Index++
 			}
 
 			if p.conf.simulateOpeningWrongTempAccount && typed.OpenAccount.AccountType == commonpb.AccountType_TEMPORARY_INCOMING {
@@ -4916,8 +4916,8 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 	if p.conf.simulateInvalidActionId {
 		require.True(t, len(actions) >= 2)
 
-		actions[0].Id += 1
-		actions[1].Id -= 1
+		actions[0].Id++
+		actions[1].Id--
 	}
 
 	if p.conf.simulateReusingIntentId {
@@ -4969,7 +4969,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 
 					bps := defaultTestThirdPartyFeeBps
 					if p.conf.simulateInvalidThirdPartyFeeAmount {
-						bps += 1
+						bps++
 					}
 
 					paymentRequestRecord.Fees = append(paymentRequestRecord.Fees, &paymentrequest.Fee{
@@ -5268,7 +5268,7 @@ func (p *phoneTestEnv) submitIntent(t *testing.T, intentId string, metadata *tra
 	}
 
 	if p.conf.simulateInvalidSignatureValueSubmitted {
-		protoSignatures[0].Value[0] += 1
+		protoSignatures[0].Value[0]++
 	}
 
 	if p.conf.simulateDelayForSubmittingSignatures {
@@ -6052,7 +6052,7 @@ func (p *phoneTestEnv) assertAirdropCount(t *testing.T, expected int) {
 	var actual int
 	for _, historyItem := range history {
 		if historyItem.IsAirdrop {
-			actual += 1
+			actual++
 		}
 	}
 	assert.Equal(t, expected, actual)

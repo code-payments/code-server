@@ -8,10 +8,10 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
-	q "github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
+	q "github.com/code-payments/code-server/pkg/database/query"
 )
 
 const (
@@ -116,33 +116,33 @@ func fromModel(obj *model) *payment.Record {
 	return record
 }
 
-func (self *model) dbSave(ctx context.Context, db *sqlx.DB) error {
+func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	query := `INSERT INTO ` + tableName + ` (` + tableColumns + `)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *;`
 
 	err := db.QueryRowxContext(ctx, query,
-		self.BlockId,
-		self.BlockTime,
-		self.TransactionId,
-		self.TransactionIndex,
-		self.Rendezvous,
-		self.IsExternal,
-		self.SourceId,
-		self.DestinationId,
-		self.Quantity,
-		self.ExchangeCurrency,
-		self.Region,
-		self.ExchangeRate,
-		self.UsdMarketValue,
-		self.IsWithdraw,
-		self.ConfirmationState,
-		self.CreatedAt,
-	).StructScan(self)
+		m.BlockId,
+		m.BlockTime,
+		m.TransactionId,
+		m.TransactionIndex,
+		m.Rendezvous,
+		m.IsExternal,
+		m.SourceId,
+		m.DestinationId,
+		m.Quantity,
+		m.ExchangeCurrency,
+		m.Region,
+		m.ExchangeRate,
+		m.UsdMarketValue,
+		m.IsWithdraw,
+		m.ConfirmationState,
+		m.CreatedAt,
+	).StructScan(m)
 
 	return pgutil.CheckUniqueViolation(err, payment.ErrExists)
 }
 
-func (self *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
+func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 	query := `UPDATE ` + tableName + `
 		SET
 			block_id 			= $2,
@@ -155,15 +155,15 @@ func (self *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 		WHERE id = $1 RETURNING *;`
 
 	err := db.QueryRowxContext(ctx, query,
-		self.Id,
-		self.BlockId,
-		self.BlockTime,
-		self.ExchangeCurrency,
-		self.Region,
-		self.ExchangeRate,
-		self.UsdMarketValue,
-		self.ConfirmationState,
-	).StructScan(self)
+		m.Id,
+		m.BlockId,
+		m.BlockTime,
+		m.ExchangeCurrency,
+		m.Region,
+		m.ExchangeRate,
+		m.UsdMarketValue,
+		m.ConfirmationState,
+	).StructScan(m)
 
 	return pgutil.CheckNoRows(err, payment.ErrNotFound)
 }
@@ -245,11 +245,11 @@ func dbGetAllForAccount(ctx context.Context, db *sqlx.DB, account string, cursor
 	return res, nil
 }
 
-func dbGetAllForAccountByType(ctx context.Context, db *sqlx.DB, account string, cursor uint64, limit uint, ordering q.Ordering, paymentType payment.PaymentType) ([]*model, error) {
+func dbGetAllForAccountByType(ctx context.Context, db *sqlx.DB, account string, cursor uint64, limit uint, ordering q.Ordering, paymentType payment.Type) ([]*model, error) {
 	res := []*model{}
 
 	var condition string
-	if paymentType == payment.PaymentType_Send {
+	if paymentType == payment.TypeSend {
 		condition = "source = $1"
 	} else {
 		condition = "destination = $1"
@@ -270,11 +270,11 @@ func dbGetAllForAccountByType(ctx context.Context, db *sqlx.DB, account string, 
 	return res, nil
 }
 
-func dbGetAllForAccountByTypeAfterBlock(ctx context.Context, db *sqlx.DB, account string, block uint64, cursor uint64, limit uint, ordering q.Ordering, paymentType payment.PaymentType) ([]*model, error) {
+func dbGetAllForAccountByTypeAfterBlock(ctx context.Context, db *sqlx.DB, account string, block uint64, cursor uint64, limit uint, ordering q.Ordering, paymentType payment.Type) ([]*model, error) {
 	res := []*model{}
 
 	var condition string
-	if paymentType == payment.PaymentType_Send {
+	if paymentType == payment.TypeSend {
 		condition = "source = $1"
 	} else {
 		condition = "destination = $1"
@@ -297,11 +297,11 @@ func dbGetAllForAccountByTypeAfterBlock(ctx context.Context, db *sqlx.DB, accoun
 	return res, nil
 }
 
-func dbGetAllForAccountByTypeWithinBlockRange(ctx context.Context, db *sqlx.DB, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering q.Ordering, paymentType payment.PaymentType) ([]*model, error) {
+func dbGetAllForAccountByTypeWithinBlockRange(ctx context.Context, db *sqlx.DB, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering q.Ordering, paymentType payment.Type) ([]*model, error) {
 	res := []*model{}
 
 	var condition string
-	if paymentType == payment.PaymentType_Send {
+	if paymentType == payment.TypeSend {
 		condition = "source = $1"
 	} else {
 		condition = "destination = $1"

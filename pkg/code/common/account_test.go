@@ -184,7 +184,7 @@ func TestIsAccountManagedByCode_TimelockState_V1Program(t *testing.T) {
 	assert.True(t, result)
 
 	timelockRecord.VaultState = timelock_token_v1.StateLocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	result, err = timelockAccounts.Vault.IsManagedByCode(ctx, data)
@@ -193,7 +193,7 @@ func TestIsAccountManagedByCode_TimelockState_V1Program(t *testing.T) {
 
 	// The timelock account is waiting for timeout
 	timelockRecord.VaultState = timelock_token_v1.StateWaitingForTimeout
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	result, err = timelockAccounts.Vault.IsManagedByCode(ctx, data)
@@ -202,7 +202,7 @@ func TestIsAccountManagedByCode_TimelockState_V1Program(t *testing.T) {
 
 	// The timelock account is unlocked
 	timelockRecord.VaultState = timelock_token_v1.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	result, err = timelockAccounts.Vault.IsManagedByCode(ctx, data)
@@ -569,7 +569,7 @@ func TestIsAccountManagedByCode_TimelockState_Legacy2022Program(t *testing.T) {
 	assert.True(t, result)
 
 	timelockRecord.VaultState = timelock_token_v1.StateLocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	result, err = timelockAccounts.Vault.IsManagedByCode(ctx, data)
@@ -578,7 +578,7 @@ func TestIsAccountManagedByCode_TimelockState_Legacy2022Program(t *testing.T) {
 
 	// The timelock account is waiting for timeout
 	timelockRecord.VaultState = timelock_token_v1.StateWaitingForTimeout
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	result, err = timelockAccounts.Vault.IsManagedByCode(ctx, data)
@@ -587,7 +587,7 @@ func TestIsAccountManagedByCode_TimelockState_Legacy2022Program(t *testing.T) {
 
 	// The timelock account is unlocked
 	timelockRecord.VaultState = timelock_token_v1.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	result, err = timelockAccounts.Vault.IsManagedByCode(ctx, data)

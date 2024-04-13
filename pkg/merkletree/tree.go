@@ -81,14 +81,14 @@ func (t *MerkleTree) AddLeaf(leaf Leaf) error {
 	}
 
 	t.root = currentLevelHash
-	t.nextIndex += 1
+	t.nextIndex++
 
 	return nil
 }
 
 func (t *MerkleTree) GetRoot() Hash {
-	var copy Hash
-	return append(copy, t.root...)
+	var cpy Hash
+	return append(cpy, t.root...)
 }
 
 func (t *MerkleTree) GetLeafHash(leaf Leaf) Hash {
@@ -115,11 +115,11 @@ func (t *MerkleTree) GetExpectedHashFromPair(h1, h2 Hash) Hash {
 }
 
 func (t *MerkleTree) GetZeroValues() []Hash {
-	copy := make([]Hash, len(t.zeroValues))
+	cpy := make([]Hash, len(t.zeroValues))
 	for i, zeroValue := range t.zeroValues {
-		copy[i] = append(copy[i], zeroValue...)
+		cpy[i] = append(cpy[i], zeroValue...)
 	}
-	return copy
+	return cpy
 }
 
 // todo: We'll need a more efficient version of this method in production

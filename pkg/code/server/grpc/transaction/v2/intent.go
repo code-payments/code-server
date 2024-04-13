@@ -210,7 +210,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log.Warnf("unhandled owner account type %s", submitActionsOwnerMetadata.Type)
 			return handleSubmitIntentError(streamer, errors.New("unhandled owner account type"))
 		}
-	} else if err == common.ErrOwnerNotFound {
+	} else if errors.Is(err, common.ErrOwnerNotFound) { //nolint:revive
 		// Caught by later error
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting owner account metadata")
@@ -556,7 +556,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		}
 
 		for j := 0; j < transactionCount; j++ {
-			var makeTxnResult *makeSolanaTransactionResult
+			var makeTxnResult *MakeSolanaTransactionResult
 			var selectedNonce *transaction.SelectedNonce
 			var actionId uint32
 			if isUpgradeActionOperation {
@@ -1313,10 +1313,10 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
 				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY || accountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP,
 			}, nil
-		} else {
-			log.WithError(err).Warn("failure checking account info db")
-			return nil, status.Error(codes.Internal, "")
 		}
+
+		log.WithError(err).Warn("failure checking account info db")
+		return nil, status.Error(codes.Internal, "")
 	}
 
 	//

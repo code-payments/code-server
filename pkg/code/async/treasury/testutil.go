@@ -72,7 +72,7 @@ func setup(t *testing.T, testOverrides *testOverrides) *testEnv {
 
 		SolanaBlock: 1,
 
-		State: treasury.TreasuryPoolStateAvailable,
+		State: treasury.PoolStateAvailable,
 	}
 
 	merkleTree, err := db.InitializeNewMerkleTree(
@@ -458,6 +458,6 @@ func (e *testEnv) generateAvailableNonces(t *testing.T, count int) []*nonce.Reco
 }
 
 func (e *testEnv) getNextBlock() uint64 {
-	e.nextBlock += 1
+	e.nextBlock++
 	return e.nextBlock
 }

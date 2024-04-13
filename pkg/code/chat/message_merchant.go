@@ -36,7 +36,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	// the merchant. Representation in the UI may differ (ie. 2 and 3 are grouped),
 	// but this is the most flexible solution with the chat model.
 	chatTitle := PaymentsName
-	chatType := chat.ChatTypeInternal
+	chatType := chat.TypeInternal
 	isVerifiedChat := false
 
 	exchangeData, ok := getExchangeDataFromIntent(intentRecord)
@@ -59,7 +59,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 
 			if paymentRequestRecord.Domain != nil {
 				chatTitle = *paymentRequestRecord.Domain
-				chatType = chat.ChatTypeExternalApp
+				chatType = chat.TypeExternalApp
 				isVerifiedChat = paymentRequestRecord.IsVerified
 			}
 
@@ -87,7 +87,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					// and will have merchant payments appear in the verified merchant
 					// chat.
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
-					chatType = chat.ChatTypeExternalApp
+					chatType = chat.TypeExternalApp
 					isVerifiedChat = true
 					verbAndExchangeDataByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
 						verb:         chatpb.ExchangeDataContent_RECEIVED,
@@ -107,7 +107,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					// and will have merchant payments appear in the verified merchant
 					// chat.
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
-					chatType = chat.ChatTypeExternalApp
+					chatType = chat.TypeExternalApp
 					isVerifiedChat = true
 					verbAndExchangeDataByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
 						verb:         chatpb.ExchangeDataContent_RECEIVED,
@@ -126,7 +126,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			// and will have merchant payments appear in the verified merchant
 			// chat.
 			chatTitle = *destinationAccountInfoRecord.RelationshipTo
-			chatType = chat.ChatTypeExternalApp
+			chatType = chat.TypeExternalApp
 			isVerifiedChat = true
 			verbAndExchangeDataByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
 				verb:         chatpb.ExchangeDataContent_RECEIVED,

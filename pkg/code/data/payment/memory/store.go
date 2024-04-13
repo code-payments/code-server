@@ -55,7 +55,7 @@ func (s *store) Put(ctx context.Context, data *payment.Record) error {
 	data.Id = s.lastIndex
 	data.ExchangeCurrency = strings.ToLower(data.ExchangeCurrency)
 	s.paymentRecords[pk] = data
-	s.lastIndex += 1
+	s.lastIndex++
 	return nil
 }
 
@@ -157,7 +157,7 @@ func (s *store) GetAllForAccount(ctx context.Context, account string, cursor uin
 	return all[:limit], nil
 }
 
-func (s *store) GetAllForAccountByType(ctx context.Context, account string, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.PaymentType) (result []*payment.Record, err error) {
+func (s *store) GetAllForAccountByType(ctx context.Context, account string, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.Type) (result []*payment.Record, err error) {
 	s.paymentRecordMu.Lock()
 	defer s.paymentRecordMu.Unlock()
 
@@ -168,8 +168,8 @@ func (s *store) GetAllForAccountByType(ctx context.Context, account string, curs
 	// not ideal, but this is for testing purposes and s.paymentRecord should be small
 	all := make([]*payment.Record, 0)
 	for _, record := range s.paymentRecords {
-		isSender := paymentType == payment.PaymentType_Send && record.Source == account
-		isReceiver := paymentType == payment.PaymentType_Receive && record.Destination == account
+		isSender := paymentType == payment.TypeSend && record.Source == account
+		isReceiver := paymentType == payment.TypeReceive && record.Destination == account
 		if isSender || isReceiver {
 			if ordering == query.Ascending {
 				if record.Id > cursor {
@@ -202,7 +202,7 @@ func (s *store) GetAllForAccountByType(ctx context.Context, account string, curs
 	return all[:limit], nil
 }
 
-func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account string, block uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.PaymentType) (result []*payment.Record, err error) {
+func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account string, block uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.Type) (result []*payment.Record, err error) {
 	s.paymentRecordMu.Lock()
 	defer s.paymentRecordMu.Unlock()
 
@@ -217,8 +217,8 @@ func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account st
 			continue
 		}
 
-		isSender := paymentType == payment.PaymentType_Send && record.Source == account
-		isReceiver := paymentType == payment.PaymentType_Receive && record.Destination == account
+		isSender := paymentType == payment.TypeSend && record.Source == account
+		isReceiver := paymentType == payment.TypeReceive && record.Destination == account
 		if isSender || isReceiver {
 			if ordering == query.Ascending {
 				if record.Id > cursor {
@@ -251,7 +251,7 @@ func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account st
 	return all[:limit], nil
 }
 
-func (s *store) GetAllForAccountByTypeWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.PaymentType) ([]*payment.Record, error) {
+func (s *store) GetAllForAccountByTypeWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.Type) ([]*payment.Record, error) {
 	s.paymentRecordMu.Lock()
 	defer s.paymentRecordMu.Unlock()
 
@@ -266,8 +266,8 @@ func (s *store) GetAllForAccountByTypeWithinBlockRange(ctx context.Context, acco
 			continue
 		}
 
-		isSender := paymentType == payment.PaymentType_Send && record.Source == account
-		isReceiver := paymentType == payment.PaymentType_Receive && record.Destination == account
+		isSender := paymentType == payment.TypeSend && record.Source == account
+		isReceiver := paymentType == payment.TypeReceive && record.Destination == account
 		if isSender || isReceiver {
 			if ordering == query.Ascending {
 				if record.Id > cursor {

@@ -71,7 +71,7 @@ func (s *store) PutChat(ctx context.Context, data *chat.Chat) error {
 }
 
 // GetChatById implements chat.Store.GetChatById
-func (s *store) GetChatById(ctx context.Context, id chat.ChatId) (*chat.Chat, error) {
+func (s *store) GetChatById(ctx context.Context, id chat.Id) (*chat.Chat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -121,7 +121,7 @@ func (s *store) PutMessage(ctx context.Context, data *chat.Message) error {
 }
 
 // DeleteMessage implements chat.Store.DeleteMessage
-func (s *store) DeleteMessage(ctx context.Context, chatId chat.ChatId, messageId string) error {
+func (s *store) DeleteMessage(ctx context.Context, chatId chat.Id, messageId string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -136,7 +136,7 @@ func (s *store) DeleteMessage(ctx context.Context, chatId chat.ChatId, messageId
 }
 
 // GetMessageById implements chat.Store.GetMessageById
-func (s *store) GetMessageById(ctx context.Context, chatId chat.ChatId, messageId string) (*chat.Message, error) {
+func (s *store) GetMessageById(ctx context.Context, chatId chat.Id, messageId string) (*chat.Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -150,7 +150,7 @@ func (s *store) GetMessageById(ctx context.Context, chatId chat.ChatId, messageI
 }
 
 // GetAllMessagesByChat implements chat.Store.GetAllMessagesByChat
-func (s *store) GetAllMessagesByChat(ctx context.Context, chatId chat.ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.Message, error) {
+func (s *store) GetAllMessagesByChat(ctx context.Context, chatId chat.Id, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -167,7 +167,7 @@ func (s *store) GetAllMessagesByChat(ctx context.Context, chatId chat.ChatId, cu
 }
 
 // AdvancePointer implements chat.Store.AdvancePointer
-func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, pointer string) error {
+func (s *store) AdvancePointer(_ context.Context, chatId chat.Id, pointer string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -182,7 +182,7 @@ func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, pointer st
 }
 
 // GetUnreadCount implements chat.Store.GetUnreadCount
-func (s *store) GetUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32, error) {
+func (s *store) GetUnreadCount(ctx context.Context, chatId chat.Id) (uint32, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -206,7 +206,7 @@ func (s *store) GetUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32,
 }
 
 // SetMuteState implements chat.Store.SetMuteState
-func (s *store) SetMuteState(ctx context.Context, chatId chat.ChatId, isMuted bool) error {
+func (s *store) SetMuteState(ctx context.Context, chatId chat.Id, isMuted bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -221,7 +221,7 @@ func (s *store) SetMuteState(ctx context.Context, chatId chat.ChatId, isMuted bo
 }
 
 // SetSubscriptionState implements chat.Store.SetSubscriptionState
-func (s *store) SetSubscriptionState(ctx context.Context, chatId chat.ChatId, isSubscribed bool) error {
+func (s *store) SetSubscriptionState(ctx context.Context, chatId chat.Id, isSubscribed bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -257,7 +257,7 @@ func (s *store) findChat(data *chat.Chat) *chat.Chat {
 	return nil
 }
 
-func (s *store) findChatById(id chat.ChatId) *chat.Chat {
+func (s *store) findChatById(id chat.Id) *chat.Chat {
 	for _, item := range s.chatRecords {
 		if bytes.Equal(id[:], item.ChatId[:]) {
 			return item
@@ -289,7 +289,7 @@ func (s *store) findMessage(data *chat.Message) *chat.Message {
 	return nil
 }
 
-func (s *store) findMessageById(chatId chat.ChatId, messageId string) *chat.Message {
+func (s *store) findMessageById(chatId chat.Id, messageId string) *chat.Message {
 	for _, item := range s.messageRecords {
 		if bytes.Equal(item.ChatId[:], chatId[:]) && item.MessageId == messageId {
 			return item
@@ -298,7 +298,7 @@ func (s *store) findMessageById(chatId chat.ChatId, messageId string) *chat.Mess
 	return nil
 }
 
-func (s *store) findMessagesByChatId(chatId chat.ChatId) []*chat.Message {
+func (s *store) findMessagesByChatId(chatId chat.Id) []*chat.Message {
 	var res []*chat.Message
 	for _, item := range s.messageRecords {
 		if bytes.Equal(chatId[:], item.ChatId[:]) {

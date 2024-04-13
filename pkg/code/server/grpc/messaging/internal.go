@@ -27,7 +27,7 @@ const (
 )
 
 // todo: Similar to the common push package, we should put message creation and
-//       a proper client (ie. not tied to the server) in a common messaging package.
+//       a proper client (ie. not tied to the Server) in a common messaging package.
 
 type InternalMessageClient interface {
 	// InternallyCreateMessage creates and forwards a message on a stream
@@ -35,12 +35,12 @@ type InternalMessageClient interface {
 	InternallyCreateMessage(ctx context.Context, rendezvousKey *common.Account, message *messagingpb.Message) (uuid.UUID, error)
 }
 
-// Note: Assumes messages are generated in a RPC server where the messaging
+// Note: Assumes messages are generated in a RPC Server where the messaging
 // service exists. This likely won't be a good assumption (eg. message generated
 // in a worker), but is good enough to enable some initial use cases (eg. payment
 // requests). This is mostly an optimization around not needing to create a gRPC
-// client if the stream and message generation are on the same server.
-func (s *server) InternallyCreateMessage(ctx context.Context, rendezvousKey *common.Account, message *messagingpb.Message) (uuid.UUID, error) {
+// client if the stream and message generation are on the same Server.
+func (s *Server) InternallyCreateMessage(ctx context.Context, rendezvousKey *common.Account, message *messagingpb.Message) (uuid.UUID, error) {
 	if message.Id != nil {
 		return uuid.Nil, errors.New("message.id is generated in InternallyCreateMessage")
 	}
@@ -96,7 +96,7 @@ func (s *server) InternallyCreateMessage(ctx context.Context, rendezvousKey *com
 				Signature: &commonpb.Signature{
 					// Needs to be set to pass validation, but won't be used. This
 					// is only required for client-initiated messages. Rendezvous
-					// private keys are typically hidden from server.
+					// private keys are typically hidden from Server.
 					//
 					// todo: Different RPCs for public versus internal message sending.
 					Value: make([]byte, 64),
@@ -119,7 +119,7 @@ func (s *server) InternallyCreateMessage(ctx context.Context, rendezvousKey *com
 	return id, nil
 }
 
-func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.SendMessageRequest) error {
+func (s *Server) internallyForwardMessage(ctx context.Context, req *messagingpb.SendMessageRequest) error {
 	streamKey := base58.Encode(req.RendezvousKey.Value)
 
 	log := s.log.WithFields(logrus.Fields{
@@ -131,10 +131,10 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 	if err == nil {
 		log := log.WithField("receiver_location", rendezvousRecord.Location)
 
-		// We got lucky and the receiver's stream is on the same RPC server as
+		// We got lucky and the receiver's stream is on the same RPC Server as
 		// where the message is created. No forwarding between servers is required.
 		// Note that we always use the rendezvous record as the source of truth
-		// instead of checking for an active stream on this server. This server's
+		// instead of checking for an active stream on this Server. This Server's
 		// active stream may not be holding the lock, which can only be determined
 		// by who set the location in the rendezvous record.
 		if rendezvousRecord.Location == s.broadcastAddress {
@@ -202,7 +202,7 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 	return nil
 }
 
-func (s *server) verifyForwardedSendMessageRequest(ctx context.Context, req *messagingpb.SendMessageRequest) (bool, error) {
+func (s *Server) verifyForwardedSendMessageRequest(ctx context.Context, req *messagingpb.SendMessageRequest) (bool, error) {
 	signature, _ := headers.GetASCIIHeaderByName(ctx, internalSignatureHeaderName)
 	if len(signature) == 0 {
 		return false, nil

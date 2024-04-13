@@ -894,12 +894,12 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 }
 
 func (e *testEnv) sendExternalAppChatMessage(t *testing.T, msg *chatpb.ChatMessage, domain string, isVerified bool, recipient *common.Account) {
-	_, err := chat_util.SendChatMessage(e.ctx, e.data, domain, chat.ChatTypeExternalApp, isVerified, recipient, msg, false)
+	_, err := chat_util.SendChatMessage(e.ctx, e.data, domain, chat.TypeExternalApp, isVerified, recipient, msg, false)
 	require.NoError(t, err)
 }
 
 func (e *testEnv) sendInternalChatMessage(t *testing.T, msg *chatpb.ChatMessage, chatTitle string, recipient *common.Account) {
-	_, err := chat_util.SendChatMessage(e.ctx, e.data, chatTitle, chat.ChatTypeInternal, true, recipient, msg, false)
+	_, err := chat_util.SendChatMessage(e.ctx, e.data, chatTitle, chat.TypeInternal, true, recipient, msg, false)
 	require.NoError(t, err)
 }
 

@@ -353,7 +353,7 @@ func setupAmlTest(t *testing.T) (env amlTestEnv) {
 
 func setupPhoneUser(t *testing.T, env amlTestEnv, phoneNumber string) {
 	require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},

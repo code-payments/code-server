@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 func RunTests(t *testing.T, s chat.Store, teardown func()) {
@@ -45,7 +45,7 @@ func testChatRoundTrip(t *testing.T, s chat.Store) {
 
 		expected := &chat.Chat{
 			ChatId:     chatId,
-			ChatType:   chat.ChatTypeExternalApp,
+			ChatType:   chat.TypeExternalApp,
 			ChatTitle:  "domain",
 			IsVerified: true,
 
@@ -154,7 +154,7 @@ func testAdvancePointer(t *testing.T, s chat.Store) {
 
 		record := &chat.Chat{
 			ChatId:     chatId,
-			ChatType:   chat.ChatTypeExternalApp,
+			ChatType:   chat.TypeExternalApp,
 			ChatTitle:  "domain",
 			IsVerified: true,
 
@@ -185,7 +185,7 @@ func testGetUnreadCount(t *testing.T, s chat.Store) {
 
 		chatRecord := &chat.Chat{
 			ChatId:     chatId,
-			ChatType:   chat.ChatTypeExternalApp,
+			ChatType:   chat.TypeExternalApp,
 			ChatTitle:  "domain",
 			IsVerified: true,
 
@@ -222,7 +222,7 @@ func testGetUnreadCount(t *testing.T, s chat.Store) {
 
 		var deltaRead int
 		for i := 1; i <= 3; i++ {
-			deltaRead += 1
+			deltaRead++
 
 			for j := 0; j < 2; j++ {
 				require.NoError(t, s.AdvancePointer(ctx, chatId, fmt.Sprintf("message%d%d", i, j)))
@@ -243,7 +243,7 @@ func testMuteState(t *testing.T, s chat.Store) {
 
 		require.NoError(t, s.PutChat(ctx, &chat.Chat{
 			ChatId:     chatId,
-			ChatType:   chat.ChatTypeExternalApp,
+			ChatType:   chat.TypeExternalApp,
 			ChatTitle:  "domain",
 			IsVerified: true,
 
@@ -272,7 +272,7 @@ func tesSubscriptionState(t *testing.T, s chat.Store) {
 
 		require.NoError(t, s.PutChat(ctx, &chat.Chat{
 			ChatId:     chatId,
-			ChatType:   chat.ChatTypeExternalApp,
+			ChatType:   chat.TypeExternalApp,
 			ChatTitle:  "domain",
 			IsVerified: true,
 
@@ -305,7 +305,7 @@ func testGetAllChatsByUserPaging(t *testing.T, s chat.Store) {
 
 			record := &chat.Chat{
 				ChatId:     chat.GetChatId(merchant, user, true),
-				ChatType:   chat.ChatTypeExternalApp,
+				ChatType:   chat.TypeExternalApp,
 				ChatTitle:  merchant,
 				IsVerified: true,
 				CodeUser:   user,

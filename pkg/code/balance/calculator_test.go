@@ -346,7 +346,7 @@ func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	timelockRecord, err := env.data.GetTimelockByVault(env.ctx, tokenAccount.PublicKey().ToBase58())
 	require.NoError(t, err)
 	timelockRecord.VaultState = timelock_token_v1.StateWaitingForTimeout
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, ownerAccount)
@@ -494,7 +494,7 @@ func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestDat
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.VaultState = timelock_token_v1.StateLocked
-		timelockRecord.Block += 1
+		timelockRecord.Block++
 		require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 		if !conf.useLegacyIntents {

@@ -8,10 +8,10 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
 	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
 )
 
 const (
@@ -136,7 +136,7 @@ func fromTreasuryPoolModel(obj *treasuryPoolModel) *treasury.Record {
 
 		SolanaBlock: obj.SolanaBlock,
 
-		State: treasury.TreasuryPoolState(obj.State),
+		State: treasury.PoolState(obj.State),
 
 		LastUpdatedAt: obj.LastUpdatedAt,
 	}
@@ -317,7 +317,7 @@ func dbGetByVault(ctx context.Context, db *sqlx.DB, vault string) (*treasuryPool
 	return &res, nil
 }
 
-func dbGetAllByState(ctx context.Context, db *sqlx.DB, state treasury.TreasuryPoolState, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*treasuryPoolModel, error) {
+func dbGetAllByState(ctx context.Context, db *sqlx.DB, state treasury.PoolState, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*treasuryPoolModel, error) {
 	res := []*treasuryPoolModel{}
 
 	query := `SELECT id, data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at

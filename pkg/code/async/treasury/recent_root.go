@@ -367,7 +367,7 @@ func (p *service) anyFinalizedTreasuryAdvancesAfterLastSaveRecentRoot(ctx contex
 		treasuryPoolRecord.Vault,
 		lowerBoundBlock+1,
 		math.MaxInt64,
-		query.WithFilter(query.Filter{Value: uint64(payment.PaymentType_Send), Valid: true}),
+		query.WithFilter(query.Filter{Value: uint64(payment.TypeSend), Valid: true}),
 		query.WithLimit(1),
 	)
 	if err == payment.ErrNotFound || len(paymentRecords) == 0 {

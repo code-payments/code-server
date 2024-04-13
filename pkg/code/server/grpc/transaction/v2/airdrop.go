@@ -553,7 +553,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		CreatedAt: time.Now(),
 	}
 
-	var eventType event.EventType
+	var eventType event.Type
 	switch airdropType {
 	case AirdropTypeGetFirstKin:
 		eventType = event.WelcomeBonusClaimed

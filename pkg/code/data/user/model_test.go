@@ -28,11 +28,11 @@ func TestUserIDProtoConverstion(t *testing.T) {
 }
 
 func TestUserIDValidation(t *testing.T) {
-	var nilUserID *UserID
-	emptyUserID := &UserID{}
+	var nilUserID *Id
+	emptyUserID := &Id{}
 	assert.Error(t, nilUserID.Validate())
 	assert.Error(t, emptyUserID.Validate())
-	assert.NoError(t, NewUserID().Validate())
+	assert.NoError(t, NewID().Validate())
 }
 
 func TestDataContainerIDStringConverstion(t *testing.T) {

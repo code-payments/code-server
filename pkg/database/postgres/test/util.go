@@ -10,7 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/jackc/pgx/v4/stdlib" //nolint:revive
 
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/retry/backoff"

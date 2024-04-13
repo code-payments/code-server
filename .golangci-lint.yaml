@@ -2,9 +2,16 @@ linters:
   enable:
     - bodyclose
     - whitespace
+    - revive
 
 issues:
   exclude-rules:
+    # var-naming conflicts are huge
+    - path: '(.+)\.go'
+      text: "var-naming"
+    # unused-parameter conflicts are sizeable
+    - path: '(.+)\.go'
+      text: "unused-parameter"
     - path: '(.+)_test\.go'
       text: ".*GetPaymentHistory is deprecated: Payment history has migrated to chats"
     - path: '(.+)testutil\.go'

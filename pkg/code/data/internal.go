@@ -286,7 +286,7 @@ type DatabaseData interface {
 	// User Identity
 	// --------------------------------------------------------------------------------
 	PutUser(ctx context.Context, record *identity.Record) error
-	GetUserByID(ctx context.Context, id *user.UserID) (*identity.Record, error)
+	GetUserByID(ctx context.Context, id *user.Id) (*identity.Record, error)
 	GetUserByPhoneView(ctx context.Context, phoneNumber string) (*identity.Record, error)
 
 	// User Storage Management
@@ -330,7 +330,7 @@ type DatabaseData interface {
 	GetTreasuryPoolByName(ctx context.Context, name string) (*treasury.Record, error)
 	GetTreasuryPoolByAddress(ctx context.Context, address string) (*treasury.Record, error)
 	GetTreasuryPoolByVault(ctx context.Context, vault string) (*treasury.Record, error)
-	GetAllTreasuryPoolsByState(ctx context.Context, state treasury.TreasuryPoolState, opts ...query.Option) ([]*treasury.Record, error)
+	GetAllTreasuryPoolsByState(ctx context.Context, state treasury.PoolState, opts ...query.Option) ([]*treasury.Record, error)
 	SaveTreasuryPoolFunding(ctx context.Context, record *treasury.FundingHistoryRecord) error
 	GetTotalAvailableTreasuryPoolFunds(ctx context.Context, vault string) (uint64, error)
 
@@ -379,16 +379,16 @@ type DatabaseData interface {
 	// Chat
 	// --------------------------------------------------------------------------------
 	PutChat(ctx context.Context, record *chat.Chat) error
-	GetChatById(ctx context.Context, chatId chat.ChatId) (*chat.Chat, error)
+	GetChatById(ctx context.Context, chatId chat.Id) (*chat.Chat, error)
 	GetAllChatsForUser(ctx context.Context, user string, opts ...query.Option) ([]*chat.Chat, error)
 	PutChatMessage(ctx context.Context, record *chat.Message) error
-	DeleteChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) error
-	GetChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) (*chat.Message, error)
-	GetAllChatMessages(ctx context.Context, chatId chat.ChatId, opts ...query.Option) ([]*chat.Message, error)
-	AdvanceChatPointer(ctx context.Context, chatId chat.ChatId, pointer string) error
-	GetChatUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32, error)
-	SetChatMuteState(ctx context.Context, chatId chat.ChatId, isMuted bool) error
-	SetChatSubscriptionState(ctx context.Context, chatId chat.ChatId, isSubscribed bool) error
+	DeleteChatMessage(ctx context.Context, chatId chat.Id, messageId string) error
+	GetChatMessage(ctx context.Context, chatId chat.Id, messageId string) (*chat.Message, error)
+	GetAllChatMessages(ctx context.Context, chatId chat.Id, opts ...query.Option) ([]*chat.Message, error)
+	AdvanceChatPointer(ctx context.Context, chatId chat.Id, pointer string) error
+	GetChatUnreadCount(ctx context.Context, chatId chat.Id) (uint32, error)
+	SetChatMuteState(ctx context.Context, chatId chat.Id, isMuted bool) error
+	SetChatSubscriptionState(ctx context.Context, chatId chat.Id, isSubscribed bool) error
 
 	// Badge Count
 	// --------------------------------------------------------------------------------
@@ -663,7 +663,7 @@ func (dp *DatabaseProvider) GetAllExchangeRates(ctx context.Context, t time.Time
 	return rates, nil
 }
 func (dp *DatabaseProvider) GetExchangeRateHistory(ctx context.Context, code currency_lib.Code, opts ...query.Option) ([]*currency.ExchangeRateRecord, error) {
-	req := query.QueryOptions{
+	req := query.Options{
 		Limit:     maxCurrencyHistoryReqSize,
 		End:       time.Now(),
 		SortBy:    query.Ascending,
@@ -931,7 +931,7 @@ func (dp *DatabaseProvider) UpdateOrCreatePayment(ctx context.Context, record *p
 	return dp.CreatePayment(ctx, record)
 }
 func (dp *DatabaseProvider) GetPaymentHistory(ctx context.Context, account string, opts ...query.Option) ([]*payment.Record, error) {
-	req := query.QueryOptions{
+	req := query.Options{
 		Limit:     maxPaymentHistoryReqSize,
 		SortBy:    query.Ascending,
 		Supported: query.CanLimitResults | query.CanSortBy | query.CanQueryByCursor | query.CanFilterBy,
@@ -952,13 +952,13 @@ func (dp *DatabaseProvider) GetPaymentHistory(ctx context.Context, account strin
 	}
 
 	if req.FilterBy.Valid {
-		return dp.payments.GetAllForAccountByType(ctx, account, cursor, uint(req.Limit), req.SortBy, payment.PaymentType(req.FilterBy.Value))
+		return dp.payments.GetAllForAccountByType(ctx, account, cursor, uint(req.Limit), req.SortBy, payment.Type(req.FilterBy.Value))
 	}
 
 	return dp.payments.GetAllForAccount(ctx, account, cursor, uint(req.Limit), req.SortBy)
 }
 func (dp *DatabaseProvider) GetPaymentHistoryWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, opts ...query.Option) ([]*payment.Record, error) {
-	req := query.QueryOptions{
+	req := query.Options{
 		Limit:     maxPaymentHistoryReqSize,
 		SortBy:    query.Ascending,
 		Supported: query.CanLimitResults | query.CanSortBy | query.CanQueryByCursor | query.CanFilterBy,
@@ -979,7 +979,7 @@ func (dp *DatabaseProvider) GetPaymentHistoryWithinBlockRange(ctx context.Contex
 	}
 
 	if req.FilterBy.Valid {
-		return dp.payments.GetAllForAccountByTypeWithinBlockRange(ctx, account, lowerBound, upperBound, cursor, uint(req.Limit), req.SortBy, payment.PaymentType(req.FilterBy.Value))
+		return dp.payments.GetAllForAccountByTypeWithinBlockRange(ctx, account, lowerBound, upperBound, cursor, uint(req.Limit), req.SortBy, payment.Type(req.FilterBy.Value))
 	}
 
 	return nil, query.ErrQueryNotSupported
@@ -1107,7 +1107,7 @@ func (dp *DatabaseProvider) BatchRemoveContacts(ctx context.Context, owner *user
 func (dp *DatabaseProvider) PutUser(ctx context.Context, record *identity.Record) error {
 	return dp.userIdentity.Put(ctx, record)
 }
-func (dp *DatabaseProvider) GetUserByID(ctx context.Context, id *user.UserID) (*identity.Record, error) {
+func (dp *DatabaseProvider) GetUserByID(ctx context.Context, id *user.Id) (*identity.Record, error) {
 	return dp.userIdentity.GetByID(ctx, id)
 }
 func (dp *DatabaseProvider) GetUserByPhoneView(ctx context.Context, phoneNumber string) (*identity.Record, error) {
@@ -1299,7 +1299,7 @@ func (dp *DatabaseProvider) GetTreasuryPoolByAddress(ctx context.Context, addres
 func (dp *DatabaseProvider) GetTreasuryPoolByVault(ctx context.Context, vault string) (*treasury.Record, error) {
 	return dp.treasury.GetByVault(ctx, vault)
 }
-func (dp *DatabaseProvider) GetAllTreasuryPoolsByState(ctx context.Context, state treasury.TreasuryPoolState, opts ...query.Option) ([]*treasury.Record, error) {
+func (dp *DatabaseProvider) GetAllTreasuryPoolsByState(ctx context.Context, state treasury.PoolState, opts ...query.Option) ([]*treasury.Record, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
@@ -1402,7 +1402,7 @@ func (dp *DatabaseProvider) GetAllPendingWebhooksReadyToSend(ctx context.Context
 func (dp *DatabaseProvider) PutChat(ctx context.Context, record *chat.Chat) error {
 	return dp.chat.PutChat(ctx, record)
 }
-func (dp *DatabaseProvider) GetChatById(ctx context.Context, chatId chat.ChatId) (*chat.Chat, error) {
+func (dp *DatabaseProvider) GetChatById(ctx context.Context, chatId chat.Id) (*chat.Chat, error) {
 	return dp.chat.GetChatById(ctx, chatId)
 }
 func (dp *DatabaseProvider) GetAllChatsForUser(ctx context.Context, user string, opts ...query.Option) ([]*chat.Chat, error) {
@@ -1415,29 +1415,29 @@ func (dp *DatabaseProvider) GetAllChatsForUser(ctx context.Context, user string,
 func (dp *DatabaseProvider) PutChatMessage(ctx context.Context, record *chat.Message) error {
 	return dp.chat.PutMessage(ctx, record)
 }
-func (dp *DatabaseProvider) DeleteChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) error {
+func (dp *DatabaseProvider) DeleteChatMessage(ctx context.Context, chatId chat.Id, messageId string) error {
 	return dp.chat.DeleteMessage(ctx, chatId, messageId)
 }
-func (dp *DatabaseProvider) GetChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) (*chat.Message, error) {
+func (dp *DatabaseProvider) GetChatMessage(ctx context.Context, chatId chat.Id, messageId string) (*chat.Message, error) {
 	return dp.chat.GetMessageById(ctx, chatId, messageId)
 }
-func (dp *DatabaseProvider) GetAllChatMessages(ctx context.Context, chatId chat.ChatId, opts ...query.Option) ([]*chat.Message, error) {
+func (dp *DatabaseProvider) GetAllChatMessages(ctx context.Context, chatId chat.Id, opts ...query.Option) ([]*chat.Message, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
 	}
 	return dp.chat.GetAllMessagesByChat(ctx, chatId, req.Cursor, req.SortBy, req.Limit)
 }
-func (dp *DatabaseProvider) AdvanceChatPointer(ctx context.Context, chatId chat.ChatId, pointer string) error {
+func (dp *DatabaseProvider) AdvanceChatPointer(ctx context.Context, chatId chat.Id, pointer string) error {
 	return dp.chat.AdvancePointer(ctx, chatId, pointer)
 }
-func (dp *DatabaseProvider) GetChatUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32, error) {
+func (dp *DatabaseProvider) GetChatUnreadCount(ctx context.Context, chatId chat.Id) (uint32, error) {
 	return dp.chat.GetUnreadCount(ctx, chatId)
 }
-func (dp *DatabaseProvider) SetChatMuteState(ctx context.Context, chatId chat.ChatId, isMuted bool) error {
+func (dp *DatabaseProvider) SetChatMuteState(ctx context.Context, chatId chat.Id, isMuted bool) error {
 	return dp.chat.SetMuteState(ctx, chatId, isMuted)
 }
-func (dp *DatabaseProvider) SetChatSubscriptionState(ctx context.Context, chatId chat.ChatId, isSubscribed bool) error {
+func (dp *DatabaseProvider) SetChatSubscriptionState(ctx context.Context, chatId chat.Id, isSubscribed bool) error {
 	return dp.chat.SetSubscriptionState(ctx, chatId, isSubscribed)
 }
 

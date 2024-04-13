@@ -231,12 +231,12 @@ func (s *store) GetAllByIntent(ctx context.Context, intent string) ([]*action.Re
 		return nil, action.ErrActionNotFound
 	}
 
-	copy := make([]*action.Record, len(items))
+	cpy := make([]*action.Record, len(items))
 	for i, item := range items {
 		cloned := item.Clone()
-		copy[i] = &cloned
+		cpy[i] = &cloned
 	}
-	return copy, nil
+	return cpy, nil
 }
 
 // GetAllByAddress implements action.store.GetAllByAddress
@@ -249,12 +249,12 @@ func (s *store) GetAllByAddress(ctx context.Context, address string) ([]*action.
 		return nil, action.ErrActionNotFound
 	}
 
-	copy := make([]*action.Record, len(items))
+	cpy := make([]*action.Record, len(items))
 	for i, item := range items {
 		cloned := item.Clone()
-		copy[i] = &cloned
+		cpy[i] = &cloned
 	}
-	return copy, nil
+	return cpy, nil
 }
 
 // GetNetBalance implements action.store.GetNetBalance

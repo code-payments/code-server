@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s fulfillment.Store, teardown func()) {
@@ -1010,7 +1010,7 @@ func testTreasuryQueries(t *testing.T, s fulfillment.Store) {
 			require.NoError(t, err)
 
 			if !actual.DisableActiveScheduling {
-				totalUpdated += 1
+				totalUpdated++
 			}
 		}
 		assert.Equal(t, 2, totalUpdated)

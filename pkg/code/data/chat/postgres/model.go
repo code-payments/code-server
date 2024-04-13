@@ -8,10 +8,10 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/chat"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 const (
@@ -75,14 +75,14 @@ func toChatModel(obj *chat.Chat) (*chatModel, error) {
 }
 
 func fromChatModel(obj *chatModel) *chat.Chat {
-	var chatId chat.ChatId
+	var chatId chat.Id
 	copy(chatId[:], obj.ChatId)
 
 	return &chat.Chat{
 		Id: uint64(obj.Id.Int64),
 
 		ChatId:     chatId,
-		ChatType:   chat.ChatType(obj.ChatType),
+		ChatType:   chat.Type(obj.ChatType),
 		IsVerified: obj.IsVerified,
 
 		CodeUser:  obj.Member1,
@@ -115,7 +115,7 @@ func toMessageModel(obj *chat.Message) (*messageModel, error) {
 }
 
 func fromMessageModel(obj *messageModel) *chat.Message {
-	var chatId chat.ChatId
+	var chatId chat.Id
 	copy(chatId[:], obj.ChatId)
 
 	return &chat.Message{
@@ -184,7 +184,7 @@ func (m *messageModel) dbPut(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.CheckUniqueViolation(err, chat.ErrMessageAlreadyExists)
 }
 
-func dbGetChatById(ctx context.Context, db *sqlx.DB, id chat.ChatId) (*chatModel, error) {
+func dbGetChatById(ctx context.Context, db *sqlx.DB, id chat.Id) (*chatModel, error) {
 	res := &chatModel{}
 
 	query := `SELECT id, chat_id, chat_type, is_verified, member1, member2, read_pointer, is_muted, is_unsubscribed, created_at FROM ` + chatTableName + `
@@ -202,7 +202,7 @@ func dbGetChatById(ctx context.Context, db *sqlx.DB, id chat.ChatId) (*chatModel
 	return res, nil
 }
 
-func dbDeleteMessage(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, messageId string) error {
+func dbDeleteMessage(ctx context.Context, db *sqlx.DB, chatId chat.Id, messageId string) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `DELETE FROM ` + messageTableName + `
 			WHERE chat_id = $1 AND message_id = $2
@@ -218,7 +218,7 @@ func dbDeleteMessage(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, messa
 	})
 }
 
-func dbGetMessageById(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, messageId string) (*messageModel, error) {
+func dbGetMessageById(ctx context.Context, db *sqlx.DB, chatId chat.Id, messageId string) (*messageModel, error) {
 	res := &messageModel{}
 
 	query := `SELECT id, chat_id, message_id, data, is_silent, content_length, timestamp FROM ` + messageTableName + `
@@ -260,7 +260,7 @@ func dbGetAllChatsForUser(ctx context.Context, db *sqlx.DB, user string, cursor 
 	return res, nil
 }
 
-func dbGetAllMessagesByChat(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, cursor q.Cursor, direction q.Ordering, limit uint64) ([]*messageModel, error) {
+func dbGetAllMessagesByChat(ctx context.Context, db *sqlx.DB, chatId chat.Id, cursor q.Cursor, direction q.Ordering, limit uint64) ([]*messageModel, error) {
 	res := []*messageModel{}
 
 	query := `SELECT id, chat_id, message_id, data, is_silent, content_length, timestamp FROM ` + messageTableName + `
@@ -311,7 +311,7 @@ func dbGetAllMessagesByChat(ctx context.Context, db *sqlx.DB, chatId chat.ChatId
 	return res, nil
 }
 
-func dbAdvancePointer(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, pointer string) error {
+func dbAdvancePointer(ctx context.Context, db *sqlx.DB, chatId chat.Id, pointer string) error {
 	query := `UPDATE ` + chatTableName + `
 		SET read_pointer = $2
 		WHERE chat_id = $1
@@ -337,7 +337,7 @@ func dbAdvancePointer(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, poin
 	return nil
 }
 
-func dbGetUnreadCount(ctx context.Context, db *sqlx.DB, chatId chat.ChatId) (uint32, error) {
+func dbGetUnreadCount(ctx context.Context, db *sqlx.DB, chatId chat.Id) (uint32, error) {
 	res := &struct {
 		UnreadCount sql.NullInt64 `db:"unread_count"`
 	}{}
@@ -360,7 +360,7 @@ func dbGetUnreadCount(ctx context.Context, db *sqlx.DB, chatId chat.ChatId) (uin
 	return uint32(res.UnreadCount.Int64), nil
 }
 
-func dbSetMuteState(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, isMuted bool) error {
+func dbSetMuteState(ctx context.Context, db *sqlx.DB, chatId chat.Id, isMuted bool) error {
 	query := `UPDATE ` + chatTableName + `
 		SET is_muted = $2
 		WHERE chat_id = $1
@@ -386,7 +386,7 @@ func dbSetMuteState(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, isMute
 	return nil
 }
 
-func dbSetSubscriptionState(ctx context.Context, db *sqlx.DB, chatId chat.ChatId, isSubscribed bool) error {
+func dbSetSubscriptionState(ctx context.Context, db *sqlx.DB, chatId chat.Id, isSubscribed bool) error {
 	query := `UPDATE ` + chatTableName + `
 		SET is_unsubscribed = $2
 		WHERE chat_id = $1

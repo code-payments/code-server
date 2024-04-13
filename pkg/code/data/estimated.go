@@ -49,10 +49,10 @@ func (p *EstimatedProvider) TestForKnownAccount(ctx context.Context, account []b
 	tracer := metrics.TraceMethodCall(ctx, estimatedProviderMetricsName, "TestForKnownAccount")
 	defer tracer.End()
 
-	if len(account) > 0 {
-	} else {
+	if len(account) == 0 {
 		return false, ErrInvalidAccount
 	}
+
 	return p.knownAccounts.Test(account), nil
 }
 

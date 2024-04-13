@@ -31,11 +31,11 @@ func getKey(src []byte, dst *ed25519.PublicKey, offset *int) { //nolint:unused
 
 func putUint8(dst []byte, v uint8, offset *int) {
 	dst[*offset] = v
-	*offset += 1
+	*offset++
 }
 func getUint8(src []byte, dst *uint8, offset *int) { //nolint:unused
 	*dst = src[*offset]
-	*offset += 1
+	*offset++
 }
 
 func putUint64(dst []byte, v uint64, offset *int) {

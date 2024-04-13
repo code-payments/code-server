@@ -43,7 +43,7 @@ func (s *store) Put(ctx context.Context, container *user_storage.Record) error {
 		return user_storage.ErrAlreadyExists
 	}
 
-	copy := &user_storage.Record{
+	cpy := &user_storage.Record{
 		ID:           container.ID,
 		OwnerAccount: container.OwnerAccount,
 		IdentifyingFeatures: &user.IdentifyingFeatures{
@@ -52,8 +52,8 @@ func (s *store) Put(ctx context.Context, container *user_storage.Record) error {
 		CreatedAt: container.CreatedAt,
 	}
 
-	s.dataContainersByID[container.ID.String()] = copy
-	s.dataContainersByFeatures[key] = copy
+	s.dataContainersByID[container.ID.String()] = cpy
+	s.dataContainersByFeatures[key] = cpy
 
 	return nil
 }

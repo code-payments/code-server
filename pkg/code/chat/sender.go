@@ -24,7 +24,7 @@ func SendChatMessage(
 	ctx context.Context,
 	data code_data.Provider,
 	chatTitle string,
-	chatType chat.ChatType,
+	chatType chat.Type,
 	isVerifiedChat bool,
 	receiver *common.Account,
 	protoMessage *chatpb.ChatMessage,

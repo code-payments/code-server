@@ -170,7 +170,7 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				ctx,
 				data,
 				asciiBaseDomain,
-				chat.ChatTypeExternalApp,
+				chat.TypeExternalApp,
 				true,
 				recipientOwner,
 				chatMessage,

@@ -36,7 +36,7 @@ func putBool(dst []byte, v bool, offset *int) {
 	} else {
 		dst[*offset] = 0
 	}
-	*offset += 1
+	*offset++
 }
 func getBool(src []byte, dst *bool, offset *int) {
 	if src[*offset] == 1 {
@@ -44,16 +44,16 @@ func getBool(src []byte, dst *bool, offset *int) {
 	} else {
 		*dst = false
 	}
-	*offset += 1
+	*offset++
 }
 
 func putUint8(dst []byte, v uint8, offset *int) {
 	dst[*offset] = v
-	*offset += 1
+	*offset++
 }
 func getUint8(src []byte, dst *uint8, offset *int) {
 	*dst = src[*offset]
-	*offset += 1
+	*offset++
 }
 
 func putUint32(dst []byte, v uint32, offset *int) {

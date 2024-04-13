@@ -115,7 +115,7 @@ func setup(t *testing.T, enableMultiServer bool) (env testEnv, cleanup func()) {
 
 type serverEnv struct {
 	ctx        context.Context
-	server     *server
+	server     *Server
 	subsidizer *common.Account
 }
 
@@ -215,7 +215,7 @@ func (s *serverEnv) assertInitialRendezvousRecordSaved(t *testing.T, rendezvousK
 		require.NoError(t, err)
 
 		assert.Equal(t, rendezvousKey.PublicKey().ToBase58(), rendezvousRecord.Key)
-		assert.Equal(t, s.server.broadcastAddress, rendezvousRecord.Location) // Note: assertion must be called on the expected server
+		assert.Equal(t, s.server.broadcastAddress, rendezvousRecord.Location) // Note: assertion must be called on the expected Server
 		assert.True(t, start.Sub(rendezvousRecord.CreatedAt) <= 50*time.Millisecond)
 		assert.True(t, start.Sub(rendezvousRecord.CreatedAt) >= -50*time.Millisecond)
 		assert.Equal(t, rendezvousRecord.CreatedAt.Unix(), rendezvousRecord.LastUpdatedAt.Unix())
@@ -461,7 +461,7 @@ func (c *clientEnv) waitUntilStreamTerminationOrTimeout(t *testing.T, rendezvous
 				assert.True(t, time.Since(lastPingTs) <= messageStreamPingDelay+50*time.Millisecond)
 			}
 
-			pingCount += 1
+			pingCount++
 			lastPingTs = time.Now()
 
 			if keepStreamAlive {

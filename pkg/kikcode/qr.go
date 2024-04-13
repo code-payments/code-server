@@ -39,9 +39,9 @@ type Description struct {
 	dotDimension     float64
 }
 
-type KikCodePayload []byte
+type ScanPayload []byte
 
-func GenerateDescription(dimension float64, data KikCodePayload) (*Description, error) {
+func GenerateDescription(dimension float64, data ScanPayload) (*Description, error) {
 	if dimension <= 0 {
 		return nil, ErrInvalidSize
 	}
@@ -129,7 +129,7 @@ func GenerateDescription(dimension float64, data KikCodePayload) (*Description, 
 				}
 			}
 
-			offset += 1
+			offset++
 		}
 	}
 
@@ -142,7 +142,7 @@ func GenerateDescription(dimension float64, data KikCodePayload) (*Description, 
 	}, nil
 }
 
-func CreateKikCodePayload(data []byte) KikCodePayload {
+func CreateScanPayload(data []byte) ScanPayload {
 	finderBytes := []byte{0xb2, 0xcb, 0x25, 0xc6}
 	return append(finderBytes, data...)
 }

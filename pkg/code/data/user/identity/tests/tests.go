@@ -28,7 +28,7 @@ func testHappyPath(t *testing.T, s user_identity.Store) {
 		phoneNumber := "+12223334444"
 
 		record := &user_identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},

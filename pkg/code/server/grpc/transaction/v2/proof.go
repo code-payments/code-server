@@ -42,7 +42,7 @@ type privacyUpgradeProof struct {
 	newCommitmentRoot        merkletree.Hash
 }
 
-type privacyUpgradeCandidate struct {
+type PrivacyUpgradeCandidate struct {
 	newCommitmentRecord *commitment.Record
 
 	forLeafHash merkletree.Hash
@@ -66,7 +66,7 @@ func canUpgradeCommitmentAction(ctx context.Context, data code_data.Provider, co
 
 // Note: How we get select commmitments for proofs plays into how we decide to
 // close commitment vaults. Updates to logic should be in sync.
-func selectCandidateForPrivacyUpgrade(ctx context.Context, data code_data.Provider, intentId string, actionId uint32) (*privacyUpgradeCandidate, error) {
+func selectCandidateForPrivacyUpgrade(ctx context.Context, data code_data.Provider, intentId string, actionId uint32) (*PrivacyUpgradeCandidate, error) {
 	actionRecord, err := data.GetActionById(ctx, intentId, actionId)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func selectCandidateForPrivacyUpgrade(ctx context.Context, data code_data.Provid
 		return nil, ErrWaitForNextBlock
 	}
 
-	return &privacyUpgradeCandidate{
+	return &PrivacyUpgradeCandidate{
 		newCommitmentRecord: latestCommitmentRecord,
 
 		forLeafHash: commitmentAddressBytes,
@@ -180,7 +180,7 @@ func selectCandidateForPrivacyUpgrade(ctx context.Context, data code_data.Provid
 
 // Note: How we get proofs plays into how we decide to close commitment vaults. Updates to
 // logic should be in sync.
-func getProofForPrivacyUpgrade(ctx context.Context, data code_data.Provider, upgradingTo *privacyUpgradeCandidate) (*privacyUpgradeProof, error) {
+func getProofForPrivacyUpgrade(ctx context.Context, data code_data.Provider, upgradingTo *PrivacyUpgradeCandidate) (*privacyUpgradeProof, error) {
 	merkleTree, err := getCachedMerkleTreeForTreasury(ctx, data, upgradingTo.newCommitmentRecord.Pool)
 	if err != nil {
 		return nil, err

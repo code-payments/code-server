@@ -124,7 +124,7 @@ func (p *service) programUpdateWorker(serviceCtx context.Context, id int) {
 			}
 
 			p.metricStatusLock.Lock()
-			p.programUpdateWorkerMetrics[id].eventsProcessed += 1
+			p.programUpdateWorkerMetrics[id].eventsProcessed++
 			p.metricStatusLock.Unlock()
 		}()
 	}

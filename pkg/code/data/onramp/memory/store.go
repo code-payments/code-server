@@ -34,16 +34,16 @@ func (s *store) Put(_ context.Context, data *onramp.Record) error {
 	s.last++
 	if item := s.find(data); item != nil {
 		return onramp.ErrPurchaseAlreadyExists
-	} else {
-		if data.Id == 0 {
-			data.Id = s.last
-		}
-		if data.CreatedAt.IsZero() {
-			data.CreatedAt = time.Now()
-		}
-		c := data.Clone()
-		s.records = append(s.records, &c)
 	}
+
+	if data.Id == 0 {
+		data.Id = s.last
+	}
+	if data.CreatedAt.IsZero() {
+		data.CreatedAt = time.Now()
+	}
+	c := data.Clone()
+	s.records = append(s.records, &c)
 
 	return nil
 }

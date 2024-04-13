@@ -10,8 +10,8 @@ import (
 	"github.com/code-payments/code-server/pkg/phone"
 )
 
-// UserID uniquely identifies a user
-type UserID struct {
+// Id uniquely identifies a user
+type Id struct {
 	id uuid.UUID
 }
 
@@ -34,34 +34,34 @@ type View struct {
 	PhoneNumber *string
 }
 
-// NewUserID returns a new random UserID
-func NewUserID() *UserID {
-	return &UserID{
+// NewID returns a new random Id
+func NewID() *Id {
+	return &Id{
 		id: uuid.New(),
 	}
 }
 
-// GetUserIDFromProto returns a UserID from the protobuf message
-func GetUserIDFromProto(proto *commonpb.UserId) (*UserID, error) {
+// GetUserIDFromProto returns a Id from the protobuf message
+func GetUserIDFromProto(proto *commonpb.UserId) (*Id, error) {
 	id, err := uuid.FromBytes(proto.Value)
 	if err != nil {
 		return nil, err
 	}
-	return &UserID{id}, nil
+	return &Id{id}, nil
 }
 
-// GetUserIDFromString parses a UserID from a string value
-func GetUserIDFromString(value string) (*UserID, error) {
+// GetUserIDFromString parses a Id from a string value
+func GetUserIDFromString(value string) (*Id, error) {
 	id, err := uuid.Parse(value)
 	if err != nil {
 		return nil, err
 	}
 
-	return &UserID{id}, nil
+	return &Id{id}, nil
 }
 
-// Validate validate a UserID
-func (id *UserID) Validate() error {
+// Validate validate a Id
+func (id *Id) Validate() error {
 	if id == nil {
 		return errors.New("user id is nil")
 	}
@@ -74,13 +74,13 @@ func (id *UserID) Validate() error {
 	return nil
 }
 
-// String returns the string form of a UserID
-func (id *UserID) String() string {
+// String returns the string form of a Id
+func (id *Id) String() string {
 	return id.id.String()
 }
 
-// Proto returns a UserID into its protobuf message form
-func (id *UserID) Proto() *commonpb.UserId {
+// Proto returns a Id into its protobuf message form
+func (id *Id) Proto() *commonpb.UserId {
 	return &commonpb.UserId{
 		Value: id.id[:],
 	}
@@ -93,7 +93,7 @@ func NewDataContainerID() *DataContainerID {
 	}
 }
 
-// GetDataContainerIDFromProto returns a UserID from the protobuf message
+// GetDataContainerIDFromProto returns a Id from the protobuf message
 func GetDataContainerIDFromProto(proto *commonpb.DataContainerId) (*DataContainerID, error) {
 	id, err := uuid.FromBytes(proto.Value)
 	if err != nil {
@@ -131,7 +131,7 @@ func (id *DataContainerID) String() string {
 	return id.id.String()
 }
 
-// Proto returns a UserID into its protobuf message form
+// Proto returns a Id into its protobuf message form
 func (id *DataContainerID) Proto() *commonpb.DataContainerId {
 	return &commonpb.DataContainerId{
 		Value: id.id[:],

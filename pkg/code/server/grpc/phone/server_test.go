@@ -606,7 +606,7 @@ func TestGetAssociatedPhoneNumber_UnlockedTimelockAccount(t *testing.T) {
 	assert.Equal(t, phonepb.GetAssociatedPhoneNumberResponse_OK, resp.Result)
 
 	timelockRecord.VaultState = timelock_token.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 	resp, err = env.client.GetAssociatedPhoneNumber(env.ctx, req)

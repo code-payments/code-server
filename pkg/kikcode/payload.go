@@ -136,9 +136,9 @@ func (p *Payload) ToQrCodeDescription(dimension float64) (*Description, error) {
 		return nil, err
 	}
 
-	kikCodePayload := CreateKikCodePayload(viewPayload)
+	scanPayload := CreateScanPayload(viewPayload)
 
-	return GenerateDescription(dimension, kikCodePayload)
+	return GenerateDescription(dimension, scanPayload)
 }
 
 func (p *Payload) GetIdempotencyKey() IdempotencyKey {

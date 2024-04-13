@@ -204,7 +204,7 @@ func (dp *BlockchainProvider) GetBlockchainHistory(ctx context.Context, account 
 	tracer := metrics.TraceMethodCall(ctx, blockchainProviderMetricsName, "GetBlockchainHistory")
 	defer tracer.End()
 
-	req := query.QueryOptions{
+	req := query.Options{
 		Limit:     1000,
 		Supported: query.CanLimitResults | query.CanQueryByCursor,
 	}

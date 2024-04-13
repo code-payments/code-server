@@ -236,7 +236,7 @@ func TestCloseDormantTimelockAccountFulfillmentHandler_IsRevoked(t *testing.T) {
 		timelock_token_v1.StateUnlocked,
 	} {
 		timelockRecord.VaultState = state
-		timelockRecord.Block += 1
+		timelockRecord.Block++
 		require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 		revoked, nonceUsed, err := handler.IsRevoked(env.ctx, fulfillmentRecord)
@@ -248,7 +248,7 @@ func TestCloseDormantTimelockAccountFulfillmentHandler_IsRevoked(t *testing.T) {
 	}
 
 	timelockRecord.VaultState = timelock_token_v1.StateClosed
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 	revoked, nonceUsed, err := handler.IsRevoked(env.ctx, fulfillmentRecord)
@@ -832,7 +832,7 @@ func TestIsTokenAccountOnBlockchain_CodeAccount(t *testing.T) {
 		timelock_token_v1.StateClosed,
 	} {
 		timelockRecord.VaultState = state
-		timelockRecord.Block += 1
+		timelockRecord.Block++
 		require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 		actual, err := isTokenAccountOnBlockchain(env.ctx, env.data, timelockRecord.VaultAddress)

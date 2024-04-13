@@ -27,14 +27,14 @@ func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	// Setup workers to watch for updates to pools
-	for _, item := range []treasury.TreasuryPoolState{
-		treasury.TreasuryPoolStateAvailable,
+	for _, item := range []treasury.PoolState{
+		treasury.PoolStateAvailable,
 
 		// Below states have no executable logic
-		// treasury.TreasuryPoolStateUnknown,
-		// treasury.TreasuryPoolStateDeprecated,
+		// treasury.PoolStateUnknown,
+		// treasury.PoolStateDeprecated,
 	} {
-		go func(state treasury.TreasuryPoolState) {
+		go func(state treasury.PoolState) {
 			err := p.worker(ctx, state, interval)
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("pool processing loop terminated unexpectedly for state %d", state)

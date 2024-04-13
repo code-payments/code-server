@@ -231,7 +231,7 @@ func TestLinkAccount_UserAlreadyExists(t *testing.T) {
 	}))
 
 	userRecord := &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},
@@ -336,7 +336,7 @@ func TestUnlinkAccount_PhoneNeverAssociated(t *testing.T) {
 	invalidPhoneNumber := "+18005550000"
 
 	userRecord := &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &validPhoneNumber,
 		},
@@ -444,7 +444,7 @@ func TestGetUser_UnlockedTimelockAccount(t *testing.T) {
 	phoneNumber := "+12223334444"
 
 	userRecord := &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},
@@ -506,7 +506,7 @@ func TestGetUser_UnlockedTimelockAccount(t *testing.T) {
 	assert.Equal(t, userpb.GetUserResponse_OK, resp.Result)
 
 	timelockRecord.VaultState = timelock_token.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 	resp, err = env.client.GetUser(env.ctx, req)
@@ -529,7 +529,7 @@ func TestGetUser_LinkStatus(t *testing.T) {
 
 	for _, phoneNumber := range phoneNumbers {
 		userRecord := &identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -662,7 +662,7 @@ func TestGetUser_FeatureFlags(t *testing.T) {
 
 		phoneNumber := "+12223334444"
 		userRecord := &identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -724,7 +724,7 @@ func TestGetUser_AirdropStatus(t *testing.T) {
 
 			phoneNumber := "+12223334444"
 			userRecord := &identity.Record{
-				ID: user.NewUserID(),
+				ID: user.NewID(),
 				View: &user.View{
 					PhoneNumber: &phoneNumber,
 				},

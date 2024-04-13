@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type store struct {
@@ -32,15 +32,15 @@ func (s *store) Put(_ context.Context, data *webhook.Record) error {
 	s.last++
 	if item := s.find(data); item != nil {
 		return webhook.ErrAlreadyExists
-	} else {
-		if data.Id == 0 {
-			data.Id = s.last
-		}
-		data.CreatedAt = time.Now()
-
-		cloned := data.Clone()
-		s.records = append(s.records, &cloned)
 	}
+
+	if data.Id == 0 {
+		data.Id = s.last
+	}
+	data.CreatedAt = time.Now()
+
+	cloned := data.Clone()
+	s.records = append(s.records, &cloned)
 
 	return nil
 }

@@ -155,7 +155,7 @@ func (t *MerkleTree) AddLeaf(ctx context.Context, leaf Leaf) error {
 	// Maintain a temporary copy of the next state
 	nextVersion := t.mtdt.NextIndex + 1
 	nextMtdt := t.mtdt.Clone()
-	nextMtdt.NextIndex += 1
+	nextMtdt.NextIndex++
 	nextFilledSubtrees := make([]Hash, t.mtdt.Levels)
 
 	leafNode := &Node{

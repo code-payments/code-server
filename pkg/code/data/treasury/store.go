@@ -28,7 +28,7 @@ type Store interface {
 	GetByVault(ctx context.Context, vault string) (*Record, error)
 
 	// GetAllByState gets all treasury pool accounts in the provided state
-	GetAllByState(ctx context.Context, state TreasuryPoolState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*Record, error)
+	GetAllByState(ctx context.Context, state PoolState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*Record, error)
 
 	// SaveFunding saves a funding history record for a treasury pool vault
 	SaveFunding(ctx context.Context, record *FundingHistoryRecord) error

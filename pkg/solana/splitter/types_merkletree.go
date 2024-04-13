@@ -90,7 +90,7 @@ func (obj *MerkleTree) ToString() string {
 func (obj *MerkleTree) Marshal() []byte {
 	data := make([]byte, getMerkleTreeSize(obj.Levels))
 
-	var offset int = 0
+	var offset int
 
 	putUint8(data, obj.Levels, &offset)
 	putUint64(data, obj.NextIndex, &offset)
@@ -112,7 +112,7 @@ func (obj *MerkleTree) Marshal() []byte {
 // Deserializes the {@link MerkleTree} from the provided data Buffer.
 // @returns an error if the deserialize operation was unsuccessful.
 func (obj *MerkleTree) Unmarshal(data []byte) error {
-	var offset int = 0
+	var offset int
 
 	getUint8(data, &obj.Levels, &offset)
 

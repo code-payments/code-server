@@ -28,7 +28,7 @@ import (
 )
 
 // todo: a better name for this lol?
-type makeSolanaTransactionResult struct {
+type MakeSolanaTransactionResult struct {
 	isCreatedOnDemand bool
 	txn               *solana.Transaction // Can be null if the transaction is on-demand created at scheduling time
 
@@ -88,7 +88,7 @@ type CreateActionHandler interface {
 		index int,
 		nonce *common.Account,
 		bh solana.Blockhash,
-	) (*makeSolanaTransactionResult, error)
+	) (*MakeSolanaTransactionResult, error)
 }
 
 // UpgradeActionHandler is an interface for upgrading existing actions. It's
@@ -104,7 +104,7 @@ type UpgradeActionHandler interface {
 	MakeUpgradedSolanaTransaction(
 		nonce *common.Account,
 		bh solana.Blockhash,
-	) (*makeSolanaTransactionResult, error)
+	) (*MakeSolanaTransactionResult, error)
 }
 
 type OpenAccountActionHandler struct {
@@ -193,10 +193,10 @@ func (h *OpenAccountActionHandler) MakeNewSolanaTransaction(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	switch index {
 	case 0:
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			isCreatedOnDemand: true,
 			txn:               nil,
 
@@ -274,7 +274,7 @@ func (h *CloseEmptyAccountActionHandler) MakeNewSolanaTransaction(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	switch index {
 	case 0:
 		txn, err := transaction_util.MakeCloseEmptyAccountTransaction(
@@ -286,7 +286,7 @@ func (h *CloseEmptyAccountActionHandler) MakeNewSolanaTransaction(
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			txn: &txn,
 
 			fulfillmentType:          fulfillment.CloseEmptyTimelockAccount,
@@ -380,7 +380,7 @@ func (h *CloseDormantAccountActionHandler) MakeNewSolanaTransaction(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	switch index {
 	case 0:
 		txn, err := transaction_util.MakeCloseAccountWithBalanceTransaction(
@@ -397,7 +397,7 @@ func (h *CloseDormantAccountActionHandler) MakeNewSolanaTransaction(
 		intentOrderingIndex := uint64(math.MaxInt64)
 		actionOrderingIndex := uint32(0)
 
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			txn: &txn,
 
 			fulfillmentType:             fulfillment.CloseDormantTimelockAccount,
@@ -528,7 +528,7 @@ func (h *NoPrivacyTransferActionHandler) MakeNewSolanaTransaction(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	switch index {
 	case 0:
 		txn, err := transaction_util.MakeTransferWithAuthorityTransaction(
@@ -542,7 +542,7 @@ func (h *NoPrivacyTransferActionHandler) MakeNewSolanaTransaction(
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			txn: &txn,
 
 			fulfillmentType:          fulfillment.NoPrivacyTransferWithAuthority,
@@ -646,7 +646,7 @@ func (h *NoPrivacyWithdrawActionHandler) MakeNewSolanaTransaction(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	switch index {
 	case 0:
 		txn, err := transaction_util.MakeCloseAccountWithBalanceTransaction(
@@ -660,7 +660,7 @@ func (h *NoPrivacyWithdrawActionHandler) MakeNewSolanaTransaction(
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			txn: &txn,
 
 			fulfillmentType:          fulfillment.NoPrivacyWithdraw,
@@ -892,10 +892,10 @@ func (h *TemporaryPrivacyTransferActionHandler) MakeNewSolanaTransaction(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	switch index {
 	case 0:
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			isCreatedOnDemand: true,
 			txn:               nil,
 
@@ -917,7 +917,7 @@ func (h *TemporaryPrivacyTransferActionHandler) MakeNewSolanaTransaction(
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
+		return &MakeSolanaTransactionResult{
 			txn: &txn,
 
 			fulfillmentType:          fulfillment.TemporaryPrivacyTransferWithAuthority,
@@ -956,7 +956,7 @@ func NewPermanentPrivacyUpgradeActionHandler(
 	data code_data.Provider,
 	intentRecord *intent.Record,
 	protoAction *transactionpb.PermanentPrivacyUpgradeAction,
-	cachedUpgradeTarget *privacyUpgradeCandidate,
+	cachedUpgradeTarget *PrivacyUpgradeCandidate,
 ) (UpgradeActionHandler, error) {
 	h := &PermanentPrivacyUpgradeActionHandler{
 		data: data,
@@ -1050,7 +1050,7 @@ func (h *PermanentPrivacyUpgradeActionHandler) getFulfillmentBeingUpgraded(ctx c
 func (h *PermanentPrivacyUpgradeActionHandler) MakeUpgradedSolanaTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*MakeSolanaTransactionResult, error) {
 	txn, err := transaction_util.MakeTransferWithAuthorityTransaction(
 		nonce,
 		bh,
@@ -1062,7 +1062,7 @@ func (h *PermanentPrivacyUpgradeActionHandler) MakeUpgradedSolanaTransaction(
 		return nil, err
 	}
 
-	return &makeSolanaTransactionResult{
+	return &MakeSolanaTransactionResult{
 		txn: &txn,
 
 		fulfillmentType:          fulfillment.PermanentPrivacyTransferWithAuthority,

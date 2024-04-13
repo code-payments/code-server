@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana/token"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 )
@@ -53,11 +53,11 @@ type Record struct {
 	CreatedAt         time.Time
 }
 
-type PaymentType uint32
+type Type uint32
 
 const (
-	PaymentType_Send PaymentType = iota
-	PaymentType_Receive
+	TypeSend Type = iota
+	TypeReceive
 )
 
 func NewFromTransfer(transfer *token.DecompiledTransfer, sig string, index int, rate float64, now time.Time) *Record {

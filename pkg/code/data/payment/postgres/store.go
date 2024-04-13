@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/payment"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -64,7 +64,7 @@ func (s *store) GetAllForAccount(ctx context.Context, account string, cursor uin
 	return res, nil
 }
 
-func (s *store) GetAllForAccountByType(ctx context.Context, account string, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.PaymentType) ([]*payment.Record, error) {
+func (s *store) GetAllForAccountByType(ctx context.Context, account string, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.Type) ([]*payment.Record, error) {
 	list, err := dbGetAllForAccountByType(ctx, s.db, account, cursor, limit, ordering, paymentType)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (s *store) GetAllForAccountByType(ctx context.Context, account string, curs
 	return res, nil
 }
 
-func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account string, block uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.PaymentType) ([]*payment.Record, error) {
+func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account string, block uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.Type) ([]*payment.Record, error) {
 	list, err := dbGetAllForAccountByTypeAfterBlock(ctx, s.db, account, block, cursor, limit, ordering, paymentType)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func (s *store) GetAllForAccountByTypeAfterBlock(ctx context.Context, account st
 	return res, nil
 }
 
-func (s *store) GetAllForAccountByTypeWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.PaymentType) ([]*payment.Record, error) {
+func (s *store) GetAllForAccountByTypeWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType payment.Type) ([]*payment.Record, error) {
 	list, err := dbGetAllForAccountByTypeWithinBlockRange(ctx, s.db, account, lowerBound, upperBound, cursor, limit, ordering, paymentType)
 	if err != nil {
 		return nil, err

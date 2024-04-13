@@ -20,7 +20,7 @@ type Store interface {
 	PutChat(ctx context.Context, record *Chat) error
 
 	// GetChatById gets a chat by its chat ID
-	GetChatById(ctx context.Context, chatId ChatId) (*Chat, error)
+	GetChatById(ctx context.Context, chatId Id) (*Chat, error)
 
 	// GetAllChatsForUser gets all chats for a given user
 	//
@@ -32,25 +32,25 @@ type Store interface {
 
 	// Delete message deletes a message within a chat. The call is idempotent
 	// and will not fail if the message doesn't exist.
-	DeleteMessage(ctx context.Context, chatId ChatId, messageId string) error
+	DeleteMessage(ctx context.Context, chatId Id, messageId string) error
 
 	// GetMessageById gets a chat message by its message ID within a chat
-	GetMessageById(ctx context.Context, chatId ChatId, messageId string) (*Message, error)
+	GetMessageById(ctx context.Context, chatId Id, messageId string) (*Message, error)
 
 	// GetAllMessagesByChat gets all messages for a given chat
 	//
 	// Note: Cursor is a message ID
-	GetAllMessagesByChat(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*Message, error)
+	GetAllMessagesByChat(ctx context.Context, chatId Id, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*Message, error)
 
 	// AdvancePointer advances a chat pointer
-	AdvancePointer(ctx context.Context, chatId ChatId, pointer string) error
+	AdvancePointer(ctx context.Context, chatId Id, pointer string) error
 
 	// GetUnreadCount gets the unread message count for a chat ID
-	GetUnreadCount(ctx context.Context, chatId ChatId) (uint32, error)
+	GetUnreadCount(ctx context.Context, chatId Id) (uint32, error)
 
 	// SetMuteState updates the mute state for a chat
-	SetMuteState(ctx context.Context, chatId ChatId, isMuted bool) error
+	SetMuteState(ctx context.Context, chatId Id, isMuted bool) error
 
 	// SetSubscriptionState updates the subscription state for a chat
-	SetSubscriptionState(ctx context.Context, chatId ChatId, isSubscribed bool) error
+	SetSubscriptionState(ctx context.Context, chatId Id, isSubscribed bool) error
 }

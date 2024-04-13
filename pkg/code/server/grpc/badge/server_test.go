@@ -108,7 +108,7 @@ func (e *testEnv) createUser(t *testing.T, owner *common.Account, phoneNumber st
 	require.NoError(t, e.data.SavePhoneVerification(e.ctx, phoneVerificationRecord))
 
 	userIdentityRecord := &user_identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},

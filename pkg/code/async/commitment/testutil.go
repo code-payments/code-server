@@ -74,7 +74,7 @@ func setup(t *testing.T) testEnv {
 
 		SolanaBlock: 123,
 
-		State: treasury.TreasuryPoolStateAvailable,
+		State: treasury.PoolStateAvailable,
 	}
 
 	merkleTree, err := db.InitializeNewMerkleTree(
@@ -193,7 +193,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 
 	timelockRecord := timelockAccounts.ToDBRecord()
 	timelockRecord.VaultState = timelock_token_v1.StateLocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, e.data.SaveTimelock(e.ctx, timelockRecord))
 
 	return commitmentRecord
@@ -215,7 +215,7 @@ func (e testEnv) simulateSourceAccountUnlocked(t *testing.T, commitmentRecord *c
 	require.NoError(t, err)
 
 	timelockRecord.VaultState = timelock_token_v1.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, e.data.SaveTimelock(e.ctx, timelockRecord))
 }
 
@@ -236,7 +236,7 @@ func (e testEnv) simulateAddingLeaves(t *testing.T, commitmentRecords []*commitm
 
 	e.treasuryPool.CurrentIndex = (e.treasuryPool.CurrentIndex + 1) % e.treasuryPool.HistoryListSize
 	e.treasuryPool.HistoryList[e.treasuryPool.CurrentIndex] = hex.EncodeToString(rootNode.Hash)
-	e.treasuryPool.SolanaBlock += 1
+	e.treasuryPool.SolanaBlock++
 	require.NoError(t, e.data.SaveTreasuryPool(e.ctx, e.treasuryPool))
 }
 

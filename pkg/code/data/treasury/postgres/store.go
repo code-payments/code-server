@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -69,7 +69,7 @@ func (s *store) GetByVault(ctx context.Context, vault string) (*treasury.Record,
 }
 
 // GetAllByState implements treasury.Store.GetAllByState
-func (s *store) GetAllByState(ctx context.Context, state treasury.TreasuryPoolState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*treasury.Record, error) {
+func (s *store) GetAllByState(ctx context.Context, state treasury.PoolState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*treasury.Record, error) {
 	models, err := dbGetAllByState(ctx, s.db, state, cursor, limit, direction)
 	if err != nil {
 		return nil, err

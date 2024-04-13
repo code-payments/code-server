@@ -31,7 +31,7 @@ func (s *store) Put(ctx context.Context, record *user_identity.Record) error {
 }
 
 // GetByID implements user_identity.Store.GetByID
-func (s *store) GetByID(ctx context.Context, id *user.UserID) (*user_identity.Record, error) {
+func (s *store) GetByID(ctx context.Context, id *user.Id) (*user_identity.Record, error) {
 	model, err := dbGetByID(ctx, s.db, id)
 	if err != nil {
 		return nil, err

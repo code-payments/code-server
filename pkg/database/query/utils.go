@@ -65,8 +65,8 @@ func PaginateQuery(
 	return query, opts
 }
 
-func DefaultPaginationHandler(opts ...Option) (*QueryOptions, error) {
-	req := QueryOptions{
+func DefaultPaginationHandler(opts ...Option) (*Options, error) {
+	req := Options{
 		Limit:     defaultPagingLimit,
 		SortBy:    Ascending,
 		Supported: CanLimitResults | CanSortBy | CanQueryByCursor,
@@ -82,8 +82,8 @@ func DefaultPaginationHandler(opts ...Option) (*QueryOptions, error) {
 	return &req, nil
 }
 
-func DefaultPaginationHandlerWithLimit(limit uint64, opts ...Option) (*QueryOptions, error) {
-	req := QueryOptions{
+func DefaultPaginationHandlerWithLimit(limit uint64, opts ...Option) (*Options, error) {
+	req := Options{
 		Limit:     limit,
 		SortBy:    Ascending,
 		Supported: CanLimitResults | CanSortBy | CanQueryByCursor,
