@@ -9,11 +9,11 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/sirupsen/logrus"
 
+	"github.com/code-payments/code-server/pkg/code/data/webhook"
+	webhook_util "github.com/code-payments/code-server/pkg/code/webhook"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/code/data/webhook"
-	webhook_util "github.com/code-payments/code-server/pkg/code/webhook"
 )
 
 var (
@@ -59,7 +59,7 @@ func (p *service) worker(serviceCtx context.Context, interval time.Duration) err
 				wg.Add(1)
 
 				go func(record *webhook.Record) {
-					nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+					nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 					m := nr.StartTransaction("async__webhook_service__handle_" + webhook.StatePending.String())
 					defer m.End()
 					tracedCtx := newrelic.NewContext(serviceCtx, m)

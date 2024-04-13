@@ -37,7 +37,7 @@ func (p *service) generateKeys(ctx context.Context) error {
 			// Give the server some time to breath.
 			time.Sleep(time.Second * 15)
 
-			nr := ctx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := ctx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__nonce_service__vault_keys")
 			defer func() {
 				m.End()

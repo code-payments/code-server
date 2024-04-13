@@ -60,7 +60,7 @@ func (p *service) worker(serviceCtx context.Context, state commitment.State, int
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__commitment_service__handle_" + state.String())
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

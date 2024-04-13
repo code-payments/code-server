@@ -29,7 +29,7 @@ func (p *service) worker(serviceCtx context.Context, state fulfillment.State, in
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__sequencer_service__handle_" + state.String())
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

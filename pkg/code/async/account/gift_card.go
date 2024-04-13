@@ -41,7 +41,7 @@ func (p *service) giftCardAutoReturnWorker(serviceCtx context.Context, interval 
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__account_service__handle_gift_card_auto_return")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

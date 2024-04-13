@@ -8,11 +8,11 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 
+	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
 	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
 )
 
 const (
@@ -32,7 +32,7 @@ func (p *service) worker(serviceCtx context.Context, state treasury.TreasuryPool
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__treasury_pool_service__handle_" + state.String())
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

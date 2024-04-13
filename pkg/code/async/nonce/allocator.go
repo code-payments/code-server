@@ -18,7 +18,7 @@ func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
 		func() (err error) {
 			time.Sleep(time.Second)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__nonce_service__nonce_accounts")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

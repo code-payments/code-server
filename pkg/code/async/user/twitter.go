@@ -43,7 +43,7 @@ func (p *service) twitterRegistrationWorker(serviceCtx context.Context, interval
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__user_service__handle_twitter_registration")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -70,7 +70,7 @@ func (p *service) twitterUserInfoUpdateWorker(serviceCtx context.Context, interv
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__user_service__handle_twitter_user_info_update")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

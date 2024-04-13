@@ -8,8 +8,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 func (p *service) consumeGeyserProgramUpdateEvents(ctx context.Context) error {
@@ -76,7 +76,7 @@ func (p *service) programUpdateWorker(serviceCtx context.Context, id int) {
 
 	for update := range p.programUpdatesChan {
 		func() {
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__geyser_consumer_service__program_update_worker")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

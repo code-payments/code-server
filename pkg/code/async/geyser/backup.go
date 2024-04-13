@@ -41,7 +41,7 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 			start := time.Now()
 
 			func() {
-				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+				nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_timelock_state_worker")
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -113,7 +113,7 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 		select {
 		case <-time.After(interval):
 			func() {
-				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+				nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_external_deposit_worker")
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -186,7 +186,7 @@ func (p *service) backupMessagingWorker(serviceCtx context.Context, interval tim
 			start := time.Now()
 
 			func() {
-				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+				nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_messaging_worker")
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)

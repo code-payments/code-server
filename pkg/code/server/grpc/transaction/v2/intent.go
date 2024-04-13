@@ -1027,9 +1027,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		backgroundCtx := context.Background()
 
 		// todo: generic metrics utility for this
-		nr, ok := ctx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+		nr, ok := ctx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 		if ok {
-			backgroundCtx = context.WithValue(backgroundCtx, metrics.NewRelicContextKey, nr)
+			backgroundCtx = context.WithValue(backgroundCtx, metrics.NewRelicContextKey{}, nr)
 		}
 
 		// todo: We likely want to put this in a worker if this is a long term feature

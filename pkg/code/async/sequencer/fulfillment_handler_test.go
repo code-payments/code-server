@@ -3,10 +3,11 @@ package async_sequencer
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
+	mrand "math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -966,7 +967,7 @@ func (e *fulfillmentHandlerTestEnv) setupTimelockRecord(t *testing.T, owner *com
 
 func (e *fulfillmentHandlerTestEnv) setupCommitmentInState(t *testing.T, intentId string, actionId uint32, state commitment.State) *commitment.Record {
 	hasher := sha256.New()
-	hasher.Write([]byte(fmt.Sprintf("recent-root%d", rand.Uint64())))
+	hasher.Write([]byte(fmt.Sprintf("recent-root%d", mrand.Uint64())))
 	recentRoot := hex.EncodeToString(hasher.Sum(nil))
 
 	hasher = sha256.New()
@@ -1034,7 +1035,7 @@ func (e *fulfillmentHandlerTestEnv) setupForPayment(t *testing.T, fulfillmentRec
 	}
 
 	if fulfillmentRecord.Signature == nil {
-		fulfillmentRecord.Signature = pointer.String(fmt.Sprintf("txn%d", rand.Uint64()))
+		fulfillmentRecord.Signature = pointer.String(fmt.Sprintf("txn%d", mrand.Uint64()))
 	}
 
 	if fulfillmentRecord.Destination == nil {
@@ -1044,7 +1045,7 @@ func (e *fulfillmentHandlerTestEnv) setupForPayment(t *testing.T, fulfillmentRec
 
 	fulfillmentRecord.Data = []byte("data")
 
-	quantity := rand.Uint64()
+	quantity := mrand.Uint64()
 	actionRecord := &action.Record{
 		Source:      fulfillmentRecord.Source,
 		Destination: fulfillmentRecord.Destination,
@@ -1090,7 +1091,7 @@ func (e *fulfillmentHandlerTestEnv) simulatePrivacyUpgrade(t *testing.T, fulfill
 	cloned := fulfillmentRecord.Clone()
 	cloned.Id = 0
 	cloned.FulfillmentType = fulfillment.PermanentPrivacyTransferWithAuthority
-	cloned.Signature = pointer.String(fmt.Sprintf("txn%d", rand.Uint64()))
+	cloned.Signature = pointer.String(fmt.Sprintf("txn%d", mrand.Uint64()))
 	require.NoError(t, e.data.PutAllFulfillments(e.ctx, &cloned))
 
 	nonceRecord, err := e.data.GetNonce(e.ctx, *fulfillmentRecord.Nonce)
@@ -1176,7 +1177,8 @@ func (e *fulfillmentHandlerTestEnv) generateAvailableNonce(t *testing.T) *nonce.
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),

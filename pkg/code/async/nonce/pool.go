@@ -25,7 +25,7 @@ func (p *service) worker(serviceCtx context.Context, state nonce.State, interval
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__nonce_service__handle_" + state.String())
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)

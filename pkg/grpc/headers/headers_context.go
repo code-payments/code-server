@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/proto"
 )
 
 // HeaderKey is the key to store all the header information in the context
@@ -61,18 +61,6 @@ func setHeader(ctx context.Context, data proto.Message, name string, headerType 
 	return err
 }
 
-// GetHeader takes the inbound header and unmarshal the data into the destination message.
-// If no header exists, destination will have all default values.
-func GetHeader(ctx context.Context, destination proto.Message) error {
-	return getHeader(ctx, destination, getBinaryHeaderName(destination), Inbound)
-}
-
-// GetHeaderByName takes the inbound header and unmarshal the data into the destination messaging.
-// If no header exists, destination will have all default values.
-func GetHeaderByName(ctx context.Context, destination proto.Message, name string) error {
-	return getHeader(ctx, destination, name, Inbound)
-}
-
 // GetStringHeaderByName takes the inbound header and returns the data, if it is a string.
 // If no header exists or the header value is not a string, an empty string will be returned.
 func GetASCIIHeaderByName(ctx context.Context, name string) (string, error) {
@@ -98,29 +86,11 @@ func GetStringHeaderByName(ctx context.Context, name string) (string, error) {
 	return getStringHeader(ctx, name, Inbound)
 }
 
-// GetPropagatingHeader takes the propagating header and unmarshal the data into the destination message.
-// If no header exists, destination will have all default values
-func GetPropagatingHeader(ctx context.Context, destination proto.Message) error {
-	return getHeader(ctx, destination, getBinaryHeaderName(destination), Propagating)
-}
-
-// GetRootHeader takes the root header and unmarshal the data into the destination message.
-// If no header exists, destination will have all default values.
-func GetRootHeader(ctx context.Context, destination proto.Message) error {
-	return getHeader(ctx, destination, getBinaryHeaderName(destination), Root)
-}
-
-// GetRootHeaderByName takes the root header and unmarshal the data into the destination message.
-// If no header exists, destination will have all default values.
-func GetRootHeaderByName(ctx context.Context, destination proto.Message, name string) error {
-	return getHeader(ctx, destination, name, Root)
-}
-
 // GetAnyBinaryHeader will try to find the header by checking all the binary headers, in the following order.
 //
-// 1. GetRootHeader()
-// 2. GetHeader()
-// 3. GetPropagatingHeader()
+// 1. Root
+// 2. Inbound
+// 3. Propagating
 //
 // Note, it is not recommended to to use this method to retrieve headers, as it may induce
 // some ambiguity. For example, XiUUid may have a different meaning in each Type.
@@ -130,20 +100,20 @@ func GetAnyBinaryHeader(ctx context.Context, destination proto.Message) error {
 
 // GetAnyBinaryHeaderByName will try to find the header by checking all the binary headers, in the following order.
 //
-// 1. GetRootHeader()
-// 2. GetHeader()
-// 3. GetPropagatingHeader()
+// 1. Root
+// 2. Inbound
+// 3. Propagating
 //
-// Note, it is not recommended to to use this method to retrieve headers, as it may induce
+// Note, it is not recommended to use this method to retrieve headers, as it may induce
 // some ambiguity. For example, XiUUid may have a different meaning in each Type.
 func GetAnyBinaryHeaderByName(ctx context.Context, destination proto.Message, name string) error {
 	headers := []Type{Root, Inbound, Propagating}
 	for _, headerType := range headers {
-		err := getHeader(ctx, destination, name, headerType)
-		if err == nil && destination.String() != "" {
-			return nil
-		} else if !strings.Contains(err.Error(), "header not found") {
+		found, err := getHeader(ctx, destination, name, headerType)
+		if err != nil {
 			return errors.Wrapf(err, "issue finding header %s in type %s", proto.MessageName(destination), headerType)
+		} else if found {
+			return nil
 		}
 	}
 
@@ -152,23 +122,23 @@ func GetAnyBinaryHeaderByName(ctx context.Context, destination proto.Message, na
 
 // getHeader takes the given header and unmarshal the data into the destination message.
 // If no header exists, destination will have all default values.
-func getHeader(ctx context.Context, destination proto.Message, name string, headerType Type) error {
+func getHeader(ctx context.Context, destination proto.Message, name string, headerType Type) (bool, error) {
 	selectedHeader, err := getHeadersFromContext(ctx, headerType)
 	if err != nil {
-		return err
+		return false, err
 	}
 	headerName := getPrefixedHeaderName(name, headerType)
 	data, exists := selectedHeader[headerName]
 	if !exists {
 		logrus.StandardLogger().Tracef("Header %s not found in type %s. Proto %s will have default values", headerName, headerType, proto.MessageName(destination))
-		return fmt.Errorf("%s %s header not found", headerType, proto.MessageName(destination))
+		return false, nil
 	}
 	if rawBytes, ok := data.([]byte); ok {
 		err := proto.Unmarshal(rawBytes, destination)
-		return errors.Wrapf(err, "failed to unmarshal %s header %s", headerType, proto.MessageName(destination))
+		return true, errors.Wrapf(err, "failed to unmarshal %s header %s", headerType, proto.MessageName(destination))
 	}
 
-	return fmt.Errorf("header %s in type %s does not have a binary value (%T)", proto.MessageName(destination), headerType, data)
+	return true, fmt.Errorf("header %s in type %s does not have a binary value (%T)", proto.MessageName(destination), headerType, data)
 }
 
 // getStringHeader takes the given header and returns the data, if it is a string.
@@ -219,7 +189,7 @@ func getHeadersFromContext(ctx context.Context, headerType Type) (Headers, error
 // getBinaryHeaderName returns the name of the header using data's ProtoName() func and appending "-bin" to symbolize it is a binary header.
 // An absence of "-bin" symbolizes a ascii header.
 func getBinaryHeaderName(data proto.Message) string {
-	return proto.MessageName(data) + "-bin"
+	return string(proto.MessageName(data)) + "-bin"
 }
 
 // getPrefixedHeaderName returns the prefixed header name.

@@ -3,10 +3,11 @@ package async_commitment
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"math"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -123,7 +124,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 		Amount:      kin.ToQuarks(1),
 
 		Intent:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		ActionId: rand.Uint32(),
+		ActionId: mrand.Uint32(),
 
 		Owner: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
@@ -178,7 +179,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 
 		FulfillmentType: fulfillment.TemporaryPrivacyTransferWithAuthority,
 		Data:            []byte("data"),
-		Signature:       pointer.String(fmt.Sprintf("sig%d", rand.Uint64())),
+		Signature:       pointer.String(fmt.Sprintf("sig%d", mrand.Uint64())),
 
 		Nonce:     pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
 		Blockhash: pointer.String("bh"),
@@ -276,7 +277,7 @@ func (e testEnv) simulateCommitmentBeingUpgraded(t *testing.T, upgradeFrom, upgr
 
 	permanentPrivacyFulfillment := fulfillmentRecords[0].Clone()
 	permanentPrivacyFulfillment.Id = 0
-	permanentPrivacyFulfillment.Signature = pointer.String(fmt.Sprintf("txn%d", rand.Uint64()))
+	permanentPrivacyFulfillment.Signature = pointer.String(fmt.Sprintf("txn%d", mrand.Uint64()))
 	permanentPrivacyFulfillment.FulfillmentType = fulfillment.PermanentPrivacyTransferWithAuthority
 	permanentPrivacyFulfillment.Destination = &upgradeTo.Vault
 	require.NoError(t, e.data.PutAllFulfillments(e.ctx, &permanentPrivacyFulfillment))
@@ -492,7 +493,8 @@ func (e *testEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),

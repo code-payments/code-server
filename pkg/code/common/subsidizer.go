@@ -7,11 +7,11 @@ import (
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/solana"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 const (
@@ -180,7 +180,7 @@ func EnforceMinimumSubsidizerBalance(ctx context.Context, data code_data.Provide
 		return nil
 	}
 
-	nr, ok := ctx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+	nr, ok := ctx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 	if ok {
 		nr.RecordCustomMetric("Subsidizer/min_balance_enforced", 1)
 	}

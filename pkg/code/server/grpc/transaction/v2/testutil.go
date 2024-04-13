@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	mrand "math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -201,7 +203,11 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 	var phoneEnvs []phoneTestEnv
 	for i := 0; i < 2; i++ {
 		// Force iOS user agent to pass airdrop tests
-		iosGrpcClientConn, err := grpc.Dial(grpcClientConn.Target(), grpc.WithInsecure(), grpc.WithUserAgent("Code/iOS/1.0.0"))
+		iosGrpcClientConn, err := grpc.Dial(
+			grpcClientConn.Target(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUserAgent("Code/iOS/1.0.0"),
+		)
 		require.NoError(t, err)
 
 		phoneEnv := phoneTestEnv{
@@ -351,7 +357,7 @@ func (s *serverTestEnv) fundAccount(t *testing.T, account *common.Account, quark
 		Rendezvous: "",
 		IsExternal: true,
 
-		TransactionId: fmt.Sprintf("txn%d", rand.Uint64()),
+		TransactionId: fmt.Sprintf("txn%d", mrand.Uint64()),
 
 		ConfirmationState: transaction.ConfirmationFinalized,
 
@@ -366,7 +372,7 @@ func (s *serverTestEnv) fundAccount(t *testing.T, account *common.Account, quark
 	require.NoError(t, s.data.CreatePayment(s.ctx, paymentRecord))
 
 	depositRecord := &deposit.Record{
-		Signature:      fmt.Sprintf("txn%d", rand.Uint64()),
+		Signature:      fmt.Sprintf("txn%d", mrand.Uint64()),
 		Destination:    account.PublicKey().ToBase58(),
 		Amount:         quarks,
 		UsdMarketValue: 0.1 * float64(quarks) / float64(kin.QuarksPerKin),
@@ -490,7 +496,8 @@ func (s *serverTestEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),

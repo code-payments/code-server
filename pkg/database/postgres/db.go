@@ -11,10 +11,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-const (
-	txStructContextKey    = "code-sqlx-tx-struct"
-	txIsolationContextKey = "code-sqlx-isolation"
-)
+type txStructContextKey struct{}
+type txIsolationContextKey struct{}
 
 var (
 	ErrAlreadyInTx = errors.New("already executing in existing db tx")
@@ -42,7 +40,7 @@ func ExecuteTxWithinCtx(ctx context.Context, db *sqlx.DB, isolation sql.Isolatio
 		isolation = sql.LevelReadCommitted // Postgres default
 	}
 
-	existing := ctx.Value(txStructContextKey)
+	existing := ctx.Value(txStructContextKey{})
 	if existing != nil {
 		return ErrAlreadyInTx
 	}
@@ -54,8 +52,8 @@ func ExecuteTxWithinCtx(ctx context.Context, db *sqlx.DB, isolation sql.Isolatio
 		return err
 	}
 
-	ctx = context.WithValue(ctx, txStructContextKey, tx)
-	ctx = context.WithValue(ctx, txIsolationContextKey, isolation)
+	ctx = context.WithValue(ctx, txStructContextKey{}, tx)
+	ctx = context.WithValue(ctx, txIsolationContextKey{}, isolation)
 
 	err = fn(ctx)
 	if err != nil {
@@ -111,12 +109,12 @@ func ExecuteInTx(ctx context.Context, db *sqlx.DB, isolation sql.IsolationLevel,
 }
 
 func getTxFromCtx(ctx context.Context, desiredIsolation sql.IsolationLevel) (*sqlx.Tx, error) {
-	txFromCtx := ctx.Value(txStructContextKey)
+	txFromCtx := ctx.Value(txStructContextKey{})
 	if txFromCtx == nil {
 		return nil, ErrNotInTx
 	}
 
-	isolationFromCtx := ctx.Value(txIsolationContextKey)
+	isolationFromCtx := ctx.Value(txIsolationContextKey{})
 	if isolationFromCtx == nil {
 		return nil, errors.New("unexpectedly don't have isolation level set")
 	}

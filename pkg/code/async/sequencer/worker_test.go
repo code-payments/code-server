@@ -2,7 +2,7 @@ package async_sequencer
 
 import (
 	"context"
-	"math/rand"
+	"crypto/rand"
 	"testing"
 	"time"
 
@@ -359,7 +359,8 @@ func (e *workerTestEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),
