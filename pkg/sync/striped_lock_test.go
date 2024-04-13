@@ -16,7 +16,7 @@ func TestStripedLock_HappyPath(t *testing.T) {
 	l := NewStripedLock(4)
 
 	var workerWg base.WaitGroup
-	startChan := make(chan struct{}, 0)
+	startChan := make(chan struct{})
 	data := make([]int, workerCount)
 
 	for i := 0; i < workerCount; i++ {
@@ -33,9 +33,7 @@ func TestStripedLock_HappyPath(t *testing.T) {
 				go func() {
 					defer opWg.Done()
 
-					select {
-					case <-startChan:
-					}
+					<-startChan
 
 					mu := l.Get([]byte(key))
 					mu.Lock()

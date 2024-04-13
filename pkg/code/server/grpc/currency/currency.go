@@ -41,7 +41,7 @@ func (s *currencyServer) GetAllRates(ctx context.Context, req *currencypb.GetAll
 	var record *currency.MultiRateRecord
 	if req.Timestamp != nil && req.Timestamp.AsTime().Before(time.Now().Add(-15*time.Minute)) {
 		record, err = s.LoadExchangeRatesForTime(ctx, req.Timestamp.AsTime())
-	} else if req.Timestamp == nil || req.Timestamp.AsTime().Sub(time.Now()) < time.Hour {
+	} else if req.Timestamp == nil || time.Until(req.Timestamp.AsTime()) < time.Hour {
 		record, err = s.LoadExchangeRatesLatest(ctx)
 	} else {
 		return nil, status.Error(codes.InvalidArgument, "timestamp too far in the future")

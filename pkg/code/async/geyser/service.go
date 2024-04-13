@@ -111,9 +111,7 @@ func (p *service) Start(ctx context.Context, _ time.Duration) error {
 	}()
 
 	// Wait for the service to stop
-	select {
-	case <-ctx.Done():
-	}
+	<-ctx.Done()
 
 	// Gracefully shutdown
 	close(p.programUpdatesChan)

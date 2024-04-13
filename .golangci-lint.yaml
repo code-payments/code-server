@@ -6,6 +6,7 @@ linters:
     - errcheck
     - ineffassign
     - govet
+    - gosimple
 
 issues:
   exclude-rules:
