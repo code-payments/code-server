@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestNonce_SelectAvailableNonce(t *testing.T) {
@@ -226,7 +226,8 @@ func generateAvailableNonce(t *testing.T, env nonceTestEnv, useCase nonce.Purpos
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),

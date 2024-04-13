@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	commitment_worker "github.com/code-payments/code-server/pkg/code/async/commitment"
@@ -1454,7 +1456,15 @@ func isTokenAccountOnBlockchain(ctx context.Context, data code_data.Provider, ad
 			return existsOnBlockchain, nil
 		}
 
-		markFulfillmentAsActivelyScheduled(ctx, data, initializeFulfillmentRecord)
+		if err := markFulfillmentAsActivelyScheduled(ctx, data, initializeFulfillmentRecord); err != nil {
+			logrus.StandardLogger().
+				WithFields(logrus.Fields{
+					"method":  "isTokenAccountOnBlockchain",
+					"address": address,
+				}).
+				WithError(err).
+				Warn("failed to mark fulfillment as actively scheduled (best effort)")
+		}
 	}
 
 	return existsOnBlockchain, nil

@@ -182,7 +182,7 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 func (s *transactionServer) maybeAirdropForSubmittingIntent(ctx context.Context, intentRecord *intent.Record, submitActionsOwnerMetadata *common.OwnerMetadata) {
 	if false {
 		// Disabled
-		s.maybeAirdropForSendingUserTheirFirstKin(ctx, intentRecord)
+		_ = s.maybeAirdropForSendingUserTheirFirstKin(ctx, intentRecord)
 	}
 }
 
@@ -443,8 +443,26 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		log.WithError(err).Warn("failure selecting available nonce")
 		return nil, err
 	}
+
+	// note: defer() will only run when the outer function returns, and therefore
+	// all of the defer()'s in 	// this loop will be run all at once at the end,
+	// rather than at the end of each iteration.
+	//
+	// Since we are not committing (and therefore consuming) the nonce's until the
+	// end of the function, this is desirable. If we released at the end of each
+	// iteration, we could potentially acquire the same nonce multiple times for
+	// different transactions, which would fail.
 	defer func() {
-		selectedNonce.ReleaseIfNotReserved()
+		if err := selectedNonce.ReleaseIfNotReserved(); err != nil {
+			s.log.
+				WithFields(logrus.Fields{
+					"method":        "airdrop",
+					"nonce_account": selectedNonce.Account.PublicKey().ToBase58(),
+					"blockhash":     selectedNonce.Blockhash.ToBase58(),
+				}).
+				WithError(err).
+				Warn("failed to release nonce")
+		}
 		selectedNonce.Unlock()
 	}()
 
@@ -620,7 +638,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 
 	if canPushChatMessage {
 		// Best-effort send a push
-		push_util.SendChatMessagePushNotification(
+		pushErr := push_util.SendChatMessagePushNotification(
 			ctx,
 			s.data,
 			s.pusher,
@@ -628,6 +646,9 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			owner,
 			chatMessage,
 		)
+		if pushErr != nil {
+			log.WithError(err).Warn("failed to send chat message push notification (best effort)")
+		}
 	}
 
 	recordAirdropEvent(ctx, owner, airdropType, usdValue)

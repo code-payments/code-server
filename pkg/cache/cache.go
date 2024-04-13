@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"errors"
 	"log"
 	"sync"
 )
@@ -11,7 +10,7 @@ type Cache interface {
 	SetVerbose(verbose bool)
 	GetWeight() int
 	GetBudget() int
-	Insert(key string, value interface{}, weight int) error
+	Insert(key string, value interface{}, weight int) (inserted bool)
 	Retrieve(key string) (interface{}, bool)
 	Clear()
 }
@@ -61,12 +60,12 @@ func (c *cache) GetBudget() int {
 }
 
 // Insert inserts an object into the cache
-func (c *cache) Insert(key string, value interface{}, weight int) error {
+func (c *cache) Insert(key string, value interface{}, weight int) (inserted bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	if _, found := c.lookup[key]; found {
-		return errors.New("key already exists in cache")
+		return false
 	}
 
 	node := &cacheNode{
@@ -106,7 +105,7 @@ func (c *cache) Insert(key string, value interface{}, weight int) error {
 		delete(c.lookup, c.tail.key)
 	}
 
-	return nil
+	return true
 }
 
 // Retrieve gets an object out of the cache

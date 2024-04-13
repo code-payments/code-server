@@ -2,6 +2,7 @@ package async_nonce
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -66,11 +67,21 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		p.size = size
 	}
 
+	errCh := make(chan error, 2+2+1)
+
 	// Generate vault keys until we have at least 10 in reserve to use for the pool
-	go p.generateKeys(ctx)
+	go func() {
+		if err := p.generateKeys(ctx); err != nil {
+			errCh <- fmt.Errorf("failed to generate keys: %w", err)
+		}
+	}()
 
 	// Watch the size of the nonce pool and create accounts if necessary
-	go p.generateNonceAccounts(ctx)
+	go func() {
+		if err := p.generateNonceAccounts(ctx); err != nil {
+			errCh <- fmt.Errorf("failed to generate nonce accounts: %w", err)
+		}
+	}()
 
 	// Setup workers to watch for nonce state changes on the Solana side
 	for _, item := range []nonce.State{
@@ -78,23 +89,21 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		nonce.StateReleased,
 	} {
 		go func(state nonce.State) {
-
-			err := p.worker(ctx, state, interval)
-			if err != nil && err != context.Canceled {
-				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
+			if err := p.worker(ctx, state, interval); err != nil && errors.Is(err, context.Canceled) {
+				errCh <- err
 			}
-
 		}(item)
 	}
 
 	go func() {
-		err := p.metricsGaugeWorker(ctx)
-		if err != nil && err != context.Canceled {
-			p.log.WithError(err).Warn("nonce metrics gauge loop terminated unexpectedly")
+		if err := p.metricsGaugeWorker(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			errCh <- err
 		}
 	}()
 
 	select {
+	case err := <-errCh:
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	}

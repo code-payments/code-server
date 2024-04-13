@@ -602,14 +602,34 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						log.WithError(err).Warn("failure selecting available nonce")
 						return handleSubmitIntentError(streamer, err)
 					}
+
+					// If we never assign the nonce a signature in the action creation flow,
+					// it's safe to put it back in the available pool. The client will have
+					// caused a failed RPC call, and we want to avoid malicious or erroneous
+					// clients from consuming our nonce pool!
+					//
+					// note: defer() will only run when the outer function returns, and
+					// therefore all of the defer()'s in this loop will be run all at once at
+					// the end, rather than at the end of each iteration.
+					//
+					// Since we are not committing (and therefore consuming) the nonce's until
+					// the end of the function, this is desirable. If we released at the end of
+					// each iteration, we could potentially acquire the same nonce multiple times
+					// for different transactions, which would fail.
 					defer func() {
-						// If we never assign the nonce a signature in the action creation flow,
-						// it's safe to put it back in the available pool. The client will have
-						// caused a failed RPC call, and we want to avoid malicious or erroneous
-						// clients from consuming our nonce pool!
-						selectedNonce.ReleaseIfNotReserved()
+						if err := selectedNonce.ReleaseIfNotReserved(); err != nil {
+							s.log.
+								WithFields(logrus.Fields{
+									"method":        "SubmitIntent",
+									"nonce_account": selectedNonce.Account.PublicKey().ToBase58(),
+									"blockhash":     selectedNonce.Blockhash.ToBase58(),
+								}).
+								WithError(err).
+								Warn("failed to release nonce")
+						}
 						selectedNonce.Unlock()
 					}()
+
 					nonceAccount = selectedNonce.Account
 					nonceBlockchash = selectedNonce.Blockhash
 				} else {
@@ -961,7 +981,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		if len(chatMessagesToPush) > 0 {
 			go func() {
 				for _, chatMessageToPush := range chatMessagesToPush {
-					push.SendChatMessagePushNotification(
+					pushErr := push.SendChatMessagePushNotification(
 						context.TODO(),
 						s.data,
 						s.pusher,
@@ -969,6 +989,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						chatMessageToPush.Owner,
 						chatMessageToPush.Message,
 					)
+					if pushErr != nil {
+						log.WithError(err).Warn("failure sending chat message push notification")
+					}
 				}
 			}()
 		}

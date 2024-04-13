@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/memo"
 )
 
 type mockScheduler struct {
@@ -48,7 +48,10 @@ func (h *mockFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fu
 	}
 
 	txn := solana.NewTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(selectedNonce.Account.PublicKey().ToBase58()))
-	txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	if err := txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes()); err != nil {
+		return nil, err
+	}
+
 	return &txn, nil
 }
 

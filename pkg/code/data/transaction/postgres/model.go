@@ -7,9 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	pg "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
 )
 
 const (
@@ -168,8 +168,23 @@ func dbGetFirstPending(ctx context.Context, db *sqlx.DB, address string) (*trans
 			postBalance       uint64        //`db:"post_balance"`
 		)
 
-		rows.Scan(&txId, &signature, &slot, &blockTime, &data, &fee, &hasErrors,
-			&confirmationState, &confirmations, &createdAt, &account, &preBalance, &postBalance)
+		err = rows.Scan(
+			&txId,
+			&signature,
+			&slot,
+			&blockTime,
+			&data, &fee,
+			&hasErrors,
+			&confirmationState,
+			&confirmations,
+			&createdAt,
+			&account,
+			&preBalance,
+			&postBalance,
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		tb := &transaction.TokenBalance{
 			Account:     account,
@@ -242,8 +257,24 @@ func dbGetLatestByState(ctx context.Context, db *sqlx.DB, address string, state 
 			postBalance       uint64        //`db:"post_balance"`
 		)
 
-		rows.Scan(&txId, &signature, &slot, &blockTime, &data, &fee, &hasErrors,
-			&confirmationState, &confirmations, &createdAt, &account, &preBalance, &postBalance)
+		err = rows.Scan(
+			&txId,
+			&signature,
+			&slot,
+			&blockTime,
+			&data,
+			&fee,
+			&hasErrors,
+			&confirmationState,
+			&confirmations,
+			&createdAt,
+			&account,
+			&preBalance,
+			&postBalance,
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		tb := &transaction.TokenBalance{
 			Account:     account,
@@ -337,8 +368,24 @@ func dbGetAllByAddress(ctx context.Context, db *sqlx.DB, address string, cursor 
 			postBalance       uint64        //`db:"post_balance"`
 		)
 
-		rows.Scan(&txId, &signature, &slot, &blockTime, &data, &fee, &hasErrors,
-			&confirmationState, &confirmations, &createdAt, &account, &preBalance, &postBalance)
+		err = rows.Scan(
+			&txId,
+			&signature,
+			&slot,
+			&blockTime,
+			&data,
+			&fee,
+			&hasErrors,
+			&confirmationState,
+			&confirmations,
+			&createdAt,
+			&account,
+			&preBalance,
+			&postBalance,
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		tb := &transaction.TokenBalance{
 			Account:     account,

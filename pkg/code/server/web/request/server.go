@@ -60,7 +60,9 @@ func (s *Server) createIntentHandler(path string) func(w http.ResponseWriter, r 
 
 		w.Header().Set(contentTypeHeaderName, jsonContentTypeHeaderValue)
 		w.WriteHeader(statusCode)
-		w.Write([]byte(body.ToString()))
+		if _, err := w.Write([]byte(body.ToString())); err != nil {
+			log.WithError(err).Info("failed to write body")
+		}
 	}
 }
 
@@ -101,7 +103,9 @@ func (s *Server) getStatusHandler(path string) func(w http.ResponseWriter, r *ht
 
 		w.Header().Set(contentTypeHeaderName, jsonContentTypeHeaderValue)
 		w.WriteHeader(statusCode)
-		w.Write([]byte(body.ToString()))
+		if _, err := w.Write([]byte(body.ToString())); err != nil {
+			log.WithError(err).Warn("failed to write body")
+		}
 	}
 }
 
@@ -137,7 +141,9 @@ func (s *Server) getUserIdHandler(path string) func(w http.ResponseWriter, r *ht
 
 		w.Header().Set(contentTypeHeaderName, jsonContentTypeHeaderValue)
 		w.WriteHeader(statusCode)
-		w.Write([]byte(body.ToString()))
+		if _, err := w.Write([]byte(body.ToString())); err != nil {
+			log.WithError(err).Warn("failed to write body")
+		}
 	}
 }
 

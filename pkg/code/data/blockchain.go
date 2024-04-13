@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"crypto/ed25519"
+	"fmt"
 
 	"github.com/mr-tron/base58"
 
@@ -207,7 +208,9 @@ func (dp *BlockchainProvider) GetBlockchainHistory(ctx context.Context, account 
 		Limit:     1000,
 		Supported: query.CanLimitResults | query.CanQueryByCursor,
 	}
-	req.Apply(opts...)
+	if err := req.Apply(opts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", query.ErrQueryNotSupported, err)
+	}
 
 	var cursor = ""
 	if len(req.Cursor) > 0 {

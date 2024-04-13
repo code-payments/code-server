@@ -50,8 +50,12 @@ func sendBasicPushNotificationToOwner(
 		)
 
 		if err != nil {
-			log.WithError(err).Warn("failure sending push notification")
-			onPushError(ctx, data, pusher, pushTokenRecord)
+			isValid, onPushErr := onPushError(ctx, data, pusher, pushTokenRecord)
+			log.WithError(err).
+				WithFields(logrus.Fields{
+					"cleanup_error": onPushErr,
+					"is_valid":      isValid,
+				}).Warn("failed to send push notification (best effort)")
 		}
 
 		seenPushTokens[pushTokenRecord.PushToken] = struct{}{}

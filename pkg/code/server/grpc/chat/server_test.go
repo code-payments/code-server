@@ -41,12 +41,13 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	owner := testutil.NewRandomAccount(t)
 	env.setupUserWithLocale(t, owner, language.English)
 
-	localization.LoadTestKeys(map[language.Tag]map[string]string{
+	err := localization.LoadTestKeys(map[language.Tag]map[string]string{
 		language.English: {
 			localization.ChatTitleCodeTeam: "Code Team",
 			"msg.body.key":                 "localized message body content",
 		},
 	})
+	require.NoError(t, err)
 	defer localization.ResetKeys()
 
 	testExternalAppDomain := "test.com"

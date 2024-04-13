@@ -605,7 +605,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TransferWithCommitment && *fulfillmentRecord.Destination == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -614,7 +614,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.NoPrivacyTransferWithAuthority && fulfillmentRecord.Source == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 				break
 			}
 		}
@@ -624,7 +624,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.NoPrivacyTransferWithAuthority && fulfillmentRecord.Source == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -767,7 +767,7 @@ func TestContextualScheduler_CloseDormantTimelockAccount(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TransferWithCommitment && *fulfillmentRecord.Destination == closeDormantAccount.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -776,7 +776,7 @@ func TestContextualScheduler_CloseDormantTimelockAccount(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TemporaryPrivacyTransferWithAuthority && fulfillmentRecord.Source == closeDormantAccount.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 				break
 			}
 		}
@@ -786,7 +786,7 @@ func TestContextualScheduler_CloseDormantTimelockAccount(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TemporaryPrivacyTransferWithAuthority && fulfillmentRecord.Source == closeDormantAccount.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -1103,7 +1103,7 @@ func TestContextualScheduler_PrivateTransfer_PermanentPrivacyFlow(t *testing.T) 
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TransferWithCommitment && *fulfillmentRecord.Destination == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}

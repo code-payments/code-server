@@ -198,12 +198,18 @@ func (p *service) initiateProcessToAutoReturnGiftCard(ctx context.Context, giftC
 	}
 
 	// Finally, update the user by best-effort sending them a push
-	go push.SendGiftCardReturnedPushNotification(
-		ctx,
-		p.data,
-		p.pusher,
-		giftCardVaultAccount,
-	)
+	go func() {
+		err := push.SendGiftCardReturnedPushNotification(
+			ctx,
+			p.data,
+			p.pusher,
+			giftCardVaultAccount,
+		)
+		if err != nil {
+			p.log.WithError(err).Warn("failed to send gift card return push notification (best effort)")
+		}
+	}()
+
 	return nil
 }
 

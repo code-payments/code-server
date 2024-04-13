@@ -22,7 +22,10 @@ go.work
 
 # Build output directories
 build/
+.build/
 
 # Visual Studio Code
 .vscode/
 
+# Jetbrains
+.idea/

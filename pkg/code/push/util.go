@@ -2,6 +2,8 @@ package push
 
 import (
 	"context"
+	"fmt"
+	"github.com/sirupsen/logrus"
 
 	"github.com/pkg/errors"
 
@@ -34,8 +36,18 @@ func getPushTokensForOwner(ctx context.Context, data code_data.Provider, owner *
 func onPushError(ctx context.Context, data code_data.Provider, pusher push_lib.Provider, pushTokenRecord *push_data.Record) (bool, error) {
 	// On failure, verify token validity, and cleanup if necessary
 	isValid, err := pusher.IsValidPushToken(ctx, pushTokenRecord.PushToken)
-	if err == nil && !isValid {
-		data.DeletePushToken(ctx, pushTokenRecord.PushToken)
+	if isValid {
+		return true, nil
+	} else if err != nil {
+		return false, fmt.Errorf("failed to check if push token is valid: %w", err)
 	}
-	return isValid, err
+
+	if err := data.DeletePushToken(ctx, pushTokenRecord.PushToken); err != nil {
+		logrus.StandardLogger().WithFields(logrus.Fields{
+			"method": "onPushError",
+			"token":  pushTokenRecord.PushToken,
+		}).WithError(err).Warn("failed to cleanup invalid push token (best effort)")
+	}
+
+	return false, nil
 }

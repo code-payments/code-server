@@ -140,7 +140,12 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 
 		switch err {
 		case nil:
-			go push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+			go func() {
+				err := push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+				if err != nil {
+					p.log.WithError(err).Warn("failed to send twitter account connected push notification (best effort)")
+				}
+			}()
 		case twitter.ErrDuplicateTipAddress:
 			err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 				err = p.data.MarkTwitterNonceAsUsed(ctx, tweet.ID, *registrationNonce)

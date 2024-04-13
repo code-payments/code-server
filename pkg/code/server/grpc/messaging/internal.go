@@ -86,7 +86,7 @@ func (s *server) InternallyCreateMessage(ctx context.Context, rendezvousKey *com
 	}
 
 	// Best effort attempt to forward the message to the active stream
-	retry.Retry(
+	attempts, err := retry.Retry(
 		func() error {
 			return s.internallyForwardMessage(ctx, &messagingpb.SendMessageRequest{
 				RendezvousKey: &messagingpb.RendezvousKey{
@@ -106,6 +106,15 @@ func (s *server) InternallyCreateMessage(ctx context.Context, rendezvousKey *com
 		retry.Limit(5),
 		retry.Backoff(backoff.BinaryExponential(100*time.Millisecond), 500*time.Millisecond),
 	)
+	if err != nil {
+		s.log.
+			WithError(err).
+			WithFields(logrus.Fields{
+				"method":   "InternallyCreateMessage",
+				"attempts": attempts,
+			}).
+			Warn("failed to forward message (best effort)")
+	}
 
 	return id, nil
 }
@@ -153,7 +162,11 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 			log.WithError(err).Warn("failure creating internal grpc messaging client")
 			return err
 		}
-		defer cleanup()
+		defer func() {
+			if err := cleanup(); err != nil {
+				log.WithError(err).Warn("failed to cleanup internal messaging client")
+			}
+		}()
 
 		reqBytes, err := proto.Marshal(req)
 		if err != nil {

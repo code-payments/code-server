@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"time"
 
@@ -72,7 +73,10 @@ func NewNaclBoxBlockchainMessage(
 		return nil, errors.New("sender account private key unavailable")
 	}
 
-	encryptedMessage, nonce := encryptMessageUsingNaclBox(sender, receiver, plaintextMessage)
+	encryptedMessage, nonce, err := encryptMessageUsingNaclBox(sender, receiver, plaintextMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt with nacl box: %w", err)
+	}
 
 	if len(encryptedMessage)+len(senderDomain) > maxNaclBoxDynamicContentSize {
 		return nil, errors.New("encrypted message length exceeds limit")
@@ -223,10 +227,12 @@ func DecodeNaclBoxBlockchainMessage(payload []byte) (*NaclBoxBlockchainMessage, 
 	}, nil
 }
 
-func encryptMessageUsingNaclBox(sender, receiver *common.Account, plaintextMessage string) ([]byte, naclBoxNonce) {
+func encryptMessageUsingNaclBox(sender, receiver *common.Account, plaintextMessage string) ([]byte, naclBoxNonce, error) {
 	var nonce naclBoxNonce
-	rand.Read(nonce[:])
-	return encryptMessageUsingNaclBoxWithProvidedNonce(sender, receiver, plaintextMessage, nonce), nonce
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, nonce, err
+	}
+	return encryptMessageUsingNaclBoxWithProvidedNonce(sender, receiver, plaintextMessage, nonce), nonce, nil
 }
 
 // Nonce should always be random. Use encryptMessageUsingNaclBox, unless testing

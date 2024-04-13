@@ -149,10 +149,10 @@ func (p *Payload) ToRendezvousKey() ed25519.PrivateKey {
 	return DeriveRendezvousPrivateKey(p)
 }
 
-func GenerateRandomIdempotencyKey() IdempotencyKey {
+func GenerateRandomIdempotencyKey() (IdempotencyKey, error) {
 	var buffer [nonceSize]byte
-	rand.Read(buffer[:])
-	return buffer
+	_, err := rand.Read(buffer[:])
+	return buffer, err
 }
 
 type amountBuffer interface {

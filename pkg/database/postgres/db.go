@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
@@ -59,7 +60,10 @@ func ExecuteTxWithinCtx(ctx context.Context, db *sqlx.DB, isolation sql.Isolatio
 	err = fn(ctx)
 	if err != nil {
 		// We always need to execute a Rollback() so sql.DB releases the connection.
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", rollbackErr)
+		}
+
 		return err
 	}
 	return tx.Commit()
@@ -94,7 +98,9 @@ func ExecuteInTx(ctx context.Context, db *sqlx.DB, isolation sql.IsolationLevel,
 	if err != nil {
 		if startedNewTx {
 			// We always need to execute a Rollback() so sql.DB releases the connection.
-			tx.Rollback()
+			if rollBackErr := tx.Rollback(); rollBackErr != nil {
+				return fmt.Errorf("failed to rollback transaction: %w", rollBackErr)
+			}
 		}
 		return err
 	}

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

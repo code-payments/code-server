@@ -8,16 +8,17 @@ import (
 
 	"github.com/mr-tron/base58"
 
-	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var (
 	ErrNoAvailableNonces = errors.New("no available nonces")
+	ErrUnlocked          = errors.New("nonce is unlocked")
 )
 
 var (
@@ -66,7 +67,7 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, useCase 
 		defer globalNonceLock.Unlock()
 
 		randomRecord, err := data.GetRandomAvailableNonceByPurpose(ctx, useCase)
-		if err == nonce.ErrNonceNotFound {
+		if errors.Is(err, nonce.ErrNonceNotFound) {
 			return ErrNoAvailableNonces
 		} else if err != nil {
 			return err
@@ -257,7 +258,7 @@ func (n *SelectedNonce) ReleaseIfNotReserved() error {
 	defer n.localLock.Unlock()
 
 	if n.isUnlocked {
-		return errors.New("nonce is unlocked")
+		return ErrUnlocked
 	}
 
 	if n.record.State == nonce.StateAvailable {

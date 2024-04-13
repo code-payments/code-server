@@ -69,7 +69,7 @@ import (
 	intent_memory_client "github.com/code-payments/code-server/pkg/code/data/intent/memory"
 	login_memory_client "github.com/code-payments/code-server/pkg/code/data/login/memory"
 	merkletree_memory_client "github.com/code-payments/code-server/pkg/code/data/merkletree/memory"
-	messaging "github.com/code-payments/code-server/pkg/code/data/messaging"
+	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	messaging_memory_client "github.com/code-payments/code-server/pkg/code/data/messaging/memory"
 	nonce_memory_client "github.com/code-payments/code-server/pkg/code/data/nonce/memory"
 	onramp_memory_client "github.com/code-payments/code-server/pkg/code/data/onramp/memory"
@@ -669,7 +669,9 @@ func (dp *DatabaseProvider) GetExchangeRateHistory(ctx context.Context, code cur
 		SortBy:    query.Ascending,
 		Supported: query.CanLimitResults | query.CanSortBy | query.CanBucketBy | query.CanQueryByStartTime | query.CanQueryByEndTime,
 	}
-	req.Apply(opts...)
+	if err := req.Apply(opts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", query.ErrQueryNotSupported, err)
+	}
 
 	if req.Start.IsZero() {
 		return nil, query.ErrQueryNotSupported
@@ -934,7 +936,9 @@ func (dp *DatabaseProvider) GetPaymentHistory(ctx context.Context, account strin
 		SortBy:    query.Ascending,
 		Supported: query.CanLimitResults | query.CanSortBy | query.CanQueryByCursor | query.CanFilterBy,
 	}
-	req.Apply(opts...)
+	if err := req.Apply(opts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", query.ErrQueryNotSupported, err)
+	}
 
 	if req.Limit > maxPaymentHistoryReqSize {
 		return nil, query.ErrQueryNotSupported
@@ -959,7 +963,9 @@ func (dp *DatabaseProvider) GetPaymentHistoryWithinBlockRange(ctx context.Contex
 		SortBy:    query.Ascending,
 		Supported: query.CanLimitResults | query.CanSortBy | query.CanQueryByCursor | query.CanFilterBy,
 	}
-	req.Apply(opts...)
+	if err := req.Apply(opts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", query.ErrQueryNotSupported, err)
+	}
 
 	if req.Limit > maxPaymentHistoryReqSize {
 		return nil, query.ErrQueryNotSupported

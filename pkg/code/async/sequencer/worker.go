@@ -9,15 +9,16 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/retry"
 )
 
 func (p *service) worker(serviceCtx context.Context, state fulfillment.State, interval time.Duration) error {
@@ -228,8 +229,26 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 		if err != nil {
 			return err
 		}
+
+		// note: defer() will only run when the outer function returns, and
+		// therefore all of the defer()'s in this loop will be run all at once
+		// at the end, rather than at the end of each iteration.
+		//
+		// Since we are not committing (and therefore consuming) the nonce's until
+		// the end of the function, this is desirable. If we released at the end of
+		// each iteration, we could potentially acquire the same nonce multiple times
+		// for different transactions, which would fail.
 		defer func() {
-			selectedNonce.ReleaseIfNotReserved()
+			if err := selectedNonce.ReleaseIfNotReserved(); err != nil {
+				p.log.
+					WithFields(logrus.Fields{
+						"method":        "handlePending",
+						"nonce_account": selectedNonce.Account.PublicKey().ToBase58(),
+						"blockhash":     selectedNonce.Blockhash.ToBase58(),
+					}).
+					WithError(err).
+					Warn("failed to release nonce")
+			}
 			selectedNonce.Unlock()
 		}()
 

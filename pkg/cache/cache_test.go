@@ -2,24 +2,18 @@ package cache
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCacheInsert(t *testing.T) {
 	cache := NewCache(1)
-	insertError := cache.Insert("A", "", 1)
-
-	if insertError != nil {
-		t.Fatalf("Cache insert resulted in unexpected error: %s", insertError)
-	}
+	require.True(t, cache.Insert("A", "", 1))
 }
 
 func TestCacheInsertWithinBudget(t *testing.T) {
 	cache := NewCache(1)
-	insertError := cache.Insert("A", "", 2)
-
-	if insertError != nil {
-		t.Fatalf("Cache insert resulted in unexpected error: %s", insertError)
-	}
+	require.True(t, cache.Insert("A", "", 2))
 }
 
 func TestCacheInsertUpdatesWeight(t *testing.T) {
@@ -28,19 +22,13 @@ func TestCacheInsertUpdatesWeight(t *testing.T) {
 	_ = cache.Insert("B", "", 1)
 	_ = cache.Insert("budget_exceeded", "", 1)
 
-	if cache.GetWeight() != 2 {
-		t.Fatal("Cache with budget 2 did not correctly set weight after evicting one of three nodes")
-	}
+	require.Equal(t, 2, cache.GetWeight())
 }
 
 func TestCacheInsertDuplicateRejected(t *testing.T) {
 	cache := NewCache(2)
-	_ = cache.Insert("dupe", "", 1)
-	dupeError := cache.Insert("dupe", "", 1)
-
-	if dupeError == nil {
-		t.Fatal("Cache insert of duplicate key did not result in any err")
-	}
+	require.True(t, cache.Insert("dupe", "", 1))
+	require.False(t, cache.Insert("dupe", "", 1))
 }
 
 func TestCacheInsertEvictsLeastRecentlyUsed(t *testing.T) {
@@ -51,17 +39,13 @@ func TestCacheInsertEvictsLeastRecentlyUsed(t *testing.T) {
 	_ = cache.Insert("B", "", 1)
 
 	_, foundEvicted := cache.Retrieve("evicted")
-	if foundEvicted {
-		t.Fatal("Cache insert did not trigger eviction after weight exceedance")
-	}
+	require.False(t, foundEvicted)
 
 	// double check that only 1 one was evicted and not any extra
 	_, foundA := cache.Retrieve("A")
+	require.True(t, foundA)
 	_, foundB := cache.Retrieve("B")
-
-	if !foundA || !foundB {
-		t.Fatal("Cache insert evicted more than necessary")
-	}
+	require.True(t, foundB)
 }
 
 func TestCacheInsertEvictsLeastRecentlyRetrieved(t *testing.T) {
@@ -69,16 +53,14 @@ func TestCacheInsertEvictsLeastRecentlyRetrieved(t *testing.T) {
 	_ = cache.Insert("A", "", 1)
 	_ = cache.Insert("evicted", "", 1)
 
-	// retrieve the oldest node, promoting it head so it is not evicted
+	// retrieve the oldest node, promoting it head, so it is not evicted
 	cache.Retrieve("A")
 
 	// insert once more, exceeding weight capacity
 	_ = cache.Insert("B", "", 1)
 	// now the least recently used key should be evicted
 	_, foundEvicted := cache.Retrieve("evicted")
-	if foundEvicted {
-		t.Fatal("Cache insert did not evict least recently used after weight exceedance")
-	}
+	require.False(t, foundEvicted)
 }
 
 func TestClear(t *testing.T) {
@@ -86,8 +68,5 @@ func TestClear(t *testing.T) {
 	_ = cache.Insert("cleared", "", 1)
 	cache.Clear()
 	_, found := cache.Retrieve("cleared")
-
-	if found {
-		t.Fatal("Still able to retrieve nodes after cache was cleared")
-	}
+	require.False(t, found)
 }

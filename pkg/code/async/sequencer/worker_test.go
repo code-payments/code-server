@@ -10,11 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -24,6 +19,11 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/memo"
+	"github.com/code-payments/code-server/pkg/solana/system"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestFulfillmentWorker_StateUnknown_RemainInStateUnknown(t *testing.T) {
@@ -266,7 +266,7 @@ func (e *workerTestEnv) createAnyFulfillmentInState(t *testing.T, state fulfillm
 	copy(typedBlockhash[:], untypedBlockhash)
 	txn.SetBlockhash(typedBlockhash)
 
-	txn.Sign(fakeCodeAccouht.PrivateKey().ToBytes())
+	require.NoError(t, txn.Sign(fakeCodeAccouht.PrivateKey().ToBytes()))
 
 	fulfillmentRecord := &fulfillment.Record{
 		Intent:          testutil.NewRandomAccount(t).PublicKey().ToBase58(),
@@ -344,7 +344,7 @@ func (e *workerTestEnv) assertFulfillmentCreatedOnDemand(t *testing.T, id uint64
 	require.NotEmpty(t, fulfillmentRecord.Data)
 
 	expectedTxn := solana.NewTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(nonceAddress))
-	expectedTxn.Sign(e.subsidizer.PrivateKey().ToBytes())
+	require.NoError(t, expectedTxn.Sign(e.subsidizer.PrivateKey().ToBytes()))
 	expectedSignature := base58.Encode(expectedTxn.Signature())
 
 	assert.Equal(t, expectedSignature, *fulfillmentRecord.Signature)
