@@ -22,7 +22,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/grpc/client"
-	"github.com/code-payments/code-server/pkg/kin"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
@@ -580,8 +579,4 @@ func (s *server) getOriginalGiftCardExchangeData(ctx context.Context, records *c
 		NativeAmount: intentRecord.SendPrivatePaymentMetadata.NativeAmount,
 		Quarks:       intentRecord.SendPrivatePaymentMetadata.Quantity,
 	}, nil
-}
-
-func hideDust(quarks uint64) uint64 {
-	return kin.ToQuarks(kin.FromQuarks(quarks))
 }

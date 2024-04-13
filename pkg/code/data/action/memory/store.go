@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/action"
 )
 
 type ById []*action.Record
@@ -90,7 +90,7 @@ func (s *store) findBySource(source string) []*action.Record {
 	return res
 }
 
-func (s *store) filter(items []*action.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*action.Record {
+func (s *store) filter(items []*action.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*action.Record { //nolint:unused
 	var start uint64
 
 	start = 0

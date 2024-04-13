@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -63,7 +63,7 @@ func (s *store) findIntent(intentID string) *intent.Record {
 	return nil
 }
 
-func (s *store) findByState(state intent.State) []*intent.Record {
+func (s *store) findByState(state intent.State) []*intent.Record { //nolint:unused
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
 		if item.State == state {

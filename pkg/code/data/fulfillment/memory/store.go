@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 )
 
 type store struct {
@@ -120,7 +120,7 @@ func (s *store) findByStateAndAddress(state fulfillment.State, address string) [
 	return res
 }
 
-func (s *store) findByStateAndAddressAsSource(state fulfillment.State, address string) []*fulfillment.Record {
+func (s *store) findByStateAndAddressAsSource(state fulfillment.State, address string) []*fulfillment.Record { //nolint:unused
 	res := make([]*fulfillment.Record, 0)
 	for _, item := range s.records {
 		if item.State != state {

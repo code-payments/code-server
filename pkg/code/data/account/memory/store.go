@@ -404,7 +404,7 @@ func (s *store) CountRequiringAutoReturnCheck(ctx context.Context) (uint64, erro
 	return uint64(len(items)), nil
 }
 
-func cloneRecords(items []*account.Record) []*account.Record {
+func cloneRecords(items []*account.Record) []*account.Record { //nolint:unused
 	res := make([]*account.Record, len(items))
 
 	for i, item := range items {

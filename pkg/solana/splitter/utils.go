@@ -8,7 +8,7 @@ import (
 	"github.com/mr-tron/base58"
 )
 
-const optionalSize = 1
+const optionalSize = 1 //nolint:unused
 
 func putDiscriminator(dst []byte, src []byte, offset *int) {
 	copy(dst[*offset:], src)
@@ -74,7 +74,7 @@ func getUint64(src []byte, dst *uint64, offset *int) {
 	*offset += 8
 }
 
-func putOptionalKey(dst []byte, src []byte, offset *int) {
+func putOptionalKey(dst []byte, src []byte, offset *int) { //nolint:unused
 	if len(src) > 0 {
 		dst[*offset] = 1
 		copy(dst[*offset+optionalSize:], src)
@@ -84,7 +84,7 @@ func putOptionalKey(dst []byte, src []byte, offset *int) {
 		*offset += optionalSize
 	}
 }
-func getOptionalKey(src []byte, dst *ed25519.PublicKey, offset *int) {
+func getOptionalKey(src []byte, dst *ed25519.PublicKey, offset *int) { //nolint:unused
 	if src[*offset] == 1 {
 		*dst = make([]byte, ed25519.PublicKeySize)
 		copy(*dst, src[*offset+optionalSize:])
@@ -94,7 +94,7 @@ func getOptionalKey(src []byte, dst *ed25519.PublicKey, offset *int) {
 	}
 }
 
-func putOptionalUint32(dst []byte, v *uint32, offset *int) {
+func putOptionalUint32(dst []byte, v *uint32, offset *int) { //nolint:unused
 	if v != nil {
 		dst[*offset] = 1
 		binary.LittleEndian.PutUint32(dst[*offset+optionalSize:], *v)
@@ -104,7 +104,7 @@ func putOptionalUint32(dst []byte, v *uint32, offset *int) {
 		*offset += optionalSize
 	}
 }
-func getOptionalUint32(src []byte, dst **uint32, offset *int) {
+func getOptionalUint32(src []byte, dst **uint32, offset *int) { //nolint:unused
 	if src[*offset] == 1 {
 		val := binary.LittleEndian.Uint32(src[*offset+optionalSize:])
 		*dst = &val
@@ -114,7 +114,7 @@ func getOptionalUint32(src []byte, dst **uint32, offset *int) {
 	}
 }
 
-func putOptionalUint64(dst []byte, v *uint64, offset *int) {
+func putOptionalUint64(dst []byte, v *uint64, offset *int) { //nolint:unused
 	if v != nil {
 		dst[*offset] = 1
 		binary.LittleEndian.PutUint64(dst[*offset+optionalSize:], *v)
@@ -124,7 +124,7 @@ func putOptionalUint64(dst []byte, v *uint64, offset *int) {
 		*offset += optionalSize
 	}
 }
-func getOptionalUint64(src []byte, dst **uint64, offset *int) {
+func getOptionalUint64(src []byte, dst **uint64, offset *int) { //nolint:unused
 	if src[*offset] == 1 {
 		val := binary.LittleEndian.Uint64(src[*offset+optionalSize:])
 		*dst = &val

@@ -1093,24 +1093,13 @@ func (s *serverTestEnv) setupAirdropper(t *testing.T, initialFunds uint64) *comm
 	return owner
 }
 
-func (s *serverTestEnv) assertAirdroppedFirstKin(t *testing.T, phone phoneTestEnv) {
+func (s serverTestEnv) assertAirdroppedFirstKin(t *testing.T, phone phoneTestEnv) {
 	airdropIntentId := GetNewAirdropIntentId(AirdropTypeGetFirstKin, phone.parentAccount.PublicKey().ToBase58())
 	s.assertAirdropped(t, phone, AirdropTypeGetFirstKin, airdropIntentId, 1.0)
 }
 
-func (s *serverTestEnv) assertNotAirdroppedFirstKin(t *testing.T, phone phoneTestEnv) {
+func (s serverTestEnv) assertNotAirdroppedFirstKin(t *testing.T, phone phoneTestEnv) {
 	airdropIntentId := GetNewAirdropIntentId(AirdropTypeGetFirstKin, phone.parentAccount.PublicKey().ToBase58())
-	_, err := s.data.GetIntent(s.ctx, airdropIntentId)
-	assert.Equal(t, intent.ErrIntentNotFound, err)
-}
-
-func (s *serverTestEnv) assertAirdroppedForGivingFirstKin(t *testing.T, phone phoneTestEnv, intentId string) {
-	airdropIntentId := GetNewAirdropIntentId(AirdropTypeGiveFirstKin, intentId)
-	s.assertAirdropped(t, phone, AirdropTypeGiveFirstKin, airdropIntentId, 5.0)
-}
-
-func (s *serverTestEnv) assertNotAirdroppedForGivingFirstKin(t *testing.T, intentId string) {
-	airdropIntentId := GetNewAirdropIntentId(AirdropTypeGiveFirstKin, intentId)
 	_, err := s.data.GetIntent(s.ctx, airdropIntentId)
 	assert.Equal(t, intent.ErrIntentNotFound, err)
 }
@@ -1199,12 +1188,6 @@ func (s serverTestEnv) assertAirdropped(t *testing.T, phone phoneTestEnv, airdro
 		assert.Equal(t, airdropIntentRecord.SendPublicPaymentMetadata.Quantity, protoMessage.GetAirdropReceived().ExchangeData.Quarks)
 		assert.Equal(t, airdropIntentRecord.CreatedAt.Unix(), protoMessage.GetAirdropReceived().Timestamp.AsTime().Unix())
 	}
-}
-
-func (s serverTestEnv) assertNoNoncesReserved(t *testing.T) {
-	count, err := s.data.GetNonceCountByState(s.ctx, nonce.StateReserved)
-	require.NoError(t, err)
-	assert.EqualValues(t, 0, count)
 }
 
 func (s serverTestEnv) assertNoNoncesReservedForIntent(t *testing.T, intentId string) {
@@ -6157,12 +6140,6 @@ func (m submitIntentCallMetadata) assertGrpcError(t *testing.T, code codes.Code)
 		return
 	}
 	testutil.AssertStatusErrorWithCode(t, m.err, code)
-}
-
-func (m submitIntentCallMetadata) assertGrpcErrorWithMessage(t *testing.T, code codes.Code, message string) {
-	m.assertGrpcError(t, code)
-
-	assert.True(t, strings.Contains(m.err.Error(), message))
 }
 
 func (m submitIntentCallMetadata) isError(t *testing.T) bool {

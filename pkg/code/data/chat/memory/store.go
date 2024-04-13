@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type ChatsById []*chat.Chat
@@ -413,7 +413,7 @@ func (s *store) filterPagedMessagesByChat(items []*chat.Message, cursor query.Cu
 	return res, nil
 }
 
-func (s *store) sumContentLengths(items []*chat.Message) uint32 {
+func (s *store) sumContentLengths(items []*chat.Message) uint32 { //nolint:unused
 	var res uint32
 	for _, item := range items {
 		res += uint32(item.ContentLength)

@@ -3,7 +3,7 @@ package async_account
 // todo: setup configs
 
 const (
-	envConfigPrefix = "ACCOUNT_SERVICE_"
+	envConfigPrefix = "ACCOUNT_SERVICE_" //nolint:unused
 )
 
 type conf struct {

@@ -1,7 +1,7 @@
 package osutil
 
 import (
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 
@@ -24,7 +24,7 @@ const (
 func GetTotalMemory() uint64 {
 	totalMemory := memory.TotalMemory()
 
-	cgroupLimit, err := ioutil.ReadFile(dockerMemoryLimitLocation)
+	cgroupLimit, err := os.ReadFile(dockerMemoryLimitLocation)
 	if err == nil {
 		dockerMemoryLimit, err := strconv.ParseUint(strings.Replace(string(cgroupLimit), "\n", "", 1), 10, 64)
 		if err == nil && dockerMemoryLimit != unrestrictedMemoryLimit {

@@ -16,6 +16,7 @@ func RunTests(t *testing.T, s vault.Store, teardown func()) {
 		testRoundTrip,
 		testUpdate,
 		testGetAllByState,
+		testGetCount,
 	} {
 		tf(t, s)
 		teardown()
