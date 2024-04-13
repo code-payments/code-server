@@ -113,7 +113,9 @@ func (c *client) submitRequest(ctx context.Context, url string, resp interface{}
 	var httpResp *http.Response
 	_, err = c.retrier.Retry(
 		func() error {
-			httpResp, err = c.httpClient.Do(req)
+			// Retry only occurs if err != nil, in which case the body does not need to be closed.
+			// The body itself is closed below
+			httpResp, err = c.httpClient.Do(req) //nolint:bodyclose
 			return err
 		},
 	)

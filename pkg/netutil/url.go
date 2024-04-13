@@ -51,7 +51,9 @@ func ValidateHttpUrl(
 		var resp *http.Response
 		_, err = retry.Retry(
 			func() error {
-				resp, err = http.Get(value)
+				// Retry only occurs if err != nil, in which case the body does not need to be closed.
+				// The body itself is closed below
+				resp, err = http.Get(value) //nolint:bodyclose
 				return err
 			},
 			retry.Limit(5),
@@ -60,6 +62,7 @@ func ValidateHttpUrl(
 		if err != nil {
 			return err
 		}
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			return errors.Errorf("%d status code fetching content", resp.StatusCode)
