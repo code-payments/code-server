@@ -52,7 +52,7 @@ func ToUsdcDepositedMessage(signature string, ts time.Time) (*chatpb.ChatMessage
 
 // NewUsdcBeingConvertedMessage generates a new message generated upon initiating
 // a USDC swap to be inserted into the Kin Purchases chat.
-func NewUsdcBeingConvertedMessage() (*chatpb.ChatMessage, error) {
+func NewUsdcBeingConvertedMessage(ts time.Time) (*chatpb.ChatMessage, error) {
 	messageId, err := common.NewRandomAccount()
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func NewUsdcBeingConvertedMessage() (*chatpb.ChatMessage, error) {
 			},
 		},
 	}
-	return newProtoChatMessage(messageId.PublicKey().ToBase58(), content, time.Now())
+	return newProtoChatMessage(messageId.PublicKey().ToBase58(), content, ts)
 }
 
 // ToKinAvailableForUseMessage turns details of a USDC swap transaction into a

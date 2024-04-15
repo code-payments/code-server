@@ -365,6 +365,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Transaction submission
 	//
 
+	chatMessageTs := time.Now()
+
 	_, err = s.data.SubmitBlockchainTransaction(ctx, &txn)
 	if err != nil {
 		log.WithError(err).Warn("failure submitting transaction")
@@ -377,7 +379,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	log.WithField("txn", base64.StdEncoding.EncodeToString(txn.Marshal())).Info("transaction submitted")
 
-	err = s.bestEffortNotifyUserOfSwapInProgress(ctx, owner)
+	err = s.bestEffortNotifyUserOfSwapInProgress(ctx, owner, chatMessageTs)
 	if err != nil {
 		log.WithError(err).Warn("failure notifying user of swap in progress")
 	}
@@ -493,7 +495,7 @@ func (s *transactionServer) validateSwap(
 	return nil
 }
 
-func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account) error {
+func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Context, owner *common.Account, ts time.Time) error {
 	chatId := chat_util.GetKinPurchasesChatId(owner)
 
 	// Inspect the chat history for a USDC deposited message. If that message
@@ -519,7 +521,7 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 		return errors.Wrap(err, "error fetching chat messages")
 	}
 
-	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage()
+	chatMessage, err := chat_util.NewUsdcBeingConvertedMessage(ts)
 	if err != nil {
 		return errors.Wrap(err, "error creating chat message")
 	}
