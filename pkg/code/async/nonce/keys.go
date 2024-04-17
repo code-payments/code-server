@@ -4,11 +4,12 @@ import (
 	"context"
 	"time"
 
+	"github.com/newrelic/go-agent/v3/newrelic"
+
+	"github.com/code-payments/code-server/pkg/code/data/vault"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/code/data/vault"
-	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 func (p *service) generateKey(ctx context.Context) (*vault.Record, error) {
