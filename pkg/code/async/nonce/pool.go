@@ -8,13 +8,13 @@ import (
 	"github.com/mr-tron/base58/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/system"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
 )
 
 func (p *service) worker(serviceCtx context.Context, state nonce.State, interval time.Duration) error {
@@ -131,19 +131,21 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 func (p *service) handleUnknown(ctx context.Context, record *nonce.Record) error {
 	// Newly created nonces.
 
-	// Check the signature for a potential timeout (e.g. if the nonce account
-	// was never created because the blockchain never saw the init/create
-	// transaction)
-	err := p.checkForMissingTx(ctx, record)
-	if err != nil {
-		return p.markInvalid(ctx, record)
-	}
-
 	// We're going to the blockchain directly here (super slow btw)
 	// because we don't capture the transaction through history yet (it only
 	// grabs transfer style transactions for KIN accounts).
 	stx, err := p.data.GetBlockchainTransaction(ctx, record.Signature, solana.CommitmentFinalized)
-	if err != nil {
+	if err == solana.ErrSignatureNotFound {
+		// Check the signature for a potential timeout (e.g. if the nonce account
+		// was never created because the blockchain never saw the init/create
+		// transaction)
+		err := p.checkForMissingTx(ctx, record)
+		if err != nil {
+			return p.markInvalid(ctx, record)
+		}
+
+		return nil
+	} else if err != nil {
 		return err
 	}
 

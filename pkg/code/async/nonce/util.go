@@ -3,22 +3,24 @@ package async_nonce
 import (
 	"context"
 	"errors"
-	"fmt"
+	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	"github.com/code-payments/code-server/pkg/solana/system"
+	"github.com/mr-tron/base58/base58"
+
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
-	"github.com/mr-tron/base58/base58"
+	"github.com/code-payments/code-server/pkg/solana"
+	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
+	"github.com/code-payments/code-server/pkg/solana/system"
 )
 
 var (
 	sigTimeout      = time.Minute * 5
 	sigTimeoutCache = make(map[string]time.Time) // temporary hack
+	sigCacheMu      sync.Mutex
 )
 
 func (p *service) markReleased(ctx context.Context, record *nonce.Record) error {
@@ -148,7 +150,8 @@ func (p *service) createNonceAccountTx(ctx context.Context, nonce *nonce.Record)
 	}
 
 	instructions := []solana.Instruction{
-		memo.Instruction(fmt.Sprintf("nonce:%d", nonce.Id)),
+		compute_budget.SetComputeUnitLimit(10_000),
+		compute_budget.SetComputeUnitPrice(10_000),
 		system.CreateAccount(
 			subPub,
 			noncePub,
@@ -174,6 +177,9 @@ func (p *service) createNonceAccountTx(ctx context.Context, nonce *nonce.Record)
 }
 
 func (p *service) checkForMissingTx(ctx context.Context, nonce *nonce.Record) error {
+	sigCacheMu.Lock()
+	defer sigCacheMu.Unlock()
+
 	// todo: use the DB to store the createdAt time of the nonce account
 
 	t := sigTimeoutCache[nonce.Signature]

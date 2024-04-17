@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/newrelic/go-agent/v3/newrelic"
+
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
-	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
