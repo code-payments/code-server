@@ -78,7 +78,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.CheckUniqueViolation(err, user_identity.ErrAlreadyExists)
 }
 
-func dbGetByID(ctx context.Context, db *sqlx.DB, id *user.UserID) (*model, error) {
+func dbGetByID(ctx context.Context, db *sqlx.DB, id *user.Id) (*model, error) {
 	query := `SELECT id, user_id, phone_number, is_staff_user, is_banned, created_at FROM ` + tableName + `
 		WHERE user_id = $1`
 

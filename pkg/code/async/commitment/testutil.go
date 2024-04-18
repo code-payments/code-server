@@ -3,10 +3,11 @@ package async_commitment
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"math"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -73,7 +74,7 @@ func setup(t *testing.T) testEnv {
 
 		SolanaBlock: 123,
 
-		State: treasury.TreasuryPoolStateAvailable,
+		State: treasury.PoolStateAvailable,
 	}
 
 	merkleTree, err := db.InitializeNewMerkleTree(
@@ -123,7 +124,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 		Amount:      kin.ToQuarks(1),
 
 		Intent:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		ActionId: rand.Uint32(),
+		ActionId: mrand.Uint32(),
 
 		Owner: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
@@ -178,7 +179,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 
 		FulfillmentType: fulfillment.TemporaryPrivacyTransferWithAuthority,
 		Data:            []byte("data"),
-		Signature:       pointer.String(fmt.Sprintf("sig%d", rand.Uint64())),
+		Signature:       pointer.String(fmt.Sprintf("sig%d", mrand.Uint64())),
 
 		Nonce:     pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
 		Blockhash: pointer.String("bh"),
@@ -192,7 +193,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 
 	timelockRecord := timelockAccounts.ToDBRecord()
 	timelockRecord.VaultState = timelock_token_v1.StateLocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, e.data.SaveTimelock(e.ctx, timelockRecord))
 
 	return commitmentRecord
@@ -214,7 +215,7 @@ func (e testEnv) simulateSourceAccountUnlocked(t *testing.T, commitmentRecord *c
 	require.NoError(t, err)
 
 	timelockRecord.VaultState = timelock_token_v1.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, e.data.SaveTimelock(e.ctx, timelockRecord))
 }
 
@@ -235,7 +236,7 @@ func (e testEnv) simulateAddingLeaves(t *testing.T, commitmentRecords []*commitm
 
 	e.treasuryPool.CurrentIndex = (e.treasuryPool.CurrentIndex + 1) % e.treasuryPool.HistoryListSize
 	e.treasuryPool.HistoryList[e.treasuryPool.CurrentIndex] = hex.EncodeToString(rootNode.Hash)
-	e.treasuryPool.SolanaBlock += 1
+	e.treasuryPool.SolanaBlock++
 	require.NoError(t, e.data.SaveTreasuryPool(e.ctx, e.treasuryPool))
 }
 
@@ -276,7 +277,7 @@ func (e testEnv) simulateCommitmentBeingUpgraded(t *testing.T, upgradeFrom, upgr
 
 	permanentPrivacyFulfillment := fulfillmentRecords[0].Clone()
 	permanentPrivacyFulfillment.Id = 0
-	permanentPrivacyFulfillment.Signature = pointer.String(fmt.Sprintf("txn%d", rand.Uint64()))
+	permanentPrivacyFulfillment.Signature = pointer.String(fmt.Sprintf("txn%d", mrand.Uint64()))
 	permanentPrivacyFulfillment.FulfillmentType = fulfillment.PermanentPrivacyTransferWithAuthority
 	permanentPrivacyFulfillment.Destination = &upgradeTo.Vault
 	require.NoError(t, e.data.PutAllFulfillments(e.ctx, &permanentPrivacyFulfillment))
@@ -492,7 +493,8 @@ func (e *testEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),

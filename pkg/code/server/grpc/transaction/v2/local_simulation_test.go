@@ -640,7 +640,6 @@ func TestLocalSimulation_InvalidTimelockVault(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "token must be"))
 	}
-
 }
 
 type localSimulationTestEnv struct {
@@ -662,7 +661,7 @@ func (env localSimulationTestEnv) setupTimelockRecord(t *testing.T, authority *c
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	timelockRecord.VaultState = state
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 }
 

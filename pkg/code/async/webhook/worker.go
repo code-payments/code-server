@@ -9,11 +9,11 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/sirupsen/logrus"
 
+	"github.com/code-payments/code-server/pkg/code/data/webhook"
+	webhook_util "github.com/code-payments/code-server/pkg/code/webhook"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/code/data/webhook"
-	webhook_util "github.com/code-payments/code-server/pkg/code/webhook"
 )
 
 var (
@@ -59,7 +59,7 @@ func (p *service) worker(serviceCtx context.Context, interval time.Duration) err
 				wg.Add(1)
 
 				go func(record *webhook.Record) {
-					nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+					nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 					m := nr.StartTransaction("async__webhook_service__handle_" + webhook.StatePending.String())
 					defer m.End()
 					tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -140,8 +140,8 @@ func (p *service) setupNextAttempt(ctx context.Context, record *webhook.Record) 
 		return false, p.updateWebhookRecord(ctx, &cloned)
 	}
 
-	record.Attempts += 1
-	cloned.Attempts += 1
+	record.Attempts++
+	cloned.Attempts++
 	cloned.NextAttemptAt = pointer.Time(time.Now().Add(delay))
 
 	return true, p.updateWebhookRecord(ctx, &cloned)
@@ -155,7 +155,7 @@ func (p *service) onWebhookExecuted(ctx context.Context, record *webhook.Record,
 	// Save success state immediately
 	if isSuccess {
 		p.metricsMu.Lock()
-		p.successfulWebhooks += 1
+		p.successfulWebhooks++
 		p.metricsMu.Unlock()
 
 		record.State = webhook.StateConfirmed
@@ -164,7 +164,7 @@ func (p *service) onWebhookExecuted(ctx context.Context, record *webhook.Record,
 	}
 
 	p.metricsMu.Lock()
-	p.failedWebhooks += 1
+	p.failedWebhooks++
 	p.metricsMu.Unlock()
 
 	// Otherwise, save failure state only if we're on the last attempt

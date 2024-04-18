@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -360,21 +361,29 @@ func generateNewDataContainer(t *testing.T, env testEnv, ownerAccount *common.Ac
 // todo: integrate below client utilities with the main testutil package
 
 func newClientWithoutUserAgent(t *testing.T, env testEnv) pushpb.PushClient {
-	conn, err := grpc.Dial(env.target, grpc.WithInsecure())
+	conn, err := grpc.Dial(env.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	return pushpb.NewPushClient(conn)
 }
 
 func newAndroidClient(t *testing.T, env testEnv) pushpb.PushClient {
-	conn, err := grpc.Dial(env.target, grpc.WithInsecure(), grpc.WithUserAgent("Code/Android/1.0.0"))
+	conn, err := grpc.Dial(
+		env.target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUserAgent("Code/Android/1.0.0"),
+	)
 	require.NoError(t, err)
 
 	return pushpb.NewPushClient(conn)
 }
 
 func newIOSClient(t *testing.T, env testEnv) pushpb.PushClient {
-	conn, err := grpc.Dial(env.target, grpc.WithInsecure(), grpc.WithUserAgent("Code/iOS/1.0.0"))
+	conn, err := grpc.Dial(
+		env.target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUserAgent("Code/iOS/1.0.0"),
+	)
 	require.NoError(t, err)
 
 	return pushpb.NewPushClient(conn)

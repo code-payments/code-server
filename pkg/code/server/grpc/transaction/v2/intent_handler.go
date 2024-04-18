@@ -73,7 +73,7 @@ func init() {
 	}
 }
 
-type lockableAccounts struct {
+type LockableAccounts struct {
 	DestinationOwner        *common.Account
 	RemoteSendGiftCardVault *common.Account
 }
@@ -98,7 +98,7 @@ type CreateIntentHandler interface {
 	//
 	// Note: Assumes relevant information is contained in the intent record after
 	// calling PopulateMetadata.
-	GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error)
+	GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error)
 
 	// AllowCreation determines whether the new intent creation should be allowed.
 	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error
@@ -169,8 +169,8 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 	return false, nil
 }
 
-func (h *OpenAccountsIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	return &lockableAccounts{}, nil
+func (h *OpenAccountsIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
+	return &LockableAccounts{}, nil
 }
 
 func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
@@ -499,7 +499,7 @@ func (h *SendPrivatePaymentIntentHandler) IsNoop(ctx context.Context, intentReco
 	return false, nil
 }
 
-func (h *SendPrivatePaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+func (h *SendPrivatePaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
 	var destinationOwnerAccount, giftCardVaultAccount *common.Account
 	var err error
 
@@ -517,7 +517,7 @@ func (h *SendPrivatePaymentIntentHandler) GetAdditionalAccountsToLock(ctx contex
 		}
 	}
 
-	return &lockableAccounts{
+	return &LockableAccounts{
 		DestinationOwner:        destinationOwnerAccount,
 		RemoteSendGiftCardVault: giftCardVaultAccount,
 	}, nil
@@ -779,7 +779,7 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 					return err
 				}
 			}
-		} else if metadata.IsRemoteSend {
+		} else if metadata.IsRemoteSend { //nolint:revive
 			// No validation needed here. Open validation is handled later.
 		} else {
 			// The client is trying a Code->Code payment since withdrawal and remote
@@ -1069,8 +1069,8 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) IsNoop(ctx context.Context, inte
 	return false, nil
 }
 
-func (h *ReceivePaymentsPrivatelyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	return &lockableAccounts{}, nil
+func (h *ReceivePaymentsPrivatelyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
+	return &LockableAccounts{}, nil
 }
 
 func (h *ReceivePaymentsPrivatelyIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
@@ -1232,7 +1232,6 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 			return err
 		}
 	} else {
-
 		// There's one opened account, and it must be the new temporary incoming account.
 		if len(openedAccounts) != 1 {
 			return newIntentValidationError("must open one account")
@@ -1380,7 +1379,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) OnCommittedToDB(ctx context.Cont
 type UpgradePrivacyIntentHandler struct {
 	conf                 *conf
 	data                 code_data.Provider
-	cachedUpgradeTargets map[uint32]*privacyUpgradeCandidate
+	cachedUpgradeTargets map[uint32]*PrivacyUpgradeCandidate
 }
 
 func NewUpgradePrivacyIntentHandler(conf *conf, data code_data.Provider) UpdateIntentHandler {
@@ -1395,7 +1394,7 @@ func (h *UpgradePrivacyIntentHandler) AllowUpdate(ctx context.Context, existingI
 		return errors.New("unexpected metadata proto message")
 	}
 
-	cachedUpgradeTargets := make(map[uint32]*privacyUpgradeCandidate)
+	cachedUpgradeTargets := make(map[uint32]*PrivacyUpgradeCandidate)
 	for _, untypedAction := range actions {
 		var actionId uint32
 		switch typedAction := untypedAction.Type.(type) {
@@ -1426,7 +1425,7 @@ func (h *UpgradePrivacyIntentHandler) AllowUpdate(ctx context.Context, existingI
 	return nil
 }
 
-func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transactionpb.PermanentPrivacyUpgradeAction) (*privacyUpgradeCandidate, bool) {
+func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transactionpb.PermanentPrivacyUpgradeAction) (*PrivacyUpgradeCandidate, bool) {
 	upgradeTo, ok := h.cachedUpgradeTargets[protoAction.ActionId]
 	return upgradeTo, ok
 }
@@ -1461,8 +1460,8 @@ func (h *MigrateToPrivacy2022IntentHandler) IsNoop(ctx context.Context, intentRe
 	return false, nil
 }
 
-func (h *MigrateToPrivacy2022IntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	return &lockableAccounts{}, nil
+func (h *MigrateToPrivacy2022IntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
+	return &LockableAccounts{}, nil
 }
 
 // Note: Most validation helper functions (eg. LocalSimulation) assume DataVersion1
@@ -1719,9 +1718,9 @@ func (h *SendPublicPaymentIntentHandler) IsNoop(ctx context.Context, intentRecor
 	return false, nil
 }
 
-func (h *SendPublicPaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+func (h *SendPublicPaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
 	if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
-		return &lockableAccounts{}, nil
+		return &LockableAccounts{}, nil
 	}
 
 	destinationOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
@@ -1729,7 +1728,7 @@ func (h *SendPublicPaymentIntentHandler) GetAdditionalAccountsToLock(ctx context
 		return nil, err
 	}
 
-	return &lockableAccounts{
+	return &LockableAccounts{
 		DestinationOwner: destinationOwnerAccount,
 	}, nil
 }
@@ -2056,9 +2055,9 @@ func (h *ReceivePaymentsPubliclyIntentHandler) IsNoop(ctx context.Context, inten
 	return false, nil
 }
 
-func (h *ReceivePaymentsPubliclyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
+func (h *ReceivePaymentsPubliclyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
 	if !intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
-		return &lockableAccounts{}, nil
+		return &LockableAccounts{}, nil
 	}
 
 	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
@@ -2066,7 +2065,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) GetAdditionalAccountsToLock(ctx c
 		return nil, err
 	}
 
-	return &lockableAccounts{
+	return &LockableAccounts{
 		RemoteSendGiftCardVault: giftCardVaultAccount,
 	}, nil
 }
@@ -2340,8 +2339,8 @@ func (h *EstablishRelationshipIntentHandler) IsNoop(ctx context.Context, intentR
 	return false, nil
 }
 
-func (h *EstablishRelationshipIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	return &lockableAccounts{}, nil
+func (h *EstablishRelationshipIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*LockableAccounts, error) {
+	return &LockableAccounts{}, nil
 }
 
 func (h *EstablishRelationshipIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
@@ -2967,7 +2966,6 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 		// exact exchange data requirements, which has already been validated at time
 		// of payment intent creation. We do leave the ability open to reserve an exchange
 		// rate, but no use cases warrant that atm.
-
 	} else if err != paymentrequest.ErrPaymentRequestNotFound {
 		return err
 	}
@@ -3121,7 +3119,7 @@ func validateMinimalTempIncomingAccountUsage(ctx context.Context, data code_data
 			continue
 		}
 
-		paymentCount += 1
+		paymentCount++
 	}
 
 	// Should be coordinated with MustRotate flag in GetTokenAccountInfos
@@ -3151,7 +3149,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 	_, err = data.GetGiftCardClaimedAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
 	if err == nil {
 		return newStaleStateError("gift card balance has already been claimed")
-	} else if err == action.ErrActionNotFound {
+	} else if errors.Is(err, action.ErrActionNotFound) { //nolint:revive
 		// No action to claim it, so we can proceed
 	} else if err != nil {
 		return err

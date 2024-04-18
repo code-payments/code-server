@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/metrics"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
@@ -26,7 +26,7 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 		case <-time.After(delay):
 			start := time.Now()
 
-			treasuryPoolRecords, err := p.data.GetAllTreasuryPoolsByState(ctx, treasury.TreasuryPoolStateAvailable)
+			treasuryPoolRecords, err := p.data.GetAllTreasuryPoolsByState(ctx, treasury.PoolStateAvailable)
 			if err != nil {
 				continue
 			}

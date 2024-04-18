@@ -131,7 +131,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		skipUnreadCountQuery := chatRecord.IsUnsubscribed
 
 		switch chatRecord.ChatType {
-		case chat.ChatTypeInternal:
+		case chat.TypeInternal:
 			chatProperties, ok := chat_util.InternalChatProperties[chatRecord.ChatTitle]
 			if !ok {
 				log.Warnf("%s chat doesn't have properties defined", chatRecord.ChatTitle)
@@ -157,7 +157,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			}
 			protoMetadata.CanMute = chatProperties.CanMute
 			protoMetadata.CanUnsubscribe = chatProperties.CanUnsubscribe
-		case chat.ChatTypeExternalApp:
+		case chat.TypeExternalApp:
 			protoMetadata.Title = &chatpb.ChatMetadata_Domain{
 				Domain: &commonpb.Domain{
 					Value: chatRecord.ChatTitle,
@@ -220,7 +220,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	chatId := chat.ChatIdFromProto(req.ChatId)
+	chatId := chat.IdFromProto(req.ChatId)
 	log = log.WithField("chat_id", chatId.String())
 
 	signature := req.Signature
@@ -347,7 +347,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	chatId := chat.ChatIdFromProto(req.ChatId)
+	chatId := chat.IdFromProto(req.ChatId)
 	log = log.WithField("chat_id", chatId.String())
 
 	messageId := base58.Encode(req.Pointer.Value.Value)
@@ -425,7 +425,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	chatId := chat.ChatIdFromProto(req.ChatId)
+	chatId := chat.IdFromProto(req.ChatId)
 	log = log.WithField("chat_id", chatId.String())
 
 	signature := req.Signature
@@ -483,7 +483,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	chatId := chat.ChatIdFromProto(req.ChatId)
+	chatId := chat.IdFromProto(req.ChatId)
 	log = log.WithField("chat_id", chatId.String())
 
 	signature := req.Signature

@@ -7,10 +7,10 @@ import (
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
-type EventType uint32
+type Type uint32
 
 const (
-	UnknownEvent EventType = iota
+	UnknownEvent Type = iota
 	AccountCreated
 	WelcomeBonusClaimed
 	InPersonGrab
@@ -26,7 +26,7 @@ type Record struct {
 	// multiple intents may want to standardize on which intent ID is used to add
 	// additional metadata as it becomes available.
 	EventId   string
-	EventType EventType
+	EventType Type
 
 	// Involved accounts
 	SourceCodeAccount      string

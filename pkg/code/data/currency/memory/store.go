@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 const (
@@ -36,7 +36,7 @@ func New() currency.Store {
 	}
 }
 
-func (s *store) reset() {
+func (s *store) reset() { //nolint:unused
 	s.currencyStoreMu.Lock()
 	s.currencyStore = make([]*currency.ExchangeRateRecord, 0)
 	s.currencyStoreMu.Unlock()

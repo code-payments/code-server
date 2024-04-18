@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/database/query"
 	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
 )
 
 func RunTests(t *testing.T, s treasury.Store, teardown func()) {
@@ -51,7 +51,7 @@ func testTreasuryPoolHappyPath(t *testing.T, s treasury.Store) {
 
 			SolanaBlock: 3,
 
-			State: treasury.TreasuryPoolStateAvailable,
+			State: treasury.PoolStateAvailable,
 		}
 		cloned := expected.Clone()
 
@@ -102,7 +102,7 @@ func testTreasuryPoolHappyPath(t *testing.T, s treasury.Store) {
 		}
 
 		expected.CurrentIndex = 2
-		expected.SolanaBlock += 1
+		expected.SolanaBlock++
 		cloned = expected.Clone()
 		require.NoError(t, s.Save(ctx, expected))
 		assertEquivalentTreasuryPoolRecords(t, cloned, expected)
@@ -130,33 +130,33 @@ func testGetAllByState(t *testing.T, s treasury.Store) {
 	t.Run("testGetAllByState", func(t *testing.T) {
 		ctx := context.Background()
 
-		_, err := s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.EmptyCursor, 10, query.Ascending)
+		_, err := s.GetAllByState(ctx, treasury.PoolStateAvailable, query.EmptyCursor, 10, query.Ascending)
 		assert.Equal(t, treasury.ErrTreasuryPoolNotFound, err)
 
 		expected := []*treasury.Record{
-			{DataVersion: splitter_token.DataVersion1, Name: "name1", Address: "treasury1", Vault: "vault1", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root1"}, SolanaBlock: 1, State: treasury.TreasuryPoolStateAvailable},
-			{DataVersion: splitter_token.DataVersion1, Name: "name2", Address: "treasury2", Vault: "vault2", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root2"}, SolanaBlock: 2, State: treasury.TreasuryPoolStateAvailable},
-			{DataVersion: splitter_token.DataVersion1, Name: "name3", Address: "treasury3", Vault: "vault3", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root3"}, SolanaBlock: 3, State: treasury.TreasuryPoolStateAvailable},
-			{DataVersion: splitter_token.DataVersion1, Name: "name4", Address: "treasury4", Vault: "vault4", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root4"}, SolanaBlock: 4, State: treasury.TreasuryPoolStateDeprecated},
-			{DataVersion: splitter_token.DataVersion1, Name: "name5", Address: "treasury5", Vault: "vault5", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root5"}, SolanaBlock: 5, State: treasury.TreasuryPoolStateDeprecated},
+			{DataVersion: splitter_token.DataVersion1, Name: "name1", Address: "treasury1", Vault: "vault1", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root1"}, SolanaBlock: 1, State: treasury.PoolStateAvailable},
+			{DataVersion: splitter_token.DataVersion1, Name: "name2", Address: "treasury2", Vault: "vault2", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root2"}, SolanaBlock: 2, State: treasury.PoolStateAvailable},
+			{DataVersion: splitter_token.DataVersion1, Name: "name3", Address: "treasury3", Vault: "vault3", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root3"}, SolanaBlock: 3, State: treasury.PoolStateAvailable},
+			{DataVersion: splitter_token.DataVersion1, Name: "name4", Address: "treasury4", Vault: "vault4", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root4"}, SolanaBlock: 4, State: treasury.PoolStateDeprecated},
+			{DataVersion: splitter_token.DataVersion1, Name: "name5", Address: "treasury5", Vault: "vault5", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root5"}, SolanaBlock: 5, State: treasury.PoolStateDeprecated},
 		}
 		for _, record := range expected {
 			require.NoError(t, s.Save(ctx, record))
 		}
 
-		_, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateUnknown, query.EmptyCursor, 10, query.Ascending)
+		_, err = s.GetAllByState(ctx, treasury.PoolStateUnknown, query.EmptyCursor, 10, query.Ascending)
 		assert.Equal(t, treasury.ErrTreasuryPoolNotFound, err)
 
-		actual, err := s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.EmptyCursor, 10, query.Ascending)
+		actual, err := s.GetAllByState(ctx, treasury.PoolStateAvailable, query.EmptyCursor, 10, query.Ascending)
 		require.NoError(t, err)
 		assert.Len(t, actual, 3)
 
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateDeprecated, query.EmptyCursor, 10, query.Ascending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateDeprecated, query.EmptyCursor, 10, query.Ascending)
 		require.NoError(t, err)
 		assert.Len(t, actual, 2)
 
 		// Check items (asc)
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.EmptyCursor, 5, query.Ascending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateAvailable, query.EmptyCursor, 5, query.Ascending)
 		require.NoError(t, err)
 		require.Len(t, actual, 3)
 		assert.Equal(t, "treasury1", actual[0].Address)
@@ -164,7 +164,7 @@ func testGetAllByState(t *testing.T, s treasury.Store) {
 		assert.Equal(t, "treasury3", actual[2].Address)
 
 		// Check items (desc)
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.EmptyCursor, 5, query.Descending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateAvailable, query.EmptyCursor, 5, query.Descending)
 		require.NoError(t, err)
 		require.Len(t, actual, 3)
 		assert.Equal(t, "treasury3", actual[0].Address)
@@ -172,28 +172,28 @@ func testGetAllByState(t *testing.T, s treasury.Store) {
 		assert.Equal(t, "treasury1", actual[2].Address)
 
 		// Check items (asc + limit)
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.EmptyCursor, 2, query.Ascending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateAvailable, query.EmptyCursor, 2, query.Ascending)
 		require.NoError(t, err)
 		require.Len(t, actual, 2)
 		assert.Equal(t, "treasury1", actual[0].Address)
 		assert.Equal(t, "treasury2", actual[1].Address)
 
 		// Check items (desc + limit)
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.EmptyCursor, 2, query.Descending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateAvailable, query.EmptyCursor, 2, query.Descending)
 		require.NoError(t, err)
 		require.Len(t, actual, 2)
 		assert.Equal(t, "treasury3", actual[0].Address)
 		assert.Equal(t, "treasury2", actual[1].Address)
 
 		// Check items (asc + cursor)
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.ToCursor(1), 5, query.Ascending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateAvailable, query.ToCursor(1), 5, query.Ascending)
 		require.NoError(t, err)
 		require.Len(t, actual, 2)
 		assert.Equal(t, "treasury2", actual[0].Address)
 		assert.Equal(t, "treasury3", actual[1].Address)
 
 		// Check items (desc + cursor)
-		actual, err = s.GetAllByState(ctx, treasury.TreasuryPoolStateAvailable, query.ToCursor(3), 5, query.Descending)
+		actual, err = s.GetAllByState(ctx, treasury.PoolStateAvailable, query.ToCursor(3), 5, query.Descending)
 		require.NoError(t, err)
 		require.Len(t, actual, 2)
 		assert.Equal(t, "treasury2", actual[0].Address)

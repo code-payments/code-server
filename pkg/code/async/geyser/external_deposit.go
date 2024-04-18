@@ -10,6 +10,7 @@ import (
 
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
@@ -75,7 +76,6 @@ func findPotentialExternalDeposits(ctx context.Context, data code_data.Provider,
 	var cursor []byte
 	var totalTransactionsFound int
 	for {
-
 		history, err := data.GetBlockchainHistory(
 			ctx,
 			vault.PublicKey().ToBase58(),
@@ -200,7 +200,6 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 	// todo: Below logic is beginning to get messy and might be in need of a
 	//       refactor soon
 	switch accountInfoRecord.AccountType {
-
 	case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
 		// Check whether we've previously processed this external deposit
 		_, err = data.GetExternalDeposit(ctx, signature, tokenAccount.PublicKey().ToBase58())
@@ -274,21 +273,23 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 			}
 
 			canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, chatMessageReceiver, chatMessage)
-			switch err {
-			case nil:
-				if canPush {
-					push.SendChatMessagePushNotification(
-						ctx,
-						data,
-						pusher,
-						chat_util.KinPurchasesName,
-						chatMessageReceiver,
-						chatMessage,
-					)
+			if err != nil && !errors.Is(err, chat.ErrMessageAlreadyExists) {
+				return fmt.Errorf("failed to send chat message: %w", err)
+			} else if err == nil && canPush {
+				pushErr := push.SendChatMessagePushNotification(
+					ctx,
+					data,
+					pusher,
+					chat_util.KinPurchasesName,
+					chatMessageReceiver,
+					chatMessage,
+				)
+				if pushErr != nil {
+					logrus.StandardLogger().
+						WithError(pushErr).
+						WithField("method", "processPotentialExternalDeposit").
+						Warn("failed to send chat message push notification (best effort)")
 				}
-			case chat.ErrMessageAlreadyExists:
-			default:
-				return errors.Wrap(err, "error sending chat message")
 			}
 		} else {
 			err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
@@ -300,7 +301,12 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 				return errors.Wrap(err, "error updating merchant chat")
 			}
 
-			push.SendDepositPushNotification(ctx, data, pusher, tokenAccount, uint64(deltaQuarks))
+			if pushErr := push.SendDepositPushNotification(ctx, data, pusher, tokenAccount, uint64(deltaQuarks)); err != nil {
+				logrus.StandardLogger().
+					WithError(pushErr).
+					WithField("method", "processPotentialExternalDeposit").
+					Warn("failed to send deposit push notification (best effort)")
+			}
 		}
 
 		// For tracking in balances
@@ -693,36 +699,47 @@ func delayedUsdcDepositProcessing(
 	}
 
 	canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, ownerAccount, chatMessage)
-	switch err {
-	case nil:
-		if canPush {
-			push.SendChatMessagePushNotification(
-				ctx,
-				data,
-				pusher,
-				chat_util.KinPurchasesName,
-				ownerAccount,
-				chatMessage,
-			)
+	if err == nil && canPush {
+		pushErr := push.SendChatMessagePushNotification(
+			ctx,
+			data,
+			pusher,
+			chat_util.KinPurchasesName,
+			ownerAccount,
+			chatMessage,
+		)
+		if pushErr != nil {
+			logrus.StandardLogger().
+				WithField("method", "delayedUsdcDepositProcessing").
+				WithError(err).
+				Warn("failed to send chat message push notification (best effort)")
 		}
-	case chat.ErrMessageAlreadyExists:
-	default:
-		return
 	}
 }
 
 // Optimistically tries to cache a balance for an external account not managed
 // Code. It doesn't need to be perfect and will be lazily corrected on the next
-// balance fetch with a newer state returned by a RPC node.
+// balance fetch with a newer state returned by an RPC node.
 func bestEffortCacheExternalAccountBalance(ctx context.Context, data code_data.Provider, tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) {
 	postBalance, err := getPostQuarkBalance(tokenAccount, tokenBalances)
-	if err == nil {
-		checkpointRecord := &balance.Record{
-			TokenAccount:   tokenAccount.PublicKey().ToBase58(),
-			Quarks:         postBalance,
-			SlotCheckpoint: tokenBalances.Slot,
-		}
-		data.SaveBalanceCheckpoint(ctx, checkpointRecord)
+	if err != nil {
+		return
+	}
+
+	checkpointRecord := &balance.Record{
+		TokenAccount:   tokenAccount.PublicKey().ToBase58(),
+		Quarks:         postBalance,
+		SlotCheckpoint: tokenBalances.Slot,
+	}
+
+	if err := data.SaveBalanceCheckpoint(ctx, checkpointRecord); err != nil {
+		logrus.StandardLogger().
+			WithFields(logrus.Fields{
+				"method":  "bestEffortCacheExternalAccountBalance",
+				"account": tokenAccount.PublicKey().ToBase58(),
+			}).
+			WithError(err).
+			Warn("failed to save balance checkpoint (best effort)")
 	}
 }
 

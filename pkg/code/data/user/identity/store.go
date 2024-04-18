@@ -19,7 +19,7 @@ var (
 
 // User is the highest order of a form of identity.
 type Record struct {
-	ID          *user.UserID
+	ID          *user.Id
 	View        *user.View
 	IsStaffUser bool
 	IsBanned    bool
@@ -32,7 +32,7 @@ type Store interface {
 	Put(ctx context.Context, record *Record) error
 
 	// GetByID fetches a user by its ID.
-	GetByID(ctx context.Context, id *user.UserID) (*Record, error)
+	GetByID(ctx context.Context, id *user.Id) (*Record, error)
 
 	// GetByView fetches a user by a view.
 	GetByView(ctx context.Context, view *user.View) (*Record, error)

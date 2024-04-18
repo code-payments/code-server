@@ -7,9 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/event"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/event"
 )
 
 const (
@@ -109,7 +109,7 @@ func fromModel(obj *model) *event.Record {
 		Id: uint64(obj.Id.Int64),
 
 		EventId:   obj.EventId,
-		EventType: event.EventType(obj.EventType),
+		EventType: event.Type(obj.EventType),
 
 		SourceCodeAccount:      obj.SourceCodeAccount,
 		DestinationCodeAccount: pointer.StringIfValid(obj.DestinationCodeAccount.Valid, obj.DestinationCodeAccount.String),

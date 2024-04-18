@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -81,7 +81,6 @@ func (s *store) GetAllByState(ctx context.Context, state vault.State, cursor que
 
 	keys := make([]*vault.Record, len(models))
 	for i, model := range models {
-
 		plaintext, err := vault.Decrypt(model.PrivateKey, model.PublicKey)
 		if err != nil {
 			return nil, err

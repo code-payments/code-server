@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -39,7 +39,7 @@ func (s *store) PutChat(ctx context.Context, record *chat.Chat) error {
 }
 
 // GetChatById implements chat.Store.GetChatById
-func (s *store) GetChatById(ctx context.Context, id chat.ChatId) (*chat.Chat, error) {
+func (s *store) GetChatById(ctx context.Context, id chat.Id) (*chat.Chat, error) {
 	model, err := dbGetChatById(ctx, s.db, id)
 	if err != nil {
 		return nil, err
@@ -80,12 +80,12 @@ func (s *store) PutMessage(ctx context.Context, record *chat.Message) error {
 }
 
 // DeleteMessage implements chat.Store.DeleteMessage
-func (s *store) DeleteMessage(ctx context.Context, chatId chat.ChatId, messageId string) error {
+func (s *store) DeleteMessage(ctx context.Context, chatId chat.Id, messageId string) error {
 	return dbDeleteMessage(ctx, s.db, chatId, messageId)
 }
 
 // GetMessageById implements chat.Store.GetMessageById
-func (s *store) GetMessageById(ctx context.Context, chatId chat.ChatId, messageId string) (*chat.Message, error) {
+func (s *store) GetMessageById(ctx context.Context, chatId chat.Id, messageId string) (*chat.Message, error) {
 	model, err := dbGetMessageById(ctx, s.db, chatId, messageId)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func (s *store) GetMessageById(ctx context.Context, chatId chat.ChatId, messageI
 }
 
 // GetAllMessagesByChat implements chat.Store.GetAllMessagesByChat
-func (s *store) GetAllMessagesByChat(ctx context.Context, chatId chat.ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.Message, error) {
+func (s *store) GetAllMessagesByChat(ctx context.Context, chatId chat.Id, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.Message, error) {
 	models, err := dbGetAllMessagesByChat(ctx, s.db, chatId, cursor, direction, limit)
 	if err != nil {
 		return nil, err
@@ -109,21 +109,21 @@ func (s *store) GetAllMessagesByChat(ctx context.Context, chatId chat.ChatId, cu
 }
 
 // AdvancePointer implements chat.Store.AdvancePointer
-func (s *store) AdvancePointer(ctx context.Context, chatId chat.ChatId, pointer string) error {
+func (s *store) AdvancePointer(ctx context.Context, chatId chat.Id, pointer string) error {
 	return dbAdvancePointer(ctx, s.db, chatId, pointer)
 }
 
 // GetUnreadCount implements chat.Store.GetUnreadCount
-func (s *store) GetUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32, error) {
+func (s *store) GetUnreadCount(ctx context.Context, chatId chat.Id) (uint32, error) {
 	return dbGetUnreadCount(ctx, s.db, chatId)
 }
 
 // SetMuteState implements chat.Store.SetMuteState
-func (s *store) SetMuteState(ctx context.Context, chatId chat.ChatId, isMuted bool) error {
+func (s *store) SetMuteState(ctx context.Context, chatId chat.Id, isMuted bool) error {
 	return dbSetMuteState(ctx, s.db, chatId, isMuted)
 }
 
 // SetSubscriptionState implements chat.Store.SetSubscriptionState
-func (s *store) SetSubscriptionState(ctx context.Context, chatId chat.ChatId, isSubscribed bool) error {
+func (s *store) SetSubscriptionState(ctx context.Context, chatId chat.Id, isSubscribed bool) error {
 	return dbSetSubscriptionState(ctx, s.db, chatId, isSubscribed)
 }

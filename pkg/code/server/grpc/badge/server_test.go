@@ -14,8 +14,6 @@ import (
 	badgepb "github.com/code-payments/code-protobuf-api/generated/go/badge/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	memory_push "github.com/code-payments/code-server/pkg/push/memory"
-	"github.com/code-payments/code-server/pkg/testutil"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -25,6 +23,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
 	user_storage "github.com/code-payments/code-server/pkg/code/data/user/storage"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestResetBadgeCount_HappyPath(t *testing.T) {
@@ -45,7 +45,7 @@ func TestResetBadgeCount_HappyPath(t *testing.T) {
 	assert.Equal(t, resp.Result, badgepb.ResetBadgeCountResponse_OK)
 	env.assertBadgeCount(t, owner, 0)
 
-	env.data.AddToBadgeCount(env.ctx, owner.PublicKey().ToBase58(), 5)
+	require.NoError(t, env.data.AddToBadgeCount(env.ctx, owner.PublicKey().ToBase58(), 5))
 	env.assertBadgeCount(t, owner, 5)
 
 	resp, err = env.client.ResetBadgeCount(env.ctx, req)
@@ -108,7 +108,7 @@ func (e *testEnv) createUser(t *testing.T, owner *common.Account, phoneNumber st
 	require.NoError(t, e.data.SavePhoneVerification(e.ctx, phoneVerificationRecord))
 
 	userIdentityRecord := &user_identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},

@@ -9,7 +9,7 @@ import (
 type Cursor []byte
 
 var (
-	EmptyCursor Cursor = Cursor([]byte{})
+	EmptyCursor = Cursor([]byte{})
 )
 
 func ToCursor(val uint64) Cursor {

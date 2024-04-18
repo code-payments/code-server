@@ -65,7 +65,7 @@ func testHappyPath(t *testing.T, s balance.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, actual, &cloned)
 
-		expected.SlotCheckpoint -= 1
+		expected.SlotCheckpoint--
 		assert.Equal(t, balance.ErrStaleCheckpoint, s.SaveCheckpoint(ctx, expected))
 
 		actual, err = s.GetCheckpoint(ctx, "token_account")

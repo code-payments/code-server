@@ -123,7 +123,8 @@ func parseInstructionError(v interface{}) (e InstructionError, err error) {
 
 		var k string
 		var v interface{}
-		for k, v = range t {
+		for k, v = range t { //nolint:revive
+			// Retrieve the only KV from the map
 		}
 
 		if k != "Custom" {
@@ -225,7 +226,8 @@ func ParseTransactionError(raw interface{}) (*TransactionError, error) {
 
 		var k string
 		var v interface{}
-		for k, v = range t {
+		for k, v = range t { //nolint:revive
+			// Retrieve the only KV from the map
 		}
 
 		if k != "InstructionError" {

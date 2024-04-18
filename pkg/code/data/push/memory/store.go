@@ -32,10 +32,10 @@ func (s *store) Put(_ context.Context, record *push.Record) error {
 
 	if item := s.find(record); item != nil {
 		return push.ErrTokenExists
-	} else {
-		record.Id = s.last
-		s.records = append(s.records, record.Clone())
 	}
+
+	record.Id = s.last
+	s.records = append(s.records, record.Clone())
 
 	return nil
 }

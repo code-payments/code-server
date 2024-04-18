@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
@@ -41,12 +41,13 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	owner := testutil.NewRandomAccount(t)
 	env.setupUserWithLocale(t, owner, language.English)
 
-	localization.LoadTestKeys(map[language.Tag]map[string]string{
+	err := localization.LoadTestKeys(map[language.Tag]map[string]string{
 		language.English: {
 			localization.ChatTitleCodeTeam: "Code Team",
 			"msg.body.key":                 "localized message body content",
 		},
 	})
+	require.NoError(t, err)
 	defer localization.ResetKeys()
 
 	testExternalAppDomain := "test.com"
@@ -893,12 +894,12 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 }
 
 func (e *testEnv) sendExternalAppChatMessage(t *testing.T, msg *chatpb.ChatMessage, domain string, isVerified bool, recipient *common.Account) {
-	_, err := chat_util.SendChatMessage(e.ctx, e.data, domain, chat.ChatTypeExternalApp, isVerified, recipient, msg, false)
+	_, err := chat_util.SendChatMessage(e.ctx, e.data, domain, chat.TypeExternalApp, isVerified, recipient, msg, false)
 	require.NoError(t, err)
 }
 
 func (e *testEnv) sendInternalChatMessage(t *testing.T, msg *chatpb.ChatMessage, chatTitle string, recipient *common.Account) {
-	_, err := chat_util.SendChatMessage(e.ctx, e.data, chatTitle, chat.ChatTypeInternal, true, recipient, msg, false)
+	_, err := chat_util.SendChatMessage(e.ctx, e.data, chatTitle, chat.TypeInternal, true, recipient, msg, false)
 	require.NoError(t, err)
 }
 

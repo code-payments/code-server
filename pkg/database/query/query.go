@@ -21,7 +21,7 @@ const (
 	CanFilterBy         SupportedOptions = 0x01 << 6
 )
 
-type QueryOptions struct {
+type Options struct {
 	Supported SupportedOptions
 
 	Start time.Time
@@ -34,13 +34,13 @@ type QueryOptions struct {
 	FilterBy Filter
 }
 
-type Option func(*QueryOptions) error
+type Option func(*Options) error
 
-func (qo *QueryOptions) check(cap SupportedOptions) bool {
+func (qo *Options) check(cap SupportedOptions) bool {
 	return qo.Supported&cap != cap
 }
 
-func (qo *QueryOptions) Apply(opts ...Option) error {
+func (qo *Options) Apply(opts ...Option) error {
 	for _, o := range opts {
 		err := o(qo)
 		if err != nil {
@@ -51,7 +51,7 @@ func (qo *QueryOptions) Apply(opts ...Option) error {
 }
 
 func WithInterval(val Interval) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanBucketBy) {
 			return ErrQueryNotSupported
 		}
@@ -61,7 +61,7 @@ func WithInterval(val Interval) Option {
 }
 
 func WithFilter(val Filter) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanFilterBy) {
 			return ErrQueryNotSupported
 		}
@@ -71,7 +71,7 @@ func WithFilter(val Filter) Option {
 }
 
 func WithDirection(val Ordering) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanSortBy) {
 			return ErrQueryNotSupported
 		}
@@ -81,7 +81,7 @@ func WithDirection(val Ordering) Option {
 }
 
 func WithLimit(val uint64) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanLimitResults) {
 			return ErrQueryNotSupported
 		}
@@ -91,7 +91,7 @@ func WithLimit(val uint64) Option {
 }
 
 func WithCursor(val []byte) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanQueryByCursor) {
 			return ErrQueryNotSupported
 		}
@@ -101,7 +101,7 @@ func WithCursor(val []byte) Option {
 }
 
 func WithStartTime(val time.Time) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanQueryByStartTime) {
 			return ErrQueryNotSupported
 		}
@@ -111,7 +111,7 @@ func WithStartTime(val time.Time) Option {
 }
 
 func WithEndTime(val time.Time) Option {
-	return func(qo *QueryOptions) error {
+	return func(qo *Options) error {
 		if qo.check(CanQueryByEndTime) {
 			return ErrQueryNotSupported
 		}

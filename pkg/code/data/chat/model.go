@@ -14,21 +14,21 @@ import (
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
-type ChatType uint8
+type Type uint8
 
 const (
-	ChatTypeUnknown  ChatType = iota
-	ChatTypeInternal          // todo: better name, or split into the various buckets (eg. Code Team vs Cash Transactions)
-	ChatTypeExternalApp
+	TypeUnknown  Type = iota
+	TypeInternal      // todo: better name, or split into the various buckets (eg. Code Team vs Cash Transactions)
+	TypeExternalApp
 )
 
-type ChatId [32]byte
+type Id [32]byte
 
 type Chat struct {
 	Id uint64
 
-	ChatId     ChatId
-	ChatType   ChatType
+	ChatId     Id
+	ChatType   Type
 	ChatTitle  string // The message sender
 	IsVerified bool
 
@@ -44,7 +44,7 @@ type Chat struct {
 type Message struct {
 	Id uint64
 
-	ChatId ChatId
+	ChatId Id
 
 	MessageId string
 	Data      []byte
@@ -55,7 +55,7 @@ type Message struct {
 	Timestamp time.Time
 }
 
-func GetChatId(sender, receiver string, isVerified bool) ChatId {
+func GetChatId(sender, receiver string, isVerified bool) Id {
 	combined := []byte(fmt.Sprintf("%s:%s:%v", sender, receiver, isVerified))
 	if strings.Compare(sender, receiver) > 0 {
 		combined = []byte(fmt.Sprintf("%s:%s:%v", receiver, sender, isVerified))
@@ -63,19 +63,19 @@ func GetChatId(sender, receiver string, isVerified bool) ChatId {
 	return sha256.Sum256(combined)
 }
 
-func (c ChatId) ToProto() *chatpb.ChatId {
+func (c Id) ToProto() *chatpb.ChatId {
 	return &chatpb.ChatId{
 		Value: c[:],
 	}
 }
 
-func ChatIdFromProto(proto *chatpb.ChatId) ChatId {
-	var chatId ChatId
+func IdFromProto(proto *chatpb.ChatId) Id {
+	var chatId Id
 	copy(chatId[:], proto.Value)
 	return chatId
 }
 
-func (c ChatId) String() string {
+func (c Id) String() string {
 	return hex.EncodeToString(c[:])
 }
 
@@ -85,7 +85,7 @@ func (r *Chat) Validate() error {
 		return errors.New("chat id is invalid")
 	}
 
-	if r.ChatType == ChatTypeUnknown {
+	if r.ChatType == TypeUnknown {
 		return errors.New("chat type is required")
 	}
 
@@ -105,7 +105,7 @@ func (r *Chat) Validate() error {
 }
 
 func (r *Chat) Clone() Chat {
-	var chatIdCopy ChatId
+	var chatIdCopy Id
 	copy(chatIdCopy[:], r.ChatId[:])
 
 	return Chat{
@@ -166,7 +166,7 @@ func (r *Message) Validate() error {
 }
 
 func (r *Message) Clone() Message {
-	var chatIdCopy ChatId
+	var chatIdCopy Id
 	copy(chatIdCopy[:], r.ChatId[:])
 
 	dataCopy := make([]byte, len(r.Data))

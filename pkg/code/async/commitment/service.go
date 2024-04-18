@@ -24,7 +24,6 @@ func New(data code_data.Provider) async.Service {
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-
 	// Setup workers to watch for commitment state changes on the Solana side
 	for _, item := range []commitment.State{
 		commitment.StateReadyToOpen,
@@ -38,7 +37,6 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("commitment processing loop terminated unexpectedly for state %d", state)
 			}
-
 		}(item)
 	}
 
@@ -49,8 +47,6 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	<-ctx.Done()
+	return ctx.Err()
 }

@@ -77,10 +77,6 @@ func newIntentDeniedError(message string) IntentDeniedError {
 	}
 }
 
-func newIntentDeniedErrorf(format string, args ...any) IntentDeniedError {
-	return newIntentDeniedError(fmt.Sprintf(format, args...))
-}
-
 func (e IntentDeniedError) Error() string {
 	return e.message
 }
@@ -111,10 +107,6 @@ func newSwapDeniedError(message string) SwapDeniedError {
 	return SwapDeniedError{
 		message: message,
 	}
-}
-
-func newSwapDeniedErrorf(format string, args ...any) SwapDeniedError {
-	return newSwapDeniedError(fmt.Sprintf(format, args...))
 }
 
 func (e SwapDeniedError) Error() string {

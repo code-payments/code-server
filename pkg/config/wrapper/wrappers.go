@@ -437,10 +437,10 @@ func (c *DurationConfig) GetSafe(ctx context.Context) (time.Duration, error) {
 	} else if err != nil {
 		return lastValue, err
 	}
-	switch override.(type) {
+	switch override := override.(type) {
 	case []byte:
 		var newValue time.Duration
-		strValue := string(override.([]byte))
+		strValue := string(override)
 
 		newValue, err = time.ParseDuration(strValue)
 		if err != nil {
@@ -451,7 +451,7 @@ func (c *DurationConfig) GetSafe(ctx context.Context) (time.Duration, error) {
 		c.stateMu.Unlock()
 		return newValue, nil
 	case time.Duration:
-		newValue := override.(time.Duration)
+		newValue := override
 		c.stateMu.Lock()
 		c.lastValue = newValue
 		c.stateMu.Unlock()

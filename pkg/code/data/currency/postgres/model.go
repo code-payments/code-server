@@ -7,8 +7,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	q "github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	q "github.com/code-payments/code-server/pkg/database/query"
 
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
@@ -81,14 +81,14 @@ func makeRangeQuery(condition string, ordering q.Ordering, interval q.Interval) 
 	return query
 }
 
-func (self *model) txSave(ctx context.Context, tx *sqlx.Tx) error {
+func (m *model) txSave(ctx context.Context, tx *sqlx.Tx) error {
 	err := tx.QueryRowxContext(ctx,
 		makeInsertQuery(),
-		self.ForDate,
-		self.ForTimestamp,
-		self.CurrencyCode,
-		self.CurrencyRate,
-	).StructScan(self)
+		m.ForDate,
+		m.ForTimestamp,
+		m.CurrencyCode,
+		m.CurrencyRate,
+	).StructScan(m)
 
 	return pgutil.CheckUniqueViolation(err, currency.ErrExists)
 }

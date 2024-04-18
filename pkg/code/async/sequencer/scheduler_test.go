@@ -605,7 +605,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TransferWithCommitment && *fulfillmentRecord.Destination == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -614,7 +614,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.NoPrivacyTransferWithAuthority && fulfillmentRecord.Source == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 				break
 			}
 		}
@@ -624,7 +624,7 @@ func TestContextualScheduler_NoPrivacyWithdraw(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.NoPrivacyTransferWithAuthority && fulfillmentRecord.Source == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -767,7 +767,7 @@ func TestContextualScheduler_CloseDormantTimelockAccount(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TransferWithCommitment && *fulfillmentRecord.Destination == closeDormantAccount.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -776,7 +776,7 @@ func TestContextualScheduler_CloseDormantTimelockAccount(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TemporaryPrivacyTransferWithAuthority && fulfillmentRecord.Source == closeDormantAccount.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 				break
 			}
 		}
@@ -786,7 +786,7 @@ func TestContextualScheduler_CloseDormantTimelockAccount(t *testing.T) {
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TemporaryPrivacyTransferWithAuthority && fulfillmentRecord.Source == closeDormantAccount.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -926,7 +926,7 @@ func TestContextualScheduler_PrivateTransfer_TemporaryPrivacyFlow(t *testing.T) 
 		require.NoError(t, err)
 
 		timelockRecord.VaultState = timelock_token_v1.StateUnlocked
-		timelockRecord.Block += 1
+		timelockRecord.Block++
 		require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 	}
 
@@ -1103,7 +1103,7 @@ func TestContextualScheduler_PrivateTransfer_PermanentPrivacyFlow(t *testing.T) 
 		for _, fulfillmentRecord := range fulfillmentRecords {
 			if fulfillmentRecord.FulfillmentType == fulfillment.TransferWithCommitment && *fulfillmentRecord.Destination == transfer.Source {
 				fulfillmentRecord.State = fulfillment.StateConfirmed
-				env.data.UpdateFulfillment(env.ctx, fulfillmentRecord)
+				require.NoError(t, env.data.UpdateFulfillment(env.ctx, fulfillmentRecord))
 			}
 		}
 	}
@@ -2180,7 +2180,7 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 		HistoryListSize:  1,
 		HistoryList:      []string{"unused"},
 		SolanaBlock:      123,
-		State:            treasury.TreasuryPoolStateAvailable,
+		State:            treasury.PoolStateAvailable,
 	}
 	require.NoError(t, e.data.SaveTreasuryPool(e.ctx, treasuryPoolRecord))
 
@@ -2380,7 +2380,7 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 				closeNewOutgoing,
 			)
 
-			currentOutgoingByUser[intentRecord.InitiatorOwnerAccount] += 1
+			currentOutgoingByUser[intentRecord.InitiatorOwnerAccount]++
 		case intent.ReceivePaymentsPrivately:
 			assert.True(t, intentRecord.ReceivePaymentsPrivatelyMetadata.Quantity < kin.ToQuarks(1000))
 
@@ -2472,7 +2472,7 @@ func (e *schedulerTestEnv) setupSchedulerTest(t *testing.T, intentRecords []*int
 				closeNewIncoming,
 			)
 
-			currentIncomingByUser[intentRecord.InitiatorOwnerAccount] += 1
+			currentIncomingByUser[intentRecord.InitiatorOwnerAccount]++
 		case intent.SendPublicPayment:
 			newActionRecords = append(
 				newActionRecords,
@@ -3020,7 +3020,7 @@ func (e *schedulerTestEnv) assertReservedTreasuryFunds(t *testing.T, expected ui
 }
 
 func (e *schedulerTestEnv) getNextSlot() uint64 {
-	e.nextSlot += 1
+	e.nextSlot++
 	return e.nextSlot
 }
 

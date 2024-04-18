@@ -171,7 +171,12 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 			Quarks:         quarks,
 			SlotCheckpoint: slot,
 		}
-		data.SaveBalanceCheckpoint(ctx, newCheckpointRecord)
+		if err := data.SaveBalanceCheckpoint(ctx, newCheckpointRecord); err != nil {
+			logrus.StandardLogger().
+				WithField("method", "CalculateFromBlockchain").
+				WithError(err).
+				Warn("failed to save checkpoint record (best effort)")
+		}
 	}
 
 	return quarks, BlockchainSource, nil

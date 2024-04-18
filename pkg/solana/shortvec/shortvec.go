@@ -9,18 +9,18 @@ import (
 // EncodeLen encodes the specified len into the writer.
 //
 // If len > math.MaxUint16, an error is returned.
-func EncodeLen(w io.Writer, len int) (n int, err error) {
-	if len > math.MaxUint16 {
-		return 0, fmt.Errorf("len exceeds %d", math.MaxUint16)
+func EncodeLen(w io.Writer, length int) (n int, err error) {
+	if length > math.MaxUint16 {
+		return 0, fmt.Errorf("length exceeds %d", math.MaxUint16)
 	}
 
 	written := 0
 	valBuf := make([]byte, 1)
 
 	for {
-		valBuf[0] = byte(len & 0x7f)
-		len >>= 7
-		if len == 0 {
+		valBuf[0] = byte(length & 0x7f)
+		length >>= 7
+		if length == 0 {
 			n, err := w.Write(valBuf)
 			written += n
 

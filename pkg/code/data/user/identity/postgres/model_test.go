@@ -14,7 +14,7 @@ import (
 func TestModelConversion(t *testing.T) {
 	phoneNumber := "+12223334444"
 	record := &user_identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},

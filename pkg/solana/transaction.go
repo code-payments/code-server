@@ -20,6 +20,10 @@ const (
 type Signature [ed25519.SignatureSize]byte
 type Blockhash [sha256.Size]byte
 
+func (b Blockhash) ToBase58() string {
+	return base58.Encode(b[:])
+}
+
 type Header struct {
 	NumSignatures     byte
 	NumReadonlySigned byte

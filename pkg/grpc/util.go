@@ -13,7 +13,7 @@ import (
 
 var (
 	healthCheckEndpoint = "/grpc.health.v1.Health/Check"
-	fullMethodNameRegex = regexp.MustCompile("/([a-zA-Z0-9]+\\.)+[a-zA-Z0-9]+/[a-zA-Z0-9]+")
+	fullMethodNameRegex = regexp.MustCompile(`/([a-zA-Z0-9]+\.)+[a-zA-Z0-9]+/[a-zA-Z0-9]+`)
 )
 
 // ParseFullMethodName parses a gRPC full method name into its components

@@ -1209,7 +1209,6 @@ func TestSubmitIntent_SendPublicPayment_Validation_ExchangeData(t *testing.T) {
 	submitIntentCall = sendingPhone.publiclyWithdraw777KinToCodeUserBetweenPrimaryAccounts(t, receivingPhone)
 	submitIntentCall.assertInvalidIntentResponse(t, "payment native amount and quark value mismatch")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_SendPublicPayment_Validation_Balances(t *testing.T) {
@@ -1227,7 +1226,6 @@ func TestSubmitIntent_SendPublicPayment_Validation_Balances(t *testing.T) {
 	submitIntentCall := sendingPhone.publiclyWithdraw123KinToExternalWallet(t)
 	submitIntentCall.assertInvalidIntentResponse(t, "insufficient balance to perform action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_SendPublicPayment_Validation_Actions(t *testing.T) {
@@ -1463,7 +1461,6 @@ func TestSubmitIntent_ReceivePaymentsPrivately_FromDeposit_AntiMoneyLaunderingGu
 	submitIntentCall := sendingPhone.depositMillionDollarsIntoOrganizer(t)
 	submitIntentCall.assertDeniedResponse(t, "dollar value exceeds limit")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPrivately_Validation_ManagedByCode(t *testing.T) {
@@ -1485,7 +1482,6 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_ManagedByCode(t *testi
 			submitIntentCall := receivingPhone.deposit777KinIntoOrganizer(t)
 			submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
 			server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 		}
 
 		server, _, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{})
@@ -1522,7 +1518,6 @@ func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Balances(t *testing.T)
 	submitIntentCall := receivingPhone.deposit777KinIntoOrganizer(t)
 	submitIntentCall.assertInvalidIntentResponse(t, "insufficient balance to perform action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPrivately_Validation_Actions(t *testing.T) {
@@ -1935,7 +1930,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_ClaimGiftCardTwice(t *t
 	submitIntentCall := receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, false)
 	submitIntentCall.assertStaleStateResponse(t, "gift card balance has already been claimed")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_ExpiredGiftCard(t *testing.T) {
@@ -1955,7 +1949,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_ExpiredGiftCard(t *test
 	submitIntentCall := receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, false)
 	submitIntentCall.assertStaleStateResponse(t, "gift card is expired")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_NonIssuerAttepmtsToVoid(t *testing.T) {
@@ -1975,7 +1968,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_NonIssuerAttepmtsToVoid
 	submitIntentCall := receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, true)
 	submitIntentCall.assertInvalidIntentResponse(t, "only the issuer can void the gift card")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_ClaimInvalidGiftCardBalance(t *testing.T) {
@@ -2001,7 +1993,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_RemoteSend_ClaimInvalidGiftCardBal
 	submitIntentCall = receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, false)
 	submitIntentCall.assertInvalidIntentResponse(t, "must receive entire gift card balance of 4200000 quarks")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPublicly_AntispamGuard(t *testing.T) {
@@ -2056,7 +2047,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_Validation_ManagedByCode(t *testin
 			submitIntentCall := receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, false)
 			submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
 			server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 		}
 	}
 
@@ -2086,7 +2076,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_Validation_ManagedByCode(t *testin
 			submitIntentCall.assertDeniedResponse(t, "at least one account is no longer managed by code")
 		}
 		server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 	}
 }
 
@@ -2107,7 +2096,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_Validation_Balances(t *testing.T) 
 	submitIntentCall := receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, false)
 	submitIntentCall.assertInvalidIntentResponse(t, "actions[0]: insufficient balance to perform action")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPublicly_Validation_OnlyRemoteSendSupported(t *testing.T) {
@@ -2127,7 +2115,6 @@ func TestSubmitIntent_ReceivePaymentsPublicly_Validation_OnlyRemoteSendSupported
 	submitIntentCall := receivingPhone.receive42KinFromGiftCard(t, giftCardAccount, false)
 	submitIntentCall.assertGrpcError(t, codes.InvalidArgument)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReceivePaymentsPublicly_Validation_Actions(t *testing.T) {
@@ -2609,7 +2596,6 @@ func TestSubmitIntent_SubmitIntentDisabled(t *testing.T) {
 	submitIntentCall := phone.openAccounts(t)
 	submitIntentCall.assertGrpcError(t, codes.Unavailable)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_ReuseIntentId(t *testing.T) {
@@ -2649,7 +2635,6 @@ func TestSubmitIntent_NoAvailableNonces(t *testing.T) {
 	submitIntentCall := phone.openAccounts(t)
 	submitIntentCall.assertGrpcError(t, codes.Unavailable)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_NotPhoneVerified(t *testing.T) {
@@ -2664,7 +2649,6 @@ func TestSubmitIntent_NotPhoneVerified(t *testing.T) {
 	submitIntentCall := phone.openAccounts(t)
 	submitIntentCall.assertDeniedResponse(t, "not phone verified")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_UnauthenticatedAccess(t *testing.T) {
@@ -2681,7 +2665,6 @@ func TestSubmitIntent_UnauthenticatedAccess(t *testing.T) {
 	submitIntentCall = phone.openAccounts(t)
 	submitIntentCall.assertGrpcError(t, codes.Unauthenticated)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_InvalidActionId(t *testing.T) {
@@ -2692,7 +2675,6 @@ func TestSubmitIntent_InvalidActionId(t *testing.T) {
 	submitIntentCall := phone.openAccounts(t)
 	submitIntentCall.assertGrpcError(t, codes.InvalidArgument)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_InvalidOpenAccountOwner(t *testing.T) {
@@ -2710,7 +2692,6 @@ func TestSubmitIntent_InvalidOpenAccountOwner(t *testing.T) {
 	submitIntentCall = phone.send42KinToGiftCardAccount(t, testutil.NewRandomAccount(t))
 	submitIntentCall.assertInvalidIntentResponse(t, "actions[0]: owner must be")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_InvalidSignatureValueSubmitted(t *testing.T) {
@@ -2723,7 +2704,6 @@ func TestSubmitIntent_InvalidSignatureValueSubmitted(t *testing.T) {
 	submitIntentCall := phone.openAccounts(t)
 	submitIntentCall.assertInvalidSignatureValueResponse(t)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_InvalidNumberOfSignaturesSubmitted(t *testing.T) {
@@ -2742,7 +2722,6 @@ func TestSubmitIntent_InvalidNumberOfSignaturesSubmitted(t *testing.T) {
 	submitIntentCall = phone.openAccounts(t)
 	submitIntentCall.assertSignatureErrorResponse(t, "at least one signature is missing")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_TimeBoundedRequestSend(t *testing.T) {
@@ -2764,7 +2743,6 @@ func TestSubmitIntent_TimeBoundedRequestSend(t *testing.T) {
 	submitIntentCall = phone.openAccounts(t)
 	submitIntentCall.assertGrpcError(t, codes.DeadlineExceeded)
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
-
 }
 
 func TestSubmitIntent_TreasuryPoolUsage(t *testing.T) {

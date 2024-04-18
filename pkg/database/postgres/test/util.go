@@ -10,7 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/jackc/pgx/v4/stdlib" //nolint:revive
 
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/retry/backoff"
@@ -19,7 +19,7 @@ import (
 const (
 	containerName     = "postgres"
 	containerVersion  = "10.4"
-	containerAutoKill = 120 // seconds
+	containerAutoKill = 120 * time.Second
 
 	port     = 5432
 	user     = "localtest"
@@ -82,8 +82,12 @@ func StartPostgresDB(pool *dockertest.Pool) (db *sql.DB, closeFunc func(), err e
 	// logrus.StandardLogger().Println("Connecting to database on url: ", databaseUrl)
 	// logrus.StandardLogger().Println("Setting container auto-kill to: ", containerAutoKill, " seconds")
 
+	// Tell docker to expire the container (kill) after containerAutoKill (120 sec).
+	//
 	// You may need to adjust this number if it is too low for your test environment.
-	resource.Expire(containerAutoKill) // Tell docker to hard kill the container in 120 seconds
+	//
+	// 2024/04/11: Expire() _never_ returns an error.
+	_ = resource.Expire(uint(containerAutoKill.Seconds()))
 
 	_, err = retry.Retry(
 		func() error {

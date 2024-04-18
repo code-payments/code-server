@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -45,8 +45,7 @@ func (s *store) Put(ctx context.Context, data *transaction.Record) error {
 	defer s.transactionStoreMu.Unlock()
 	s.lastIndex++
 
-	var clone transaction.Record
-	clone = *data
+	clone := *data
 
 	for index, item := range s.transactionStore {
 		if item.Signature == data.Signature {

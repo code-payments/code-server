@@ -3,16 +3,13 @@ package async_treasury
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"math"
 	"time"
 
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
@@ -22,6 +19,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 )
 
 // This method is expected to be extremely safe due to the implications of saving
@@ -326,7 +327,9 @@ func makeSaveRecentRootTransaction(selectedNonce *transaction.SelectedNonce, rec
 		return solana.Transaction{}, err
 	}
 
-	txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	if err := txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes()); err != nil {
+		return solana.Transaction{}, fmt.Errorf("failed to sign transaction: %w", err)
+	}
 
 	return txn, nil
 }
@@ -364,7 +367,7 @@ func (p *service) anyFinalizedTreasuryAdvancesAfterLastSaveRecentRoot(ctx contex
 		treasuryPoolRecord.Vault,
 		lowerBoundBlock+1,
 		math.MaxInt64,
-		query.WithFilter(query.Filter{Value: uint64(payment.PaymentType_Send), Valid: true}),
+		query.WithFilter(query.Filter{Value: uint64(payment.TypeSend), Valid: true}),
 		query.WithLimit(1),
 	)
 	if err == payment.ErrNotFound || len(paymentRecords) == 0 {

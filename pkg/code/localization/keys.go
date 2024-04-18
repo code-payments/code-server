@@ -112,7 +112,7 @@ func LoadKeys(directory string) error {
 }
 
 // LoadTestKeys is a utility for injecting test localization keys
-func LoadTestKeys(kvsByLocale map[language.Tag]map[string]string) {
+func LoadTestKeys(kvsByLocale map[language.Tag]map[string]string) error {
 	bundleMu.Lock()
 	defer bundleMu.Unlock()
 
@@ -126,10 +126,14 @@ func LoadTestKeys(kvsByLocale map[language.Tag]map[string]string) {
 				Other: v,
 			})
 		}
-		newBundle.AddMessages(locale, messages...)
+
+		if err := newBundle.AddMessages(locale, messages...); err != nil {
+			return err
+		}
 	}
 
 	bundle = newBundle
+	return nil
 }
 
 // ResetKeys resets localization to an empty mapping

@@ -210,7 +210,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log.Warnf("unhandled owner account type %s", submitActionsOwnerMetadata.Type)
 			return handleSubmitIntentError(streamer, errors.New("unhandled owner account type"))
 		}
-	} else if err == common.ErrOwnerNotFound {
+	} else if errors.Is(err, common.ErrOwnerNotFound) { //nolint:revive
 		// Caught by later error
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting owner account metadata")
@@ -556,7 +556,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		}
 
 		for j := 0; j < transactionCount; j++ {
-			var makeTxnResult *makeSolanaTransactionResult
+			var makeTxnResult *MakeSolanaTransactionResult
 			var selectedNonce *transaction.SelectedNonce
 			var actionId uint32
 			if isUpgradeActionOperation {
@@ -602,14 +602,34 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						log.WithError(err).Warn("failure selecting available nonce")
 						return handleSubmitIntentError(streamer, err)
 					}
+
+					// If we never assign the nonce a signature in the action creation flow,
+					// it's safe to put it back in the available pool. The client will have
+					// caused a failed RPC call, and we want to avoid malicious or erroneous
+					// clients from consuming our nonce pool!
+					//
+					// note: defer() will only run when the outer function returns, and
+					// therefore all of the defer()'s in this loop will be run all at once at
+					// the end, rather than at the end of each iteration.
+					//
+					// Since we are not committing (and therefore consuming) the nonce's until
+					// the end of the function, this is desirable. If we released at the end of
+					// each iteration, we could potentially acquire the same nonce multiple times
+					// for different transactions, which would fail.
 					defer func() {
-						// If we never assign the nonce a signature in the action creation flow,
-						// it's safe to put it back in the available pool. The client will have
-						// caused a failed RPC call, and we want to avoid malicious or erroneous
-						// clients from consuming our nonce pool!
-						selectedNonce.ReleaseIfNotReserved()
+						if err := selectedNonce.ReleaseIfNotReserved(); err != nil {
+							s.log.
+								WithFields(logrus.Fields{
+									"method":        "SubmitIntent",
+									"nonce_account": selectedNonce.Account.PublicKey().ToBase58(),
+									"blockhash":     selectedNonce.Blockhash.ToBase58(),
+								}).
+								WithError(err).
+								Warn("failed to release nonce")
+						}
 						selectedNonce.Unlock()
 					}()
+
 					nonceAccount = selectedNonce.Account
 					nonceBlockchash = selectedNonce.Blockhash
 				} else {
@@ -961,7 +981,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		if len(chatMessagesToPush) > 0 {
 			go func() {
 				for _, chatMessageToPush := range chatMessagesToPush {
-					push.SendChatMessagePushNotification(
+					pushErr := push.SendChatMessagePushNotification(
 						context.TODO(),
 						s.data,
 						s.pusher,
@@ -969,6 +989,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						chatMessageToPush.Owner,
 						chatMessageToPush.Message,
 					)
+					if pushErr != nil {
+						log.WithError(err).Warn("failure sending chat message push notification")
+					}
 				}
 			}()
 		}
@@ -1004,9 +1027,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		backgroundCtx := context.Background()
 
 		// todo: generic metrics utility for this
-		nr, ok := ctx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+		nr, ok := ctx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 		if ok {
-			backgroundCtx = context.WithValue(backgroundCtx, metrics.NewRelicContextKey, nr)
+			backgroundCtx = context.WithValue(backgroundCtx, metrics.NewRelicContextKey{}, nr)
 		}
 
 		// todo: We likely want to put this in a worker if this is a long term feature
@@ -1290,10 +1313,10 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
 				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY || accountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP,
 			}, nil
-		} else {
-			log.WithError(err).Warn("failure checking account info db")
-			return nil, status.Error(codes.Internal, "")
 		}
+
+		log.WithError(err).Warn("failure checking account info db")
+		return nil, status.Error(codes.Internal, "")
 	}
 
 	//

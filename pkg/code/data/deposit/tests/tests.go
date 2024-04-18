@@ -57,7 +57,6 @@ func testRoundTrip(t *testing.T, s deposit.Store) {
 		actual, err = s.Get(ctx, cloned.Signature, cloned.Destination)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
-
 	})
 }
 

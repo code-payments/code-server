@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/proto"
 
 	accountpb "github.com/code-payments/code-protobuf-api/generated/go/account/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -133,7 +133,7 @@ func TestIsCodeAccount_LegacyPrimary2022Migration_HappyPath(t *testing.T) {
 	assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
 
 	legacyAccountRecords.Timelock.VaultState = timelock_token_v1.StateClosed
-	legacyAccountRecords.Timelock.Block += 1
+	legacyAccountRecords.Timelock.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, legacyAccountRecords.Timelock))
 
 	resp, err = env.client.IsCodeAccount(env.ctx, req)
@@ -177,7 +177,7 @@ func TestIsCodeAccount_NotManagedByCode(t *testing.T) {
 			assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
 
 			allAccountRecords[i].Timelock.VaultState = unmanagedState
-			allAccountRecords[i].Timelock.Block += 1
+			allAccountRecords[i].Timelock.Block++
 			require.NoError(t, env.data.SaveTimelock(env.ctx, allAccountRecords[i].Timelock))
 
 			resp, err = env.client.IsCodeAccount(env.ctx, req)
@@ -456,7 +456,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		}
 
 		userIdentityRecord := &user_identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -534,7 +534,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		}
 
 		accountRecords.Timelock.VaultState = tc.timelockState
-		accountRecords.Timelock.Block += 1
+		accountRecords.Timelock.Block++
 		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 
 		resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
@@ -608,7 +608,7 @@ func TestGetTokenAccountInfos_BlockchainState(t *testing.T) {
 
 		accountRecords := getDefaultTestAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
 		accountRecords.Timelock.VaultState = tc.timelockState
-		accountRecords.Timelock.Block += 1
+		accountRecords.Timelock.Block++
 		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
 		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 
@@ -889,7 +889,7 @@ func TestGetTokenAccountInfos_LegacyPrimary2022Migration_AccountClosed(t *testin
 	assert.Len(t, resp.TokenAccountInfos, 1)
 
 	accountRecords.Timelock.VaultState = timelock_token_v1.StateClosed
-	accountRecords.Timelock.Block += 1
+	accountRecords.Timelock.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 
 	resp, err = env.client.GetTokenAccountInfos(env.ctx, req)
@@ -1115,7 +1115,7 @@ func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccou
 
 	if accountRecords.IsTimelock() {
 		accountRecords.Timelock.VaultState = timelock_token_v1.StateLocked
-		accountRecords.Timelock.Block += 1
+		accountRecords.Timelock.Block++
 		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 	}
 

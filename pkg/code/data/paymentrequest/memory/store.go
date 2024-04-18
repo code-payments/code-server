@@ -40,25 +40,25 @@ func (s *store) Put(_ context.Context, data *paymentrequest.Record) error {
 	s.last++
 	if item := s.find(data); item != nil {
 		return paymentrequest.ErrPaymentRequestAlreadyExists
-	} else {
-		seenDestinations := make(map[string]any)
-		for _, fee := range data.Fees {
-			_, ok := seenDestinations[fee.DestinationTokenAccount]
-			if ok {
-				return paymentrequest.ErrInvalidPaymentRequest
-			}
-			seenDestinations[fee.DestinationTokenAccount] = true
-		}
-
-		if data.Id == 0 {
-			data.Id = s.last
-		}
-		if data.CreatedAt.IsZero() {
-			data.CreatedAt = time.Now()
-		}
-		c := data.Clone()
-		s.records = append(s.records, &c)
 	}
+
+	seenDestinations := make(map[string]any)
+	for _, fee := range data.Fees {
+		_, ok := seenDestinations[fee.DestinationTokenAccount]
+		if ok {
+			return paymentrequest.ErrInvalidPaymentRequest
+		}
+		seenDestinations[fee.DestinationTokenAccount] = true
+	}
+
+	if data.Id == 0 {
+		data.Id = s.last
+	}
+	if data.CreatedAt.IsZero() {
+		data.CreatedAt = time.Now()
+	}
+	c := data.Clone()
+	s.records = append(s.records, &c)
 
 	return nil
 }

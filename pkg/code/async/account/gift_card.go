@@ -41,7 +41,7 @@ func (p *service) giftCardAutoReturnWorker(serviceCtx context.Context, interval 
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__account_service__handle_gift_card_auto_return")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -198,12 +198,18 @@ func (p *service) initiateProcessToAutoReturnGiftCard(ctx context.Context, giftC
 	}
 
 	// Finally, update the user by best-effort sending them a push
-	go push.SendGiftCardReturnedPushNotification(
-		ctx,
-		p.data,
-		p.pusher,
-		giftCardVaultAccount,
-	)
+	go func() {
+		err := push.SendGiftCardReturnedPushNotification(
+			ctx,
+			p.data,
+			p.pusher,
+			giftCardVaultAccount,
+		)
+		if err != nil {
+			p.log.WithError(err).Warn("failed to send gift card return push notification (best effort)")
+		}
+	}()
+
 	return nil
 }
 

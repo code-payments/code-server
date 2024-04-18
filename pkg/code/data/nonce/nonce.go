@@ -75,16 +75,16 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Signature = r.Signature
 }
 
-func (v *Record) Validate() error {
-	if len(v.Address) == 0 {
+func (r *Record) Validate() error {
+	if len(r.Address) == 0 {
 		return errors.New("nonce account address is required")
 	}
 
-	if len(v.Authority) == 0 {
+	if len(r.Authority) == 0 {
 		return errors.New("authority address is required")
 	}
 
-	if v.Purpose == PurposeUnknown {
+	if r.Purpose == PurposeUnknown {
 		return errors.New("nonce purpose must be set")
 	}
 	return nil

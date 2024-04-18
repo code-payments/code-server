@@ -214,7 +214,7 @@ func TestAllowSendPayment_StaffUser(t *testing.T) {
 			ownerAccount2 := testutil.NewRandomAccount(t)
 
 			require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-				ID: user.NewUserID(),
+				ID: user.NewID(),
 				View: &user.View{
 					PhoneNumber: &phoneNumber,
 				},
@@ -366,7 +366,7 @@ func TestAllowReceivePayments_StaffUser(t *testing.T) {
 			ownerAccount2 := testutil.NewRandomAccount(t)
 
 			require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-				ID: user.NewUserID(),
+				ID: user.NewID(),
 				View: &user.View{
 					PhoneNumber: &phoneNumber,
 				},
@@ -375,7 +375,6 @@ func TestAllowReceivePayments_StaffUser(t *testing.T) {
 			}))
 
 			for _, ownerAccount := range []*common.Account{ownerAccount1, ownerAccount2} {
-
 				verification := &phone.Verification{
 					PhoneNumber:    phoneNumber,
 					OwnerAccount:   ownerAccount.PublicKey().ToBase58(),
@@ -499,7 +498,7 @@ func TestAllowOpenAccounts_StaffUser(t *testing.T) {
 		ownerAccount2 := testutil.NewRandomAccount(t)
 
 		require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -508,7 +507,6 @@ func TestAllowOpenAccounts_StaffUser(t *testing.T) {
 		}))
 
 		for _, ownerAccount := range []*common.Account{ownerAccount1, ownerAccount2} {
-
 			verification := &phone.Verification{
 				PhoneNumber:    phoneNumber,
 				OwnerAccount:   ownerAccount.PublicKey().ToBase58(),
@@ -599,7 +597,7 @@ func TestAllowEstablishNewRelationship_StaffUser(t *testing.T) {
 		ownerAccount2 := testutil.NewRandomAccount(t)
 
 		require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -692,7 +690,7 @@ func TestAllowNewPhoneVerification_StaffUser(t *testing.T) {
 	phoneNumber := "+12223334444"
 
 	require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},

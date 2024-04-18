@@ -1,7 +1,7 @@
 package testutil
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -18,13 +18,13 @@ func init() {
 	logrus.SetLevel(logrus.TraceLevel)
 
 	if !isVerbose {
-		logrus.StandardLogger().Out = ioutil.Discard
+		logrus.StandardLogger().Out = io.Discard
 	}
 }
 
 func DisableLogging() (reset func()) {
 	originalLogOutput := logrus.StandardLogger().Out
-	logrus.StandardLogger().Out = ioutil.Discard
+	logrus.StandardLogger().Out = io.Discard
 	return func() {
 		logrus.StandardLogger().Out = originalLogOutput
 	}

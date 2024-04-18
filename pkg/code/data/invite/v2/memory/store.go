@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/phone"
 	"github.com/code-payments/code-server/pkg/code/data/invite/v2"
+	"github.com/code-payments/code-server/pkg/phone"
 )
 
 type store struct {
@@ -45,7 +45,7 @@ func (s *store) PutUser(ctx context.Context, user *invite.User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := &invite.User{
+	cpy := &invite.User{
 		PhoneNumber:            user.PhoneNumber,
 		InvitedBy:              user.InvitedBy,
 		Invited:                user.Invited,
@@ -55,22 +55,21 @@ func (s *store) PutUser(ctx context.Context, user *invite.User) error {
 		IsRevoked:              user.IsRevoked,
 	}
 
-	_, alreadyExists := s.usersByPhoneNumber[copy.PhoneNumber]
+	_, alreadyExists := s.usersByPhoneNumber[cpy.PhoneNumber]
 	if alreadyExists {
 		return invite.ErrAlreadyExists
 	}
 
-	if copy.InvitedBy != nil {
-
-		if phone.IsE164Format(*copy.InvitedBy) {
-			sender, ok := s.usersByPhoneNumber[*copy.InvitedBy]
+	if cpy.InvitedBy != nil {
+		if phone.IsE164Format(*cpy.InvitedBy) {
+			sender, ok := s.usersByPhoneNumber[*cpy.InvitedBy]
 			if !ok || sender.InvitesSent >= sender.InviteCount || sender.IsRevoked {
 				return invite.ErrInviteCountExceeded
 			}
 
 			sender.InvitesSent++
 		} else {
-			influencer, ok := s.influencerCodeByCode[*copy.InvitedBy]
+			influencer, ok := s.influencerCodeByCode[*cpy.InvitedBy]
 			if !ok || influencer.InvitesSent >= influencer.InviteCount || influencer.IsRevoked || influencer.ExpiresAt.Before(time.Now()) {
 				return invite.ErrInviteCountExceeded
 			}
@@ -79,7 +78,7 @@ func (s *store) PutUser(ctx context.Context, user *invite.User) error {
 		}
 	}
 
-	s.usersByPhoneNumber[copy.PhoneNumber] = copy
+	s.usersByPhoneNumber[cpy.PhoneNumber] = cpy
 
 	return nil
 }
@@ -158,7 +157,6 @@ func (s *store) FilterInvitedNumbers(ctx context.Context, phoneNumbers []string)
 	}
 
 	return filtered, nil
-
 }
 
 // PutOnWaitlist implements invite.v2.Store.PutOnWaitlist

@@ -13,11 +13,11 @@ import (
 
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
@@ -95,7 +95,10 @@ func Execute(
 		resp, err := http.DefaultClient.Do(webhookReq)
 		if err != nil {
 			return errors.Wrap(err, "error executing http post request")
-		} else if resp.StatusCode != http.StatusOK {
+		}
+		defer resp.Body.Close()
+	
+		if resp.StatusCode != http.StatusOK {
 			return errors.Errorf("%d status code returned", resp.StatusCode)
 		}
 

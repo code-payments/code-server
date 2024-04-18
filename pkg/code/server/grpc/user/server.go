@@ -98,7 +98,7 @@ func (s *identityServer) LinkAccount(ctx context.Context, req *userpb.LinkAccoun
 	}
 
 	var result userpb.LinkAccountResponse_Result
-	var userID *user.UserID
+	var userID *user.Id
 	var dataContainerID *user.DataContainerID
 	var metadata *userpb.PhoneMetadata
 
@@ -156,7 +156,7 @@ func (s *identityServer) LinkAccount(ctx context.Context, req *userpb.LinkAccoun
 		}
 
 		newUser := identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &token.Phone.PhoneNumber.Value,
 			},
@@ -302,7 +302,7 @@ func (s *identityServer) GetUser(ctx context.Context, req *userpb.GetUserRequest
 	}
 
 	var result userpb.GetUserResponse_Result
-	var userID *user.UserID
+	var userID *user.Id
 	var isStaff bool
 	var dataContainerID *user.DataContainerID
 	var metadata *userpb.PhoneMetadata
@@ -717,7 +717,6 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 		log.WithError(err).Warn("failure getting twitter user info")
 		return nil, status.Error(codes.Internal, "")
 	}
-
 }
 
 func (s *identityServer) markWebhookAsPending(ctx context.Context, id string) error {

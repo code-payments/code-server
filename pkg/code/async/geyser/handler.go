@@ -102,7 +102,6 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 	}
 
 	switch mintAccount.PublicKey().ToBase58() {
-
 	case common.KinMintAccount.PublicKey().ToBase58():
 		// Not a program vault account, so filter it out. It cannot be a Timelock
 		// account.

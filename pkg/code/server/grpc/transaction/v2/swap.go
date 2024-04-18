@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"fmt"
 	"time"
 
 	"github.com/mr-tron/base58"
@@ -357,7 +358,9 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	copy(txn.Signatures[clientSignatureIndex][:], submitSignatureReq.Signature.Value)
-	txn.Sign(s.swapSubsidizer.PrivateKey().ToBytes())
+	if err := txn.Sign(s.swapSubsidizer.PrivateKey().ToBytes()); err != nil {
+		return fmt.Errorf("failed to sign transaction with swap subsidizer: %w", err)
+	}
 
 	log = log.WithField("transaction_id", base58.Encode(txn.Signature()))
 
@@ -532,7 +535,7 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 	}
 
 	if canPush {
-		push_util.SendChatMessagePushNotification(
+		pushErr := push_util.SendChatMessagePushNotification(
 			ctx,
 			s.data,
 			s.pusher,
@@ -540,6 +543,12 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 			owner,
 			chatMessage,
 		)
+		if pushErr != nil {
+			s.log.
+				WithField("method", "bestEffortNotifyUserOfSwapInProgress").
+				WithError(err).
+				Warn("failed to push chat message notification (best effort)")
+		}
 	}
 
 	return nil

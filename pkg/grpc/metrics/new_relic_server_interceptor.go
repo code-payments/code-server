@@ -148,7 +148,7 @@ func CustomNewRelicUnaryServerInterceptor(app *newrelic.Application) grpc_core.U
 	return func(ctx context.Context, req interface{}, info *grpc_core.UnaryServerInfo, handler grpc_core.UnaryHandler) (interface{}, error) {
 		// Inject the application to allow for any custom metrics, events, etc
 		// in downstream code.
-		ctx = context.WithValue(ctx, metrics.NewRelicContextKey, app)
+		ctx = context.WithValue(ctx, metrics.NewRelicContextKey{}, app)
 
 		m := startTransaction(ctx, app, info.FullMethod)
 		defer m.End()
@@ -181,7 +181,7 @@ func CustomNewRelicStreamServerInterceptor(app *newrelic.Application) grpc_core.
 	return func(srv interface{}, ss grpc_core.ServerStream, info *grpc_core.StreamServerInfo, handler grpc_core.StreamHandler) error {
 		// Inject the application to allow for any custom metrics, events, etc
 		// in downstream code.
-		ctx := context.WithValue(ss.Context(), metrics.NewRelicContextKey, app)
+		ctx := context.WithValue(ss.Context(), metrics.NewRelicContextKey{}, app)
 
 		m := startTransaction(ctx, app, info.FullMethod)
 		defer m.End()

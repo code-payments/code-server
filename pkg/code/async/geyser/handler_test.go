@@ -16,12 +16,12 @@ func TestTimelockV1ProgramAccountHandler(t *testing.T) {
 
 }
 
-type testEnv struct {
+type testEnv struct { //nolint:unused
 	data     code_data.Provider
 	handlers map[string]ProgramAccountUpdateHandler
 }
 
-func setup(t *testing.T) *testEnv {
+func setup(t *testing.T) *testEnv { //nolint:unused
 	data := code_data.NewTestDataProvider()
 	return &testEnv{
 		data:     data,

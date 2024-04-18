@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -69,7 +70,7 @@ func NewServer(opts ...ServerOption) (*grpc.ClientConn, *Server, error) {
 	// note: this is safe since we don't specify grpc.WithBlock()
 	conn, err := grpc.Dial(
 		fmt.Sprintf("localhost:%d", port),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(o.unaryClientInterceptors...)),
 		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(o.streamClientInterceptors...)),
 	)

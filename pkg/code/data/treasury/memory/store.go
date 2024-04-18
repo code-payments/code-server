@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type ById []*treasury.Record
@@ -99,7 +99,7 @@ func (s *store) GetByVault(_ context.Context, vault string) (*treasury.Record, e
 }
 
 // GetAllByState implements treasury.Store.GetAllByState
-func (s *store) GetAllByState(_ context.Context, state treasury.TreasuryPoolState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*treasury.Record, error) {
+func (s *store) GetAllByState(_ context.Context, state treasury.PoolState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*treasury.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -203,7 +203,7 @@ func (s *store) findTreasuryPoolByVault(vault string) *treasury.Record {
 	return nil
 }
 
-func (s *store) findTreasuryPoolByState(state treasury.TreasuryPoolState) []*treasury.Record {
+func (s *store) findTreasuryPoolByState(state treasury.PoolState) []*treasury.Record {
 	res := make([]*treasury.Record, 0)
 	for _, item := range s.treasuryPoolRecords {
 		if item.State == state {

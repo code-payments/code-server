@@ -12,13 +12,12 @@ import (
 )
 
 func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
-
 	hasWarnedUser := false
 	err := retry.Loop(
 		func() (err error) {
 			time.Sleep(time.Second)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__nonce_service__nonce_accounts")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -70,7 +69,6 @@ func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
 			}
 
 			return nil
-
 		},
 		retry.NonRetriableErrors(context.Canceled, ErrInvalidNonceLimitExceeded),
 	)

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +14,8 @@ import (
 	xrate "golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
@@ -59,7 +60,11 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 	require.NoError(t, err)
 
 	// Force iOS user agent to pass airdrop tests
-	iosConn, err := grpc.Dial(conn.Target(), grpc.WithInsecure(), grpc.WithUserAgent("Code/iOS/1.0.0"))
+	iosConn, err := grpc.Dial(
+		conn.Target(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUserAgent("Code/iOS/1.0.0"),
+	)
 	require.NoError(t, err)
 
 	env.ctx = context.Background()
@@ -226,7 +231,7 @@ func TestLinkAccount_UserAlreadyExists(t *testing.T) {
 	}))
 
 	userRecord := &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},
@@ -331,7 +336,7 @@ func TestUnlinkAccount_PhoneNeverAssociated(t *testing.T) {
 	invalidPhoneNumber := "+18005550000"
 
 	userRecord := &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &validPhoneNumber,
 		},
@@ -439,7 +444,7 @@ func TestGetUser_UnlockedTimelockAccount(t *testing.T) {
 	phoneNumber := "+12223334444"
 
 	userRecord := &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},
@@ -501,7 +506,7 @@ func TestGetUser_UnlockedTimelockAccount(t *testing.T) {
 	assert.Equal(t, userpb.GetUserResponse_OK, resp.Result)
 
 	timelockRecord.VaultState = timelock_token.StateUnlocked
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
 	resp, err = env.client.GetUser(env.ctx, req)
@@ -524,7 +529,7 @@ func TestGetUser_LinkStatus(t *testing.T) {
 
 	for _, phoneNumber := range phoneNumbers {
 		userRecord := &identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -657,7 +662,7 @@ func TestGetUser_FeatureFlags(t *testing.T) {
 
 		phoneNumber := "+12223334444"
 		userRecord := &identity.Record{
-			ID: user.NewUserID(),
+			ID: user.NewID(),
 			View: &user.View{
 				PhoneNumber: &phoneNumber,
 			},
@@ -719,7 +724,7 @@ func TestGetUser_AirdropStatus(t *testing.T) {
 
 			phoneNumber := "+12223334444"
 			userRecord := &identity.Record{
-				ID: user.NewUserID(),
+				ID: user.NewID(),
 				View: &user.View{
 					PhoneNumber: &phoneNumber,
 				},
@@ -1271,7 +1276,6 @@ func TestGetLoginForThirdPartyApp_HappyPath(t *testing.T) {
 		{paymentRequestRecord, paymentIntentRecord},
 		{loginRequestRecord, loginIntentRecord},
 	} {
-
 		env, cleanup := setup(t)
 		defer cleanup()
 

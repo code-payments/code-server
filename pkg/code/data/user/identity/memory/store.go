@@ -41,7 +41,7 @@ func (s *store) Put(ctx context.Context, record *user_identity.Record) error {
 		return user_identity.ErrAlreadyExists
 	}
 
-	copy := &user_identity.Record{
+	cpy := &user_identity.Record{
 		ID: record.ID,
 		View: &user.View{
 			PhoneNumber: record.View.PhoneNumber,
@@ -51,14 +51,14 @@ func (s *store) Put(ctx context.Context, record *user_identity.Record) error {
 		CreatedAt:   record.CreatedAt,
 	}
 
-	s.usersByID[record.ID.String()] = copy
-	s.usersByPhoneNumber[*record.View.PhoneNumber] = copy
+	s.usersByID[record.ID.String()] = cpy
+	s.usersByPhoneNumber[*record.View.PhoneNumber] = cpy
 
 	return nil
 }
 
 // GetByID implements user_identity.Store.GetByID
-func (s *store) GetByID(ctx context.Context, id *user.UserID) (*user_identity.Record, error) {
+func (s *store) GetByID(ctx context.Context, id *user.Id) (*user_identity.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

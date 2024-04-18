@@ -20,7 +20,7 @@ func SendCodeTeamMessage(ctx context.Context, data code_data.Provider, receiver 
 		ctx,
 		data,
 		CodeTeamName,
-		chat.ChatTypeInternal,
+		chat.TypeInternal,
 		true,
 		receiver,
 		chatMessage,

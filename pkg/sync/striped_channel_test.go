@@ -22,15 +22,8 @@ func TestStripedChannel_HappyPath(t *testing.T) {
 			wg.Done()
 		}()
 
-		for {
-			select {
-			case val, ok := <-c:
-				if !ok {
-					return
-				}
-
-				results[id][val.(int)]++
-			}
+		for val := range c {
+			results[id][val.(int)]++
 		}
 	}
 

@@ -26,7 +26,7 @@ type Provider interface {
 	GetEstimatedDataProvider() EstimatedData
 }
 
-type DataProvider struct {
+type provider struct {
 	*BlockchainProvider
 	*DatabaseProvider
 	*WebProvider
@@ -44,7 +44,7 @@ func NewDataProvider(dbConfig *pg.Config, solanaEnv string, configProvider Confi
 		return nil, err
 	}
 
-	provider := p.(*DataProvider)
+	provider := p.(*provider)
 	provider.BlockchainProvider = blockchain.(*BlockchainProvider)
 
 	return provider, nil
@@ -66,7 +66,7 @@ func NewDataProviderWithoutBlockchain(dbConfig *pg.Config, configProvider Config
 		return nil, err
 	}
 
-	provider := &DataProvider{
+	provider := &provider{
 		DatabaseProvider:  db.(*DatabaseProvider),
 		WebProvider:       web.(*WebProvider),
 		EstimatedProvider: estimated.(*EstimatedProvider),
@@ -84,21 +84,21 @@ func NewTestDataProvider() Provider {
 		panic(err)
 	}
 
-	return &DataProvider{
+	return &provider{
 		DatabaseProvider:   NewTestDatabaseProvider().(*DatabaseProvider),
 		BlockchainProvider: blockchain.(*BlockchainProvider),
 	}
 }
 
-func (p *DataProvider) GetBlockchainDataProvider() BlockchainData {
+func (p *provider) GetBlockchainDataProvider() BlockchainData {
 	return p.BlockchainProvider
 }
-func (p *DataProvider) GetWebDataProvider() WebData {
+func (p *provider) GetWebDataProvider() WebData {
 	return p.WebProvider
 }
-func (p *DataProvider) GetDatabaseDataProvider() DatabaseData {
+func (p *provider) GetDatabaseDataProvider() DatabaseData {
 	return p.DatabaseProvider
 }
-func (p *DataProvider) GetEstimatedDataProvider() EstimatedData {
+func (p *provider) GetEstimatedDataProvider() EstimatedData {
 	return p.EstimatedProvider
 }

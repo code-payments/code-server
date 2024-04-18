@@ -2,8 +2,8 @@ package push
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -84,12 +84,19 @@ func UpdateBadgeCount(
 			)
 
 			if pushErr != nil {
-				log.WithError(err).Warn("failure sending push notification")
-				isValid, err := onPushError(ctx, data, pusher, pushTokenRecord)
-				if isValid {
-					return errors.Wrap(pushErr, "error pushing to valid token")
-				} else if err != nil {
-					return errors.Wrap(err, "error handling push error")
+				isValid, onPushErr := onPushError(ctx, data, pusher, pushTokenRecord)
+
+				log.WithError(pushErr).
+					WithFields(logrus.Fields{
+						"on_push_error": onPushErr,
+						"is_valid":      isValid,
+					}).
+					Warn("failure sending push notification")
+
+				if onPushErr != nil {
+					return fmt.Errorf("failed to handle push error (%w): %w", pushErr, onPushErr)
+				} else if isValid {
+					return fmt.Errorf("failed to push to valid token: %w", pushErr)
 				}
 			}
 		}

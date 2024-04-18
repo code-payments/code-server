@@ -17,7 +17,7 @@ import (
 
 // GetKinPurchasesChatId returns the chat ID for the Kin Purchases chat for a
 // given owner account
-func GetKinPurchasesChatId(owner *common.Account) chat.ChatId {
+func GetKinPurchasesChatId(owner *common.Account) chat.Id {
 	return chat.GetChatId(KinPurchasesName, owner.PublicKey().ToBase58(), true)
 }
 
@@ -27,7 +27,7 @@ func SendKinPurchasesMessage(ctx context.Context, data code_data.Provider, recei
 		ctx,
 		data,
 		KinPurchasesName,
-		chat.ChatTypeInternal,
+		chat.TypeInternal,
 		true,
 		receiver,
 		chatMessage,

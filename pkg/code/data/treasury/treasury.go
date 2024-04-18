@@ -10,13 +10,13 @@ import (
 	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 )
 
-type TreasuryPoolState uint8
+type PoolState uint8
 type FundingState uint8
 
 const (
-	TreasuryPoolStateUnknown TreasuryPoolState = iota
-	TreasuryPoolStateAvailable
-	TreasuryPoolStateDeprecated
+	PoolStateUnknown PoolState = iota
+	PoolStateAvailable
+	PoolStateDeprecated
 )
 
 const (
@@ -49,7 +49,7 @@ type Record struct {
 
 	SolanaBlock uint64
 
-	State TreasuryPoolState // currently managed manually
+	State PoolState // currently managed manually
 
 	LastUpdatedAt time.Time
 }
@@ -256,11 +256,11 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.LastUpdatedAt = r.LastUpdatedAt
 }
 
-func (s TreasuryPoolState) String() string {
+func (s PoolState) String() string {
 	switch s {
-	case TreasuryPoolStateAvailable:
+	case PoolStateAvailable:
 		return "available"
-	case TreasuryPoolStateDeprecated:
+	case PoolStateDeprecated:
 		return "deprecated"
 	}
 	return "unknown"

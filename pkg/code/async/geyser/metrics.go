@@ -80,7 +80,7 @@ func (p *service) recordEventWorkerStatusPollingEvent(ctx context.Context) {
 	var numActive int
 	for _, workerMetrics := range p.programUpdateWorkerMetrics {
 		if workerMetrics.active {
-			numActive += 1
+			numActive++
 		}
 		eventsProcessed += workerMetrics.eventsProcessed
 		workerMetrics.eventsProcessed = 0

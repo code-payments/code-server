@@ -8,11 +8,11 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 
+	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
 	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
 )
 
 const (
@@ -24,7 +24,7 @@ var (
 	treasuryPoolLock sync.Mutex
 )
 
-func (p *service) worker(serviceCtx context.Context, state treasury.TreasuryPoolState, interval time.Duration) error {
+func (p *service) worker(serviceCtx context.Context, state treasury.PoolState, interval time.Duration) error {
 	delay := interval
 	var cursor query.Cursor
 
@@ -32,7 +32,7 @@ func (p *service) worker(serviceCtx context.Context, state treasury.TreasuryPool
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__treasury_pool_service__handle_" + state.String())
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -82,7 +82,7 @@ func (p *service) worker(serviceCtx context.Context, state treasury.TreasuryPool
 
 func (p *service) handle(ctx context.Context, record *treasury.Record) error {
 	switch record.State {
-	case treasury.TreasuryPoolStateAvailable:
+	case treasury.PoolStateAvailable:
 		return p.handleAvailable(ctx, record)
 	default:
 		return nil

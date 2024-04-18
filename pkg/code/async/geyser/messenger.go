@@ -7,6 +7,7 @@ import (
 
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
@@ -169,7 +170,7 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				ctx,
 				data,
 				asciiBaseDomain,
-				chat.ChatTypeExternalApp,
+				chat.TypeExternalApp,
 				true,
 				recipientOwner,
 				chatMessage,
@@ -181,7 +182,7 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 
 			if canPush {
 				// Best-effort send a push
-				push.SendChatMessagePushNotification(
+				pushErr := push.SendChatMessagePushNotification(
 					ctx,
 					data,
 					pusher,
@@ -189,6 +190,10 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 					recipientOwner,
 					chatMessage,
 				)
+				logrus.StandardLogger().
+					WithField("method", "processPotentialBlockchainMessage").
+					WithError(pushErr).
+					Warn("failed to send chat message push notification (best effort)")
 			}
 		}
 

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 func RunTests(t *testing.T, s currency.Store, teardown func()) {
@@ -103,12 +103,12 @@ func testGetRange(t *testing.T, s currency.Store) {
 		assert.EqualValues(t, rates[i].Rates["usd"], item.Rate)
 	}
 
-	result, err = s.GetRange(context.Background(), "usd", query.IntervalHour, rates[0].Time, rates[99].Time, query.Ascending)
+	_, err = s.GetRange(context.Background(), "usd", query.IntervalHour, rates[0].Time, rates[99].Time, query.Ascending)
 	require.NoError(t, err)
-	result, err = s.GetRange(context.Background(), "usd", query.IntervalDay, rates[0].Time, rates[99].Time, query.Ascending)
+	_, err = s.GetRange(context.Background(), "usd", query.IntervalDay, rates[0].Time, rates[99].Time, query.Ascending)
 	require.NoError(t, err)
-	result, err = s.GetRange(context.Background(), "usd", query.IntervalWeek, rates[0].Time, rates[99].Time, query.Ascending)
+	_, err = s.GetRange(context.Background(), "usd", query.IntervalWeek, rates[0].Time, rates[99].Time, query.Ascending)
 	require.NoError(t, err)
-	result, err = s.GetRange(context.Background(), "usd", query.IntervalMonth, rates[0].Time, rates[99].Time, query.Ascending)
+	_, err = s.GetRange(context.Background(), "usd", query.IntervalMonth, rates[0].Time, rates[99].Time, query.Ascending)
 	require.NoError(t, err)
 }

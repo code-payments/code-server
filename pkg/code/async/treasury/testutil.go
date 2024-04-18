@@ -3,9 +3,10 @@ package async_treasury
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -13,12 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -31,6 +26,12 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/solana/system"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 type testEnv struct {
@@ -71,7 +72,7 @@ func setup(t *testing.T, testOverrides *testOverrides) *testEnv {
 
 		SolanaBlock: 1,
 
-		State: treasury.TreasuryPoolStateAvailable,
+		State: treasury.PoolStateAvailable,
 	}
 
 	merkleTree, err := db.InitializeNewMerkleTree(
@@ -126,7 +127,7 @@ func (e *testEnv) simulateMostRecentRoot(t *testing.T, intentState intent.State,
 
 		FulfillmentType: fulfillment.SaveRecentRoot,
 		Data:            []byte("data"),
-		Signature:       pointer.String(fmt.Sprintf("sig%d", rand.Uint64())),
+		Signature:       pointer.String(fmt.Sprintf("sig%d", mrand.Uint64())),
 
 		Nonce:     pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
 		Blockhash: pointer.String("bh"),
@@ -190,7 +191,7 @@ func (e *testEnv) simulateCommitments(t *testing.T, count int, recentRoot string
 			Amount:      kin.ToQuarks(1),
 
 			Intent:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			ActionId: rand.Uint32(),
+			ActionId: mrand.Uint32(),
 
 			Owner: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
@@ -208,7 +209,7 @@ func (e *testEnv) simulateCommitments(t *testing.T, count int, recentRoot string
 
 			FulfillmentType: fulfillment.TransferWithCommitment,
 			Data:            []byte("data"),
-			Signature:       pointer.String(fmt.Sprintf("sig%d", rand.Uint64())),
+			Signature:       pointer.String(fmt.Sprintf("sig%d", mrand.Uint64())),
 
 			Nonce:     pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
 			Blockhash: pointer.String("bh"),
@@ -427,7 +428,8 @@ func (e *testEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
-	rand.Read(bh[:])
+	_, err := rand.Read(bh[:])
+	require.NoError(t, err)
 
 	nonceKey := &vault.Record{
 		PublicKey:  nonceAccount.PublicKey().ToBase58(),
@@ -456,6 +458,6 @@ func (e *testEnv) generateAvailableNonces(t *testing.T, count int) []*nonce.Reco
 }
 
 func (e *testEnv) getNextBlock() uint64 {
-	e.nextBlock += 1
+	e.nextBlock++
 	return e.nextBlock
 }

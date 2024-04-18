@@ -43,7 +43,7 @@ func (p *service) twitterRegistrationWorker(serviceCtx context.Context, interval
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__user_service__handle_twitter_registration")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -70,7 +70,7 @@ func (p *service) twitterUserInfoUpdateWorker(serviceCtx context.Context, interv
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__user_service__handle_twitter_user_info_update")
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -140,7 +140,12 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 
 		switch err {
 		case nil:
-			go push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+			go func() {
+				err := push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+				if err != nil {
+					p.log.WithError(err).Warn("failed to send twitter account connected push notification (best effort)")
+				}
+			}()
 		case twitter.ErrDuplicateTipAddress:
 			err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 				err = p.data.MarkTwitterNonceAsUsed(ctx, tweet.ID, *registrationNonce)

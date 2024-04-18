@@ -114,16 +114,25 @@ func (m *userModel) dbPut(ctx context.Context, db *sqlx.DB) error {
 
 		result, err := tx.ExecContext(ctx, updateQuery, m.InvitedBy.String)
 		if err != nil {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return fmt.Errorf("failed to rollback transaction: %w", rollbackErr)
+			}
+
 			return err
 		}
 
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return fmt.Errorf("failed to rollback transaction: %w", rollbackErr)
+			}
+
 			return err
 		} else if rowsAffected == 0 {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return fmt.Errorf("failed to rollback transaction: %w", rollbackErr)
+			}
+
 			return invite.ErrInviteCountExceeded
 		}
 	}
@@ -144,7 +153,10 @@ func (m *userModel) dbPut(ctx context.Context, db *sqlx.DB) error {
 		m.IsRevoked,
 	)
 	if err != nil {
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", rollbackErr)
+		}
+
 		return pgutil.CheckUniqueViolation(err, invite.ErrAlreadyExists)
 	}
 

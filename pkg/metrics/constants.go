@@ -1,5 +1,3 @@
 package metrics
 
-const (
-	NewRelicContextKey = "newrelic_context"
-)
+type NewRelicContextKey struct{}

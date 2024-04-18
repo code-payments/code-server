@@ -136,9 +136,9 @@ func (p *Payload) ToQrCodeDescription(dimension float64) (*Description, error) {
 		return nil, err
 	}
 
-	kikCodePayload := CreateKikCodePayload(viewPayload)
+	scanPayload := CreateScanPayload(viewPayload)
 
-	return GenerateDescription(dimension, kikCodePayload)
+	return GenerateDescription(dimension, scanPayload)
 }
 
 func (p *Payload) GetIdempotencyKey() IdempotencyKey {
@@ -149,10 +149,10 @@ func (p *Payload) ToRendezvousKey() ed25519.PrivateKey {
 	return DeriveRendezvousPrivateKey(p)
 }
 
-func GenerateRandomIdempotencyKey() IdempotencyKey {
+func GenerateRandomIdempotencyKey() (IdempotencyKey, error) {
 	var buffer [nonceSize]byte
-	rand.Read(buffer[:])
-	return buffer
+	_, err := rand.Read(buffer[:])
+	return buffer, err
 }
 
 type amountBuffer interface {

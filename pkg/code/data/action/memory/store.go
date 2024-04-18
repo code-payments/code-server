@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/action"
 )
 
 type ById []*action.Record
@@ -90,7 +90,7 @@ func (s *store) findBySource(source string) []*action.Record {
 	return res
 }
 
-func (s *store) filter(items []*action.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*action.Record {
+func (s *store) filter(items []*action.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*action.Record { //nolint:unused
 	var start uint64
 
 	start = 0
@@ -231,12 +231,12 @@ func (s *store) GetAllByIntent(ctx context.Context, intent string) ([]*action.Re
 		return nil, action.ErrActionNotFound
 	}
 
-	copy := make([]*action.Record, len(items))
+	cpy := make([]*action.Record, len(items))
 	for i, item := range items {
 		cloned := item.Clone()
-		copy[i] = &cloned
+		cpy[i] = &cloned
 	}
-	return copy, nil
+	return cpy, nil
 }
 
 // GetAllByAddress implements action.store.GetAllByAddress
@@ -249,12 +249,12 @@ func (s *store) GetAllByAddress(ctx context.Context, address string) ([]*action.
 		return nil, action.ErrActionNotFound
 	}
 
-	copy := make([]*action.Record, len(items))
+	cpy := make([]*action.Record, len(items))
 	for i, item := range items {
 		cloned := item.Clone()
-		copy[i] = &cloned
+		cpy[i] = &cloned
 	}
-	return copy, nil
+	return cpy, nil
 }
 
 // GetNetBalance implements action.store.GetNetBalance

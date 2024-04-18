@@ -4,18 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
@@ -24,6 +21,11 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 //
@@ -58,7 +60,7 @@ func (p *service) worker(serviceCtx context.Context, state commitment.State, int
 		func() (err error) {
 			time.Sleep(delay)
 
-			nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
+			nr := serviceCtx.Value(metrics.NewRelicContextKey{}).(*newrelic.Application)
 			m := nr.StartTransaction("async__commitment_service__handle_" + state.String())
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
@@ -424,8 +426,28 @@ func (p *service) injectCommitmentVaultManagementFulfillments(ctx context.Contex
 		if err != nil {
 			return err
 		}
+
+		// note: defer() will only run when the outer function returns, and therefore
+		// all of the defer()'s in this loop will be run all at once at the end, rather
+		// than at the end of each iteration.
+		//
+		// Since we are not committing (and therefore consuming) the nonce's until the
+		// end of the function, this is desirable. If we released at the end of each
+		// iteration, we could potentially acquire the same nonce multiple times for
+		// different transactions, which would fail.
 		defer func() {
-			selectedNonce.ReleaseIfNotReserved()
+			if err := selectedNonce.ReleaseIfNotReserved(); err != nil {
+				p.log.
+					WithFields(logrus.Fields{
+						"method":        "injectCommitmentVaultManagementFulfillments",
+						"nonce_account": selectedNonce.Account.PublicKey().ToBase58(),
+						"blockhash":     selectedNonce.Blockhash.ToBase58(),
+					}).
+					WithError(err).
+					Warn("failed to release nonce")
+			}
+
+			// This is idempotent regardless of whether the above
 			selectedNonce.Unlock()
 		}()
 
@@ -433,7 +455,10 @@ func (p *service) injectCommitmentVaultManagementFulfillments(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+
+		if err := txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes()); err != nil {
+			return fmt.Errorf("failed to sign transaction: %w", err)
+		}
 
 		intentOrderingIndex := uint64(0)
 		fulfillmentOrderingIndex := uint32(i)

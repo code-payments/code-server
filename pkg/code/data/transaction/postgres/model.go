@@ -7,9 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	pg "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
 )
 
 const (
@@ -90,7 +90,7 @@ func makeAllQuery(table, columns, condition string, ordering q.Ordering) string 
 	return query
 }
 
-func (self *transactionModel) txSaveTx(ctx context.Context, tx *sqlx.Tx) error {
+func (m *transactionModel) txSaveTx(ctx context.Context, tx *sqlx.Tx) error {
 	query := `INSERT INTO ` + tableNameTx + `
 		(
 			signature, block_id, block_time, raw_data, fee, has_errors,
@@ -109,16 +109,16 @@ func (self *transactionModel) txSaveTx(ctx context.Context, tx *sqlx.Tx) error {
 		RETURNING *;`
 
 	err := tx.QueryRowxContext(ctx, query,
-		self.Signature,
-		self.Slot,
-		self.BlockTime,
-		self.Data,
-		self.Fee,
-		self.HasErrors,
-		self.ConfirmationState,
-		self.Confirmations,
-		self.CreatedAt,
-	).StructScan(self)
+		m.Signature,
+		m.Slot,
+		m.BlockTime,
+		m.Data,
+		m.Fee,
+		m.HasErrors,
+		m.ConfirmationState,
+		m.Confirmations,
+		m.CreatedAt,
+	).StructScan(m)
 
 	return err
 }
@@ -168,8 +168,23 @@ func dbGetFirstPending(ctx context.Context, db *sqlx.DB, address string) (*trans
 			postBalance       uint64        //`db:"post_balance"`
 		)
 
-		rows.Scan(&txId, &signature, &slot, &blockTime, &data, &fee, &hasErrors,
-			&confirmationState, &confirmations, &createdAt, &account, &preBalance, &postBalance)
+		err = rows.Scan(
+			&txId,
+			&signature,
+			&slot,
+			&blockTime,
+			&data, &fee,
+			&hasErrors,
+			&confirmationState,
+			&confirmations,
+			&createdAt,
+			&account,
+			&preBalance,
+			&postBalance,
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		tb := &transaction.TokenBalance{
 			Account:     account,
@@ -242,8 +257,24 @@ func dbGetLatestByState(ctx context.Context, db *sqlx.DB, address string, state 
 			postBalance       uint64        //`db:"post_balance"`
 		)
 
-		rows.Scan(&txId, &signature, &slot, &blockTime, &data, &fee, &hasErrors,
-			&confirmationState, &confirmations, &createdAt, &account, &preBalance, &postBalance)
+		err = rows.Scan(
+			&txId,
+			&signature,
+			&slot,
+			&blockTime,
+			&data,
+			&fee,
+			&hasErrors,
+			&confirmationState,
+			&confirmations,
+			&createdAt,
+			&account,
+			&preBalance,
+			&postBalance,
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		tb := &transaction.TokenBalance{
 			Account:     account,
@@ -337,8 +368,24 @@ func dbGetAllByAddress(ctx context.Context, db *sqlx.DB, address string, cursor 
 			postBalance       uint64        //`db:"post_balance"`
 		)
 
-		rows.Scan(&txId, &signature, &slot, &blockTime, &data, &fee, &hasErrors,
-			&confirmationState, &confirmations, &createdAt, &account, &preBalance, &postBalance)
+		err = rows.Scan(
+			&txId,
+			&signature,
+			&slot,
+			&blockTime,
+			&data,
+			&fee,
+			&hasErrors,
+			&confirmationState,
+			&confirmations,
+			&createdAt,
+			&account,
+			&preBalance,
+			&postBalance,
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		tb := &transaction.TokenBalance{
 			Account:     account,
@@ -418,7 +465,7 @@ func fromTxBalanceModel(obj *tokenBalanceModel) *transaction.TokenBalance {
 	}
 }
 
-func (self *tokenBalanceModel) txSaveTxBalance(ctx context.Context, tx *sqlx.Tx) error {
+func (m *tokenBalanceModel) txSaveTxBalance(ctx context.Context, tx *sqlx.Tx) error {
 	query := `INSERT INTO ` + tableNameTxBalance + `
 			(transaction_id, account, pre_balance, post_balance)
 		VALUES ($1,$2,$3,$4)
@@ -429,11 +476,11 @@ func (self *tokenBalanceModel) txSaveTxBalance(ctx context.Context, tx *sqlx.Tx)
 		RETURNING *;`
 
 	err := tx.QueryRowxContext(ctx, query,
-		self.TransactionId,
-		self.Account,
-		self.PreBalance,
-		self.PostBalance,
-	).StructScan(self)
+		m.TransactionId,
+		m.Account,
+		m.PreBalance,
+		m.PostBalance,
+	).StructScan(m)
 
 	return err
 }

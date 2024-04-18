@@ -70,7 +70,7 @@ func SendTipsExchangeMessage(ctx context.Context, data code_data.Provider, inten
 			ctx,
 			data,
 			TipsName,
-			chat.ChatTypeInternal,
+			chat.TypeInternal,
 			true,
 			receiver,
 			protoMessage,

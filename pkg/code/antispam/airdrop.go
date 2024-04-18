@@ -220,7 +220,6 @@ func (g *Guard) AllowReferralBonus(
 					recordDenialEvent(ctx, actionReferralBonus, "region restricted")
 					return false, nil
 				}
-
 			}
 
 			// Deny from mobile networks where we're currently under attack

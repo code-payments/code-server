@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 )
 
 type store struct {
@@ -120,7 +120,7 @@ func (s *store) findByStateAndAddress(state fulfillment.State, address string) [
 	return res
 }
 
-func (s *store) findByStateAndAddressAsSource(state fulfillment.State, address string) []*fulfillment.Record {
+func (s *store) findByStateAndAddressAsSource(state fulfillment.State, address string) []*fulfillment.Record { //nolint:unused
 	res := make([]*fulfillment.Record, 0)
 	for _, item := range s.records {
 		if item.State != state {
@@ -358,7 +358,7 @@ func (s *store) CountByStateGroupedByType(ctx context.Context, state fulfillment
 
 	res := make(map[fulfillment.Type]uint64)
 	for _, item := range items {
-		res[item.FulfillmentType] += 1
+		res[item.FulfillmentType]++
 	}
 	return res, nil
 }
@@ -423,7 +423,7 @@ func (s *store) CountPendingByType(ctx context.Context) (map[fulfillment.Type]ui
 
 	res := make(map[fulfillment.Type]uint64)
 	for _, item := range items {
-		res[item.FulfillmentType] += 1
+		res[item.FulfillmentType]++
 	}
 	return res, nil
 }
@@ -551,7 +551,7 @@ func (s *store) ActivelyScheduleTreasuryAdvances(ctx context.Context, treasury s
 
 		data.DisableActiveScheduling = false
 
-		updateCount += 1
+		updateCount++
 		if updateCount >= uint64(limit) {
 			return updateCount, nil
 		}

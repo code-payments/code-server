@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,6 +16,7 @@ func RunTests(t *testing.T, s vault.Store, teardown func()) {
 		testRoundTrip,
 		testUpdate,
 		testGetAllByState,
+		testGetCount,
 	} {
 		tf(t, s)
 		teardown()

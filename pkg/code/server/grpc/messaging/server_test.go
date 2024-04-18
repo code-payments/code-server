@@ -221,7 +221,6 @@ func TestSendMessage_RequestToGrabBill_Validation(t *testing.T) {
 	sendMessageCall = env.client1.sendRequestToGrabBillMessage(t, rendezvousKey)
 	sendMessageCall.assertInvalidMessageError(t, "requestor account must be latest temporary incoming account")
 	env.server1.assertNoMessages(t, rendezvousKey)
-
 }
 
 func TestSendMessage_RequestToReceiveBill_KinValue_HappyPath(t *testing.T) {

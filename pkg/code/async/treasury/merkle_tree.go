@@ -8,9 +8,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
@@ -18,6 +15,9 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/solana"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 )
 
 func (p *service) syncMerkleTree(ctx context.Context, treasuryPoolRecord *treasury.Record) error {
@@ -214,7 +214,7 @@ func (p *service) syncMerkleTree(ctx context.Context, treasuryPoolRecord *treasu
 		endingBlockToQuery := endingBlock + 1
 		startingBlockToQuery := startingBlock
 		if startingBlockToQuery > 0 {
-			startingBlockToQuery -= 1
+			startingBlockToQuery--
 		}
 
 		paymentRecords, err := p.data.GetPaymentHistoryWithinBlockRange(
@@ -222,7 +222,7 @@ func (p *service) syncMerkleTree(ctx context.Context, treasuryPoolRecord *treasu
 			treasuryPoolRecord.Vault,
 			startingBlockToQuery,
 			endingBlockToQuery,
-			query.WithFilter(query.Filter{Value: uint64(payment.PaymentType_Send), Valid: true}),
+			query.WithFilter(query.Filter{Value: uint64(payment.TypeSend), Valid: true}),
 			query.WithLimit(1000),
 			query.WithCursor(cursor),
 		)

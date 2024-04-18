@@ -98,7 +98,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	// Unlock a Timelock account
 
 	timelockRecord.VaultState = timelock_token_v1.StateWaitingForTimeout
-	timelockRecord.Block += 1
+	timelockRecord.Block++
 	require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
 	actual, err = GetOwnerMetadata(ctx, data, owner)

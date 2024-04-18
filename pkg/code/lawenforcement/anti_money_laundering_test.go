@@ -340,19 +340,20 @@ func setupAmlTest(t *testing.T) (env amlTestEnv) {
 
 	testutil.SetupRandomSubsidizer(t, env.data)
 
-	env.data.ImportExchangeRates(env.ctx, &currency.MultiRateRecord{
+	err := env.data.ImportExchangeRates(env.ctx, &currency.MultiRateRecord{
 		Time: time.Now(),
 		Rates: map[string]float64{
 			string(currency_lib.USD): 0.1,
 		},
 	})
+	require.NoError(t, err)
 
 	return env
 }
 
 func setupPhoneUser(t *testing.T, env amlTestEnv, phoneNumber string) {
 	require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-		ID: user.NewUserID(),
+		ID: user.NewID(),
 		View: &user.View{
 			PhoneNumber: &phoneNumber,
 		},

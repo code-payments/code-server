@@ -36,21 +36,21 @@ type Store interface {
 	// "limit" results.
 	//
 	// ErrNotFound is returned if no rows are found.
-	GetAllForAccountByType(ctx context.Context, account string, cursor uint64, limit uint, ordering query.Ordering, paymentType PaymentType) ([]*Record, error)
+	GetAllForAccountByType(ctx context.Context, account string, cursor uint64, limit uint, ordering query.Ordering, paymentType Type) ([]*Record, error)
 
 	// GetAllForAccountByTypeAfterBlock returns payment records in the store for a
 	// given "account" after a "block" after a provided "cursor" value and limited
 	// to at most "limit" results.
 	//
 	// ErrNotFound is returned if no rows are found.
-	GetAllForAccountByTypeAfterBlock(ctx context.Context, account string, block uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType PaymentType) ([]*Record, error)
+	GetAllForAccountByTypeAfterBlock(ctx context.Context, account string, block uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType Type) ([]*Record, error)
 
 	// GetAllForAccountByTypeWithinBlockRange returns payment records in the store
 	// for a given "account" within a "block" range (lowerBound, upperBOund) after a
 	// provided "cursor" value and limited to at most "limit" results.
 	//
 	// ErrNotFound is returned if no rows are found.
-	GetAllForAccountByTypeWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType PaymentType) ([]*Record, error)
+	GetAllForAccountByTypeWithinBlockRange(ctx context.Context, account string, lowerBound, upperBound uint64, cursor uint64, limit uint, ordering query.Ordering, paymentType Type) ([]*Record, error)
 
 	// GetExternalDepositAmount gets the total amount of Kin in quarks deposited to
 	// an account via a deposit from an external account.
