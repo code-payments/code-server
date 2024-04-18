@@ -398,6 +398,7 @@ func (s *identityServer) GetUser(ctx context.Context, req *userpb.GetUserRequest
 		},
 		EnableInternalFlags: isStaff,
 		EligibleAirdrops:    eligibleAirdrops,
+		EnableBuyModule:     true,
 	}, nil
 }
 
