@@ -42,6 +42,7 @@ import (
 
 type identityServer struct {
 	log             *logrus.Entry
+	conf            *conf
 	data            code_data.Provider
 	auth            *auth_util.RPCSignatureVerifier
 	limiter         *limiter
@@ -60,6 +61,7 @@ func NewIdentityServer(
 	auth *auth_util.RPCSignatureVerifier,
 	antispamGuard *antispam.Guard,
 	messagingClient messaging.InternalMessageClient,
+	configProvider ConfigProvider,
 ) userpb.IdentityServer {
 	// todo: don't use a local rate limiter, but it's good enough for now
 	// todo: these rate limits are arbitrary and might need tuning
@@ -69,6 +71,7 @@ func NewIdentityServer(
 
 	return &identityServer{
 		log:             logrus.StandardLogger().WithField("type", "user/server"),
+		conf:            configProvider(),
 		data:            data,
 		auth:            auth,
 		limiter:         limiter,
@@ -398,7 +401,7 @@ func (s *identityServer) GetUser(ctx context.Context, req *userpb.GetUserRequest
 		},
 		EnableInternalFlags: isStaff,
 		EligibleAirdrops:    eligibleAirdrops,
-		EnableBuyModule:     true,
+		EnableBuyModule:     s.conf.enableBuyModule.Get(ctx),
 	}, nil
 }
 
