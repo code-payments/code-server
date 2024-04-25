@@ -73,6 +73,7 @@ func setup(t *testing.T) (env testEnv, cleanup func()) {
 		auth.NewRPCSignatureVerifier(env.data),
 		antispamGuard,
 		messaging.NewMessagingClient(env.data),
+		withManualTestOverrides(&testOverrides{}),
 	)
 	env.server = s.(*identityServer)
 	env.server.domainVerifier = mockDomainVerifier
