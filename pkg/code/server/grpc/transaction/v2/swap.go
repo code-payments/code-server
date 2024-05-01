@@ -214,10 +214,17 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Transaction construction
 	//
 
-	computeUnitLimit, _ := compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
+	var computeUnitLimit uint32
+	var computeUnitPrice uint64
+	if len(jupiterSwapIxns.ComputeBudgetInstructions) == 2 {
+		computeUnitLimit, _ = compute_budget.DecompileSetComputeUnitLimitIxnData(jupiterSwapIxns.ComputeBudgetInstructions[0].Data)
 
-	computeUnitPrice, _ := compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
-	computeUnitPrice = uint64(s.conf.swapPriorityFeeMultiple.Get(ctx) * float64(computeUnitPrice))
+		computeUnitPrice, _ = compute_budget.DecompileSetComputeUnitPriceIxnData(jupiterSwapIxns.ComputeBudgetInstructions[1].Data)
+		computeUnitPrice = uint64(s.conf.swapPriorityFeeMultiple.Get(ctx) * float64(computeUnitPrice))
+	} else {
+		computeUnitLimit = 1_400_000
+		computeUnitPrice = 10_000
+	}
 
 	swapNonce, err := common.NewRandomAccount()
 	if err != nil {
@@ -439,8 +446,8 @@ func (s *transactionServer) validateSwap(
 	// Part 1: Expected instructions sanity check
 	//
 
-	if len(ixns.ComputeBudgetInstructions) != 2 {
-		return newSwapValidationError("expected two compute budget instructions")
+	if len(ixns.ComputeBudgetInstructions) != 0 && len(ixns.ComputeBudgetInstructions) != 2 {
+		return newSwapValidationError("expected zero or two compute budget instructions")
 	}
 
 	if ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
@@ -451,20 +458,22 @@ func (s *transactionServer) validateSwap(
 	// Part 2: Compute budget instructions
 	//
 
-	if !bytes.Equal(ixns.ComputeBudgetInstructions[0].Program, compute_budget.ProgramKey) || !bytes.Equal(ixns.ComputeBudgetInstructions[1].Program, compute_budget.ProgramKey) {
-		return newSwapValidationError("invalid ComputeBudget program key")
-	}
+	if len(ixns.ComputeBudgetInstructions) > 0 {
+		if !bytes.Equal(ixns.ComputeBudgetInstructions[0].Program, compute_budget.ProgramKey) || !bytes.Equal(ixns.ComputeBudgetInstructions[1].Program, compute_budget.ProgramKey) {
+			return newSwapValidationError("invalid ComputeBudget program key")
+		}
 
-	if len(ixns.ComputeBudgetInstructions[0].Accounts) != 0 || len(ixns.ComputeBudgetInstructions[1].Accounts) != 0 {
-		return newSwapValidationError("invalid ComputeBudget instruction accounts")
-	}
+		if len(ixns.ComputeBudgetInstructions[0].Accounts) != 0 || len(ixns.ComputeBudgetInstructions[1].Accounts) != 0 {
+			return newSwapValidationError("invalid ComputeBudget instruction accounts")
+		}
 
-	if _, err := compute_budget.DecompileSetComputeUnitLimitIxnData(ixns.ComputeBudgetInstructions[0].Data); err != nil {
-		return newSwapValidationErrorf("invalid ComputeBudget::SetComputeUnitLimit instruction data: %s", err.Error())
-	}
+		if _, err := compute_budget.DecompileSetComputeUnitLimitIxnData(ixns.ComputeBudgetInstructions[0].Data); err != nil {
+			return newSwapValidationErrorf("invalid ComputeBudget::SetComputeUnitLimit instruction data: %s", err.Error())
+		}
 
-	if _, err := compute_budget.DecompileSetComputeUnitPriceIxnData(ixns.ComputeBudgetInstructions[1].Data); err != nil {
-		return newSwapValidationErrorf("invalid ComputeBudget::SetComputeUnitPrice instruction data: %s", err.Error())
+		if _, err := compute_budget.DecompileSetComputeUnitPriceIxnData(ixns.ComputeBudgetInstructions[1].Data); err != nil {
+			return newSwapValidationErrorf("invalid ComputeBudget::SetComputeUnitPrice instruction data: %s", err.Error())
+		}
 	}
 
 	//
