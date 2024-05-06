@@ -327,16 +327,31 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 	case commonpb.AccountType_SWAP:
 		bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
 
-		go delayedUsdcDepositProcessing(
+		//		go delayedUsdcDepositProcessing(
+		//			ctx,
+		//			conf,
+		//			data,
+		//			pusher,
+		//			chatMessageReceiver,
+		//			tokenAccount,
+		//			signature,
+		//			blockTime,
+		//		)
+
+		owner, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+		if err != nil {
+			return errors.Wrap(err, "invalid owner account")
+		}
+
+		err = push.SendTriggerSwapRpcPushNotification(
 			ctx,
-			conf,
 			data,
 			pusher,
-			chatMessageReceiver,
-			tokenAccount,
-			signature,
-			blockTime,
+			owner,
 		)
+		if err != nil {
+			return errors.Wrap(err, "error sending push to trigger swap rpc on client")
+		}
 
 		syncedDepositCache.Insert(cacheKey, true, 1)
 

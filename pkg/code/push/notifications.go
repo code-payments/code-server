@@ -241,6 +241,34 @@ func SendTwitterAccountConnectedPushNotification(
 	)
 }
 
+// SendTriggerSwapRpcPushNotification sends a data push to trigger the Swap RPC
+func SendTriggerSwapRpcPushNotification(
+	ctx context.Context,
+	data code_data.Provider,
+	pusher push_lib.Provider,
+	owner *common.Account,
+) error {
+	log := logrus.StandardLogger().WithFields(logrus.Fields{
+		"method": "SendTriggerSwapRpcPushNotification",
+		"owner":  owner.PublicKey().ToBase58(),
+	})
+
+	err := sendRawDataPushNotificationToOwner(
+		ctx,
+		data,
+		pusher,
+		owner,
+		executeSwapDataPush,
+		make(map[string]string),
+	)
+	if err != nil {
+		log.WithError(err).Warn("failure sending data push notification")
+		return err
+	}
+
+	return nil
+}
+
 // SendChatMessagePushNotification sends a push notification for chat messages
 func SendChatMessagePushNotification(
 	ctx context.Context,
