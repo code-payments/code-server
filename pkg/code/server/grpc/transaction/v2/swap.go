@@ -372,7 +372,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Transaction submission
 	//
 
-	chatMessageTs := time.Now()
+	// chatMessageTs := time.Now()
 
 	_, err = s.data.SubmitBlockchainTransaction(ctx, &txn)
 	if err != nil {
@@ -386,10 +386,10 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	log.WithField("txn", base64.StdEncoding.EncodeToString(txn.Marshal())).Info("transaction submitted")
 
-	err = s.bestEffortNotifyUserOfSwapInProgress(ctx, owner, chatMessageTs)
-	if err != nil {
-		log.WithError(err).Warn("failure notifying user of swap in progress")
-	}
+	//	err = s.bestEffortNotifyUserOfSwapInProgress(ctx, owner, chatMessageTs)
+	//	if err != nil {
+	//		log.WithError(err).Warn("failure notifying user of swap in progress")
+	//	}
 
 	if !initiateReq.WaitForBlockchainStatus {
 		err = streamer.Send(&transactionpb.SwapResponse{

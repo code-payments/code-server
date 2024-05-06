@@ -17,6 +17,7 @@ const (
 	dataPushTypeKey = "code_notification_type"
 
 	chatMessageDataPush dataPushType = "ChatMessage"
+	executeSwapDataPush dataPushType = "ExecuteSwap"
 )
 
 // sendRawDataPushNotificationToOwner is a generic utility for sending raw data push
