@@ -446,8 +446,8 @@ func (s *transactionServer) validateSwap(
 	// Part 1: Expected instructions sanity check
 	//
 
-	if len(ixns.ComputeBudgetInstructions) != 0 && len(ixns.ComputeBudgetInstructions) != 2 {
-		return newSwapValidationError("expected zero or two compute budget instructions")
+	if len(ixns.ComputeBudgetInstructions) > 2 {
+		return newSwapValidationError("expected at most two compute budget instructions")
 	}
 
 	if ixns.TokenLedgerInstruction != nil || ixns.CleanupInstruction != nil {
@@ -458,7 +458,7 @@ func (s *transactionServer) validateSwap(
 	// Part 2: Compute budget instructions
 	//
 
-	if len(ixns.ComputeBudgetInstructions) > 0 {
+	if len(ixns.ComputeBudgetInstructions) == 2 {
 		if !bytes.Equal(ixns.ComputeBudgetInstructions[0].Program, compute_budget.ProgramKey) || !bytes.Equal(ixns.ComputeBudgetInstructions[1].Program, compute_budget.ProgramKey) {
 			return newSwapValidationError("invalid ComputeBudget program key")
 		}
