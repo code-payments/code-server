@@ -51,6 +51,14 @@ func (a ByCreatedAt) Less(i, j int) bool {
 	return a[i].CreatedAt.Unix() < a[j].CreatedAt.Unix()
 }
 
+type ByLastSwapRetryAt []*account.Record
+
+func (a ByLastSwapRetryAt) Len() int      { return len(a) }
+func (a ByLastSwapRetryAt) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByLastSwapRetryAt) Less(i, j int) bool {
+	return a[i].LastSwapRetryAt.Unix() < a[j].LastSwapRetryAt.Unix()
+}
+
 func New() account.Store {
 	return &store{
 		records: make([]*account.Record, 0),
@@ -125,6 +133,16 @@ func (s *store) findByRequiringAutoReturnCheck(want bool) []*account.Record {
 	var res []*account.Record
 	for _, item := range s.records {
 		if item.RequiresAutoReturnCheck == want {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (s *store) findByRequiringSwapRetry(want bool) []*account.Record {
+	var res []*account.Record
+	for _, item := range s.records {
+		if item.RequiresSwapRetry == want {
 			res = append(res, item)
 		}
 	}
@@ -219,6 +237,9 @@ func (s *store) Update(_ context.Context, data *account.Record) error {
 		item.DepositsLastSyncedAt = data.DepositsLastSyncedAt
 
 		item.RequiresAutoReturnCheck = data.RequiresAutoReturnCheck
+
+		item.RequiresSwapRetry = data.RequiresSwapRetry
+		item.LastSwapRetryAt = data.LastSwapRetryAt
 
 		item.CopyTo(data)
 
@@ -353,7 +374,7 @@ func (s *store) GetPrioritizedRequiringDepositSync(_ context.Context, limit uint
 	if len(res) > int(limit) {
 		return res[:limit], nil
 	}
-	return res, nil
+	return cloneRecords(res), nil
 }
 
 // CountRequiringDepositSync implements account.Store.CountRequiringDepositSync
@@ -392,7 +413,7 @@ func (s *store) GetPrioritizedRequiringAutoReturnCheck(ctx context.Context, minA
 	if len(res) > int(limit) {
 		return res[:limit], nil
 	}
-	return res, nil
+	return cloneRecords(res), nil
 }
 
 // CountRequiringAutoReturnCheck implements account.Store.CountRequiringAutoReturnCheck
@@ -401,6 +422,45 @@ func (s *store) CountRequiringAutoReturnCheck(ctx context.Context) (uint64, erro
 	defer s.mu.Unlock()
 
 	items := s.findByRequiringAutoReturnCheck(true)
+	return uint64(len(items)), nil
+}
+
+// GetPrioritizedRequiringSwapRetry implements account.Store.GetPrioritizedRequiringSwapRetry
+func (s *store) GetPrioritizedRequiringSwapRetry(ctx context.Context, minAge time.Duration, limit uint64) ([]*account.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findByRequiringSwapRetry(true)
+
+	var res []*account.Record
+	for _, item := range items {
+		if time.Since(item.LastSwapRetryAt) <= minAge {
+			continue
+		}
+
+		cloned := item.Clone()
+		res = append(res, &cloned)
+	}
+
+	if len(res) == 0 {
+		return nil, account.ErrAccountInfoNotFound
+	}
+
+	sorted := ByLastSwapRetryAt(res)
+	sort.Sort(sorted)
+
+	if len(res) > int(limit) {
+		return res[:limit], nil
+	}
+	return cloneRecords(res), nil
+}
+
+// CountRequiringSwapRetry implements account.Store.CountRequiringSwapRetry
+func (s *store) CountRequiringSwapRetry(ctx context.Context) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findByRequiringSwapRetry(true)
 	return uint64(len(items)), nil
 }
 

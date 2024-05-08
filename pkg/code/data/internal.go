@@ -152,8 +152,10 @@ type DatabaseData interface {
 	GetRelationshipAccountInfoByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error)
 	GetPrioritizedAccountInfosRequiringDepositSync(ctx context.Context, limit uint64) ([]*account.Record, error)
 	GetPrioritizedAccountInfosRequiringAutoReturnCheck(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error)
+	GetPrioritizedAccountInfosRequiringSwapRetry(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error)
 	GetAccountInfoCountRequiringDepositSync(ctx context.Context) (uint64, error)
 	GetAccountInfoCountRequiringAutoReturnCheck(ctx context.Context) (uint64, error)
+	GetAccountInfoCountRequiringSwapRetry(ctx context.Context) (uint64, error)
 
 	// Currency
 	// --------------------------------------------------------------------------------
@@ -624,11 +626,17 @@ func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringDepositSync(ctx c
 func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringAutoReturnCheck(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error) {
 	return dp.accounts.GetPrioritizedRequiringAutoReturnCheck(ctx, maxAge, limit)
 }
+func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringSwapRetry(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error) {
+	return dp.accounts.GetPrioritizedRequiringSwapRetry(ctx, maxAge, limit)
+}
 func (dp *DatabaseProvider) GetAccountInfoCountRequiringDepositSync(ctx context.Context) (uint64, error) {
 	return dp.accounts.CountRequiringDepositSync(ctx)
 }
 func (dp *DatabaseProvider) GetAccountInfoCountRequiringAutoReturnCheck(ctx context.Context) (uint64, error) {
 	return dp.accounts.CountRequiringAutoReturnCheck(ctx)
+}
+func (dp *DatabaseProvider) GetAccountInfoCountRequiringSwapRetry(ctx context.Context) (uint64, error) {
+	return dp.accounts.CountRequiringSwapRetry(ctx)
 }
 
 // Currency

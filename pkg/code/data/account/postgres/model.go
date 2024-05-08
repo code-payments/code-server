@@ -36,6 +36,9 @@ type model struct {
 
 	RequiresAutoReturnCheck bool `db:"requires_auto_return_check"`
 
+	RequiresSwapRetry bool      `db:"requires_swap_retry"`
+	LastSwapRetryAt   time.Time `db:"last_swap_retry_at"`
+
 	CreatedAt time.Time `db:"created_at"`
 }
 
@@ -59,6 +62,9 @@ func toModel(obj *account.Record) (*model, error) {
 
 		RequiresAutoReturnCheck: obj.RequiresAutoReturnCheck,
 
+		RequiresSwapRetry: obj.RequiresSwapRetry,
+		LastSwapRetryAt:   obj.LastSwapRetryAt,
+
 		CreatedAt: obj.CreatedAt.UTC(),
 	}, nil
 }
@@ -81,6 +87,9 @@ func fromModel(obj *model) *account.Record {
 
 		RequiresAutoReturnCheck: obj.RequiresAutoReturnCheck,
 
+		RequiresSwapRetry: obj.RequiresSwapRetry,
+		LastSwapRetryAt:   obj.LastSwapRetryAt,
+
 		CreatedAt: obj.CreatedAt,
 	}
 }
@@ -92,9 +101,9 @@ func (m *model) dbInsert(ctx context.Context, db *sqlx.DB) error {
 		}
 
 		query := `INSERT INTO ` + tableName + `
-			(owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			RETURNING id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at
+			(owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			RETURNING id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at
 		`
 		err := tx.QueryRowxContext(
 			ctx,
@@ -109,6 +118,8 @@ func (m *model) dbInsert(ctx context.Context, db *sqlx.DB) error {
 			m.RequiresDepositSync,
 			m.DepositsLastSyncedAt,
 			m.RequiresAutoReturnCheck,
+			m.RequiresSwapRetry,
+			m.LastSwapRetryAt,
 			m.CreatedAt,
 		).StructScan(m)
 		if err == nil {
@@ -138,9 +149,9 @@ func (m *model) dbInsert(ctx context.Context, db *sqlx.DB) error {
 
 func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 	query := `UPDATE ` + tableName + `
-		SET requires_deposit_sync = $2, deposits_last_synced_at = $3, requires_auto_return_check = $4
+		SET requires_deposit_sync = $2, deposits_last_synced_at = $3, requires_auto_return_check = $4, requires_swap_retry = $5, last_swap_retry_at = $6
 		WHERE token_account = $1
-		RETURNING id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at
+		RETURNING id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at
 	`
 
 	err := db.QueryRowxContext(
@@ -150,6 +161,8 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 		m.RequiresDepositSync,
 		m.DepositsLastSyncedAt,
 		m.RequiresAutoReturnCheck,
+		m.RequiresSwapRetry,
+		m.LastSwapRetryAt,
 	).StructScan(m)
 
 	if err != nil {
@@ -161,7 +174,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 func dbGetByTokenAddress(ctx context.Context, db *sqlx.DB, address string) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE token_account = $1
 	`
 
@@ -180,7 +193,7 @@ func dbGetByTokenAddress(ctx context.Context, db *sqlx.DB, address string) (*mod
 func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE authority_account = $1
 	`
 
@@ -199,7 +212,7 @@ func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) (
 func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
 	var res []*model
 
-	query := `SELECT DISTINCT ON (account_type, relationship_to) id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT DISTINCT ON (account_type, relationship_to) id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE owner_account = $1
 		ORDER BY account_type, relationship_to, index DESC
 	`
@@ -228,7 +241,7 @@ func dbGetLatestByOwnerAddressAndType(ctx context.Context, db *sqlx.DB, address 
 
 	res := &model{}
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE owner_account = $1 AND account_type = $2
 		ORDER BY index DESC
 		LIMIT 1
@@ -250,7 +263,7 @@ func dbGetLatestByOwnerAddressAndType(ctx context.Context, db *sqlx.DB, address 
 func dbGetRelationshipByOwnerAddress(ctx context.Context, db *sqlx.DB, address, relationshipTo string) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE owner_account = $1 AND account_type = $2 AND index = 0 AND relationship_to = $3
 	`
 
@@ -271,7 +284,7 @@ func dbGetRelationshipByOwnerAddress(ctx context.Context, db *sqlx.DB, address, 
 func dbGetPrioritizedRequiringDepositSync(ctx context.Context, db *sqlx.DB, limit uint64) ([]*model, error) {
 	var res []*model
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE requires_deposit_sync = TRUE
 		ORDER BY deposits_last_synced_at ASC
 		LIMIT $1
@@ -310,7 +323,7 @@ func dbCountRequiringDepositSync(ctx context.Context, db *sqlx.DB) (uint64, erro
 func dbGetPrioritizedRequiringAutoReturnChecks(ctx context.Context, db *sqlx.DB, minAge time.Duration, limit uint64) ([]*model, error) {
 	var res []*model
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, created_at FROM ` + tableName + `
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE requires_auto_return_check = TRUE AND created_at <= $1
 		ORDER BY created_at ASC
 		LIMIT $2
@@ -337,6 +350,46 @@ func dbCountRequiringAutoReturnCheck(ctx context.Context, db *sqlx.DB) (uint64, 
 
 	query := `SELECT COUNT(*) FROM ` + tableName + `
 		WHERE requires_auto_return_check = TRUE
+	`
+
+	err := db.GetContext(ctx, &res, query)
+	if err != nil {
+		return 0, err
+	}
+
+	return res, nil
+}
+
+func dbGetPrioritizedRequiringSwapRetry(ctx context.Context, db *sqlx.DB, minAge time.Duration, limit uint64) ([]*model, error) {
+	var res []*model
+
+	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
+		WHERE requires_swap_retry = TRUE AND last_swap_retry_at <= $1
+		ORDER BY last_swap_retry_at ASC
+		LIMIT $2
+	`
+	err := db.SelectContext(
+		ctx,
+		&res,
+		query,
+		time.Now().Add(-minAge),
+		limit,
+	)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
+	}
+
+	if len(res) == 0 {
+		return nil, account.ErrAccountInfoNotFound
+	}
+	return res, nil
+}
+
+func dbCountRequiringSwapRetry(ctx context.Context, db *sqlx.DB) (uint64, error) {
+	var res uint64
+
+	query := `SELECT COUNT(*) FROM ` + tableName + `
+		WHERE requires_swap_retry = TRUE
 	`
 
 	err := db.GetContext(ctx, &res, query)

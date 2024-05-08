@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	giftCardWorkerEventName = "GiftCardWorkerPollingCheck"
+	giftCardWorkerEventName  = "GiftCardWorkerPollingCheck"
+	swapRetryWorkerEventName = "SwapRetryWorkerPollingCheck"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
@@ -30,11 +31,16 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 
 func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {
 	count, err := p.data.GetAccountInfoCountRequiringAutoReturnCheck(ctx)
-	if err != nil {
-		return
+	if err == nil {
+		metrics.RecordEvent(ctx, giftCardWorkerEventName, map[string]interface{}{
+			"queue_size": count,
+		})
 	}
 
-	metrics.RecordEvent(ctx, giftCardWorkerEventName, map[string]interface{}{
-		"queue_size": count,
-	})
+	count, err = p.data.GetAccountInfoCountRequiringSwapRetry(ctx)
+	if err == nil {
+		metrics.RecordEvent(ctx, swapRetryWorkerEventName, map[string]interface{}{
+			"queue_size": count,
+		})
+	}
 }

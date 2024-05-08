@@ -43,6 +43,9 @@ type Record struct {
 
 	RequiresAutoReturnCheck bool
 
+	RequiresSwapRetry bool
+	LastSwapRetryAt   time.Time
+
 	CreatedAt time.Time
 }
 
@@ -74,6 +77,8 @@ func (r *Record) Clone() Record {
 		RequiresDepositSync:     r.RequiresDepositSync,
 		DepositsLastSyncedAt:    r.DepositsLastSyncedAt,
 		RequiresAutoReturnCheck: r.RequiresAutoReturnCheck,
+		RequiresSwapRetry:       r.RequiresSwapRetry,
+		LastSwapRetryAt:         r.LastSwapRetryAt,
 		CreatedAt:               r.CreatedAt,
 	}
 }
@@ -90,6 +95,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.RequiresDepositSync = r.RequiresDepositSync
 	dst.DepositsLastSyncedAt = r.DepositsLastSyncedAt
 	dst.RequiresAutoReturnCheck = r.RequiresAutoReturnCheck
+	dst.RequiresSwapRetry = r.RequiresSwapRetry
+	dst.LastSwapRetryAt = r.LastSwapRetryAt
 	dst.CreatedAt = r.CreatedAt
 }
 
@@ -183,6 +190,10 @@ func (r *Record) Validate() error {
 
 	if r.RequiresAutoReturnCheck && r.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
 		return errors.New("only remote send gift cards can have auto-return checks")
+	}
+
+	if r.RequiresSwapRetry && r.AccountType != commonpb.AccountType_SWAP {
+		return errors.New("only swap accounts can require swap retries")
 	}
 
 	if r.RelationshipTo != nil && r.AccountType != commonpb.AccountType_RELATIONSHIP {
