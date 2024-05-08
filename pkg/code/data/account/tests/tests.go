@@ -26,6 +26,8 @@ func RunTests(t *testing.T, s account.Store, teardown func()) {
 		testSwapAccountEdgeCases,
 		testDepositSyncMethods,
 		testAutoReturnCheckMethods,
+		testUpdateSwapRetryMetadata,
+		testSwapRetryMethods,
 	} {
 		tf(t, s)
 		teardown()
@@ -586,6 +588,114 @@ func testAutoReturnCheckMethods(t *testing.T, s account.Store) {
 	})
 }
 
+func testUpdateSwapRetryMetadata(t *testing.T, s account.Store) {
+	t.Run("testUpdateSwapRetryMetadata", func(t *testing.T) {
+		ctx := context.Background()
+
+		start := time.Now()
+
+		expected := &account.Record{
+			OwnerAccount:      "owner",
+			AuthorityAccount:  "authority",
+			TokenAccount:      "token",
+			MintAccount:       "mint",
+			AccountType:       commonpb.AccountType_SWAP,
+			Index:             0,
+			RequiresSwapRetry: true,
+			LastSwapRetryAt:   time.Now().Add(-time.Hour),
+		}
+		cloned := expected.Clone()
+
+		require.NoError(t, s.Put(ctx, expected))
+
+		assert.True(t, expected.Id > 0)
+		assert.True(t, expected.CreatedAt.After(start))
+
+		actual, err := s.GetByTokenAddress(ctx, cloned.TokenAccount)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		expected.RequiresSwapRetry = false
+		expected.LastSwapRetryAt = time.Now()
+		cloned = expected.Clone()
+
+		require.NoError(t, s.Update(ctx, expected))
+
+		actual, err = s.GetByTokenAddress(ctx, cloned.TokenAccount)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+	})
+}
+
+func testSwapRetryMethods(t *testing.T, s account.Store) {
+	t.Run("testSwapRetryMethods", func(t *testing.T) {
+		ctx := context.Background()
+
+		_, err := s.GetPrioritizedRequiringSwapRetry(ctx, time.Duration(0), 10)
+		assert.Equal(t, account.ErrAccountInfoNotFound, err)
+
+		count, err := s.CountRequiringSwapRetry(ctx)
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, count)
+
+		var records []*account.Record
+		for i := 0; i < 10; i++ {
+			record := &account.Record{
+				OwnerAccount:     fmt.Sprintf("owner%d", i),
+				AuthorityAccount: fmt.Sprintf("authority%d", i),
+				TokenAccount:     fmt.Sprintf("token%d", i),
+				MintAccount:      "mint",
+				AccountType:      commonpb.AccountType_SWAP,
+				Index:            uint64(0),
+				LastSwapRetryAt:  time.Now().Add(time.Duration(-i) * time.Hour),
+			}
+
+			if i < 7 {
+				record.RequiresSwapRetry = true
+			}
+
+			require.NoError(t, s.Put(ctx, record))
+			records = append(records, record)
+		}
+
+		count, err = s.CountRequiringSwapRetry(ctx)
+		require.NoError(t, err)
+		assert.EqualValues(t, 7, count)
+
+		result, err := s.GetPrioritizedRequiringSwapRetry(ctx, time.Duration(0), 10)
+		require.NoError(t, err)
+		require.Len(t, result, 7)
+
+		for i, actual := range result {
+			assertEquivalentRecords(t, records[6-i], actual)
+		}
+
+		result, err = s.GetPrioritizedRequiringSwapRetry(ctx, time.Duration(0), 3)
+		require.NoError(t, err)
+		require.Len(t, result, 3)
+
+		for i, actual := range result {
+			assertEquivalentRecords(t, records[6-i], actual)
+		}
+
+		result, err = s.GetPrioritizedRequiringSwapRetry(ctx, 2*time.Hour+time.Second, 10)
+		require.NoError(t, err)
+		require.Len(t, result, 4)
+
+		for i, actual := range result {
+			assertEquivalentRecords(t, records[6-i], actual)
+		}
+	})
+}
+
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *account.Record) {
 	assert.Equal(t, obj1.OwnerAccount, obj2.OwnerAccount)
 	assert.Equal(t, obj1.AuthorityAccount, obj2.AuthorityAccount)
@@ -597,4 +707,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *account.Record) {
 	assert.Equal(t, obj1.RequiresDepositSync, obj2.RequiresDepositSync)
 	assert.Equal(t, obj1.DepositsLastSyncedAt.Unix(), obj2.DepositsLastSyncedAt.Unix())
 	assert.Equal(t, obj1.RequiresAutoReturnCheck, obj2.RequiresAutoReturnCheck)
+	assert.Equal(t, obj1.RequiresSwapRetry, obj2.RequiresSwapRetry)
+	assert.Equal(t, obj1.LastSwapRetryAt.Unix(), obj2.LastSwapRetryAt.Unix())
 }

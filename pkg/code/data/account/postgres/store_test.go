@@ -41,6 +41,9 @@ const (
 
 		requires_auto_return_check BOOL NOT NULL,
 
+		requires_swap_retry BOOL NOT NULL,
+		last_swap_retry_at TIMESTAMP WITH TIME ZONE NOT NULL,
+
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
 		CONSTRAINT codewallet__core_accountinfov2__uniq__token_account UNIQUE (token_account),

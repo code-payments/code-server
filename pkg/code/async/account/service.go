@@ -36,6 +36,13 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	}()
 
 	go func() {
+		err := p.swapRetryWorker(ctx, interval)
+		if err != nil && err != context.Canceled {
+			p.log.WithError(err).Warn("swap retry processing loop terminated unexpectedly")
+		}
+	}()
+
+	go func() {
 		err := p.metricsGaugeWorker(ctx)
 		if err != nil && err != context.Canceled {
 			p.log.WithError(err).Warn("account metrics gauge loop terminated unexpectedly")

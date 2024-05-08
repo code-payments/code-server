@@ -18,6 +18,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
@@ -343,14 +344,18 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 			return errors.Wrap(err, "invalid owner account")
 		}
 
-		err = push.SendTriggerSwapRpcPushNotification(
+		// Best-effort attempt to get the client to trigger a Swap RPC call now
+		go push.SendTriggerSwapRpcPushNotification(
 			ctx,
 			data,
 			pusher,
 			owner,
 		)
+
+		// Have the account pulled by the swap retry worker
+		err = markRequiringSwapRetries(ctx, data, accountInfoRecord)
 		if err != nil {
-			return errors.Wrap(err, "error sending push to trigger swap rpc on client")
+			return err
 		}
 
 		syncedDepositCache.Insert(cacheKey, true, 1)
@@ -379,6 +384,20 @@ func markDepositsAsSynced(ctx context.Context, data code_data.Provider, vault *c
 	err = data.UpdateAccountInfo(ctx, accountInfoRecord)
 	if err != nil {
 		return errors.Wrap(err, "error updating account info record")
+	}
+	return nil
+}
+
+func markRequiringSwapRetries(ctx context.Context, data code_data.Provider, accountInfoRecord *account.Record) error {
+	if accountInfoRecord.RequiresSwapRetry {
+		return nil
+	}
+
+	accountInfoRecord.RequiresSwapRetry = true
+	accountInfoRecord.LastSwapRetryAt = time.Now()
+	err := data.UpdateAccountInfo(ctx, accountInfoRecord)
+	if err != nil {
+		return errors.Wrap(err, "error updating swap account info")
 	}
 	return nil
 }
