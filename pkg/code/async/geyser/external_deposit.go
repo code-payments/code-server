@@ -30,6 +30,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 	"github.com/code-payments/code-server/pkg/retry"
@@ -634,6 +635,13 @@ func getPurchasesFromSwap(
 					continue
 				}
 			}
+
+			recordBuyModulePurchaseCompletedEvent(
+				ctx,
+				client.DeviceType(onrampRecord.Platform),
+				onrampRecord.CreatedAt,
+				historyItem.BlockTime,
+			)
 
 			res = append([]*transactionpb.ExchangeDataWithoutRate{
 				{

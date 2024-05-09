@@ -20,6 +20,7 @@ type model struct {
 	Id sql.NullInt64 `db:"id"`
 
 	Owner    string    `db:"owner"`
+	Platform int       `db:"platform"`
 	Currency string    `db:"currency"`
 	Amount   float64   `db:"amount"`
 	Nonce    uuid.UUID `db:"nonce"`
@@ -34,6 +35,7 @@ func toModel(obj *onramp.Record) (*model, error) {
 
 	return &model{
 		Owner:     obj.Owner,
+		Platform:  obj.Platform,
 		Currency:  obj.Currency,
 		Amount:    obj.Amount,
 		Nonce:     obj.Nonce,
@@ -45,6 +47,7 @@ func fromModel(obj *model) *onramp.Record {
 	return &onramp.Record{
 		Id:        uint64(obj.Id.Int64),
 		Owner:     obj.Owner,
+		Platform:  obj.Platform,
 		Currency:  obj.Currency,
 		Amount:    obj.Amount,
 		Nonce:     obj.Nonce,
@@ -55,9 +58,9 @@ func fromModel(obj *model) *onramp.Record {
 func (m *model) dbPut(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + tableName + `
-			(owner, currency, amount, nonce, created_at)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id, owner, currency, amount, nonce, created_at`
+			(owner, platform, currency, amount, nonce, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING id, owner, platform, currency, amount, nonce, created_at`
 
 		if m.CreatedAt.IsZero() {
 			m.CreatedAt = time.Now()
@@ -67,6 +70,7 @@ func (m *model) dbPut(ctx context.Context, db *sqlx.DB) error {
 			ctx,
 			query,
 			m.Owner,
+			m.Platform,
 			m.Currency,
 			m.Amount,
 			m.Nonce,
@@ -81,7 +85,7 @@ func dbGet(ctx context.Context, db *sqlx.DB, nonce uuid.UUID) (*model, error) {
 	res := &model{}
 
 	query := `SELECT
-		id, owner, currency, amount, nonce, created_at
+		id, owner, platform, currency, amount, nonce, created_at
 		FROM ` + tableName + `
 		WHERE nonce = $1
 		LIMIT 1`

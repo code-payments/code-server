@@ -13,6 +13,7 @@ type Record struct {
 	Id uint64
 
 	Owner    string
+	Platform int // todo: can't use client.DeviceType due to import cycle
 	Currency string
 	Amount   float64
 	Nonce    uuid.UUID
@@ -45,6 +46,7 @@ func (r *Record) Clone() Record {
 		Id: r.Id,
 
 		Owner:    r.Owner,
+		Platform: r.Platform,
 		Currency: r.Currency,
 		Amount:   r.Amount,
 		Nonce:    r.Nonce,
@@ -57,6 +59,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Id = r.Id
 
 	dst.Owner = r.Owner
+	dst.Platform = r.Platform
 	dst.Currency = r.Currency
 	dst.Amount = r.Amount
 	dst.Nonce = r.Nonce

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -20,6 +21,8 @@ const (
 	externalDepositWorkerName = "ExternalDeposit"
 	timelockStateWorkerName   = "TimelockState"
 	messagingWorkerName       = "Messaging"
+
+	buyModulePurchaseCompletedEventName = "BuyModulePurchaseCompleted"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
@@ -134,4 +137,15 @@ func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {
 		"worker_type":  externalDepositWorkerName,
 		"current_size": count,
 	})
+}
+
+func recordBuyModulePurchaseCompletedEvent(ctx context.Context, deviceType client.DeviceType, purchaseInitiationTime time.Time, usdcDepositTime *time.Time) {
+	kvs := map[string]interface{}{
+		"total_latency": int(time.Since(purchaseInitiationTime) / time.Millisecond),
+		"platform":      deviceType.String(),
+	}
+	if usdcDepositTime != nil {
+		kvs["swap_latency"] = int(time.Since(*usdcDepositTime) / time.Millisecond)
+	}
+	metrics.RecordEvent(ctx, buyModulePurchaseCompletedEventName, kvs)
 }

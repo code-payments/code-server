@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/code-payments/code-server/pkg/code/data/onramp"
+	"github.com/code-payments/code-server/pkg/grpc/client"
 )
 
 func RunTests(t *testing.T, s onramp.Store, teardown func()) {
@@ -34,6 +35,7 @@ func testHappyPath(t *testing.T, s onramp.Store) {
 
 		expected := &onramp.Record{
 			Owner:    "owner",
+			Platform: int(client.DeviceTypeIOS),
 			Currency: "cad",
 			Amount:   50.01,
 			Nonce:    nonce,
@@ -58,6 +60,7 @@ func testHappyPath(t *testing.T, s onramp.Store) {
 
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *onramp.Record) {
 	assert.Equal(t, obj1.Owner, obj2.Owner)
+	assert.Equal(t, obj1.Platform, obj2.Platform)
 	assert.Equal(t, obj1.Currency, obj2.Currency)
 	assert.Equal(t, obj1.Amount, obj2.Amount)
 	assert.Equal(t, obj1.Nonce, obj2.Nonce)

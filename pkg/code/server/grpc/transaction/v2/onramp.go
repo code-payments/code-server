@@ -23,6 +23,14 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 	log := s.log.WithField("method", "DeclareFiatOnrampPurchaseAttempt")
 	log = client.InjectLoggingMetadata(ctx, log)
 
+	var deviceType client.DeviceType
+	userAgent, err := client.GetUserAgent(ctx)
+	if err == nil {
+		deviceType = userAgent.DeviceType
+	} else {
+		deviceType = client.DeviceTypeUnknown
+	}
+
 	owner, err := common.NewAccountFromProto(req.Owner)
 	if err != nil {
 		log.WithError(err).Warn("invalid owner account")
@@ -73,6 +81,7 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 
 	record := &onramp.Record{
 		Owner:     owner.PublicKey().ToBase58(),
+		Platform:  int(deviceType),
 		Currency:  string(currency),
 		Amount:    amount,
 		Nonce:     nonce,
@@ -83,6 +92,13 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 		log.WithError(err).Warn("failure creating fiat onramp purchase record")
 		return nil, status.Error(codes.Internal, "")
 	}
+
+	recordBuyModulePurchaseInitiatedEvent(
+		ctx,
+		currency,
+		amount,
+		deviceType,
+	)
 
 	return &transactionpb.DeclareFiatOnrampPurchaseAttemptResponse{
 		Result: transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_OK,
