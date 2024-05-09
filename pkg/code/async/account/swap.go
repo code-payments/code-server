@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	swapPushRetryThreshold = 5 * time.Minute
+	swapPushRetryThreshold = time.Minute
 	minUsdcSwapBalance     = usdc.QuarksPerUsdc / 100 // $0.01 USD
 )
 
