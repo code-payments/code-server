@@ -28,6 +28,7 @@ const (
 			id SERIAL NOT NULL PRIMARY KEY,
 
 			owner TEXT NOT NULL,
+			platform INTEGER NOT NULL,
 			currency TEXT NOT NULL,
 			amount numeric(18, 9) NOT NULL,
 			nonce UUID NOT NULL,
