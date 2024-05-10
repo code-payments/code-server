@@ -26,3 +26,6 @@ build/
 # Visual Studio Code
 .vscode/
 
+# Jetbrains
+.idea/
+
