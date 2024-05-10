@@ -139,10 +139,12 @@ func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {
 	})
 }
 
-func recordBuyModulePurchaseCompletedEvent(ctx context.Context, deviceType client.DeviceType, purchaseInitiationTime time.Time, usdcDepositTime *time.Time) {
+func recordBuyModulePurchaseCompletedEvent(ctx context.Context, deviceType client.DeviceType, purchaseInitiationTime *time.Time, usdcDepositTime *time.Time) {
 	kvs := map[string]interface{}{
-		"total_latency": int(time.Since(purchaseInitiationTime) / time.Millisecond),
-		"platform":      deviceType.String(),
+		"platform": deviceType.String(),
+	}
+	if purchaseInitiationTime != nil {
+		kvs["total_latency"] = int(time.Since(*purchaseInitiationTime) / time.Millisecond)
 	}
 	if usdcDepositTime != nil {
 		kvs["swap_latency"] = int(time.Since(*usdcDepositTime) / time.Millisecond)
