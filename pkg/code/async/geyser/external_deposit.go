@@ -270,7 +270,18 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 				return errors.Wrap(err, "error getting swap purchases")
 			}
 
-			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, blockTime, purchases...)
+			var protoPurchases []*transactionpb.ExchangeDataWithoutRate
+			for _, purchase := range purchases {
+				protoPurchases = append(protoPurchases, purchase.protoExchangeData)
+				recordBuyModulePurchaseCompletedEvent(
+					ctx,
+					purchase.deviceType,
+					purchase.purchaseInitiationTime,
+					purchase.usdcDepositTime,
+				)
+			}
+
+			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, blockTime, protoPurchases...)
 			if err != nil {
 				return errors.Wrap(err, "error creating chat message")
 			}
@@ -491,6 +502,13 @@ func getCodeSwapMetadata(ctx context.Context, conf *conf, tokenBalances *solana.
 	return true, usdcAccount, usdcPaid, nil
 }
 
+type purchaseWithMetrics struct {
+	protoExchangeData      *transactionpb.ExchangeDataWithoutRate
+	deviceType             client.DeviceType
+	purchaseInitiationTime *time.Time
+	usdcDepositTime        *time.Time
+}
+
 func getPurchasesFromSwap(
 	ctx context.Context,
 	conf *conf,
@@ -498,7 +516,7 @@ func getPurchasesFromSwap(
 	signature string,
 	usdcSwapAccount *common.Account,
 	usdcQuarksSwapped uint64,
-) ([]*transactionpb.ExchangeDataWithoutRate, error) {
+) ([]*purchaseWithMetrics, error) {
 	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, usdcSwapAccount.PublicKey().ToBase58())
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting account info record")
@@ -523,8 +541,8 @@ func getPurchasesFromSwap(
 		return nil, errors.Wrap(err, "error getting transaction history")
 	}
 
-	purchases, err := func() ([]*transactionpb.ExchangeDataWithoutRate, error) {
-		var res []*transactionpb.ExchangeDataWithoutRate
+	purchases, err := func() ([]*purchaseWithMetrics, error) {
+		var res []*purchaseWithMetrics
 		var usdcDeposited uint64
 		for _, historyItem := range history {
 			if historyItem.Err != nil {
@@ -580,14 +598,18 @@ func getPurchasesFromSwap(
 				continue
 			}
 
-			rawUsdPurchase := &transactionpb.ExchangeDataWithoutRate{
-				Currency:     "usd",
-				NativeAmount: math.Round(usdAmount), // Round to nearest $1 since we don't support decimals in app yet
+			rawUsdPurchase := &purchaseWithMetrics{
+				protoExchangeData: &transactionpb.ExchangeDataWithoutRate{
+					Currency:     "usd",
+					NativeAmount: math.Round(usdAmount), // Round to nearest $1 since we don't support decimals in app yet
+				},
+				deviceType:      client.DeviceTypeUnknown,
+				usdcDepositTime: historyItem.BlockTime,
 			}
 
 			// There is no memo for a blockchain message
 			if historyItem.Memo == nil {
-				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				res = append([]*purchaseWithMetrics{rawUsdPurchase}, res...)
 				continue
 			}
 
@@ -597,21 +619,24 @@ func getPurchasesFromSwap(
 			memoMessage := memoParts[len(memoParts)-1]
 			blockchainMessage, err := thirdparty.DecodeFiatOnrampPurchaseMessage([]byte(memoMessage))
 			if err != nil {
-				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				res = append([]*purchaseWithMetrics{rawUsdPurchase}, res...)
 				continue
 			}
 			onrampRecord, err := data.GetFiatOnrampPurchase(ctx, blockchainMessage.Nonce)
 			if err == onramp.ErrPurchaseNotFound {
-				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				res = append([]*purchaseWithMetrics{rawUsdPurchase}, res...)
 				continue
 			} else if err != nil {
 				return nil, errors.Wrap(err, "error getting onramp record")
 			}
 
+			rawUsdPurchase.deviceType = client.DeviceType(onrampRecord.Platform)
+			rawUsdPurchase.purchaseInitiationTime = &onrampRecord.CreatedAt
+
 			// This nonce is not associated with the owner account linked to the
 			// fiat purchase.
 			if onrampRecord.Owner != accountInfoRecord.OwnerAccount {
-				res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+				res = append([]*purchaseWithMetrics{rawUsdPurchase}, res...)
 				continue
 			}
 
@@ -631,22 +656,20 @@ func getPurchasesFromSwap(
 				fxRate := otherCurrencyRate / usdRate
 				pctDiff := math.Abs(usdAmount*fxRate-onrampRecord.Amount) / onrampRecord.Amount
 				if pctDiff > 0.1 {
-					res = append([]*transactionpb.ExchangeDataWithoutRate{rawUsdPurchase}, res...)
+					res = append([]*purchaseWithMetrics{rawUsdPurchase}, res...)
 					continue
 				}
 			}
 
-			recordBuyModulePurchaseCompletedEvent(
-				ctx,
-				client.DeviceType(onrampRecord.Platform),
-				onrampRecord.CreatedAt,
-				historyItem.BlockTime,
-			)
-
-			res = append([]*transactionpb.ExchangeDataWithoutRate{
+			res = append([]*purchaseWithMetrics{
 				{
-					Currency:     onrampRecord.Currency,
-					NativeAmount: onrampRecord.Amount,
+					protoExchangeData: &transactionpb.ExchangeDataWithoutRate{
+						Currency:     onrampRecord.Currency,
+						NativeAmount: onrampRecord.Amount,
+					},
+					deviceType:             client.DeviceType(onrampRecord.Platform),
+					purchaseInitiationTime: &onrampRecord.CreatedAt,
+					usdcDepositTime:        historyItem.BlockTime,
 				},
 			}, res...)
 		}
@@ -667,10 +690,12 @@ func getPurchasesFromSwap(
 
 	if len(purchases) == 0 {
 		// No purchases were returned, so defer back to the USDC amount swapped
-		return []*transactionpb.ExchangeDataWithoutRate{
+		return []*purchaseWithMetrics{
 			{
-				Currency:     "usd",
-				NativeAmount: float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc),
+				protoExchangeData: &transactionpb.ExchangeDataWithoutRate{
+					Currency:     "usd",
+					NativeAmount: float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc),
+				},
 			},
 		}, nil
 	}
