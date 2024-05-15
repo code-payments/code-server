@@ -1,14 +1,20 @@
 package chat
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"math"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
@@ -28,19 +34,28 @@ const (
 	maxPageSize = 100
 )
 
+var (
+	mockTwoWayChat = chat.GetChatId("user1", "user2", true).ToProto()
+)
+
+// todo: Resolve duplication of streaming logic with messaging service. The latest and greatest will live here.
 type server struct {
 	log  *logrus.Entry
 	data code_data.Provider
 	auth *auth_util.RPCSignatureVerifier
+
+	streamsMu sync.RWMutex
+	streams   map[string]*chatEventStream
 
 	chatpb.UnimplementedChatServer
 }
 
 func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) chatpb.ChatServer {
 	return &server{
-		log:  logrus.StandardLogger().WithField("type", "chat/server"),
-		data: data,
-		auth: auth,
+		log:     logrus.StandardLogger().WithField("type", "chat/server"),
+		data:    data,
+		auth:    auth,
+		streams: make(map[string]*chatEventStream),
 	}
 }
 
@@ -347,23 +362,54 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	chatId := chat.ChatIdFromProto(req.ChatId)
-	log = log.WithField("chat_id", chatId.String())
-
-	messageId := base58.Encode(req.Pointer.Value.Value)
-	log = log.WithFields(logrus.Fields{
-		"message_id":   messageId,
-		"pointer_type": req.Pointer.Kind,
-	})
-
-	if req.Pointer.Kind != chatpb.Pointer_READ {
-		return nil, status.Error(codes.InvalidArgument, "Pointer.Kind must be READ")
-	}
-
 	signature := req.Signature
 	req.Signature = nil
 	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
 		return nil, err
+	}
+
+	chatId := chat.ChatIdFromProto(req.ChatId)
+	messageId := base58.Encode(req.Pointer.Value.Value)
+	log = log.WithFields(logrus.Fields{
+		"chat_id":      chatId.String(),
+		"message_id":   messageId,
+		"pointer_type": req.Pointer.Kind,
+	})
+
+	// todo: Temporary code to simluate real-time
+	if req.Pointer.User != nil {
+		return nil, status.Error(codes.InvalidArgument, "pointer.user cannot be set by clients")
+	}
+	if bytes.Equal(mockTwoWayChat.Value, req.ChatId.Value) {
+		req.Pointer.User = &chatpb.ChatMemberId{Value: req.Owner.Value}
+
+		event := &chatpb.ChatStreamEvent{
+			Pointers: []*chatpb.Pointer{req.Pointer},
+		}
+
+		s.streamsMu.RLock()
+		for key, stream := range s.streams {
+			if !strings.HasPrefix(key, chatId.String()) {
+				continue
+			}
+
+			if strings.HasSuffix(key, owner.PublicKey().ToBase58()) {
+				continue
+			}
+
+			if err := stream.notify(event, streamNotifyTimeout); err != nil {
+				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
+			}
+		}
+		s.streamsMu.RUnlock()
+
+		return &chatpb.AdvancePointerResponse{
+			Result: chatpb.AdvancePointerResponse_OK,
+		}, nil
+	}
+
+	if req.Pointer.Kind != chatpb.Pointer_READ {
+		return nil, status.Error(codes.InvalidArgument, "Pointer.Kind must be READ")
 	}
 
 	chatRecord, err := s.data.GetChatById(ctx, chatId)
@@ -527,5 +573,188 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 
 	return &chatpb.SetSubscriptionStateResponse{
 		Result: chatpb.SetSubscriptionStateResponse_OK,
+	}, nil
+}
+
+//
+// Experimental PoC two-way chat APIs below
+//
+
+func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
+	ctx := streamer.Context()
+
+	log := s.log.WithField("method", "StreamChatEvents")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	req, err := boundedStreamChatEventsRecv(ctx, streamer, 250*time.Millisecond)
+	if err != nil {
+		return err
+	}
+
+	if req.GetOpenStream() == nil {
+		return status.Error(codes.InvalidArgument, "open_stream is nil")
+	}
+
+	if req.GetOpenStream().Signature == nil {
+		return status.Error(codes.InvalidArgument, "signature is nil")
+	}
+
+	if !bytes.Equal(req.GetOpenStream().ChatId.Value, mockTwoWayChat.Value) {
+		return status.Error(codes.Unimplemented, "")
+	}
+	chatId := chat.ChatIdFromProto(req.GetOpenStream().ChatId)
+	log = log.WithField("chat_id", chatId.String())
+
+	owner, err := common.NewAccountFromProto(req.GetOpenStream().Owner)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner", owner.PublicKey().ToBase58())
+
+	signature := req.GetOpenStream().Signature
+	req.GetOpenStream().Signature = nil
+	if err = s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
+		return err
+	}
+
+	streamKey := fmt.Sprintf("%s:%s", chatId.String(), owner.PublicKey().ToBase58())
+
+	s.streamsMu.Lock()
+
+	stream, exists := s.streams[streamKey]
+	if exists {
+		s.streamsMu.Unlock()
+		// There's an existing stream on this server that must be terminated first.
+		// Warn to see how often this happens in practice
+		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", stream)
+		return status.Error(codes.Aborted, "stream already exists")
+	}
+
+	stream = newChatEventStream(streamBufferSize)
+
+	// The race detector complains when reading the stream pointer ref outside of the lock.
+	streamRef := fmt.Sprintf("%p", stream)
+	log.Tracef("setting up new stream (stream=%s)", streamRef)
+	s.streams[streamKey] = stream
+
+	s.streamsMu.Unlock()
+
+	sendPingCh := time.After(0)
+	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
+
+	for {
+		select {
+		case event, ok := <-stream.streamCh:
+			if !ok {
+				log.Tracef("stream closed ; ending stream (stream=%s)", streamRef)
+				return status.Error(codes.Aborted, "stream closed")
+			}
+
+			err := streamer.Send(&chatpb.StreamChatEventsResponse{
+				Type: &chatpb.StreamChatEventsResponse_Events{
+					Events: &chatpb.ChatStreamEventBatch{
+						Events: []*chatpb.ChatStreamEvent{event},
+					},
+				},
+			})
+			if err != nil {
+				log.WithError(err).Info("failed to forward chat message")
+				return err
+			}
+		case <-sendPingCh:
+			log.Tracef("sending ping to client (stream=%s)", streamRef)
+
+			sendPingCh = time.After(streamPingDelay)
+
+			err := streamer.Send(&chatpb.StreamChatEventsResponse{
+				Type: &chatpb.StreamChatEventsResponse_Ping{
+					Ping: &commonpb.ServerPing{
+						Timestamp: timestamppb.Now(),
+						PingDelay: durationpb.New(streamPingDelay),
+					},
+				},
+			})
+			if err != nil {
+				log.Tracef("stream is unhealthy ; aborting (stream=%s)", streamRef)
+				return status.Error(codes.Aborted, "terminating unhealthy stream")
+			}
+		case <-streamHealthCh:
+			log.Tracef("stream is unhealthy ; aborting (stream=%s)", streamRef)
+			return status.Error(codes.Aborted, "terminating unhealthy stream")
+		case <-ctx.Done():
+			log.Tracef("stream context cancelled ; ending stream (stream=%s)", streamRef)
+			return status.Error(codes.Canceled, "")
+		}
+	}
+}
+
+func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
+	log := s.log.WithField("method", "SendMessage")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	if !bytes.Equal(req.ChatId.Value, mockTwoWayChat.Value) {
+		return nil, status.Error(codes.Unimplemented, "")
+	}
+	chatId := chat.ChatIdFromProto(req.ChatId)
+	log = log.WithField("chat_id", chatId.String())
+
+	owner, err := common.NewAccountFromProto(req.Owner)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner", owner.PublicKey().ToBase58())
+
+	signature := req.Signature
+	req.Signature = nil
+	if err = s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+		return nil, err
+	}
+
+	switch req.Content[0].Type.(type) {
+	case *chatpb.Content_UserText:
+	default:
+		return nil, status.Error(codes.InvalidArgument, "content[0] must be UserText")
+	}
+
+	// todo: Revisit message IDs
+	messageId, err := common.NewRandomAccount()
+	if err != nil {
+		log.WithError(err).Warn("failure generating random message id")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	chatMessage := &chatpb.ChatMessage{
+		MessageId: &chatpb.ChatMessageId{Value: messageId.ToProto().Value},
+		Ts:        timestamppb.Now(),
+		Content:   req.Content,
+		Sender:    &chatpb.ChatMemberId{Value: req.Owner.Value},
+		Cursor:    nil, // todo: Don't have cursor until we save it to the DB
+	}
+
+	event := &chatpb.ChatStreamEvent{
+		Messages: []*chatpb.ChatMessage{chatMessage},
+	}
+
+	s.streamsMu.RLock()
+	for key, stream := range s.streams {
+		if !strings.HasPrefix(key, chatId.String()) {
+			continue
+		}
+
+		if strings.HasSuffix(key, owner.PublicKey().ToBase58()) {
+			continue
+		}
+
+		if err := stream.notify(event, streamNotifyTimeout); err != nil {
+			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
+		}
+	}
+	s.streamsMu.RUnlock()
+
+	return &chatpb.SendMessageResponse{
+		Result:  chatpb.SendMessageResponse_OK,
+		Message: chatMessage,
 	}, nil
 }
