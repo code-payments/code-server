@@ -159,8 +159,8 @@ func newRandomChatMessage(t *testing.T, contentLength int) *chatpb.ChatMessage {
 	var content []*chatpb.Content
 	for i := 0; i < contentLength; i++ {
 		content = append(content, &chatpb.Content{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: fmt.Sprintf("key%d", rand.Uint32()),
 				},
 			},

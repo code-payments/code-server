@@ -102,8 +102,8 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 		Ts: timestamppb.Now(),
 		Content: []*chatpb.Content{
 			{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: "msg.body.key",
 					},
 				},
@@ -242,7 +242,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	require.Len(t, getMessagesResp.Messages, 1)
 	assert.Equal(t, expectedCodeTeamMessage.MessageId.Value, getMessagesResp.Messages[0].Cursor.Value)
 	getMessagesResp.Messages[0].Cursor = nil
-	expectedCodeTeamMessage.Content[0].GetLocalized().KeyOrText = "localized message body content"
+	expectedCodeTeamMessage.Content[0].GetServerLocalized().KeyOrText = "localized message body content"
 	assert.True(t, proto.Equal(expectedCodeTeamMessage, getMessagesResp.Messages[0]))
 
 	getMessagesResp, err = env.client.GetMessages(env.ctx, getCashTransactionsMessagesReq)
@@ -288,8 +288,8 @@ func TestChatHistoryReadState_HappyPath(t *testing.T) {
 			Ts: timestamppb.Now(),
 			Content: []*chatpb.Content{
 				{
-					Type: &chatpb.Content_Localized{
-						Localized: &chatpb.LocalizedContent{
+					Type: &chatpb.Content_ServerLocalized{
+						ServerLocalized: &chatpb.ServerLocalizedContent{
 							KeyOrText: fmt.Sprintf("msg.body.key%d", i),
 						},
 					},
@@ -346,8 +346,8 @@ func TestChatHistoryReadState_NegativeProgress(t *testing.T) {
 			Ts: timestamppb.Now(),
 			Content: []*chatpb.Content{
 				{
-					Type: &chatpb.Content_Localized{
-						Localized: &chatpb.LocalizedContent{
+					Type: &chatpb.Content_ServerLocalized{
+						ServerLocalized: &chatpb.ServerLocalizedContent{
 							KeyOrText: fmt.Sprintf("msg.body.key%d", i),
 						},
 					},
@@ -429,8 +429,8 @@ func TestChatHistoryReadState_MessageNotFound(t *testing.T) {
 		Ts: timestamppb.Now(),
 		Content: []*chatpb.Content{
 			{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: "msg.body.key",
 					},
 				},
@@ -743,8 +743,8 @@ func TestUnauthorizedAccess(t *testing.T) {
 		Ts: timestamppb.Now(),
 		Content: []*chatpb.Content{
 			{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: "msg.body.key",
 					},
 				},
