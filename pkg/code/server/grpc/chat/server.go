@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
+	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 
 const (
@@ -47,16 +47,27 @@ type server struct {
 	streamsMu sync.RWMutex
 	streams   map[string]*chatEventStream
 
+	chatLocks      *sync_util.StripedLock
+	chatEventChans *sync_util.StripedChannel
+
 	chatpb.UnimplementedChatServer
 }
 
 func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) chatpb.ChatServer {
-	return &server{
-		log:     logrus.StandardLogger().WithField("type", "chat/server"),
-		data:    data,
-		auth:    auth,
-		streams: make(map[string]*chatEventStream),
+	s := &server{
+		log:            logrus.StandardLogger().WithField("type", "chat/server"),
+		data:           data,
+		auth:           auth,
+		streams:        make(map[string]*chatEventStream),
+		chatLocks:      sync_util.NewStripedLock(64),             // todo: configurable parameters
+		chatEventChans: sync_util.NewStripedChannel(64, 100_000), // todo: configurable parameters
 	}
+
+	for i, channel := range s.chatEventChans.GetChannels() {
+		go s.asyncChatEventStreamNotifier(i, channel)
+	}
+
+	return s
 }
 
 func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
@@ -387,21 +398,9 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 			Pointers: []*chatpb.Pointer{req.Pointer},
 		}
 
-		s.streamsMu.RLock()
-		for key, stream := range s.streams {
-			if !strings.HasPrefix(key, chatId.String()) {
-				continue
-			}
-
-			if strings.HasSuffix(key, owner.PublicKey().ToBase58()) {
-				continue
-			}
-
-			if err := stream.notify(event, streamNotifyTimeout); err != nil {
-				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
-			}
+		if err := s.asyncNotifyAll(chatId, owner, event); err != nil {
+			log.WithError(err).Warn("failure notifying chat event")
 		}
-		s.streamsMu.RUnlock()
 
 		return &chatpb.AdvancePointerResponse{
 			Result: chatpb.AdvancePointerResponse_OK,
@@ -718,6 +717,10 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		return nil, status.Error(codes.InvalidArgument, "content[0] must be UserText")
 	}
 
+	chatLock := s.chatLocks.Get(chatId[:])
+	chatLock.Lock()
+	defer chatLock.Unlock()
+
 	// todo: Revisit message IDs
 	messageId, err := common.NewRandomAccount()
 	if err != nil {
@@ -733,25 +736,15 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		Cursor:    nil, // todo: Don't have cursor until we save it to the DB
 	}
 
+	// todo: Save the message to the DB
+
 	event := &chatpb.ChatStreamEvent{
 		Messages: []*chatpb.ChatMessage{chatMessage},
 	}
 
-	s.streamsMu.RLock()
-	for key, stream := range s.streams {
-		if !strings.HasPrefix(key, chatId.String()) {
-			continue
-		}
-
-		if strings.HasSuffix(key, owner.PublicKey().ToBase58()) {
-			continue
-		}
-
-		if err := stream.notify(event, streamNotifyTimeout); err != nil {
-			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
-		}
+	if err := s.asyncNotifyAll(chatId, owner, event); err != nil {
+		log.WithError(err).Warn("failure notifying chat event")
 	}
-	s.streamsMu.RUnlock()
 
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
