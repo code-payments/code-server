@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
+	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 const (
@@ -19,7 +22,7 @@ const (
 	streamBufferSize           = 64
 	streamPingDelay            = 5 * time.Second
 	streamKeepAliveRecvTimeout = 10 * time.Second
-	streamNotifyTimeout        = 10 * time.Second
+	streamNotifyTimeout        = time.Second
 )
 
 type chatEventStream struct {
@@ -87,6 +90,59 @@ func boundedStreamChatEventsRecv(
 		return nil, status.Error(codes.Canceled, "")
 	case <-time.After(timeout):
 		return nil, status.Error(codes.DeadlineExceeded, "timed out receiving message")
+	}
+}
+
+type chatIdWithEvent struct {
+	chatId chat.ChatId
+	owner  *common.Account
+	event  *chatpb.ChatStreamEvent
+	ts     time.Time
+}
+
+func (s *server) asyncNotifyAll(chatId chat.ChatId, owner *common.Account, event *chatpb.ChatStreamEvent) error {
+	m := proto.Clone(event).(*chatpb.ChatStreamEvent)
+	ok := s.chatEventChans.Send(chatId[:], &chatIdWithEvent{chatId, owner, m, time.Now()})
+	if !ok {
+		return errors.New("chat event channel is full")
+	}
+	return nil
+}
+
+func (s *server) asyncChatEventStreamNotifier(workerId int, channel <-chan interface{}) {
+	log := s.log.WithFields(logrus.Fields{
+		"method": "asyncChatEventStreamNotifier",
+		"worker": workerId,
+	})
+
+	for value := range channel {
+		typedValue, ok := value.(*chatIdWithEvent)
+		if !ok {
+			log.Warn("channel did not receive expected struct")
+			continue
+		}
+
+		log := log.WithField("chat_id", typedValue.chatId.String())
+
+		if time.Since(typedValue.ts) > time.Second {
+			log.Warn("")
+		}
+
+		s.streamsMu.RLock()
+		for key, stream := range s.streams {
+			if !strings.HasPrefix(key, typedValue.chatId.String()) {
+				continue
+			}
+
+			if strings.HasSuffix(key, typedValue.owner.PublicKey().ToBase58()) {
+				continue
+			}
+
+			if err := stream.notify(typedValue.event, streamNotifyTimeout); err != nil {
+				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
+			}
+		}
+		s.streamsMu.RUnlock()
 	}
 }
 
