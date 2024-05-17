@@ -639,6 +639,22 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 
 	s.streamsMu.Unlock()
 
+	defer func() {
+		s.streamsMu.Lock()
+
+		log.Tracef("closing streamer (stream=%s)", streamRef)
+
+		// We check to see if the current active stream is the one that we created.
+		// If it is, we can just remove it since it's closed. Otherwise, we leave it
+		// be, as another OpenMessageStream() call is handling it.
+		liveStream, exists := s.streams[streamKey]
+		if exists && liveStream == stream {
+			delete(s.streams, streamKey)
+		}
+
+		s.streamsMu.Unlock()
+	}()
+
 	sendPingCh := time.After(0)
 	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
 
