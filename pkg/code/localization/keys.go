@@ -66,8 +66,8 @@ const (
 	VerbPaid        = "subtitle.youPaid"
 	VerbPurchased   = "subtitle.youPurchased"
 	VerbReturned    = "subtitle.wasReturnedToYou"
-	VerbReceivedTip = "subtitle.receivedTip"
-	VerbSentTip     = "subtitle.sentTip"
+	VerbReceivedTip = "subtitle.someoneTippedYou"
+	VerbSentTip     = "subtitle.youTipped"
 )
 
 var (
