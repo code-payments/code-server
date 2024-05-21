@@ -125,7 +125,7 @@ func (s *server) asyncChatEventStreamNotifier(workerId int, channel <-chan inter
 		log := log.WithField("chat_id", typedValue.chatId.String())
 
 		if time.Since(typedValue.ts) > time.Second {
-			log.Warn("")
+			log.Warn("channel notification latency is elevated")
 		}
 
 		s.streamsMu.RLock()
