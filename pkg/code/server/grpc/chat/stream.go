@@ -93,7 +93,7 @@ func boundedStreamChatEventsRecv(
 	}
 }
 
-type chatIdWithEvent struct {
+type chatEventNotification struct {
 	chatId chat.ChatId
 	owner  *common.Account
 	event  *chatpb.ChatStreamEvent
@@ -102,7 +102,7 @@ type chatIdWithEvent struct {
 
 func (s *server) asyncNotifyAll(chatId chat.ChatId, owner *common.Account, event *chatpb.ChatStreamEvent) error {
 	m := proto.Clone(event).(*chatpb.ChatStreamEvent)
-	ok := s.chatEventChans.Send(chatId[:], &chatIdWithEvent{chatId, owner, m, time.Now()})
+	ok := s.chatEventChans.Send(chatId[:], &chatEventNotification{chatId, owner, m, time.Now()})
 	if !ok {
 		return errors.New("chat event channel is full")
 	}
@@ -116,7 +116,7 @@ func (s *server) asyncChatEventStreamNotifier(workerId int, channel <-chan inter
 	})
 
 	for value := range channel {
-		typedValue, ok := value.(*chatIdWithEvent)
+		typedValue, ok := value.(*chatEventNotification)
 		if !ok {
 			log.Warn("channel did not receive expected struct")
 			continue
