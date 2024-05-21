@@ -729,9 +729,9 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 	}
 
 	switch req.Content[0].Type.(type) {
-	case *chatpb.Content_UserText:
+	case *chatpb.Content_Text, *chatpb.Content_ThankYou:
 	default:
-		return nil, status.Error(codes.InvalidArgument, "content[0] must be UserText")
+		return nil, status.Error(codes.InvalidArgument, "content[0] must be Text or ThankYou")
 	}
 
 	// todo: Revisit message IDs
