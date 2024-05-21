@@ -11,15 +11,6 @@ import (
 )
 
 const (
-	//
-	// Section: Legacy Push Notifications (don't follow key conventions)
-	//
-
-	PushTitleDepositReceived    = "push.title.depositReceived"
-	PushSubtitleDepositReceived = "push.subtitle.depositReceived"
-
-	PushTitleKinReturned    = "push.title.kinReturned"
-	PushSubtitleKinReturned = "push.subtitle.kinReturned"
 
 	//
 	// Section: Core
@@ -32,8 +23,14 @@ const (
 	// Section: Pushes
 	//
 
-	PushTitleTwitterAccountConnected    = "title.push.twitterAccountConnected"
-	PushSubtitleTwitterAccountConnected = "subtitle.push.twitterAccountConnected"
+	PushTitleDepositReceived    = "push.title.depositReceived"
+	PushSubtitleDepositReceived = "push.subtitle.depositReceived"
+
+	PushTitleKinReturned    = "push.title.kinReturned"
+	PushSubtitleKinReturned = "push.subtitle.kinReturned"
+
+	PushTitleTwitterAccountConnected    = "push.title.twitterAccountConnected"
+	PushSubtitleTwitterAccountConnected = "push.subtitle.twitterAccountConnected"
 
 	//
 	// Section: Chats
