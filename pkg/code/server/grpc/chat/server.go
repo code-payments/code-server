@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,8 +26,10 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
+	push_lib "github.com/code-payments/code-server/pkg/push"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 
@@ -40,9 +43,10 @@ var (
 
 // todo: Resolve duplication of streaming logic with messaging service. The latest and greatest will live here.
 type server struct {
-	log  *logrus.Entry
-	data code_data.Provider
-	auth *auth_util.RPCSignatureVerifier
+	log    *logrus.Entry
+	data   code_data.Provider
+	auth   *auth_util.RPCSignatureVerifier
+	pusher push_lib.Provider
 
 	streamsMu sync.RWMutex
 	streams   map[string]*chatEventStream
@@ -53,11 +57,12 @@ type server struct {
 	chatpb.UnimplementedChatServer
 }
 
-func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) chatpb.ChatServer {
+func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier, pusher push_lib.Provider) chatpb.ChatServer {
 	s := &server{
 		log:            logrus.StandardLogger().WithField("type", "chat/server"),
 		data:           data,
 		auth:           auth,
+		pusher:         pusher,
 		streams:        make(map[string]*chatEventStream),
 		chatLocks:      sync_util.NewStripedLock(64),             // todo: configurable parameters
 		chatEventChans: sync_util.NewStripedChannel(64, 100_000), // todo: configurable parameters
@@ -762,8 +767,42 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		log.WithError(err).Warn("failure notifying chat event")
 	}
 
+	s.asyncPushChatMessage(ctx, owner, chatId, chatMessage)
+
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
 		Message: chatMessage,
 	}, nil
+}
+
+// todo: doesn't respect mute/unsubscribe rules
+// todo: only sends pushes to active stream listeners instead of all message recipients
+func (s *server) asyncPushChatMessage(ctx context.Context, sender *common.Account, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+	go func() {
+		s.streamsMu.RLock()
+		for key := range s.streams {
+			if !strings.HasPrefix(key, chatId.String()) {
+				continue
+			}
+
+			receiver, err := common.NewAccountFromPublicKeyString(strings.Split(key, ":")[1])
+			if err != nil {
+				continue
+			}
+
+			if bytes.Equal(sender.PublicKey().ToBytes(), receiver.PublicKey().ToBytes()) {
+				continue
+			}
+
+			go push_util.SendChatMessagePushNotification(
+				ctx,
+				s.data,
+				s.pusher,
+				"TontonTwitch",
+				receiver,
+				chatMessage,
+			)
+		}
+		s.streamsMu.RUnlock()
+	}()
 }
