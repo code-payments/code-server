@@ -29,6 +29,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/kin"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -880,7 +881,7 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 		data:   code_data.NewTestDataProvider(),
 	}
 
-	s := NewChatServer(env.data, auth_util.NewRPCSignatureVerifier(env.data))
+	s := NewChatServer(env.data, auth_util.NewRPCSignatureVerifier(env.data), memory_push.NewPushProvider())
 	env.server = s.(*server)
 
 	serv.RegisterService(func(server *grpc.Server) {

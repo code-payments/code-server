@@ -364,8 +364,17 @@ func SendChatMessagePushNotification(
 					},
 				},
 			}
-		case *chatpb.Content_NaclBox:
+		case *chatpb.Content_NaclBox, *chatpb.Content_Text:
 			contentToPush = content
+		case *chatpb.Content_ThankYou:
+			contentToPush = &chatpb.Content{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
+						// todo: localize this
+						KeyOrText: "🙏 They thanked you for their tip",
+					},
+				},
+			}
 		}
 
 		if contentToPush == nil {
