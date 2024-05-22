@@ -767,7 +767,7 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		log.WithError(err).Warn("failure notifying chat event")
 	}
 
-	s.asyncPushChatMessage(ctx, owner, chatId, chatMessage)
+	s.asyncPushChatMessage(owner, chatId, chatMessage)
 
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
@@ -777,7 +777,9 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 
 // todo: doesn't respect mute/unsubscribe rules
 // todo: only sends pushes to active stream listeners instead of all message recipients
-func (s *server) asyncPushChatMessage(ctx context.Context, sender *common.Account, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+func (s *server) asyncPushChatMessage(sender *common.Account, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+	ctx := context.TODO()
+
 	go func() {
 		s.streamsMu.RLock()
 		for key := range s.streams {
