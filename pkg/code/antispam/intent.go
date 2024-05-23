@@ -17,7 +17,7 @@ import (
 // AllowOpenAccounts determines whether a phone-verified owner account can create
 // a Code account via an open accounts intent. The objective here is to limit attacks
 // against our Subsidizer's SOL balance.
-func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, deviceToken *string) (bool, func() error, error) {
+func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, deviceToken *string) (bool, Reason, func() error, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowOpenAccounts")
 	defer tracer.End()
 
@@ -31,7 +31,7 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 	if isIpBanned(ctx) {
 		log.Info("ip is banned")
 		recordDenialEvent(ctx, actionOpenAccounts, "ip banned")
-		return false, nil, nil
+		return false, ReasonUnspecified, nil, nil
 	}
 
 	verification, err := g.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
@@ -39,20 +39,20 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 		// Owner account was never phone verified, so deny the action.
 		log.Info("owner account is not phone verified")
 		recordDenialEvent(ctx, actionOpenAccounts, "not phone verified")
-		return false, nil, nil
+		return false, ReasonUnspecified, nil, nil
 	} else if err != nil {
 		tracer.OnError(err)
 		log.WithError(err).Warn("failure getting phone verification record")
-		return false, nil, err
+		return false, ReasonUnspecified, nil, err
 	}
 
 	log = log.WithField("phone", verification.PhoneNumber)
 
-	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
-		log.Info("denying phone prefix")
-		recordDenialEvent(ctx, actionOpenAccounts, "phone prefix banned")
-		return false, nil, nil
+	// Deny users from sanctioned countries
+	if isSanctionedPhoneNumber(verification.PhoneNumber) {
+		log.Info("denying sanctioned country")
+		recordDenialEvent(ctx, actionOpenAccounts, "sanctioned country")
+		return false, ReasonUnsupportedCountry, nil, nil
 	}
 
 	user, err := g.data.GetUserByPhoneView(ctx, verification.PhoneNumber)
@@ -62,18 +62,18 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 		if user.IsBanned {
 			log.Info("denying banned user")
 			recordDenialEvent(ctx, actionOpenAccounts, "user banned")
-			return false, nil, nil
+			return false, ReasonUnspecified, nil, nil
 		}
 
 		// Staff users have unlimited access to enable testing and demoing.
 		if user.IsStaffUser {
-			return true, func() error { return nil }, nil
+			return true, ReasonUnspecified, func() error { return nil }, nil
 		}
 	case identity.ErrNotFound:
 	default:
 		tracer.OnError(err)
 		log.WithError(err).Warn("failure getting user identity by phone view")
-		return false, nil, err
+		return false, ReasonUnspecified, nil, err
 	}
 
 	// Account creation limit since the beginning of time
@@ -87,7 +87,7 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 	if err != nil {
 		tracer.OnError(err)
 		log.WithError(err).Warn("failure getting intent count")
-		return false, nil, err
+		return false, ReasonUnspecified, nil, err
 	}
 
 	// Device-based restrictions guaranteeing 1 free account per valid device
@@ -97,27 +97,27 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 		if deviceToken == nil {
 			log.Info("denying attempt without device token")
 			recordDenialEvent(ctx, actionOpenAccounts, "device token missing")
-			return false, nil, nil
+			return false, ReasonUnsupportedDevice, nil, nil
 		}
 
 		isValidDeviceToken, reason, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
 		if err != nil {
 			log.WithError(err).Warn("failure performing device validation check")
-			return false, nil, err
+			return false, ReasonUnspecified, nil, err
 		} else if !isValidDeviceToken {
 			log.WithField("reason", reason).Info("denying fake device")
 			recordDenialEvent(ctx, actionOpenAccounts, "fake device")
-			return false, nil, nil
+			return false, ReasonUnsupportedDevice, nil, nil
 		}
 
 		hasCreatedFreeAccount, err := g.deviceVerifier.HasCreatedFreeAccount(ctx, *deviceToken)
 		if err != nil {
 			log.WithError(err).Warn("failure performing free account check for device")
-			return false, nil, err
+			return false, ReasonUnspecified, nil, err
 		} else if hasCreatedFreeAccount {
 			log.Info("denying duplicate device")
 			recordDenialEvent(ctx, actionOpenAccounts, "duplicate device")
-			return false, nil, nil
+			return false, ReasonTooManyFreeAccountsForDevice, nil, nil
 		}
 	}
 
@@ -126,7 +126,7 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 	if int(count) >= 1 {
 		log.Info("phone is rate limited by lifetime account creation count")
 		recordDenialEvent(ctx, actionOpenAccounts, "lifetime limit exceeded")
-		return false, nil, nil
+		return false, ReasonTooManyFreeAccountsForPhoneNumber, nil, nil
 	}
 
 	onFreeAccountCreated := func() error {
@@ -135,7 +135,7 @@ func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, de
 		}
 		return g.deviceVerifier.MarkCreatedFreeAccount(ctx, *deviceToken)
 	}
-	return true, onFreeAccountCreated, nil
+	return true, ReasonUnspecified, onFreeAccountCreated, nil
 }
 
 // AllowSendPayment determines whether a phone-verified owner account is allowed to
@@ -178,10 +178,10 @@ func (g *Guard) AllowSendPayment(ctx context.Context, owner *common.Account, isP
 
 	log = log.WithField("phone", verification.PhoneNumber)
 
-	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
-		log.Info("denying phone prefix")
-		recordDenialEvent(ctx, actionSendPayment, "phone prefix banned")
+	// Deny users from sanctioned countries
+	if isSanctionedPhoneNumber(verification.PhoneNumber) {
+		log.Info("denying sanctioned country")
+		recordDenialEvent(ctx, actionSendPayment, "sanctioned country")
 		return false, nil
 	}
 
@@ -322,10 +322,10 @@ func (g *Guard) AllowReceivePayments(ctx context.Context, owner *common.Account,
 
 	log = log.WithField("phone", verification.PhoneNumber)
 
-	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
-		log.Info("denying phone prefix")
-		recordDenialEvent(ctx, actionReceivePayments, "phone prefix banned")
+	// Deny users from sanctioned countries
+	if isSanctionedPhoneNumber(verification.PhoneNumber) {
+		log.Info("denying sanctioned country")
+		recordDenialEvent(ctx, actionReceivePayments, "sanctioned country")
 		return false, nil
 	}
 
@@ -466,10 +466,10 @@ func (g *Guard) AllowEstablishNewRelationship(ctx context.Context, owner *common
 
 	log = log.WithField("phone", verification.PhoneNumber)
 
-	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
-		log.Info("denying phone prefix")
-		recordDenialEvent(ctx, actionEstablishNewRelationship, "phone prefix banned")
+	// Deny users from sanctioned countries
+	if isSanctionedPhoneNumber(verification.PhoneNumber) {
+		log.Info("denying sanctioned country")
+		recordDenialEvent(ctx, actionEstablishNewRelationship, "sanctioned country")
 		return false, nil
 	}
 

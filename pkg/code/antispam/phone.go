@@ -4,7 +4,7 @@ import "strings"
 
 // todo: Put in a DB somehwere? Or make configurable?
 // todo: Needs tests
-func hasBannedPhoneNumberPrefix(phoneNumber string) bool {
+func isSanctionedPhoneNumber(phoneNumber string) bool {
 	// Check that a +7 phone number is not a mobile number from Kazakhstan
 	if strings.HasPrefix(phoneNumber, "+76") || strings.HasPrefix(phoneNumber, "+77") {
 		return false

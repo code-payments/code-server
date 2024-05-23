@@ -97,7 +97,7 @@ func TestSubmitIntent_OpenAccounts_AntispamGuard(t *testing.T) {
 	server.phoneVerifyUser(t, phone)
 
 	submitIntentCall := phone.openAccounts(t)
-	submitIntentCall.assertDeniedResponse(t, "too many account creations")
+	submitIntentCall.assertDeniedResponse(t, "antispam guard denied account creation")
 	server.assertIntentNotSubmitted(t, submitIntentCall.intentId)
 }
 

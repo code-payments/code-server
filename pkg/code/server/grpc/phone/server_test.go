@@ -270,7 +270,7 @@ func TestSendVerificationCode_AntispamGuard_DeviceVerification(t *testing.T) {
 	}
 	sendCodeResp, err := env.client.SendVerificationCode(env.ctx, sendCodeReq)
 	require.NoError(t, err)
-	assert.Equal(t, phonepb.SendVerificationCodeResponse_RATE_LIMITED, sendCodeResp.Result)
+	assert.Equal(t, phonepb.SendVerificationCodeResponse_UNSUPPORTED_DEVICE, sendCodeResp.Result)
 }
 
 func TestCheckVerificationCode_InvalidCode(t *testing.T) {
