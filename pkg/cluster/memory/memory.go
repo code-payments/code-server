@@ -108,7 +108,10 @@ func (c *Cluster) getMembers() []cluster.Member {
 }
 
 func (c *Cluster) notify() {
-	c.changeCh <- struct{}{}
+	select {
+	case <-c.ctx.Done():
+	case c.changeCh <- struct{}{}:
+	}
 }
 
 func (c *Cluster) watchChanges() {

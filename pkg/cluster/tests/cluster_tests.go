@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/code-payments/code-server/pkg/cluster"
 )
@@ -128,23 +129,26 @@ func testWatchers(t *testing.T, c cluster.Cluster) {
 	}
 
 	for i := range watches {
-		if i%2 == 1 {
+		if i%2 == 0 {
 			watches[i].cancel()
 		}
 	}
 
+	time.Sleep(100 * time.Millisecond)
 	require.NoError(member.SetData("my data"))
 
 	for i := range watches {
 		if i%2 == 0 {
-			require.NotEmpty(<-watches[i].ch)
-		} else {
 			_, ok := <-watches[i].ch
 			require.False(ok)
+		} else {
+			require.NotEmpty(<-watches[i].ch)
 		}
 	}
 
 	c.Close()
+
+	time.Sleep(100 * time.Millisecond)
 
 	require.NoError(member.SetData("my data"))
 
