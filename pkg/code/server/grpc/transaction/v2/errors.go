@@ -82,7 +82,7 @@ func newIntentDeniedError(message string) IntentDeniedError {
 func newIntentDeniedErrorWithAntispamReason(reason antispam.Reason, message string) IntentDeniedError {
 	return IntentDeniedError{
 		message: message,
-		reason:  antispam.ReasonUnspecified,
+		reason:  reason,
 	}
 }
 
