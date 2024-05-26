@@ -11,23 +11,25 @@ import (
 	"github.com/code-payments/code-server/pkg/cluster"
 )
 
+// Cluster maintains a view of the cluster state.
+// Members _controL_ their own membership. lock control should be on the internal
+
 type Cluster struct {
-	ctx    context.Context
-	cancel func()
-
 	changeCh chan struct{}
+	closeCh  chan struct{}
+	closeFn  sync.Once
 
-	mu                 sync.Mutex
-	memberships        []*Membership
-	membershipWatchers []chan []cluster.Member
+	membersMu sync.Mutex
+	members   []cluster.Member
+
+	watchersMu sync.Mutex
+	watchers   []chan []cluster.Member
 }
 
 func NewCluster() *Cluster {
-	ctx, cancel := context.WithCancel(context.Background())
 	c := &Cluster{
-		ctx:      ctx,
-		cancel:   cancel,
 		changeCh: make(chan struct{}),
+		closeCh:  make(chan struct{}),
 	}
 
 	go c.watchChanges()
@@ -36,80 +38,66 @@ func NewCluster() *Cluster {
 }
 
 func (c *Cluster) CreateMembership() (cluster.Membership, error) {
-	id := uuid.New()
-
-	m := newMembership(c, id.String(), "")
-	c.memberships = append(c.memberships, m)
-	slices.SortFunc(c.memberships, func(a, b *Membership) int {
-		return strings.Compare(a.ID(), b.ID())
-	})
-
-	return m, nil
-}
-
-func (c *Cluster) Close() {
-	c.cancel()
+	return &Member{c: c, id: uuid.New().String()}, nil
 }
 
 func (c *Cluster) GetMembers(_ context.Context) ([]cluster.Member, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.getMembers(), nil
+	return c.cloneMembers(), nil
 }
 
 func (c *Cluster) WatchMembers(ctx context.Context) <-chan []cluster.Member {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	go func() {
-		select {
-		case <-c.ctx.Done():
-			cancel(c.ctx.Err())
-		case <-ctx.Done():
-			cancel(ctx.Err())
-		}
-	}()
-
 	ch := make(chan []cluster.Member, 1)
-	ch <- c.getMembers()
-	c.membershipWatchers = append(c.membershipWatchers, ch)
+
+	c.watchersMu.Lock()
+	c.watchers = append(c.watchers, ch)
+	members := c.cloneMembers()
+	ch <- members
+	c.watchersMu.Unlock()
+
+	// Question: when you call cancel() it's just super vague...you're not 'declaring' it, per se.
 
 	go func() {
-		<-ctx.Done()
+		defer func() {
+			c.watchersMu.Lock()
+			defer c.watchersMu.Unlock()
 
-		c.mu.Lock()
-		defer c.mu.Unlock()
-
-		for i := range c.membershipWatchers {
-			if c.membershipWatchers[i] == ch {
-				c.membershipWatchers = slices.Delete(c.membershipWatchers, i, i+1)
-				break
+			for i := range c.watchers {
+				if c.watchers[i] == ch {
+					c.watchers = slices.Delete(c.watchers, i, i+1)
+					break
+				}
 			}
-		}
 
-		close(ch)
+			close(ch)
+		}()
+
+		select {
+		case <-ctx.Done():
+		case <-c.closeCh:
+		}
 	}()
 
 	return ch
 }
 
-func (c *Cluster) getMembers() []cluster.Member {
-	members := make([]cluster.Member, 0, len(c.memberships))
-	for _, m := range c.memberships {
-		m.mu.Lock()
-		if m.registered {
-			members = append(members, m.member)
-		}
-		m.mu.Unlock()
-	}
+func (c *Cluster) Close() {
+	c.closeFn.Do(func() {
+		close(c.closeCh)
+	})
+}
+
+func (c *Cluster) cloneMembers() []cluster.Member {
+	c.membersMu.Lock()
+	defer c.membersMu.Unlock()
+
+	members := make([]cluster.Member, len(c.members))
+	copy(members, c.members)
 	return members
 }
 
 func (c *Cluster) notify() {
 	select {
-	case <-c.ctx.Done():
+	case <-c.closeCh:
 	case c.changeCh <- struct{}{}:
 	}
 }
@@ -117,81 +105,99 @@ func (c *Cluster) notify() {
 func (c *Cluster) watchChanges() {
 	for {
 		select {
-		case <-c.changeCh:
-		case <-c.ctx.Done():
+		case <-c.closeCh:
 			return
+		case <-c.changeCh:
 		}
 
-		members := c.getMembers()
-		for _, w := range c.membershipWatchers {
-			select {
-			case w <- members:
-			default:
-			}
+		latest := c.cloneMembers()
+
+		// When we want to _write_, _add_, or _remove to any watchers,
+		// We appear to have a race, where we want to Remove(), but are in the middle of a write.
+		// This is actually caused by the fact that Write() is blocking, because the downstream
+		// consumer is not consuming. Why?
+
+		c.watchersMu.Lock()
+		for _, ch := range c.watchers {
+			ch <- latest
 		}
+		c.watchersMu.Unlock()
 	}
 }
 
-type Membership struct {
-	c *Cluster
+type Member struct {
+	c  *Cluster
+	id string
 
-	mu         sync.Mutex
+	sync.Mutex
+	data       string
 	registered bool
-	member     cluster.Member
 }
 
-func newMembership(c *Cluster, id string, data string) *Membership {
-	return &Membership{
-		c: c,
-		member: cluster.Member{
-			ID:   id,
-			Data: data,
-		},
-	}
-}
-func (m *Membership) ID() string {
-	return m.member.ID
+func (m *Member) ID() string {
+	return m.id
 }
 
-func (m *Membership) Data() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return m.member.Data
+func (m *Member) Data() string {
+	return m.data
 }
 
-func (m *Membership) SetData(data string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.member.Data = data
-
-	if m.registered {
-		m.c.notify()
-	}
-
-	return nil
-}
-
-func (m *Membership) Register(_ context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (m *Member) SetData(data string) error {
+	m.data = data
 	if !m.registered {
-		m.registered = true
-		m.c.notify()
+		return nil
 	}
+
+	m.c.membersMu.Lock()
+	for i := range m.c.members {
+		if m.c.members[i].ID == m.id {
+			m.c.members[i].Data = data
+			break
+		}
+	}
+	m.c.membersMu.Unlock()
+
+	m.c.notify()
 
 	return nil
 }
-func (m *Membership) Deregister(_ context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
+func (m *Member) Register(ctx context.Context) error {
 	if m.registered {
-		m.registered = false
-		m.c.notify()
+		return nil
 	}
+
+	m.registered = true
+
+	m.c.membersMu.Lock()
+	m.c.members = append(m.c.members, cluster.Member{ID: m.id, Data: m.data})
+	slices.SortFunc(m.c.members, func(a, b cluster.Member) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+	m.c.membersMu.Unlock()
+
+	m.c.notify()
+
+	return nil
+}
+
+func (m *Member) Deregister(ctx context.Context) error {
+	if !m.registered {
+		return nil
+	}
+
+	m.registered = false
+
+	m.c.membersMu.Lock()
+	for i := range m.c.members {
+		if m.c.members[i].ID == m.id {
+			m.c.members = slices.Delete(m.c.members, i, i+1)
+			break
+		}
+	}
+	m.c.membersMu.Unlock()
+
+	m.c.notify()
 
 	return nil
 }

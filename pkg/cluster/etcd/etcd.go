@@ -137,7 +137,6 @@ func (c *Cluster) watchMembers() {
 		for _, ch := range c.membershipWatchers {
 			select {
 			case ch <- slices.Clone(members):
-			default:
 			}
 		}
 		c.mu.Unlock()
@@ -204,7 +203,7 @@ func (m *Membership) SetData(data string) error {
 	return nil
 }
 
-func (m *Membership) Register(_ context.Context) error {
+func (m *Membership) Register(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -223,10 +222,14 @@ func (m *Membership) Register(_ context.Context) error {
 		string(b),
 		m.ttl,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return etcd.WaitFor(ctx, m.client, m.pl.Key(), false)
 }
 
-func (m *Membership) Deregister(_ context.Context) error {
+func (m *Membership) Deregister(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -234,8 +237,9 @@ func (m *Membership) Deregister(_ context.Context) error {
 		return nil
 	}
 
+	key := m.pl.Key()
 	m.pl.Close()
 	m.pl = nil
 
-	return nil
+	return etcd.WaitFor(ctx, m.client, key, false)
 }
