@@ -11,6 +11,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/antispam"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -23,7 +24,6 @@ var (
 	ErrTimedOutReceivingRequest = errors.New("timed out receiving request")
 
 	ErrNotPhoneVerified         = newIntentDeniedError("not phone verified")
-	ErrTooManyAccountCreations  = newIntentDeniedError("too many account creations")
 	ErrTooManyPayments          = newIntentDeniedError("too many payments")
 	ErrTooManyNewRelationships  = newIntentDeniedError("too many new relationships")
 	ErrTransactionLimitExceeded = newIntentDeniedError("dollar value exceeds limit")
@@ -69,15 +69,24 @@ func (e IntentValidationError) Error() string {
 
 type IntentDeniedError struct {
 	message string
+	reason  antispam.Reason
 }
 
 func newIntentDeniedError(message string) IntentDeniedError {
 	return IntentDeniedError{
 		message: message,
+		reason:  antispam.ReasonUnspecified,
 	}
 }
 
-func newIntentDeniedErrorf(format string, args ...any) IntentDeniedError {
+func newIntentDeniedErrorWithAntispamReason(reason antispam.Reason, message string) IntentDeniedError {
+	return IntentDeniedError{
+		message: message,
+		reason:  reason,
+	}
+}
+
+func newIntentDeniedErrorf(reason antispam.Reason, format string, args ...any) IntentDeniedError {
 	return newIntentDeniedError(fmt.Sprintf(format, args...))
 }
 
@@ -105,11 +114,13 @@ func (e SwapValidationError) Error() string {
 
 type SwapDeniedError struct {
 	message string
+	reason  antispam.Reason
 }
 
 func newSwapDeniedError(message string) SwapDeniedError {
 	return SwapDeniedError{
 		message: message,
+		reason:  antispam.ReasonUnspecified,
 	}
 }
 
@@ -186,6 +197,50 @@ func toInvalidSignatureErrorDetails(
 	}
 }
 
+func toDeniedErrorDetails(err error) *transactionpb.ErrorDetails {
+	if err == nil {
+		return nil
+	}
+
+	reasonString := err.Error()
+	if len(reasonString) > maxReasonStringLength {
+		reasonString = reasonString[:maxReasonStringLength]
+	}
+
+	var antispamReason antispam.Reason
+	switch typed := err.(type) {
+	case IntentDeniedError:
+		antispamReason = typed.reason
+	case SwapDeniedError:
+		antispamReason = typed.reason
+	default:
+		antispamReason = antispam.ReasonUnspecified
+	}
+
+	var code transactionpb.DeniedErrorDetails_Code
+	switch antispamReason {
+	case antispam.ReasonUnsupportedCountry:
+		code = transactionpb.DeniedErrorDetails_UNSUPPORTED_COUNTRY
+	case antispam.ReasonUnsupportedDevice:
+		code = transactionpb.DeniedErrorDetails_UNSUPPORTED_DEVICE
+	case antispam.ReasonTooManyFreeAccountsForPhoneNumber:
+		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_PHONE_NUMBER
+	case antispam.ReasonTooManyFreeAccountsForDevice:
+		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_DEVIEC
+	default:
+		code = transactionpb.DeniedErrorDetails_UNSPECIFIED
+	}
+
+	return &transactionpb.ErrorDetails{
+		Type: &transactionpb.ErrorDetails_Denied{
+			Denied: &transactionpb.DeniedErrorDetails{
+				Code:   code,
+				Reason: reasonString,
+			},
+		},
+	}
+}
+
 func handleSubmitIntentError(streamer transactionpb.Transaction_SubmitIntentServer, err error) error {
 	// gRPC status errors are passed through as is
 	if _, ok := status.FromError(err); ok {
@@ -204,7 +259,7 @@ func handleSubmitIntentError(streamer transactionpb.Transaction_SubmitIntentServ
 		return handleSubmitIntentStructuredError(
 			streamer,
 			transactionpb.SubmitIntentResponse_Error_DENIED,
-			toReasonStringErrorDetails(err),
+			toDeniedErrorDetails(err),
 		)
 	case StaleStateError:
 		return handleSubmitIntentStructuredError(
@@ -267,7 +322,7 @@ func handleSwapError(streamer transactionpb.Transaction_SwapServer, err error) e
 		return handleSwapStructuredError(
 			streamer,
 			transactionpb.SwapResponse_Error_DENIED,
-			toReasonStringErrorDetails(err),
+			toDeniedErrorDetails(err),
 		)
 	}
 

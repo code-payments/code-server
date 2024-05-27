@@ -15,7 +15,7 @@ import (
 
 // AllowNewPhoneVerification determines whether a phone is allowed to start a
 // new verification flow.
-func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber string, deviceToken *string) (bool, error) {
+func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber string, deviceToken *string) (bool, Reason, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowNewPhoneVerification")
 	defer tracer.End()
 
@@ -29,14 +29,14 @@ func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber strin
 	if isIpBanned(ctx) {
 		log.Info("ip is banned")
 		recordDenialEvent(ctx, actionNewPhoneVerification, "ip banned")
-		return false, nil
+		return false, ReasonUnspecified, nil
 	}
 
-	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(phoneNumber) {
-		log.Info("denying phone prefix")
-		recordDenialEvent(ctx, actionNewPhoneVerification, "phone prefix banned")
-		return false, nil
+	// Deny users from sanctioned countries
+	if isSanctionedPhoneNumber(phoneNumber) {
+		log.Info("denying sanctioned country")
+		recordDenialEvent(ctx, actionNewPhoneVerification, "sanctioned country")
+		return false, ReasonUnsupportedCountry, nil
 	}
 
 	user, err := g.data.GetUserByPhoneView(ctx, phoneNumber)
@@ -46,18 +46,18 @@ func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber strin
 		if user.IsBanned {
 			log.Info("denying banned user")
 			recordDenialEvent(ctx, actionNewPhoneVerification, "user banned")
-			return false, nil
+			return false, ReasonUnspecified, nil
 		}
 
 		// Staff users have unlimited access to enable testing and demoing.
 		if user.IsStaffUser {
-			return true, nil
+			return true, ReasonUnspecified, nil
 		}
 	case identity.ErrNotFound:
 	default:
 		tracer.OnError(err)
 		log.WithError(err).Warn("failure getting user identity by phone view")
-		return false, err
+		return false, ReasonUnspecified, err
 	}
 
 	_, isAndroidDev := g.conf.androidDevsByPhoneNumber[phoneNumber]
@@ -67,16 +67,16 @@ func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber strin
 		if deviceToken == nil {
 			log.Info("denying attempt without device token")
 			recordDenialEvent(ctx, actionNewPhoneVerification, "device token missing")
-			return false, nil
+			return false, ReasonUnsupportedDevice, nil
 		}
 		isValidDeviceToken, reason, err := g.deviceVerifier.IsValid(ctx, *deviceToken)
 		if err != nil {
 			log.WithError(err).Warn("failure performing device check")
-			return false, err
+			return false, ReasonUnspecified, err
 		} else if !isValidDeviceToken {
 			log.WithField("reason", reason).Info("denying fake device")
 			recordDenialEvent(ctx, actionNewPhoneVerification, "fake device")
-			return false, nil
+			return false, ReasonUnsupportedDevice, nil
 		}
 	}
 
@@ -85,15 +85,15 @@ func (g *Guard) AllowNewPhoneVerification(ctx context.Context, phoneNumber strin
 	if err != nil {
 		tracer.OnError(err)
 		log.WithError(err).Warn("failure counting unique verification ids for number")
-		return false, err
+		return false, ReasonUnspecified, err
 	}
 
 	if count >= g.conf.phoneVerificationsPerInternval {
 		log.Info("phone is rate limited")
 		recordDenialEvent(ctx, actionNewPhoneVerification, "rate limit exceeded")
-		return false, nil
+		return false, ReasonUnspecified, nil
 	}
-	return true, nil
+	return true, ReasonUnspecified, nil
 }
 
 // AllowSendSmsVerificationCode determines whether a phone number can be sent

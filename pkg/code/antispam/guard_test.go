@@ -414,7 +414,7 @@ func TestAllowOpenAccounts_HappyPath(t *testing.T) {
 
 		// Account isn't phone verified, so it cannot be created
 		for i := 0; i < 5; i++ {
-			allow, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
+			allow, _, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
 			require.NoError(t, err)
 			assert.False(t, allow)
 		}
@@ -431,17 +431,19 @@ func TestAllowOpenAccounts_HappyPath(t *testing.T) {
 
 		// New accounts are always denied when using a fake or unverifiable device.
 		for i := 0; i < 5; i++ {
-			allow, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.InvalidDeviceToken))
+			allow, reason, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.InvalidDeviceToken))
 			require.NoError(t, err)
 			assert.False(t, allow)
+			assert.Equal(t, ReasonUnsupportedDevice, reason)
 
-			allow, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, nil)
+			allow, reason, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, nil)
 			require.NoError(t, err)
 			assert.False(t, allow)
+			assert.Equal(t, ReasonUnsupportedDevice, reason)
 		}
 
 		// The first account creation should always be successful
-		allow, successCallback, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
+		allow, _, successCallback, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
 		require.NoError(t, err)
 		assert.True(t, allow)
 		require.NotNil(t, successCallback)
@@ -454,7 +456,7 @@ func TestAllowOpenAccounts_HappyPath(t *testing.T) {
 
 		// Account creation is unaffected by previous creations that didn't
 		// result in success
-		allow, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
+		allow, _, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
 		require.NoError(t, err)
 		assert.True(t, allow)
 
@@ -464,9 +466,10 @@ func TestAllowOpenAccounts_HappyPath(t *testing.T) {
 		// Account creations are denied after breaching the daily count limit regardless
 		// of owner account associated with the phone number
 		for i := 0; i < 5; i++ {
-			allow, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount2, pointer.String(memory_device_verifier.ValidDeviceToken))
+			allow, reason, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount2, pointer.String(memory_device_verifier.ValidDeviceToken))
 			require.NoError(t, err)
 			assert.False(t, allow)
+			assert.Equal(t, ReasonTooManyFreeAccountsForPhoneNumber, reason)
 		}
 
 		// New accounts are always denied within the same device
@@ -482,9 +485,10 @@ func TestAllowOpenAccounts_HappyPath(t *testing.T) {
 		require.NoError(t, env.guard.data.SavePhoneVerification(env.ctx, verification))
 
 		for i := 0; i < 5; i++ {
-			allow, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount2, pointer.String(memory_device_verifier.ValidDeviceToken))
+			allow, reason, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount2, pointer.String(memory_device_verifier.ValidDeviceToken))
 			require.NoError(t, err)
 			assert.False(t, allow)
+			assert.Equal(t, ReasonTooManyFreeAccountsForDevice, reason)
 		}
 	}
 }
@@ -519,7 +523,7 @@ func TestAllowOpenAccounts_StaffUser(t *testing.T) {
 		}
 
 		// First account creation is always successful, regardless of user status
-		allow, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
+		allow, _, _, err := env.guard.AllowOpenAccounts(env.ctx, ownerAccount1, pointer.String(memory_device_verifier.ValidDeviceToken))
 		require.NoError(t, err)
 		assert.True(t, allow)
 
@@ -527,7 +531,7 @@ func TestAllowOpenAccounts_StaffUser(t *testing.T) {
 		simulateAccountCreation(t, env, ownerAccount1, intent.StateConfirmed, time.Now())
 
 		// Staff users should not be subject to any denials
-		allow, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount2, pointer.String(memory_device_verifier.ValidDeviceToken))
+		allow, _, _, err = env.guard.AllowOpenAccounts(env.ctx, ownerAccount2, pointer.String(memory_device_verifier.ValidDeviceToken))
 		require.NoError(t, err)
 		assert.Equal(t, isStaffUser, allow)
 	}
@@ -643,20 +647,22 @@ func TestAllowNewPhoneVerification_HappyPath(t *testing.T) {
 	// New verifications are always allowed when the phone has never started one
 	// and has a valid device token
 	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
+		allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
 		require.NoError(t, err)
 		assert.True(t, allow)
 	}
 
 	// New verifications are always denied when using a fake or unverifiable device.
 	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.InvalidDeviceToken))
+		allow, reason, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.InvalidDeviceToken))
 		require.NoError(t, err)
 		assert.False(t, allow)
+		assert.Equal(t, ReasonUnsupportedDevice, reason)
 
-		allow, err = env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
+		allow, reason, err = env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
 		require.NoError(t, err)
 		assert.False(t, allow)
+		assert.Equal(t, ReasonUnsupportedDevice, reason)
 	}
 
 	// New verifications are allowed when we're under the time interval limit,
@@ -665,7 +671,7 @@ func TestAllowNewPhoneVerification_HappyPath(t *testing.T) {
 		for j := 0; j < 3; j++ {
 			simulateSmsCodeSent(t, env, phoneNumber, fmt.Sprintf("verification%d", i))
 
-			allow, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
+			allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
 			require.NoError(t, err)
 			assert.True(t, allow)
 		}
@@ -675,13 +681,13 @@ func TestAllowNewPhoneVerification_HappyPath(t *testing.T) {
 	// interval limit.
 	simulateSmsCodeSent(t, env, phoneNumber, "last_allowed_verification")
 	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
+		allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
 		require.NoError(t, err)
 		assert.False(t, allow)
 	}
 
 	// Phone numbers are not affected by limits enforced on other phone numbers
-	allow, err := env.guard.AllowNewPhoneVerification(env.ctx, otherPhoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
+	allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, otherPhoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
 	require.NoError(t, err)
 	assert.True(t, allow)
 }
@@ -705,7 +711,7 @@ func TestAllowNewPhoneVerification_StaffUser(t *testing.T) {
 		for j := 0; j < 3; j++ {
 			simulateSmsCodeSent(t, env, phoneNumber, fmt.Sprintf("verification%d", i))
 
-			allow, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
+			allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
 			require.NoError(t, err)
 			assert.True(t, allow)
 		}

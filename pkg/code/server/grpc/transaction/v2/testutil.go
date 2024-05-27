@@ -6084,8 +6084,8 @@ func (m submitIntentCallMetadata) assertDeniedResponse(t *testing.T, message str
 
 	require.Len(t, m.resp.GetError().GetErrorDetails(), 1)
 	errorDetails := m.resp.GetError().GetErrorDetails()[0]
-	require.NotNil(t, errorDetails.GetReasonString())
-	assert.True(t, strings.Contains(errorDetails.GetReasonString().Reason, message))
+	require.NotNil(t, errorDetails.GetDenied())
+	assert.True(t, strings.Contains(errorDetails.GetDenied().Reason, message))
 }
 
 func (m submitIntentCallMetadata) assertInvalidIntentResponse(t *testing.T, message string) {

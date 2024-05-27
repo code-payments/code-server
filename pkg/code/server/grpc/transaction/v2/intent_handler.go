@@ -198,11 +198,11 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	//
 
 	if !h.conf.disableAntispamChecks.Get(ctx) {
-		allow, successCallback, err := h.antispamGuard.AllowOpenAccounts(ctx, initiatiorOwnerAccount, deviceToken)
+		allow, reason, successCallback, err := h.antispamGuard.AllowOpenAccounts(ctx, initiatiorOwnerAccount, deviceToken)
 		if err != nil {
 			return err
 		} else if !allow {
-			return ErrTooManyAccountCreations
+			return newIntentDeniedErrorWithAntispamReason(reason, "antispam guard denied account creation")
 		}
 		h.antispamSuccessCallback = successCallback
 	}

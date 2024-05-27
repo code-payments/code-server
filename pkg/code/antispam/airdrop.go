@@ -62,7 +62,7 @@ func (g *Guard) AllowWelcomeBonus(ctx context.Context, owner *common.Account) (b
 	}
 
 	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
+	if isSanctionedPhoneNumber(verification.PhoneNumber) {
 		log.Info("denying phone prefix")
 		recordDenialEvent(ctx, actionWelcomeBonus, "phone prefix banned")
 		return false, nil
@@ -170,10 +170,10 @@ func (g *Guard) AllowReferralBonus(
 
 		log := log.WithField("phone", verification.PhoneNumber)
 
-		// Deny abusers from known phone ranges
-		if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
-			log.Info("denying phone prefix")
-			recordDenialEvent(ctx, actionReferralBonus, "phone prefix banned")
+		// Deny users from sanctioned countries
+		if isSanctionedPhoneNumber(verification.PhoneNumber) {
+			log.Info("denying sanctioned country")
+			recordDenialEvent(ctx, actionReferralBonus, "sanctioned country")
 			return false, nil
 		}
 

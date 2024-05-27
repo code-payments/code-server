@@ -127,13 +127,22 @@ func (s *phoneVerificationServer) SendVerificationCode(ctx context.Context, req 
 	// Now that we're custom managing verifications on behalf of Twilio, it's on us
 	// to do antispam checks to avoid excessive new verifications and sent SMS messages.
 	if !isActiveVerification {
-		allow, err := s.guard.AllowNewPhoneVerification(ctx, req.PhoneNumber.Value, deviceToken)
+		allow, reason, err := s.guard.AllowNewPhoneVerification(ctx, req.PhoneNumber.Value, deviceToken)
 		if err != nil {
 			log.WithError(err).Warn("failure performing antispam check")
 			return nil, status.Error(codes.Internal, "")
 		} else if !allow {
+			var resultCode phonepb.SendVerificationCodeResponse_Result
+			switch reason {
+			case antispam.ReasonUnsupportedCountry:
+				resultCode = phonepb.SendVerificationCodeResponse_UNSUPPORTED_COUNTRY
+			case antispam.ReasonUnsupportedDevice:
+				resultCode = phonepb.SendVerificationCodeResponse_UNSUPPORTED_DEVICE
+			default:
+				resultCode = phonepb.SendVerificationCodeResponse_RATE_LIMITED
+			}
 			return &phonepb.SendVerificationCodeResponse{
-				Result: phonepb.SendVerificationCodeResponse_RATE_LIMITED,
+				Result: resultCode,
 			}, nil
 		}
 	}

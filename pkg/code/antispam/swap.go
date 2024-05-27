@@ -47,10 +47,10 @@ func (g *Guard) AllowSwap(ctx context.Context, owner *common.Account) (bool, err
 
 	log = log.WithField("phone", verification.PhoneNumber)
 
-	// Deny abusers from known phone ranges
-	if hasBannedPhoneNumberPrefix(verification.PhoneNumber) {
-		log.Info("denying phone prefix")
-		recordDenialEvent(ctx, actionSwap, "phone prefix banned")
+	// Deny users from sanctioned countries
+	if isSanctionedPhoneNumber(verification.PhoneNumber) {
+		log.Info("denying sanctioned country")
+		recordDenialEvent(ctx, actionSwap, "sanctioned country")
 		return false, nil
 	}
 
