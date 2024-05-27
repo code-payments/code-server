@@ -73,6 +73,11 @@ func NewPersistentLease(client *v3.Client, key, val string, ttl time.Duration) (
 	return pl, nil
 }
 
+// Key returns the key of the persistent lease.
+func (pl *PersistentLease) Key() string {
+	return pl.key
+}
+
 // SetValue sets the new value for the persistent lease.
 //
 // SetValue is done concurrently, so there are no guarantees for when this will propagate.

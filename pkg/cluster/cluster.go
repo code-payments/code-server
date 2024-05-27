@@ -75,13 +75,15 @@ type Membership interface {
 
 	// Register registers the membership with the cluster.
 	//
-	// There is no guarantee for when the member will
-	// propagate to the rest of the members.
+	// Register will block until the local process observes the
+	// registration, but there is no guarantee for when other members
+	// will observe the change.
 	Register(ctx context.Context) error
 
-	// Deregister deregisters the membership with the cluster.
+	// Deregister de-registers the membership with the cluster.
 	//
-	// There is no guarantee for when the deregistration will
-	// propagate to the rest of the members.
+	// Deregister will block until the local process observes the
+	// de-registration, but there is no guarantee for when other members
+	// will observer the change.
 	Deregister(ctx context.Context) error
 }
