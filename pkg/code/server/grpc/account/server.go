@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	accountpb "github.com/code-payments/code-protobuf-api/generated/go/account/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -551,6 +552,7 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		OriginalExchangeData: originalExchangeData,
 		Relationship:         relationship,
 		Mint:                 mintAccount.ToProto(),
+		CreatedAt:            timestamppb.New(records.General.CreatedAt),
 	}, nil
 }
 
