@@ -226,7 +226,7 @@ func toDeniedErrorDetails(err error) *transactionpb.ErrorDetails {
 	case antispam.ReasonTooManyFreeAccountsForPhoneNumber:
 		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_PHONE_NUMBER
 	case antispam.ReasonTooManyFreeAccountsForDevice:
-		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_DEVIEC
+		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_DEVICE
 	default:
 		code = transactionpb.DeniedErrorDetails_UNSPECIFIED
 	}
