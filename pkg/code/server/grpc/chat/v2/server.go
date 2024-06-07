@@ -229,6 +229,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}, nil
 }
 
+// todo: Requires a "flush" of most recent messages
 func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
 	ctx := streamer.Context()
 
