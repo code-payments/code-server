@@ -8,8 +8,10 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/language"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -21,9 +23,15 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
+	"github.com/code-payments/code-server/pkg/code/localization"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
+)
+
+const (
+	maxGetMessagesPageSize = 100
 )
 
 // todo: Ensure all relevant logging fields are set
@@ -93,13 +101,132 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
+	chatId, err := chat.GetChatIdFromProto(req.ChatId)
+	if err != nil {
+		log.WithError(err).Warn("invalid chat id")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("chat_id", chatId.String())
+
+	memberId, err := chat.GetMemberIdFromProto(req.MemberId)
+	if err != nil {
+		log.WithError(err).Warn("invalid member id")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("member_id", memberId.String())
+
 	signature := req.Signature
 	req.Signature = nil
 	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
 		return nil, err
 	}
 
-	return nil, status.Error(codes.Unimplemented, "")
+	_, err = s.data.GetChatByIdV2(ctx, chatId)
+	switch err {
+	case nil:
+	case chat.ErrChatNotFound:
+		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+	default:
+		log.WithError(err).Warn("failure getting chat record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure determing chat member ownership")
+		return nil, status.Error(codes.Internal, "")
+	} else if !ownsChatMember {
+		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+	}
+
+	var limit uint64
+	if req.PageSize > 0 {
+		limit = uint64(req.PageSize)
+	} else {
+		limit = maxGetMessagesPageSize
+	}
+	if limit > maxGetMessagesPageSize {
+		limit = maxGetMessagesPageSize
+	}
+
+	var direction query.Ordering
+	if req.Direction == chatpb.GetMessagesRequest_ASC {
+		direction = query.Ascending
+	} else {
+		direction = query.Descending
+	}
+
+	var cursor query.Cursor
+	if req.Cursor != nil {
+		cursor = req.Cursor.Value
+	}
+
+	messageRecords, err := s.data.GetAllChatMessagesV2(
+		ctx,
+		chatId,
+		query.WithCursor(cursor),
+		query.WithDirection(direction),
+		query.WithLimit(limit),
+	)
+	if err == chat.ErrMessageNotFound {
+		return &chatpb.GetMessagesResponse{
+			Result: chatpb.GetMessagesResponse_NOT_FOUND,
+		}, nil
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting chat message records")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	var userLocale *language.Tag // Loaded lazily when required
+	var protoChatMessages []*chatpb.ChatMessage
+	for _, messageRecord := range messageRecords {
+		log := log.WithField("message_id", messageRecord.MessageId.String())
+
+		var protoChatMessage chatpb.ChatMessage
+		err = proto.Unmarshal(messageRecord.Data, &protoChatMessage)
+		if err != nil {
+			log.WithError(err).Warn("failure unmarshalling proto chat message")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		ts, err := messageRecord.GetTimestamp()
+		if err != nil {
+			log.WithError(err).Warn("failure getting message timestamp")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		for _, content := range protoChatMessage.Content {
+			switch typed := content.Type.(type) {
+			case *chatpb.Content_Localized:
+				if userLocale == nil {
+					loadedUserLocale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+					if err != nil {
+						log.WithError(err).Warn("failure getting user locale")
+						return nil, status.Error(codes.Internal, "")
+					}
+					userLocale = &loadedUserLocale
+				}
+
+				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
+					*userLocale,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
+					typed.Localized.KeyOrText,
+				)
+			}
+		}
+
+		protoChatMessage.MessageId = &chatpb.ChatMessageId{Value: messageRecord.MessageId[:]}
+		if messageRecord.Sender != nil {
+			protoChatMessage.SenderId = &chatpb.ChatMemberId{Value: messageRecord.Sender[:]}
+		}
+		protoChatMessage.Ts = timestamppb.New(ts)
+		protoChatMessage.Cursor = &chatpb.Cursor{Value: messageRecord.MessageId[:]}
+	}
+
+	return &chatpb.GetMessagesResponse{
+		Result:   chatpb.GetMessagesResponse_OK,
+		Messages: protoChatMessages,
+	}, nil
 }
 
 func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
