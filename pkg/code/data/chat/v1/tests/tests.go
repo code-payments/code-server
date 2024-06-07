@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 func RunTests(t *testing.T, s chat.Store, teardown func()) {

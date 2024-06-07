@@ -1,4 +1,4 @@
-package chat
+package chat_v1
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/user"

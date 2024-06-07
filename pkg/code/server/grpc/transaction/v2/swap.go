@@ -22,7 +22,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	push_util "github.com/code-payments/code-server/pkg/code/push"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -511,7 +511,7 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 	// Inspect the chat history for a USDC deposited message. If that message
 	// doesn't exist, then avoid sending the swap in progress chat message, since
 	// it can lead to user confusion.
-	chatMessageRecords, err := s.data.GetAllChatMessages(ctx, chatId, query.WithDirection(query.Descending), query.WithLimit(1))
+	chatMessageRecords, err := s.data.GetAllChatMessagesV1(ctx, chatId, query.WithDirection(query.Descending), query.WithLimit(1))
 	switch err {
 	case nil:
 		var protoChatMessage chatpb.ChatMessage
@@ -526,7 +526,7 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 				return nil
 			}
 		}
-	case chat.ErrMessageNotFound:
+	case chat_v1.ErrMessageNotFound:
 	default:
 		return errors.Wrap(err, "error fetching chat messages")
 	}

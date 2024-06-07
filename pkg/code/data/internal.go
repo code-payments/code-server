@@ -25,7 +25,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/airdrop"
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/contact"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
@@ -59,7 +59,7 @@ import (
 	airdrop_memory_client "github.com/code-payments/code-server/pkg/code/data/airdrop/memory"
 	badgecount_memory_client "github.com/code-payments/code-server/pkg/code/data/badgecount/memory"
 	balance_memory_client "github.com/code-payments/code-server/pkg/code/data/balance/memory"
-	chat_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/memory"
+	chat_v1_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/v1/memory"
 	commitment_memory_client "github.com/code-payments/code-server/pkg/code/data/commitment/memory"
 	contact_memory_client "github.com/code-payments/code-server/pkg/code/data/contact/memory"
 	currency_memory_client "github.com/code-payments/code-server/pkg/code/data/currency/memory"
@@ -94,7 +94,7 @@ import (
 	airdrop_postgres_client "github.com/code-payments/code-server/pkg/code/data/airdrop/postgres"
 	badgecount_postgres_client "github.com/code-payments/code-server/pkg/code/data/badgecount/postgres"
 	balance_postgres_client "github.com/code-payments/code-server/pkg/code/data/balance/postgres"
-	chat_postgres_client "github.com/code-payments/code-server/pkg/code/data/chat/postgres"
+	chat_v1_postgres_client "github.com/code-payments/code-server/pkg/code/data/chat/v1/postgres"
 	commitment_postgres_client "github.com/code-payments/code-server/pkg/code/data/commitment/postgres"
 	contact_postgres_client "github.com/code-payments/code-server/pkg/code/data/contact/postgres"
 	currency_postgres_client "github.com/code-payments/code-server/pkg/code/data/currency/postgres"
@@ -378,19 +378,19 @@ type DatabaseData interface {
 	CountWebhookByState(ctx context.Context, state webhook.State) (uint64, error)
 	GetAllPendingWebhooksReadyToSend(ctx context.Context, limit uint64) ([]*webhook.Record, error)
 
-	// Chat
+	// Chat V1
 	// --------------------------------------------------------------------------------
-	PutChat(ctx context.Context, record *chat.Chat) error
-	GetChatById(ctx context.Context, chatId chat.ChatId) (*chat.Chat, error)
-	GetAllChatsForUser(ctx context.Context, user string, opts ...query.Option) ([]*chat.Chat, error)
-	PutChatMessage(ctx context.Context, record *chat.Message) error
-	DeleteChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) error
-	GetChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) (*chat.Message, error)
-	GetAllChatMessages(ctx context.Context, chatId chat.ChatId, opts ...query.Option) ([]*chat.Message, error)
-	AdvanceChatPointer(ctx context.Context, chatId chat.ChatId, pointer string) error
-	GetChatUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32, error)
-	SetChatMuteState(ctx context.Context, chatId chat.ChatId, isMuted bool) error
-	SetChatSubscriptionState(ctx context.Context, chatId chat.ChatId, isSubscribed bool) error
+	PutChatV1(ctx context.Context, record *chat_v1.Chat) error
+	GetChatByIdV1(ctx context.Context, chatId chat_v1.ChatId) (*chat_v1.Chat, error)
+	GetAllChatsForUserV1(ctx context.Context, user string, opts ...query.Option) ([]*chat_v1.Chat, error)
+	PutChatMessageV1(ctx context.Context, record *chat_v1.Message) error
+	DeleteChatMessageV1(ctx context.Context, chatId chat_v1.ChatId, messageId string) error
+	GetChatMessageV1(ctx context.Context, chatId chat_v1.ChatId, messageId string) (*chat_v1.Message, error)
+	GetAllChatMessagesV1(ctx context.Context, chatId chat_v1.ChatId, opts ...query.Option) ([]*chat_v1.Message, error)
+	AdvanceChatPointerV1(ctx context.Context, chatId chat_v1.ChatId, pointer string) error
+	GetChatUnreadCountV1(ctx context.Context, chatId chat_v1.ChatId) (uint32, error)
+	SetChatMuteStateV1(ctx context.Context, chatId chat_v1.ChatId, isMuted bool) error
+	SetChatSubscriptionStateV1(ctx context.Context, chatId chat_v1.ChatId, isSubscribed bool) error
 
 	// Badge Count
 	// --------------------------------------------------------------------------------
@@ -470,7 +470,7 @@ type DatabaseProvider struct {
 	paywall        paywall.Store
 	event          event.Store
 	webhook        webhook.Store
-	chat           chat.Store
+	chatv1         chat_v1.Store
 	badgecount     badgecount.Store
 	login          login.Store
 	balance        balance.Store
@@ -532,7 +532,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		paywall:        paywall_postgres_client.New(db),
 		event:          event_postgres_client.New(db),
 		webhook:        webhook_postgres_client.New(db),
-		chat:           chat_postgres_client.New(db),
+		chatv1:         chat_v1_postgres_client.New(db),
 		badgecount:     badgecount_postgres_client.New(db),
 		login:          login_postgres_client.New(db),
 		balance:        balance_postgres_client.New(db),
@@ -575,7 +575,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		paywall:        paywall_memory_client.New(),
 		event:          event_memory_client.New(),
 		webhook:        webhook_memory_client.New(),
-		chat:           chat_memory_client.New(),
+		chatv1:         chat_v1_memory_client.New(),
 		badgecount:     badgecount_memory_client.New(),
 		login:          login_memory_client.New(),
 		balance:        balance_memory_client.New(),
@@ -1399,48 +1399,48 @@ func (dp *DatabaseProvider) GetAllPendingWebhooksReadyToSend(ctx context.Context
 	return dp.webhook.GetAllPendingReadyToSend(ctx, limit)
 }
 
-// Chat
+// Chat V1
 // --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) PutChat(ctx context.Context, record *chat.Chat) error {
-	return dp.chat.PutChat(ctx, record)
+func (dp *DatabaseProvider) PutChatV1(ctx context.Context, record *chat_v1.Chat) error {
+	return dp.chatv1.PutChat(ctx, record)
 }
-func (dp *DatabaseProvider) GetChatById(ctx context.Context, chatId chat.ChatId) (*chat.Chat, error) {
-	return dp.chat.GetChatById(ctx, chatId)
+func (dp *DatabaseProvider) GetChatByIdV1(ctx context.Context, chatId chat_v1.ChatId) (*chat_v1.Chat, error) {
+	return dp.chatv1.GetChatById(ctx, chatId)
 }
-func (dp *DatabaseProvider) GetAllChatsForUser(ctx context.Context, user string, opts ...query.Option) ([]*chat.Chat, error) {
+func (dp *DatabaseProvider) GetAllChatsForUserV1(ctx context.Context, user string, opts ...query.Option) ([]*chat_v1.Chat, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
 	}
-	return dp.chat.GetAllChatsForUser(ctx, user, req.Cursor, req.SortBy, req.Limit)
+	return dp.chatv1.GetAllChatsForUser(ctx, user, req.Cursor, req.SortBy, req.Limit)
 }
-func (dp *DatabaseProvider) PutChatMessage(ctx context.Context, record *chat.Message) error {
-	return dp.chat.PutMessage(ctx, record)
+func (dp *DatabaseProvider) PutChatMessageV1(ctx context.Context, record *chat_v1.Message) error {
+	return dp.chatv1.PutMessage(ctx, record)
 }
-func (dp *DatabaseProvider) DeleteChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) error {
-	return dp.chat.DeleteMessage(ctx, chatId, messageId)
+func (dp *DatabaseProvider) DeleteChatMessageV1(ctx context.Context, chatId chat_v1.ChatId, messageId string) error {
+	return dp.chatv1.DeleteMessage(ctx, chatId, messageId)
 }
-func (dp *DatabaseProvider) GetChatMessage(ctx context.Context, chatId chat.ChatId, messageId string) (*chat.Message, error) {
-	return dp.chat.GetMessageById(ctx, chatId, messageId)
+func (dp *DatabaseProvider) GetChatMessageV1(ctx context.Context, chatId chat_v1.ChatId, messageId string) (*chat_v1.Message, error) {
+	return dp.chatv1.GetMessageById(ctx, chatId, messageId)
 }
-func (dp *DatabaseProvider) GetAllChatMessages(ctx context.Context, chatId chat.ChatId, opts ...query.Option) ([]*chat.Message, error) {
+func (dp *DatabaseProvider) GetAllChatMessagesV1(ctx context.Context, chatId chat_v1.ChatId, opts ...query.Option) ([]*chat_v1.Message, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
 	}
-	return dp.chat.GetAllMessagesByChat(ctx, chatId, req.Cursor, req.SortBy, req.Limit)
+	return dp.chatv1.GetAllMessagesByChat(ctx, chatId, req.Cursor, req.SortBy, req.Limit)
 }
-func (dp *DatabaseProvider) AdvanceChatPointer(ctx context.Context, chatId chat.ChatId, pointer string) error {
-	return dp.chat.AdvancePointer(ctx, chatId, pointer)
+func (dp *DatabaseProvider) AdvanceChatPointerV1(ctx context.Context, chatId chat_v1.ChatId, pointer string) error {
+	return dp.chatv1.AdvancePointer(ctx, chatId, pointer)
 }
-func (dp *DatabaseProvider) GetChatUnreadCount(ctx context.Context, chatId chat.ChatId) (uint32, error) {
-	return dp.chat.GetUnreadCount(ctx, chatId)
+func (dp *DatabaseProvider) GetChatUnreadCountV1(ctx context.Context, chatId chat_v1.ChatId) (uint32, error) {
+	return dp.chatv1.GetUnreadCount(ctx, chatId)
 }
-func (dp *DatabaseProvider) SetChatMuteState(ctx context.Context, chatId chat.ChatId, isMuted bool) error {
-	return dp.chat.SetMuteState(ctx, chatId, isMuted)
+func (dp *DatabaseProvider) SetChatMuteStateV1(ctx context.Context, chatId chat_v1.ChatId, isMuted bool) error {
+	return dp.chatv1.SetMuteState(ctx, chatId, isMuted)
 }
-func (dp *DatabaseProvider) SetChatSubscriptionState(ctx context.Context, chatId chat.ChatId, isSubscribed bool) error {
-	return dp.chat.SetSubscriptionState(ctx, chatId, isSubscribed)
+func (dp *DatabaseProvider) SetChatSubscriptionStateV1(ctx context.Context, chatId chat_v1.ChatId, isSubscribed bool) error {
+	return dp.chatv1.SetSubscriptionState(ctx, chatId, isSubscribed)
 }
 
 // Badge Count

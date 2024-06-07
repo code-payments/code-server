@@ -9,7 +9,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/localization"
 )
@@ -20,7 +20,7 @@ func SendCodeTeamMessage(ctx context.Context, data code_data.Provider, receiver 
 		ctx,
 		data,
 		CodeTeamName,
-		chat.ChatTypeInternal,
+		chat_v1.ChatTypeInternal,
 		true,
 		receiver,
 		chatMessage,
