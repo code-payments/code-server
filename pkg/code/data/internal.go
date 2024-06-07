@@ -26,6 +26,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
 	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
+	chat_v2 "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/contact"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
@@ -392,6 +393,15 @@ type DatabaseData interface {
 	SetChatMuteStateV1(ctx context.Context, chatId chat_v1.ChatId, isMuted bool) error
 	SetChatSubscriptionStateV1(ctx context.Context, chatId chat_v1.ChatId, isSubscribed bool) error
 
+	// Chat V2
+	// --------------------------------------------------------------------------------
+	GetChatByIdV2(ctx context.Context, chatId chat_v2.ChatId) (*chat_v2.ChatRecord, error)
+	GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error)
+	GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error)
+	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error
+	SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error
+	SetChatSubscriptionStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isSubscribed bool) error
+
 	// Badge Count
 	// --------------------------------------------------------------------------------
 	AddToBadgeCount(ctx context.Context, owner string, amount uint32) error
@@ -471,6 +481,7 @@ type DatabaseProvider struct {
 	event          event.Store
 	webhook        webhook.Store
 	chatv1         chat_v1.Store
+	chatv2         chat_v2.Store
 	badgecount     badgecount.Store
 	login          login.Store
 	balance        balance.Store
@@ -533,6 +544,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		event:          event_postgres_client.New(db),
 		webhook:        webhook_postgres_client.New(db),
 		chatv1:         chat_v1_postgres_client.New(db),
+		chatv2:         nil, // todo: Initialize me
 		badgecount:     badgecount_postgres_client.New(db),
 		login:          login_postgres_client.New(db),
 		balance:        balance_postgres_client.New(db),
@@ -576,6 +588,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		event:          event_memory_client.New(),
 		webhook:        webhook_memory_client.New(),
 		chatv1:         chat_v1_memory_client.New(),
+		chatv2:         nil, // todo: initialize me
 		badgecount:     badgecount_memory_client.New(),
 		login:          login_memory_client.New(),
 		balance:        balance_memory_client.New(),
@@ -1441,6 +1454,27 @@ func (dp *DatabaseProvider) SetChatMuteStateV1(ctx context.Context, chatId chat_
 }
 func (dp *DatabaseProvider) SetChatSubscriptionStateV1(ctx context.Context, chatId chat_v1.ChatId, isSubscribed bool) error {
 	return dp.chatv1.SetSubscriptionState(ctx, chatId, isSubscribed)
+}
+
+// Chat V2
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) GetChatByIdV2(ctx context.Context, chatId chat_v2.ChatId) (*chat_v2.ChatRecord, error) {
+	return dp.chatv2.GetChatById(ctx, chatId)
+}
+func (dp *DatabaseProvider) GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error) {
+	return dp.chatv2.GetMemberById(ctx, chatId, memberId)
+}
+func (dp *DatabaseProvider) GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error) {
+	return dp.chatv2.GetMessageById(ctx, chatId, messageId)
+}
+func (dp *DatabaseProvider) AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error {
+	return dp.chatv2.AdvancePointer(ctx, chatId, memberId, pointerType, pointer)
+}
+func (dp *DatabaseProvider) SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error {
+	return dp.chatv2.SetMuteState(ctx, chatId, memberId, isMuted)
+}
+func (dp *DatabaseProvider) SetChatSubscriptionStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isSubscribed bool) error {
+	return dp.chatv2.SetSubscriptionState(ctx, chatId, memberId, isSubscribed)
 }
 
 // Badge Count
