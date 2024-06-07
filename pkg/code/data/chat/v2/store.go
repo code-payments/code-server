@@ -3,6 +3,8 @@ package chat_v2
 import (
 	"context"
 	"errors"
+
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 var (
@@ -21,6 +23,11 @@ type Store interface {
 
 	// GetMessageById gets a chat message by the chat and message IDs
 	GetMessageById(ctx context.Context, chatId ChatId, messageId MessageId) (*MessageRecord, error)
+
+	// GetAllMessagesByChat gets all messages for a given chat
+	//
+	// Note: Cursor is a message ID
+	GetAllMessagesByChat(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
 
 	// AdvancePointer advances a chat pointer for a chat member
 	AdvancePointer(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) error
