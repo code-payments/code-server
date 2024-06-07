@@ -13,7 +13,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
@@ -36,7 +36,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 	// the merchant. Representation in the UI may differ (ie. 2 and 3 are grouped),
 	// but this is the most flexible solution with the chat model.
 	chatTitle := PaymentsName
-	chatType := chat.ChatTypeInternal
+	chatType := chat_v1.ChatTypeInternal
 	isVerifiedChat := false
 
 	exchangeData, ok := getExchangeDataFromIntent(intentRecord)
@@ -59,7 +59,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 
 			if paymentRequestRecord.Domain != nil {
 				chatTitle = *paymentRequestRecord.Domain
-				chatType = chat.ChatTypeExternalApp
+				chatType = chat_v1.ChatTypeExternalApp
 				isVerifiedChat = paymentRequestRecord.IsVerified
 			}
 
@@ -87,7 +87,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					// and will have merchant payments appear in the verified merchant
 					// chat.
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
-					chatType = chat.ChatTypeExternalApp
+					chatType = chat_v1.ChatTypeExternalApp
 					isVerifiedChat = true
 					verbAndExchangeDataByMessageReceiver[intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
 						verb:         chatpb.ExchangeDataContent_RECEIVED,
@@ -107,7 +107,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 					// and will have merchant payments appear in the verified merchant
 					// chat.
 					chatTitle = *destinationAccountInfoRecord.RelationshipTo
-					chatType = chat.ChatTypeExternalApp
+					chatType = chat_v1.ChatTypeExternalApp
 					isVerifiedChat = true
 					verbAndExchangeDataByMessageReceiver[intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
 						verb:         chatpb.ExchangeDataContent_RECEIVED,
@@ -126,7 +126,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			// and will have merchant payments appear in the verified merchant
 			// chat.
 			chatTitle = *destinationAccountInfoRecord.RelationshipTo
-			chatType = chat.ChatTypeExternalApp
+			chatType = chat_v1.ChatTypeExternalApp
 			isVerifiedChat = true
 			verbAndExchangeDataByMessageReceiver[intentRecord.ExternalDepositMetadata.DestinationOwnerAccount] = &verbAndExchangeData{
 				verb:         chatpb.ExchangeDataContent_RECEIVED,
@@ -171,7 +171,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			protoMessage,
 			verbAndExchangeData.verb != chatpb.ExchangeDataContent_RECEIVED || !isVerifiedChat,
 		)
-		if err != nil && err != chat.ErrMessageAlreadyExists {
+		if err != nil && err != chat_v1.ErrMessageAlreadyExists {
 			return nil, errors.Wrap(err, "error persisting chat message")
 		}
 

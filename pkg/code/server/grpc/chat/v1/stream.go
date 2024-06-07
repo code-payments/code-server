@@ -1,4 +1,4 @@
-package chat
+package chat_v1
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 )
 
 const (

@@ -20,7 +20,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
@@ -299,7 +299,7 @@ func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_
 						chatMessage,
 					)
 				}
-			case chat.ErrMessageAlreadyExists:
+			case chat_v1.ErrMessageAlreadyExists:
 			default:
 				return errors.Wrap(err, "error sending chat message")
 			}
@@ -772,7 +772,7 @@ func delayedUsdcDepositProcessing(
 				chatMessage,
 			)
 		}
-	case chat.ErrMessageAlreadyExists:
+	case chat_v1.ErrMessageAlreadyExists:
 	default:
 		return
 	}

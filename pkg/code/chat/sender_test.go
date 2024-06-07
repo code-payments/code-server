@@ -17,7 +17,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -26,14 +26,14 @@ func TestSendChatMessage_HappyPath(t *testing.T) {
 
 	chatTitle := CodeTeamName
 	receiver := testutil.NewRandomAccount(t)
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
 
 	var expectedBadgeCount int
 	for i := 0; i < 10; i++ {
 		chatMessage := newRandomChatMessage(t, i+1)
 		expectedBadgeCount += 1
 
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat.ChatTypeInternal, true, receiver, chatMessage, false)
+		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 		require.NoError(t, err)
 
 		assert.True(t, canPush)
@@ -56,7 +56,7 @@ func TestSendChatMessage_VerifiedChat(t *testing.T) {
 
 	for _, isVerified := range []bool{true, false} {
 		chatMessage := newRandomChatMessage(t, 1)
-		_, err := SendChatMessage(env.ctx, env.data, chatTitle, chat.ChatTypeInternal, isVerified, receiver, chatMessage, true)
+		_, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, isVerified, receiver, chatMessage, true)
 		require.NoError(t, err)
 		env.assertChatRecordSaved(t, chatTitle, receiver, isVerified)
 	}
@@ -67,11 +67,11 @@ func TestSendChatMessage_SilentMessage(t *testing.T) {
 
 	chatTitle := CodeTeamName
 	receiver := testutil.NewRandomAccount(t)
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
 
 	for i, isSilent := range []bool{true, false} {
 		chatMessage := newRandomChatMessage(t, 1)
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat.ChatTypeInternal, true, receiver, chatMessage, isSilent)
+		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, isSilent)
 		require.NoError(t, err)
 		assert.Equal(t, !isSilent, canPush)
 		env.assertChatMessageRecordSaved(t, chatId, chatMessage, isSilent)
@@ -84,7 +84,7 @@ func TestSendChatMessage_MuteState(t *testing.T) {
 
 	chatTitle := CodeTeamName
 	receiver := testutil.NewRandomAccount(t)
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
 
 	for _, isMuted := range []bool{false, true} {
 		if isMuted {
@@ -92,7 +92,7 @@ func TestSendChatMessage_MuteState(t *testing.T) {
 		}
 
 		chatMessage := newRandomChatMessage(t, 1)
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat.ChatTypeInternal, true, receiver, chatMessage, false)
+		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 		require.NoError(t, err)
 		assert.Equal(t, !isMuted, canPush)
 		env.assertChatMessageRecordSaved(t, chatId, chatMessage, false)
@@ -105,7 +105,7 @@ func TestSendChatMessage_SubscriptionState(t *testing.T) {
 
 	chatTitle := CodeTeamName
 	receiver := testutil.NewRandomAccount(t)
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
 
 	for _, isUnsubscribed := range []bool{false, true} {
 		if isUnsubscribed {
@@ -113,7 +113,7 @@ func TestSendChatMessage_SubscriptionState(t *testing.T) {
 		}
 
 		chatMessage := newRandomChatMessage(t, 1)
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat.ChatTypeInternal, true, receiver, chatMessage, false)
+		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 		require.NoError(t, err)
 		assert.Equal(t, !isUnsubscribed, canPush)
 		if isUnsubscribed {
@@ -130,12 +130,12 @@ func TestSendChatMessage_InvalidProtoMessage(t *testing.T) {
 
 	chatTitle := CodeTeamName
 	receiver := testutil.NewRandomAccount(t)
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), true)
 
 	chatMessage := newRandomChatMessage(t, 1)
 	chatMessage.Content = nil
 
-	canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat.ChatTypeInternal, true, receiver, chatMessage, false)
+	canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 	assert.Error(t, err)
 	assert.False(t, canPush)
 	env.assertChatRecordNotSaved(t, chatId)
@@ -173,13 +173,13 @@ func newRandomChatMessage(t *testing.T, contentLength int) *chatpb.ChatMessage {
 }
 
 func (e *testEnv) assertChatRecordSaved(t *testing.T, chatTitle string, receiver *common.Account, isVerified bool) {
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), isVerified)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), isVerified)
 
-	chatRecord, err := e.data.GetChatById(e.ctx, chatId)
+	chatRecord, err := e.data.GetChatByIdV1(e.ctx, chatId)
 	require.NoError(t, err)
 
 	assert.Equal(t, chatId[:], chatRecord.ChatId[:])
-	assert.Equal(t, chat.ChatTypeInternal, chatRecord.ChatType)
+	assert.Equal(t, chat_v1.ChatTypeInternal, chatRecord.ChatType)
 	assert.Equal(t, chatTitle, chatRecord.ChatTitle)
 	assert.Equal(t, isVerified, chatRecord.IsVerified)
 	assert.Equal(t, receiver.PublicKey().ToBase58(), chatRecord.CodeUser)
@@ -188,8 +188,8 @@ func (e *testEnv) assertChatRecordSaved(t *testing.T, chatTitle string, receiver
 	assert.False(t, chatRecord.IsUnsubscribed)
 }
 
-func (e *testEnv) assertChatMessageRecordSaved(t *testing.T, chatId chat.ChatId, protoMessage *chatpb.ChatMessage, isSilent bool) {
-	messageRecord, err := e.data.GetChatMessage(e.ctx, chatId, base58.Encode(protoMessage.GetMessageId().Value))
+func (e *testEnv) assertChatMessageRecordSaved(t *testing.T, chatId chat_v1.ChatId, protoMessage *chatpb.ChatMessage, isSilent bool) {
+	messageRecord, err := e.data.GetChatMessageV1(e.ctx, chatId, base58.Encode(protoMessage.GetMessageId().Value))
 	require.NoError(t, err)
 
 	cloned := proto.Clone(protoMessage).(*chatpb.ChatMessage)
@@ -218,22 +218,22 @@ func (e *testEnv) assertBadgeCount(t *testing.T, owner *common.Account, expected
 	assert.EqualValues(t, expected, badgeCountRecord.BadgeCount)
 }
 
-func (e *testEnv) assertChatRecordNotSaved(t *testing.T, chatId chat.ChatId) {
-	_, err := e.data.GetChatById(e.ctx, chatId)
-	assert.Equal(t, chat.ErrChatNotFound, err)
+func (e *testEnv) assertChatRecordNotSaved(t *testing.T, chatId chat_v1.ChatId) {
+	_, err := e.data.GetChatByIdV1(e.ctx, chatId)
+	assert.Equal(t, chat_v1.ErrChatNotFound, err)
 
 }
 
-func (e *testEnv) assertChatMessageRecordNotSaved(t *testing.T, chatId chat.ChatId, messageId *chatpb.ChatMessageId) {
-	_, err := e.data.GetChatMessage(e.ctx, chatId, base58.Encode(messageId.Value))
-	assert.Equal(t, chat.ErrMessageNotFound, err)
+func (e *testEnv) assertChatMessageRecordNotSaved(t *testing.T, chatId chat_v1.ChatId, messageId *chatpb.ChatMessageId) {
+	_, err := e.data.GetChatMessageV1(e.ctx, chatId, base58.Encode(messageId.Value))
+	assert.Equal(t, chat_v1.ErrMessageNotFound, err)
 
 }
 
-func (e *testEnv) muteChat(t *testing.T, chatId chat.ChatId) {
-	require.NoError(t, e.data.SetChatMuteState(e.ctx, chatId, true))
+func (e *testEnv) muteChat(t *testing.T, chatId chat_v1.ChatId) {
+	require.NoError(t, e.data.SetChatMuteStateV1(e.ctx, chatId, true))
 }
 
-func (e *testEnv) unsubscribeFromChat(t *testing.T, chatId chat.ChatId) {
-	require.NoError(t, e.data.SetChatSubscriptionState(e.ctx, chatId, false))
+func (e *testEnv) unsubscribeFromChat(t *testing.T, chatId chat_v1.ChatId) {
+	require.NoError(t, e.data.SetChatSubscriptionStateV1(e.ctx, chatId, false))
 }

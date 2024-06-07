@@ -1,4 +1,4 @@
-package chat
+package chat_v1
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/database/query"
@@ -59,7 +59,7 @@ type server struct {
 
 func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier, pusher push_lib.Provider) chatpb.ChatServer {
 	s := &server{
-		log:            logrus.StandardLogger().WithField("type", "chat/server"),
+		log:            logrus.StandardLogger().WithField("type", "chat/v1/server"),
 		data:           data,
 		auth:           auth,
 		pusher:         pusher,
@@ -119,7 +119,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		}
 	}
 
-	chatRecords, err := s.data.GetAllChatsForUser(
+	chatRecords, err := s.data.GetAllChatsForUserV1(
 		ctx,
 		owner.PublicKey().ToBase58(),
 		query.WithCursor(cursor),
@@ -220,7 +220,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 		if !skipUnreadCountQuery && !chatRecord.IsMuted && !chatRecord.IsUnsubscribed {
 			// todo: will need batching when users have a large number of chats
-			unreadCount, err := s.data.GetChatUnreadCount(ctx, chatRecord.ChatId)
+			unreadCount, err := s.data.GetChatUnreadCountV1(ctx, chatRecord.ChatId)
 			if err != nil {
 				log.WithError(err).Warn("failure getting unread count")
 			}
@@ -260,7 +260,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.GetMessagesResponse{
 			Result: chatpb.GetMessagesResponse_NOT_FOUND,
@@ -296,7 +296,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		cursor = req.Cursor.Value
 	}
 
-	messageRecords, err := s.data.GetAllChatMessages(
+	messageRecords, err := s.data.GetAllChatMessagesV1(
 		ctx,
 		chatId,
 		query.WithCursor(cursor),
@@ -416,7 +416,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		return nil, status.Error(codes.InvalidArgument, "Pointer.Kind must be READ")
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.AdvancePointerResponse{
 			Result: chatpb.AdvancePointerResponse_CHAT_NOT_FOUND,
@@ -430,7 +430,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		return nil, status.Error(codes.PermissionDenied, "")
 	}
 
-	newPointerRecord, err := s.data.GetChatMessage(ctx, chatId, messageId)
+	newPointerRecord, err := s.data.GetChatMessageV1(ctx, chatId, messageId)
 	if err == chat.ErrMessageNotFound {
 		return &chatpb.AdvancePointerResponse{
 			Result: chatpb.AdvancePointerResponse_MESSAGE_NOT_FOUND,
@@ -441,7 +441,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}
 
 	if chatRecord.ReadPointer != nil {
-		oldPointerRecord, err := s.data.GetChatMessage(ctx, chatId, *chatRecord.ReadPointer)
+		oldPointerRecord, err := s.data.GetChatMessageV1(ctx, chatId, *chatRecord.ReadPointer)
 		if err != nil {
 			log.WithError(err).Warn("failure getting chat message record for old pointer value")
 			return nil, status.Error(codes.Internal, "")
@@ -454,7 +454,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		}
 	}
 
-	err = s.data.AdvanceChatPointer(ctx, chatId, messageId)
+	err = s.data.AdvanceChatPointerV1(ctx, chatId, messageId)
 	if err != nil {
 		log.WithError(err).Warn("failure advancing pointer")
 		return nil, status.Error(codes.Internal, "")
@@ -484,7 +484,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.SetMuteStateResponse{
 			Result: chatpb.SetMuteStateResponse_CHAT_NOT_FOUND,
@@ -511,7 +511,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 		}, nil
 	}
 
-	err = s.data.SetChatMuteState(ctx, chatId, req.IsMuted)
+	err = s.data.SetChatMuteStateV1(ctx, chatId, req.IsMuted)
 	if err != nil {
 		log.WithError(err).Warn("failure setting mute status")
 		return nil, status.Error(codes.Internal, "")
@@ -542,7 +542,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.SetSubscriptionStateResponse{
 			Result: chatpb.SetSubscriptionStateResponse_CHAT_NOT_FOUND,
@@ -569,7 +569,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		}, nil
 	}
 
-	err = s.data.SetChatSubscriptionState(ctx, chatId, req.IsSubscribed)
+	err = s.data.SetChatSubscriptionStateV1(ctx, chatId, req.IsSubscribed)
 	if err != nil {
 		log.WithError(err).Warn("failure setting subcription status")
 		return nil, status.Error(codes.Internal, "")

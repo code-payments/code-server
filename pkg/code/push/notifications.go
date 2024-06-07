@@ -14,7 +14,7 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -59,13 +59,13 @@ func SendDepositPushNotification(
 	// Legacy push notification still considers chat mute state
 	//
 	// todo: Proper migration to chat system
-	chatRecord, err := data.GetChatById(ctx, chat.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true))
+	chatRecord, err := data.GetChatByIdV1(ctx, chat_v1.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true))
 	switch err {
 	case nil:
 		if chatRecord.IsMuted {
 			return nil
 		}
-	case chat.ErrChatNotFound:
+	case chat_v1.ErrChatNotFound:
 	default:
 		log.WithError(err).Warn("failure getting chat record")
 		return errors.Wrap(err, "error getting chat record")
@@ -139,13 +139,13 @@ func SendGiftCardReturnedPushNotification(
 	// Legacy push notification still considers chat mute state
 	//
 	// todo: Proper migration to chat system
-	chatRecord, err := data.GetChatById(ctx, chat.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true))
+	chatRecord, err := data.GetChatByIdV1(ctx, chat_v1.GetChatId(chat_util.CashTransactionsName, owner.PublicKey().ToBase58(), true))
 	switch err {
 	case nil:
 		if chatRecord.IsMuted {
 			return nil
 		}
-	case chat.ErrChatNotFound:
+	case chat_v1.ErrChatNotFound:
 	default:
 		log.WithError(err).Warn("failure getting chat record")
 		return errors.Wrap(err, "error getting chat record")

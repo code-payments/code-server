@@ -35,7 +35,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
@@ -6173,7 +6173,7 @@ func isSubmitIntentError(resp *transactionpb.SubmitIntentResponse, err error) bo
 	return err != nil || resp.GetError() != nil
 }
 
-func getProtoChatMessage(t *testing.T, record *chat.Message) *chatpb.ChatMessage {
+func getProtoChatMessage(t *testing.T, record *chat_v1.Message) *chatpb.ChatMessage {
 	var protoMessage chatpb.ChatMessage
 	require.NoError(t, proto.Unmarshal(record.Data, &protoMessage))
 	return &protoMessage

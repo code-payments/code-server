@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 type ChatsById []*chat.Chat

@@ -9,7 +9,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
@@ -70,13 +70,13 @@ func SendTipsExchangeMessage(ctx context.Context, data code_data.Provider, inten
 			ctx,
 			data,
 			TipsName,
-			chat.ChatTypeInternal,
+			chat_v1.ChatTypeInternal,
 			true,
 			receiver,
 			protoMessage,
 			verb != chatpb.ExchangeDataContent_RECEIVED_TIP,
 		)
-		if err != nil && err != chat.ErrMessageAlreadyExists {
+		if err != nil && err != chat_v1.ErrMessageAlreadyExists {
 			return nil, errors.Wrap(err, "error persisting chat message")
 		}
 
