@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	ErrChatNotFound    = errors.New("chat not found")
-	ErrMemberNotFound  = errors.New("chat member not found")
-	ErrMessageNotFound = errors.New("chat message not found")
+	ErrChatNotFound       = errors.New("chat not found")
+	ErrMemberNotFound     = errors.New("chat member not found")
+	ErrMessageNotFound    = errors.New("chat message not found")
+	ErrInvalidPointerType = errors.New("invalid pointer type")
 )
 
 // todo: Define interface methods
