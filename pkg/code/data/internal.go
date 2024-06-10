@@ -61,6 +61,7 @@ import (
 	badgecount_memory_client "github.com/code-payments/code-server/pkg/code/data/badgecount/memory"
 	balance_memory_client "github.com/code-payments/code-server/pkg/code/data/balance/memory"
 	chat_v1_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/v1/memory"
+	chat_v2_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/v2/memory"
 	commitment_memory_client "github.com/code-payments/code-server/pkg/code/data/commitment/memory"
 	contact_memory_client "github.com/code-payments/code-server/pkg/code/data/contact/memory"
 	currency_memory_client "github.com/code-payments/code-server/pkg/code/data/currency/memory"
@@ -399,6 +400,8 @@ type DatabaseData interface {
 	GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error)
 	GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error)
 	GetAllChatMessagesV2(ctx context.Context, chatId chat_v2.ChatId, opts ...query.Option) ([]*chat_v2.MessageRecord, error)
+	PutChatV2(ctx context.Context, record *chat_v2.ChatRecord) error
+	PutChatMemberV2(ctx context.Context, record *chat_v2.MemberRecord) error
 	PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error
 	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error
 	SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error
@@ -546,7 +549,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		event:          event_postgres_client.New(db),
 		webhook:        webhook_postgres_client.New(db),
 		chatv1:         chat_v1_postgres_client.New(db),
-		chatv2:         nil, // todo: Initialize me
+		chatv2:         chat_v2_memory_client.New(), // todo: Postgres version for production after PoC
 		badgecount:     badgecount_postgres_client.New(db),
 		login:          login_postgres_client.New(db),
 		balance:        balance_postgres_client.New(db),
@@ -590,7 +593,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		event:          event_memory_client.New(),
 		webhook:        webhook_memory_client.New(),
 		chatv1:         chat_v1_memory_client.New(),
-		chatv2:         nil, // todo: initialize me
+		chatv2:         chat_v2_memory_client.New(),
 		badgecount:     badgecount_memory_client.New(),
 		login:          login_memory_client.New(),
 		balance:        balance_memory_client.New(),
@@ -1475,6 +1478,12 @@ func (dp *DatabaseProvider) GetAllChatMessagesV2(ctx context.Context, chatId cha
 		return nil, err
 	}
 	return dp.chatv2.GetAllMessagesByChat(ctx, chatId, req.Cursor, req.SortBy, req.Limit)
+}
+func (dp *DatabaseProvider) PutChatV2(ctx context.Context, record *chat_v2.ChatRecord) error {
+	return dp.chatv2.PutChat(ctx, record)
+}
+func (dp *DatabaseProvider) PutChatMemberV2(ctx context.Context, record *chat_v2.MemberRecord) error {
+	return dp.chatv2.PutMember(ctx, record)
 }
 func (dp *DatabaseProvider) PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error {
 	return dp.chatv2.PutMessage(ctx, record)
