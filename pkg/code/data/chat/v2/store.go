@@ -29,6 +29,9 @@ type Store interface {
 	// Note: Cursor is a message ID
 	GetAllMessagesByChat(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
 
+	// PutMessage creates a new chat message
+	PutMessage(ctx context.Context, record *MessageRecord) error
+
 	// AdvancePointer advances a chat pointer for a chat member
 	AdvancePointer(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) error
 

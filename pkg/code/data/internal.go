@@ -399,6 +399,7 @@ type DatabaseData interface {
 	GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error)
 	GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error)
 	GetAllChatMessagesV2(ctx context.Context, chatId chat_v2.ChatId, opts ...query.Option) ([]*chat_v2.MessageRecord, error)
+	PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error
 	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error
 	SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error
 	SetChatSubscriptionStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isSubscribed bool) error
@@ -1474,6 +1475,9 @@ func (dp *DatabaseProvider) GetAllChatMessagesV2(ctx context.Context, chatId cha
 		return nil, err
 	}
 	return dp.chatv2.GetAllMessagesByChat(ctx, chatId, req.Cursor, req.SortBy, req.Limit)
+}
+func (dp *DatabaseProvider) PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error {
+	return dp.chatv2.PutMessage(ctx, record)
 }
 func (dp *DatabaseProvider) AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error {
 	return dp.chatv2.AdvancePointer(ctx, chatId, memberId, pointerType, pointer)
