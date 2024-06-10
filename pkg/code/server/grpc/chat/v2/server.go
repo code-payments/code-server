@@ -330,6 +330,41 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	}
 }
 
+func (s *server) flush(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
+	log := s.log.WithFields(logrus.Fields{
+		"method":        "flush",
+		"chat_id":       chatId.String(),
+		"owner_account": owner.PublicKey().ToBase58(),
+	})
+
+	cursorValue := chat.GenerateMessageIdAtTime(time.Now().Add(2 * time.Second))
+
+	protoChatMessages, err := s.getProtoChatMessages(
+		ctx,
+		chatId,
+		owner,
+		query.WithCursor(cursorValue[:]),
+		query.WithDirection(query.Descending),
+		query.WithLimit(flushMessageCount),
+	)
+	if err != nil {
+		log.WithError(err).Warn("failure getting chat messages")
+		return
+	}
+
+	for _, protoChatMessage := range protoChatMessages {
+		event := &chatpb.ChatStreamEvent{
+			Type: &chatpb.ChatStreamEvent_Message{
+				Message: protoChatMessage,
+			},
+		}
+		if err := stream.notify(event, streamNotifyTimeout); err != nil {
+			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
+			return
+		}
+	}
+}
+
 func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
 	log := s.log.WithField("method", "SendMessage")
 	log = client.InjectLoggingMetadata(ctx, log)
@@ -339,7 +374,29 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		log.WithError(err).Warn("invalid owner account")
 		return nil, status.Error(codes.Internal, "")
 	}
-	log = log.WithField("owner", owner.PublicKey().ToBase58())
+	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
+
+	chatId, err := chat.GetChatIdFromProto(req.ChatId)
+	if err != nil {
+		log.WithError(err).Warn("invalid chat id")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("chat_id", chatId.String())
+
+	memberId, err := chat.GetMemberIdFromProto(req.MemberId)
+	if err != nil {
+		log.WithError(err).Warn("invalid member id")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("member_id", memberId.String())
+
+	switch req.Content[0].Type.(type) {
+	case *chatpb.Content_Text, *chatpb.Content_ThankYou:
+	default:
+		return &chatpb.SendMessageResponse{
+			Result: chatpb.SendMessageResponse_INVALID_CONTENT_TYPE,
+		}, nil
+	}
 
 	signature := req.Signature
 	req.Signature = nil
@@ -347,7 +404,121 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		return nil, err
 	}
 
-	return nil, status.Error(codes.Unimplemented, "")
+	chatRecord, err := s.data.GetChatByIdV2(ctx, chatId)
+	switch err {
+	case nil:
+	case chat.ErrChatNotFound:
+		return &chatpb.SendMessageResponse{
+			Result: chatpb.SendMessageResponse_CHAT_NOT_FOUND,
+		}, nil
+	default:
+		log.WithError(err).Warn("failure getting chat record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	switch chatRecord.ChatType {
+	case chat.ChatTypeTwoWay:
+	default:
+		return &chatpb.SendMessageResponse{
+			Result: chatpb.SendMessageResponse_INVALID_CHAT_TYPE,
+		}, nil
+	}
+
+	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure determing chat member ownership")
+		return nil, status.Error(codes.Internal, "")
+	} else if !ownsChatMember {
+		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+	}
+
+	chatLock := s.chatLocks.Get(chatId[:])
+	chatLock.Lock()
+	defer chatLock.Unlock()
+
+	messageId := chat.GenerateMessageId()
+	ts, _ := messageId.GetTimestamp()
+
+	chatMessage := &chatpb.ChatMessage{
+		MessageId: messageId.ToProto(),
+		SenderId:  req.MemberId,
+		Content:   req.Content,
+		Ts:        timestamppb.New(ts),
+		Cursor:    &chatpb.Cursor{Value: messageId[:]},
+	}
+
+	err = s.persistChatMessage(ctx, chatId, chatMessage)
+	if err != nil {
+		log.WithError(err).Warn("failure persisting chat message")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	event := &chatpb.ChatStreamEvent{
+		Type: &chatpb.ChatStreamEvent_Message{
+			Message: chatMessage,
+		},
+	}
+	if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
+		log.WithError(err).Warn("failure notifying chat event")
+	}
+
+	// todo: send the push
+
+	return &chatpb.SendMessageResponse{
+		Result:  chatpb.SendMessageResponse_OK,
+		Message: chatMessage,
+	}, nil
+}
+
+// todo: This belongs in the common chat utility, which currently only operates on v1 chats
+func (s *server) persistChatMessage(ctx context.Context, chatId chat.ChatId, protoChatMessage *chatpb.ChatMessage) error {
+	if err := protoChatMessage.Validate(); err != nil {
+		return errors.Wrap(err, "proto chat message failed validation")
+	}
+
+	messageId, err := chat.GetMessageIdFromProto(protoChatMessage.MessageId)
+	if err != nil {
+		return errors.Wrap(err, "invalid message id")
+	}
+
+	var senderId *chat.MemberId
+	if protoChatMessage.SenderId != nil {
+		convertedSenderId, err := chat.GetMemberIdFromProto(protoChatMessage.SenderId)
+		if err != nil {
+			return errors.Wrap(err, "invalid member id")
+		}
+		senderId = &convertedSenderId
+	}
+
+	// Clear out extracted metadata as a space optimization
+	cloned := proto.Clone(protoChatMessage).(*chatpb.ChatMessage)
+	cloned.MessageId = nil
+	cloned.SenderId = nil
+	cloned.Ts = nil
+	cloned.Cursor = nil
+
+	marshalled, err := proto.Marshal(cloned)
+	if err != nil {
+		return errors.Wrap(err, "error marshalling proto chat message")
+	}
+
+	// todo: Doesn't incoroporate reference. We might want to promote the proto a level above the content.
+	messageRecord := &chat.MessageRecord{
+		ChatId:    chatId,
+		MessageId: messageId,
+
+		Sender: senderId,
+
+		Data: marshalled,
+
+		IsSilent: false,
+	}
+
+	err = s.data.PutChatMessageV2(ctx, messageRecord)
+	if err != nil {
+		return errors.Wrap(err, "error persiting chat message")
+	}
+	return nil
 }
 
 func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerRequest) (*chatpb.AdvancePointerResponse, error) {
@@ -575,41 +746,6 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	}, nil
 }
 
-func (s *server) flush(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
-	log := s.log.WithFields(logrus.Fields{
-		"method":        "flush",
-		"chat_id":       chatId.String(),
-		"owner_account": owner.PublicKey().ToBase58(),
-	})
-
-	cursorValue := chat.GenerateMessageIdAtTime(time.Now().Add(2 * time.Second))
-
-	protoChatMessages, err := s.getProtoChatMessages(
-		ctx,
-		chatId,
-		owner,
-		query.WithCursor(cursorValue[:]),
-		query.WithDirection(query.Descending),
-		query.WithLimit(flushMessageCount),
-	)
-	if err != nil {
-		log.WithError(err).Warn("failure getting chat messages")
-		return
-	}
-
-	for _, protoChatMessage := range protoChatMessages {
-		event := &chatpb.ChatStreamEvent{
-			Type: &chatpb.ChatStreamEvent_Message{
-				Message: protoChatMessage,
-			},
-		}
-		if err := stream.notify(event, streamNotifyTimeout); err != nil {
-			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
-			return
-		}
-	}
-}
-
 func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
 	messageRecords, err := s.data.GetAllChatMessagesV2(
 		ctx,
@@ -653,9 +789,9 @@ func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, o
 			}
 		}
 
-		protoChatMessage.MessageId = &chatpb.ChatMessageId{Value: messageRecord.MessageId[:]}
+		protoChatMessage.MessageId = messageRecord.MessageId.ToProto()
 		if messageRecord.Sender != nil {
-			protoChatMessage.SenderId = &chatpb.ChatMemberId{Value: messageRecord.Sender[:]}
+			protoChatMessage.SenderId = messageRecord.Sender.ToProto()
 		}
 		protoChatMessage.Ts = timestamppb.New(ts)
 		protoChatMessage.Cursor = &chatpb.Cursor{Value: messageRecord.MessageId[:]}

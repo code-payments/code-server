@@ -29,6 +29,11 @@ func GetChatIdFromProto(proto *chatpb.ChatId) (ChatId, error) {
 	return typed, nil
 }
 
+// ToProto converts a chat ID to its protobuf variant
+func (c ChatId) ToProto() *chatpb.ChatId {
+	return &chatpb.ChatId{Value: c[:]}
+}
+
 // Validate validates a chat ID
 func (c ChatId) Validate() error {
 	return nil
@@ -41,6 +46,11 @@ func (c ChatId) String() string {
 
 // Random UUIDv4 ID for chat members
 type MemberId uuid.UUID
+
+// GenerateMemberId generates a new random chat member ID
+func GenerateMemberId() MemberId {
+	return MemberId(uuid.New())
+}
 
 // GetMemberIdFromProto gets a member ID from the protobuf variant
 func GetMemberIdFromProto(proto *chatpb.ChatMemberId) (MemberId, error) {
@@ -58,9 +68,9 @@ func GetMemberIdFromProto(proto *chatpb.ChatMemberId) (MemberId, error) {
 	return typed, nil
 }
 
-// GenerateMemberId generates a new random chat member ID
-func GenerateMemberId() MemberId {
-	return MemberId(uuid.New())
+// ToProto converts a message ID to its protobuf variant
+func (m MemberId) ToProto() *chatpb.ChatMemberId {
+	return &chatpb.ChatMemberId{Value: m[:]}
 }
 
 // Validate validates a chat member ID
@@ -127,6 +137,11 @@ func GetMessageIdFromProto(proto *chatpb.ChatMessageId) (MessageId, error) {
 	}
 
 	return typed, nil
+}
+
+// ToProto converts a message ID to its protobuf variant
+func (m MessageId) ToProto() *chatpb.ChatMessageId {
+	return &chatpb.ChatMessageId{Value: m[:]}
 }
 
 // GetTimestamp gets the encoded timestamp in the message ID
