@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func testUserHappyPath(t *testing.T, s twitter.Store) {
 	t.Run("testUserHappyPath", func(t *testing.T) {
 		ctx := context.Background()
 
-		username := "jeffyanta"
+		username := "JeffYanta"
 		tipAddress1 := "tip_address_1"
 		tipAddress2 := "tip_address_2"
 
@@ -73,7 +74,7 @@ func testUserHappyPath(t *testing.T, s twitter.Store) {
 		require.NoError(t, s.SaveUser(ctx, expected))
 		assert.True(t, expected.LastUpdatedAt.After(expected.CreatedAt))
 
-		actual, err = s.GetUserByUsername(ctx, username)
+		actual, err = s.GetUserByUsername(ctx, strings.ToLower(username))
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
@@ -86,7 +87,7 @@ func testUserHappyPath(t *testing.T, s twitter.Store) {
 		require.NoError(t, s.SaveUser(ctx, expected))
 		assert.True(t, expected.LastUpdatedAt.After(expected.CreatedAt))
 
-		actual, err = s.GetUserByUsername(ctx, username)
+		actual, err = s.GetUserByUsername(ctx, strings.ToUpper(username))
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
