@@ -2,14 +2,14 @@ package pg
 
 import (
 	"database/sql"
+	"errors"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
-	"github.com/pkg/errors"
 )
 
 func CheckNoRows(inErr, outErr error) error {
-	if inErr == sql.ErrNoRows {
+	if errors.Is(inErr, sql.ErrNoRows) {
 		return outErr
 	}
 	return inErr

@@ -6,8 +6,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -58,27 +58,23 @@ func (s *store) findAddress(address string) *nonce.Record {
 }
 
 func (s *store) findByState(state nonce.State) []*nonce.Record {
-	res := make([]*nonce.Record, 0)
-	for _, item := range s.records {
-		if item.State == state {
-			res = append(res, item)
-		}
-	}
-	return res
+	return s.findFn(func(nonce *nonce.Record) bool {
+		return nonce.State == state
+	})
 }
 
 func (s *store) findByStateAndPurpose(state nonce.State, purpose nonce.Purpose) []*nonce.Record {
+	return s.findFn(func(record *nonce.Record) bool {
+		return record.State == state && record.Purpose == purpose
+	})
+}
+
+func (s *store) findFn(f func(nonce *nonce.Record) bool) []*nonce.Record {
 	res := make([]*nonce.Record, 0)
 	for _, item := range s.records {
-		if item.State != state {
-			continue
+		if f(item) {
+			res = append(res, item)
 		}
-
-		if item.Purpose != purpose {
-			continue
-		}
-
-		res = append(res, item)
 	}
 	return res
 }
@@ -194,7 +190,9 @@ func (s *store) GetRandomAvailableByPurpose(ctx context.Context, purpose nonce.P
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findByStateAndPurpose(nonce.StateAvailable, purpose)
+	items := s.findFn(func(n *nonce.Record) bool {
+		return n.Purpose == purpose && n.IsAvailable()
+	})
 	if len(items) == 0 {
 		return nil, nonce.ErrNonceNotFound
 	}
