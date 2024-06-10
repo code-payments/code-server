@@ -32,6 +32,7 @@ import (
 
 const (
 	maxGetMessagesPageSize = 100
+	flushMessageCount      = 100
 )
 
 // todo: Ensure all relevant logging fields are set
@@ -581,10 +582,15 @@ func (s *server) flush(ctx context.Context, chatId chat.ChatId, owner *common.Ac
 		"owner_account": owner.PublicKey().ToBase58(),
 	})
 
+	cursorValue := chat.GenerateMessageIdAtTime(time.Now().Add(2 * time.Second))
+
 	protoChatMessages, err := s.getProtoChatMessages(
 		ctx,
 		chatId,
 		owner,
+		query.WithCursor(cursorValue[:]),
+		query.WithDirection(query.Descending),
+		query.WithLimit(flushMessageCount),
 	)
 	if err != nil {
 		log.WithError(err).Warn("failure getting chat messages")
