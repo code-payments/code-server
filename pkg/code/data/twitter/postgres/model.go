@@ -112,7 +112,7 @@ func dbGetUserByUsername(ctx context.Context, db *sqlx.DB, username string) (*mo
 	query := `SELECT
 		id, username, name, profile_pic_url, verified_type, follower_count, tip_address, created_at, last_updated_at
 		FROM ` + userTableName + `
-		WHERE username = $1
+		WHERE LOWER(username) = LOWER($1)
 		LIMIT 1`
 
 	err := db.GetContext(ctx, res, query, username)
