@@ -161,66 +161,17 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		cursor = req.Cursor.Value
 	}
 
-	messageRecords, err := s.data.GetAllChatMessagesV2(
+	protoChatMessages, err := s.getProtoChatMessages(
 		ctx,
 		chatId,
+		owner,
 		query.WithCursor(cursor),
 		query.WithDirection(direction),
 		query.WithLimit(limit),
 	)
-	if err == chat.ErrMessageNotFound {
-		return &chatpb.GetMessagesResponse{
-			Result: chatpb.GetMessagesResponse_NOT_FOUND,
-		}, nil
-	} else if err != nil {
-		log.WithError(err).Warn("failure getting chat message records")
+	if err != nil {
+		log.WithError(err).Warn("failure getting chat messages")
 		return nil, status.Error(codes.Internal, "")
-	}
-
-	var userLocale *language.Tag // Loaded lazily when required
-	var protoChatMessages []*chatpb.ChatMessage
-	for _, messageRecord := range messageRecords {
-		log := log.WithField("message_id", messageRecord.MessageId.String())
-
-		var protoChatMessage chatpb.ChatMessage
-		err = proto.Unmarshal(messageRecord.Data, &protoChatMessage)
-		if err != nil {
-			log.WithError(err).Warn("failure unmarshalling proto chat message")
-			return nil, status.Error(codes.Internal, "")
-		}
-
-		ts, err := messageRecord.GetTimestamp()
-		if err != nil {
-			log.WithError(err).Warn("failure getting message timestamp")
-			return nil, status.Error(codes.Internal, "")
-		}
-
-		for _, content := range protoChatMessage.Content {
-			switch typed := content.Type.(type) {
-			case *chatpb.Content_Localized:
-				if userLocale == nil {
-					loadedUserLocale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
-					if err != nil {
-						log.WithError(err).Warn("failure getting user locale")
-						return nil, status.Error(codes.Internal, "")
-					}
-					userLocale = &loadedUserLocale
-				}
-
-				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
-					*userLocale,
-					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
-					typed.Localized.KeyOrText,
-				)
-			}
-		}
-
-		protoChatMessage.MessageId = &chatpb.ChatMessageId{Value: messageRecord.MessageId[:]}
-		if messageRecord.Sender != nil {
-			protoChatMessage.SenderId = &chatpb.ChatMemberId{Value: messageRecord.Sender[:]}
-		}
-		protoChatMessage.Ts = timestamppb.New(ts)
-		protoChatMessage.Cursor = &chatpb.Cursor{Value: messageRecord.MessageId[:]}
 	}
 
 	return &chatpb.GetMessagesResponse{
@@ -229,7 +180,6 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}, nil
 }
 
-// todo: Requires a "flush" of most recent messages
 func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
 	ctx := streamer.Context()
 
@@ -330,6 +280,8 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 
 	sendPingCh := time.After(0)
 	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
+
+	go s.flush(ctx, chatId, owner, stream)
 
 	for {
 		select {
@@ -620,6 +572,92 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	return &chatpb.SetSubscriptionStateResponse{
 		Result: chatpb.SetSubscriptionStateResponse_OK,
 	}, nil
+}
+
+func (s *server) flush(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
+	log := s.log.WithFields(logrus.Fields{
+		"method":        "flush",
+		"chat_id":       chatId.String(),
+		"owner_account": owner.PublicKey().ToBase58(),
+	})
+
+	protoChatMessages, err := s.getProtoChatMessages(
+		ctx,
+		chatId,
+		owner,
+	)
+	if err != nil {
+		log.WithError(err).Warn("failure getting chat messages")
+		return
+	}
+
+	for _, protoChatMessage := range protoChatMessages {
+		event := &chatpb.ChatStreamEvent{
+			Type: &chatpb.ChatStreamEvent_Message{
+				Message: protoChatMessage,
+			},
+		}
+		if err := stream.notify(event, streamNotifyTimeout); err != nil {
+			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
+			return
+		}
+	}
+}
+
+func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
+	messageRecords, err := s.data.GetAllChatMessagesV2(
+		ctx,
+		chatId,
+		queryOptions...,
+	)
+	if err == chat.ErrMessageNotFound {
+		return nil, err
+	}
+
+	var userLocale *language.Tag // Loaded lazily when required
+	var res []*chatpb.ChatMessage
+	for _, messageRecord := range messageRecords {
+		var protoChatMessage chatpb.ChatMessage
+		err = proto.Unmarshal(messageRecord.Data, &protoChatMessage)
+		if err != nil {
+			return nil, errors.Wrap(err, "error unmarshalling proto chat message")
+		}
+
+		ts, err := messageRecord.GetTimestamp()
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting message timestamp")
+		}
+
+		for _, content := range protoChatMessage.Content {
+			switch typed := content.Type.(type) {
+			case *chatpb.Content_Localized:
+				if userLocale == nil {
+					loadedUserLocale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+					if err != nil {
+						return nil, errors.Wrap(err, "error getting user locale")
+					}
+					userLocale = &loadedUserLocale
+				}
+
+				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
+					*userLocale,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
+					typed.Localized.KeyOrText,
+				)
+			}
+		}
+
+		protoChatMessage.MessageId = &chatpb.ChatMessageId{Value: messageRecord.MessageId[:]}
+		if messageRecord.Sender != nil {
+			protoChatMessage.SenderId = &chatpb.ChatMemberId{Value: messageRecord.Sender[:]}
+		}
+		protoChatMessage.Ts = timestamppb.New(ts)
+		protoChatMessage.Cursor = &chatpb.Cursor{Value: messageRecord.MessageId[:]}
+
+		res = append(res, &protoChatMessage)
+	}
+
+	return res, nil
 }
 
 func (s *server) ownsChatMember(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
