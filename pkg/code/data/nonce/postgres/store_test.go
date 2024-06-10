@@ -30,8 +30,8 @@ const (
 			state integer NOT NULL,
 			signature text NULL,
 
-			claim_node_id text,
-			claim_expires_at bigint
+			claim_node_id text NULL,
+			claim_expires_at bigint NULL
 		);
 	`
 
