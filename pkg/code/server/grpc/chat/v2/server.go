@@ -542,7 +542,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		return nil, err
 	}
 
-	// todo: Use chat record to determine if muting is allowed
+	// todo: Use chat record to determine if unsubscribing is allowed
 	_, err = s.data.GetChatByIdV2(ctx, chatId)
 	switch err {
 	case nil:
