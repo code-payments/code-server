@@ -119,6 +119,20 @@ func GetPointerTypeFromProto(proto chatpb.Pointer_Kind) PointerType {
 	}
 }
 
+// ToProto returns the proto representation of the pointer type
+func (p PointerType) ToProto() chatpb.Pointer_Kind {
+	switch p {
+	case PointerTypeSent:
+		return chatpb.Pointer_SENT
+	case PointerTypeDelivered:
+		return chatpb.Pointer_DELIVERED
+	case PointerTypeRead:
+		return chatpb.Pointer_READ
+	default:
+		return chatpb.Pointer_UNKNOWN
+	}
+}
+
 // String returns the string representation of the pointer type
 func (p PointerType) String() string {
 	switch p {
