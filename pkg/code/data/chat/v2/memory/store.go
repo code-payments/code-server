@@ -3,8 +3,9 @@ package memory
 import (
 	"bytes"
 	"context"
-	"errors"
+	"sort"
 	"sync"
+	"time"
 
 	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/database/query"
@@ -18,9 +19,9 @@ type store struct {
 	memberRecords  []*chat.MemberRecord
 	messageRecords []*chat.MessageRecord
 
-	lastChatId    uint64
-	lastMemberId  uint64
-	lastMessageId uint64
+	lastChatId    int64
+	lastMemberId  int64
+	lastMessageId int64
 }
 
 // New returns a new in memory chat.Store
@@ -75,31 +76,91 @@ func (s *store) GetAllMessagesByChat(_ context.Context, chatId chat.ChatId, curs
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return nil, errors.New("not implemented")
+	items := s.findMessagesByChatId(chatId)
+	items, err := s.getMessageRecordPage(items, cursor, direction, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, chat.ErrMessageNotFound
+	}
+
+	return cloneMessageRecords(items), nil
 }
 
 // PutChat creates a new chat
 func (s *store) PutChat(_ context.Context, record *chat.ChatRecord) error {
+	if err := record.Validate(); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return errors.New("not implemented")
+	s.lastChatId++
+
+	if item := s.findChat(record); item != nil {
+		return chat.ErrChatExists
+	}
+
+	record.Id = s.lastChatId
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = time.Now()
+	}
+
+	cloned := record.Clone()
+	s.chatRecords = append(s.chatRecords, &cloned)
+
+	return nil
 }
 
 // PutMember creates a new chat member
 func (s *store) PutMember(_ context.Context, record *chat.MemberRecord) error {
+	if err := record.Validate(); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return errors.New("not implemented")
+	s.lastMemberId++
+
+	if item := s.findMember(record); item != nil {
+		return chat.ErrMemberExists
+	}
+
+	record.Id = s.lastMemberId
+	if record.JoinedAt.IsZero() {
+		record.JoinedAt = time.Now()
+	}
+
+	cloned := record.Clone()
+	s.memberRecords = append(s.memberRecords, &cloned)
+
+	return nil
 }
 
 // PutMessage implements chat.Store.PutMessage
 func (s *store) PutMessage(_ context.Context, record *chat.MessageRecord) error {
+	if err := record.Validate(); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return errors.New("not implemented")
+	s.lastMessageId++
+
+	if item := s.findMessage(record); item != nil {
+		return chat.ErrMessageExsits
+	}
+
+	record.Id = s.lastMessageId
+
+	cloned := record.Clone()
+	s.messageRecords = append(s.messageRecords, &cloned)
+
+	return nil
 }
 
 // AdvancePointer implements chat.Store.AdvancePointer
@@ -170,9 +231,35 @@ func (s *store) SetSubscriptionState(_ context.Context, chatId chat.ChatId, memb
 	return nil
 }
 
+func (s *store) findChat(data *chat.ChatRecord) *chat.ChatRecord {
+	for _, item := range s.chatRecords {
+		if data.Id == item.Id {
+			return item
+		}
+
+		if bytes.Equal(data.ChatId[:], item.ChatId[:]) {
+			return item
+		}
+	}
+	return nil
+}
+
 func (s *store) findChatById(chatId chat.ChatId) *chat.ChatRecord {
 	for _, item := range s.chatRecords {
 		if bytes.Equal(chatId[:], item.ChatId[:]) {
+			return item
+		}
+	}
+	return nil
+}
+
+func (s *store) findMember(data *chat.MemberRecord) *chat.MemberRecord {
+	for _, item := range s.memberRecords {
+		if data.Id == item.Id {
+			return item
+		}
+
+		if bytes.Equal(data.ChatId[:], item.ChatId[:]) && bytes.Equal(data.MemberId[:], item.MemberId[:]) {
 			return item
 		}
 	}
@@ -188,6 +275,19 @@ func (s *store) findMemberById(chatId chat.ChatId, memberId chat.MemberId) *chat
 	return nil
 }
 
+func (s *store) findMessage(data *chat.MessageRecord) *chat.MessageRecord {
+	for _, item := range s.messageRecords {
+		if data.Id == item.Id {
+			return item
+		}
+
+		if bytes.Equal(data.ChatId[:], item.ChatId[:]) && bytes.Equal(data.MessageId[:], item.MessageId[:]) {
+			return item
+		}
+	}
+	return nil
+}
+
 func (s *store) findMessageById(chatId chat.ChatId, messageId chat.MessageId) *chat.MessageRecord {
 	for _, item := range s.messageRecords {
 		if bytes.Equal(chatId[:], item.ChatId[:]) && bytes.Equal(messageId[:], item.MessageId[:]) {
@@ -195,6 +295,58 @@ func (s *store) findMessageById(chatId chat.ChatId, messageId chat.MessageId) *c
 		}
 	}
 	return nil
+}
+
+func (s *store) findMessagesByChatId(chatId chat.ChatId) []*chat.MessageRecord {
+	var res []*chat.MessageRecord
+	for _, item := range s.messageRecords {
+		if bytes.Equal(chatId[:], item.ChatId[:]) {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (s *store) getMessageRecordPage(items []*chat.MessageRecord, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MessageRecord, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+
+	var messageIdCursor *chat.MessageId
+	if len(cursor) > 0 {
+		messageId, err := chat.GetMessageIdFromBytes(cursor)
+		if err != nil {
+			return nil, err
+		}
+		messageIdCursor = &messageId
+	}
+
+	var res []*chat.MessageRecord
+	if messageIdCursor == nil {
+		res = items
+	} else {
+		for _, item := range items {
+			if item.MessageId.After(*messageIdCursor) && direction == query.Ascending {
+				res = append(res, item)
+			}
+
+			if item.MessageId.Before(*messageIdCursor) && direction == query.Descending {
+				res = append(res, item)
+			}
+		}
+	}
+
+	if direction == query.Ascending {
+		sort.Sort(chat.MessagesById(res))
+	} else {
+		sort.Sort(sort.Reverse(chat.MessagesById(res)))
+	}
+
+	if len(res) >= int(limit) {
+		return res[:limit], nil
+	}
+
+	return res, nil
 }
 
 func (s *store) reset() {
@@ -208,4 +360,13 @@ func (s *store) reset() {
 	s.lastChatId = 0
 	s.lastMemberId = 0
 	s.lastMessageId = 0
+}
+
+func cloneMessageRecords(items []*chat.MessageRecord) []*chat.MessageRecord {
+	res := make([]*chat.MessageRecord, len(items))
+	for i, item := range items {
+		cloned := item.Clone()
+		res[i] = &cloned
+	}
+	return res
 }
