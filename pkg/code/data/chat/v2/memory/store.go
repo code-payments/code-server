@@ -202,9 +202,11 @@ func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId c
 
 	switch pointerType {
 	case chat.PointerTypeDelivered:
-		item.DeliveryPointer = &pointer // todo: pointer copy safety
+		cloned := pointer.Clone()
+		item.DeliveryPointer = &cloned
 	case chat.PointerTypeRead:
-		item.ReadPointer = &pointer // todo: pointer copy safety
+		cloned := pointer.Clone()
+		item.ReadPointer = &cloned
 	}
 
 	return nil

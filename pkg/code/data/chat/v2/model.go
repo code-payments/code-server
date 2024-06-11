@@ -11,7 +11,7 @@ import (
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
 )
 
-type ChatType int
+type ChatType uint8
 
 const (
 	ChatTypeUnknown ChatType = iota
@@ -20,7 +20,7 @@ const (
 	// ChatTypeGroup
 )
 
-type ReferenceType int
+type ReferenceType uint8
 
 const (
 	ReferenceTypeUnknown ReferenceType = iota
@@ -28,7 +28,7 @@ const (
 	ReferenceTypeSignature
 )
 
-type PointerType int
+type PointerType uint8
 
 const (
 	PointerTypeUnknown PointerType = iota
@@ -37,7 +37,7 @@ const (
 	PointerTypeRead
 )
 
-type Platform int
+type Platform uint8
 
 const (
 	PlatformUnknown Platform = iota
@@ -256,6 +256,18 @@ func (r *MemberRecord) Validate() error {
 
 // Clone clones a member record
 func (r *MemberRecord) Clone() MemberRecord {
+	var deliveryPointerCopy *MessageId
+	if r.DeliveryPointer != nil {
+		cloned := r.DeliveryPointer.Clone()
+		deliveryPointerCopy = &cloned
+	}
+
+	var readPointerCopy *MessageId
+	if r.ReadPointer != nil {
+		cloned := r.ReadPointer.Clone()
+		readPointerCopy = &cloned
+	}
+
 	return MemberRecord{
 		Id:       r.Id,
 		ChatId:   r.ChatId,
@@ -264,8 +276,8 @@ func (r *MemberRecord) Clone() MemberRecord {
 		Platform:   r.Platform,
 		PlatformId: r.PlatformId,
 
-		DeliveryPointer: r.DeliveryPointer, // todo: pointer copy safety
-		ReadPointer:     r.ReadPointer,     // todo: pointer copy safety
+		DeliveryPointer: deliveryPointerCopy,
+		ReadPointer:     readPointerCopy,
 
 		IsMuted:        r.IsMuted,
 		IsUnsubscribed: r.IsUnsubscribed,
@@ -283,8 +295,14 @@ func (r *MemberRecord) CopyTo(dst *MemberRecord) {
 	dst.Platform = r.Platform
 	dst.PlatformId = r.PlatformId
 
-	dst.DeliveryPointer = r.DeliveryPointer // todo: pointer copy safety
-	dst.ReadPointer = r.ReadPointer         // todo: pointer copy safety
+	if r.DeliveryPointer != nil {
+		cloned := r.DeliveryPointer.Clone()
+		dst.DeliveryPointer = &cloned
+	}
+	if r.ReadPointer != nil {
+		cloned := r.ReadPointer.Clone()
+		dst.ReadPointer = &cloned
+	}
 
 	dst.IsMuted = r.IsMuted
 	dst.IsUnsubscribed = r.IsUnsubscribed
@@ -350,21 +368,34 @@ func (r *MessageRecord) Validate() error {
 
 // Clone clones a message record
 func (r *MessageRecord) Clone() MessageRecord {
+	var senderCopy *MemberId
+	if r.Sender != nil {
+		cloned := r.Sender.Clone()
+		senderCopy = &cloned
+	}
+
+	dataCopy := make([]byte, len(r.Data))
+	copy(dataCopy, r.Data)
+
+	var referenceTypeCopy *ReferenceType
+	if r.ReferenceType != nil {
+		cloned := *r.ReferenceType
+		referenceTypeCopy = &cloned
+	}
+
 	return MessageRecord{
 		Id:        r.Id,
 		ChatId:    r.ChatId,
 		MessageId: r.MessageId,
 
-		Sender: r.Sender, // todo: pointer copy safety
+		Sender: senderCopy,
 
-		Data: r.Data, // todo: pointer copy safety
+		Data: dataCopy,
 
-		ReferenceType: r.ReferenceType, // todo: pointer copy safety
-		Reference:     r.Reference,     // todo: pointer copy safety
+		ReferenceType: referenceTypeCopy,
+		Reference:     pointer.StringCopy(r.Reference),
 
 		IsSilent: r.IsSilent,
-
-		// todo: finish implementing me
 	}
 }
 
@@ -374,16 +405,22 @@ func (r *MessageRecord) CopyTo(dst *MessageRecord) {
 	dst.ChatId = r.ChatId
 	dst.MessageId = r.MessageId
 
-	dst.Sender = r.Sender // todo: pointer copy safety
+	if r.Sender != nil {
+		cloned := r.Sender.Clone()
+		dst.Sender = &cloned
+	}
 
-	dst.Data = r.Data // todo: pointer copy safety
+	dataCopy := make([]byte, len(r.Data))
+	copy(dataCopy, r.Data)
+	dst.Data = dataCopy
 
-	dst.ReferenceType = r.ReferenceType // todo: pointer copy safety
-	dst.Reference = r.Reference         // todo: pointer copy safety
+	if r.ReferenceType != nil {
+		cloned := *r.ReferenceType
+		dst.ReferenceType = &cloned
+	}
+	dst.Reference = pointer.StringCopy(r.Reference)
 
 	dst.IsSilent = r.IsSilent
-
-	// todo: finish implementing me
 }
 
 // GetTimestamp gets the timestamp for a message record
