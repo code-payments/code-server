@@ -68,7 +68,43 @@ func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier
 		go s.asyncChatEventStreamNotifier(i, channel)
 	}
 
+	// todo: Remove when testing is complete
+	s.setupMockChat()
+
 	return s
+}
+
+func (s *server) setupMockChat() {
+	ctx := context.Background()
+
+	chatId, _ := chat.GetChatIdFromString("c355fcec8c521e7937d45283d83bbfc63a0c688004f2386a535fc817218f917b")
+	chatRecord := &chat.ChatRecord{
+		ChatId:     chatId,
+		ChatType:   chat.ChatTypeTwoWay,
+		IsVerified: true,
+		CreatedAt:  time.Now(),
+	}
+	s.data.PutChatV2(ctx, chatRecord)
+
+	memberId1, _ := chat.GetMemberIdFromString("034dda45-b4c2-45db-b1da-181298898a16")
+	memberRecord1 := &chat.MemberRecord{
+		ChatId:     chatId,
+		MemberId:   memberId1,
+		Platform:   chat.PlatformCode,
+		PlatformId: "8bw4gaRQk91w7vtgTN4E12GnKecY2y6CjPai7WUvWBQ8",
+		JoinedAt:   time.Now(),
+	}
+	s.data.PutChatMemberV2(ctx, memberRecord1)
+
+	memberId2, _ := chat.GetMemberIdFromString("a9d27058-f2d8-4034-bf52-b20c09a670de")
+	memberRecord2 := &chat.MemberRecord{
+		ChatId:     chatId,
+		MemberId:   memberId2,
+		Platform:   chat.PlatformCode,
+		PlatformId: "EDknQfoUnj73L56vKtEc6Qqw5VoHaF32eHYdz3V4y27M",
+		JoinedAt:   time.Now(),
+	}
+	s.data.PutChatMemberV2(ctx, memberRecord2)
 }
 
 func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {

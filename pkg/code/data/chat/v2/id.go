@@ -29,6 +29,16 @@ func GetChatIdFromBytes(buffer []byte) (ChatId, error) {
 	return typed, nil
 }
 
+// GetChatIdFromBytes gets a chat ID from the string representation
+func GetChatIdFromString(value string) (ChatId, error) {
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		return ChatId{}, errors.Wrap(err, "value is not a hexadecimal string")
+	}
+
+	return GetChatIdFromBytes(decoded)
+}
+
 // GetChatIdFromProto gets a chat ID from the protobuf variant
 func GetChatIdFromProto(proto *chatpb.ChatId) (ChatId, error) {
 	if err := proto.Validate(); err != nil {
@@ -82,6 +92,16 @@ func GetMemberIdFromBytes(buffer []byte) (MemberId, error) {
 	}
 
 	return typed, nil
+}
+
+// GetMemberIdFromString gets a chat member ID from the string representation
+func GetMemberIdFromString(value string) (MemberId, error) {
+	decoded, err := uuid.Parse(value)
+	if err != nil {
+		return MemberId{}, errors.Wrap(err, "value is not a uuid string")
+	}
+
+	return GetMemberIdFromBytes(decoded[:])
 }
 
 // GetMemberIdFromProto gets a member ID from the protobuf variant
@@ -169,6 +189,16 @@ func GetMessageIdFromBytes(buffer []byte) (MessageId, error) {
 	}
 
 	return typed, nil
+}
+
+// GetMessageIdFromString gets a chat message ID from the string representation
+func GetMessageIdFromString(value string) (MessageId, error) {
+	decoded, err := uuid.Parse(value)
+	if err != nil {
+		return MessageId{}, errors.Wrap(err, "value is not a uuid string")
+	}
+
+	return GetMessageIdFromBytes(decoded[:])
 }
 
 // GetMessageIdFromProto gets a message ID from the protobuf variant
