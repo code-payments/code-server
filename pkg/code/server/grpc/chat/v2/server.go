@@ -216,7 +216,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	case nil:
 	case chat.ErrChatNotFound:
 		return &chatpb.GetMessagesResponse{
-			Result: chatpb.GetMessagesResponse_CHAT_NOT_FOUND,
+			Result: chatpb.GetMessagesResponse_MESSAGE_NOT_FOUND,
 		}, nil
 	default:
 		log.WithError(err).Warn("failure getting chat record")
@@ -392,8 +392,8 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	sendPingCh := time.After(0)
 	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
 
+	// todo: We should also "flush" pointers for each chat member
 	go s.flushMessages(ctx, chatId, owner, stream)
-	go s.flushPointers(ctx, chatId, stream)
 
 	for {
 		select {
@@ -1140,7 +1140,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
-	} else if !ownsChatMember {
+	} else if !isChatMember {
 		return &chatpb.SetMuteStateResponse{
 			Result: chatpb.SetMuteStateResponse_DENIED,
 		}, nil
