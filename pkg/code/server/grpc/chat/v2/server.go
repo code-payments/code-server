@@ -126,7 +126,9 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	switch err {
 	case nil:
 	case chat.ErrChatNotFound:
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.GetMessagesResponse{
+			Result: chatpb.GetMessagesResponse_MESSAGE_NOT_FOUND,
+		}, nil
 	default:
 		log.WithError(err).Warn("failure getting chat record")
 		return nil, status.Error(codes.Internal, "")
@@ -137,7 +139,9 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
 	} else if !ownsChatMember {
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.GetMessagesResponse{
+			Result: chatpb.GetMessagesResponse_DENIED,
+		}, nil
 	}
 
 	var limit uint64
@@ -175,6 +179,11 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	if len(protoChatMessages) == 0 {
+		return &chatpb.GetMessagesResponse{
+			Result: chatpb.GetMessagesResponse_MESSAGE_NOT_FOUND,
+		}, nil
+	}
 	return &chatpb.GetMessagesResponse{
 		Result:   chatpb.GetMessagesResponse_OK,
 		Messages: protoChatMessages,
@@ -227,7 +236,11 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	switch err {
 	case nil:
 	case chat.ErrChatNotFound:
-		return status.Error(codes.Unimplemented, "todo: missing result code")
+		return streamer.Send(&chatpb.StreamChatEventsResponse{
+			Type: &chatpb.StreamChatEventsResponse_Error{
+				Error: &chatpb.ChatStreamEventError{Code: chatpb.ChatStreamEventError_CHAT_NOT_FOUND},
+			},
+		})
 	default:
 		log.WithError(err).Warn("failure getting chat record")
 		return status.Error(codes.Internal, "")
@@ -238,7 +251,11 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return status.Error(codes.Internal, "")
 	} else if !ownsChatMember {
-		return status.Error(codes.Unimplemented, "todo: missing result code")
+		return streamer.Send(&chatpb.StreamChatEventsResponse{
+			Type: &chatpb.StreamChatEventsResponse_Error{
+				Error: &chatpb.ChatStreamEventError{Code: chatpb.ChatStreamEventError_DENIED},
+			},
+		})
 	}
 
 	streamKey := fmt.Sprintf("%s:%s", chatId.String(), memberId.String())
@@ -282,7 +299,8 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	sendPingCh := time.After(0)
 	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
 
-	go s.flush(ctx, chatId, owner, stream)
+	// todo: We should also "flush" pointers for each chat member
+	go s.flushMessages(ctx, chatId, owner, stream)
 
 	for {
 		select {
@@ -330,9 +348,9 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	}
 }
 
-func (s *server) flush(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
+func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
 	log := s.log.WithFields(logrus.Fields{
-		"method":        "flush",
+		"method":        "flushMessages",
 		"chat_id":       chatId.String(),
 		"owner_account": owner.PublicKey().ToBase58(),
 	})
@@ -347,7 +365,9 @@ func (s *server) flush(ctx context.Context, chatId chat.ChatId, owner *common.Ac
 		query.WithDirection(query.Descending),
 		query.WithLimit(flushMessageCount),
 	)
-	if err != nil {
+	if err == chat.ErrMessageNotFound {
+		return
+	} else if err != nil {
 		log.WithError(err).Warn("failure getting chat messages")
 		return
 	}
@@ -429,7 +449,9 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
 	} else if !ownsChatMember {
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.SendMessageResponse{
+			Result: chatpb.SendMessageResponse_DENIED,
+		}, nil
 	}
 
 	chatLock := s.chatLocks.Get(chatId[:])
@@ -551,7 +573,9 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	switch pointerType {
 	case chat.PointerTypeDelivered, chat.PointerTypeRead:
 	default:
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.AdvancePointerResponse{
+			Result: chatpb.AdvancePointerResponse_INVALID_POINTER_TYPE,
+		}, nil
 	}
 
 	pointerValue, err := chat.GetMessageIdFromProto(req.Pointer.Value)
@@ -584,7 +608,9 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
 	} else if !ownsChatMember {
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.AdvancePointerResponse{
+			Result: chatpb.AdvancePointerResponse_DENIED,
+		}, nil
 	}
 
 	_, err = s.data.GetChatMessageByIdV2(ctx, chatId, pointerValue)
@@ -669,7 +695,9 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
 	} else if !isChatMember {
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.SetMuteStateResponse{
+			Result: chatpb.SetMuteStateResponse_DENIED,
+		}, nil
 	}
 
 	err = s.data.SetChatMuteStateV2(ctx, chatId, memberId, req.IsMuted)
@@ -732,7 +760,9 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
 	} else if !ownsChatMember {
-		return nil, status.Error(codes.Unimplemented, "todo: missing result code")
+		return &chatpb.SetSubscriptionStateResponse{
+			Result: chatpb.SetSubscriptionStateResponse_DENIED,
+		}, nil
 	}
 
 	err = s.data.SetChatSubscriptionStateV2(ctx, chatId, memberId, req.IsSubscribed)
