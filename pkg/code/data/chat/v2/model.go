@@ -97,6 +97,14 @@ type MessageRecord struct {
 	// Note: No timestamp field, since it's encoded in MessageId
 }
 
+type MessagesById []*MessageRecord
+
+func (a MessagesById) Len() int      { return len(a) }
+func (a MessagesById) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a MessagesById) Less(i, j int) bool {
+	return a[i].MessageId.Before(a[i].MessageId)
+}
+
 // GetChatIdFromProto gets a chat ID from the protobuf variant
 func GetPointerTypeFromProto(proto chatpb.Pointer_Kind) PointerType {
 	switch proto {

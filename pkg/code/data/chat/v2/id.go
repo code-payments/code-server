@@ -13,20 +13,29 @@ import (
 
 type ChatId [32]byte
 
-// GetChatIdFromProto gets a chat ID from the protobuf variant
-func GetChatIdFromProto(proto *chatpb.ChatId) (ChatId, error) {
-	if err := proto.Validate(); err != nil {
-		return ChatId{}, errors.Wrap(err, "proto validation failed")
+// GetChatIdFromBytes gets a chat ID from a byte buffer
+func GetChatIdFromBytes(buffer []byte) (ChatId, error) {
+	if len(buffer) != 32 {
+		return ChatId{}, errors.New("chat id must be 32 bytes in length")
 	}
 
 	var typed ChatId
-	copy(typed[:], proto.Value)
+	copy(typed[:], buffer[:])
 
 	if err := typed.Validate(); err != nil {
 		return ChatId{}, errors.Wrap(err, "invalid chat id")
 	}
 
 	return typed, nil
+}
+
+// GetChatIdFromProto gets a chat ID from the protobuf variant
+func GetChatIdFromProto(proto *chatpb.ChatId) (ChatId, error) {
+	if err := proto.Validate(); err != nil {
+		return ChatId{}, errors.Wrap(err, "proto validation failed")
+	}
+
+	return GetChatIdFromBytes(proto.Value)
 }
 
 // ToProto converts a chat ID to its protobuf variant
@@ -52,20 +61,29 @@ func GenerateMemberId() MemberId {
 	return MemberId(uuid.New())
 }
 
-// GetMemberIdFromProto gets a member ID from the protobuf variant
-func GetMemberIdFromProto(proto *chatpb.ChatMemberId) (MemberId, error) {
-	if err := proto.Validate(); err != nil {
-		return MemberId{}, errors.Wrap(err, "proto validation failed")
+// GetMemberIdFromBytes gets a member ID from a byte buffer
+func GetMemberIdFromBytes(buffer []byte) (MemberId, error) {
+	if len(buffer) != 16 {
+		return MemberId{}, errors.New("member id must be 16 bytes in length")
 	}
 
 	var typed MemberId
-	copy(typed[:], proto.Value)
+	copy(typed[:], buffer[:])
 
 	if err := typed.Validate(); err != nil {
 		return MemberId{}, errors.Wrap(err, "invalid member id")
 	}
 
 	return typed, nil
+}
+
+// GetMemberIdFromProto gets a member ID from the protobuf variant
+func GetMemberIdFromProto(proto *chatpb.ChatMemberId) (MemberId, error) {
+	if err := proto.Validate(); err != nil {
+		return MemberId{}, errors.Wrap(err, "proto validation failed")
+	}
+
+	return GetMemberIdFromBytes(proto.Value)
 }
 
 // ToProto converts a message ID to its protobuf variant
@@ -123,20 +141,29 @@ func GenerateMessageIdAtTime(ts time.Time) MessageId {
 	return MessageId(uuidBytes)
 }
 
-// GetMessageIdFromProto gets a message ID from the protobuf variant
-func GetMessageIdFromProto(proto *chatpb.ChatMessageId) (MessageId, error) {
-	if err := proto.Validate(); err != nil {
-		return MessageId{}, errors.Wrap(err, "proto validation failed")
+// GetMessageIdFromBytes gets a message ID from a byte buffer
+func GetMessageIdFromBytes(buffer []byte) (MessageId, error) {
+	if len(buffer) != 16 {
+		return MessageId{}, errors.New("message id must be 16 bytes in length")
 	}
 
 	var typed MessageId
-	copy(typed[:], proto.Value)
+	copy(typed[:], buffer[:])
 
 	if err := typed.Validate(); err != nil {
 		return MessageId{}, errors.Wrap(err, "invalid message id")
 	}
 
 	return typed, nil
+}
+
+// GetMessageIdFromProto gets a message ID from the protobuf variant
+func GetMessageIdFromProto(proto *chatpb.ChatMessageId) (MessageId, error) {
+	if err := proto.Validate(); err != nil {
+		return MessageId{}, errors.Wrap(err, "proto validation failed")
+	}
+
+	return GetMessageIdFromBytes(proto.Value)
 }
 
 // ToProto converts a message ID to its protobuf variant

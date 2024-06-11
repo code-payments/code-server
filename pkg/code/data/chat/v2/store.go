@@ -8,8 +8,11 @@ import (
 )
 
 var (
+	ErrChatExists         = errors.New("chat already exists")
 	ErrChatNotFound       = errors.New("chat not found")
+	ErrMemberExists       = errors.New("chat member already exists")
 	ErrMemberNotFound     = errors.New("chat member not found")
+	ErrMessageExsits      = errors.New("chat message already exists")
 	ErrMessageNotFound    = errors.New("chat message not found")
 	ErrInvalidPointerType = errors.New("invalid pointer type")
 )
