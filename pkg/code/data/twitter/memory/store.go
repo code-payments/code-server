@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -158,7 +159,7 @@ func (s *store) findUser(data *twitter.Record) *twitter.Record {
 		if item.Id == data.Id {
 			return item
 		}
-		if data.Username == item.Username {
+		if strings.EqualFold(data.Username, item.Username) {
 			return item
 		}
 	}
@@ -168,7 +169,7 @@ func (s *store) findUser(data *twitter.Record) *twitter.Record {
 
 func (s *store) findUserByUsername(username string) *twitter.Record {
 	for _, item := range s.userRecords {
-		if username == item.Username {
+		if strings.EqualFold(username, item.Username) {
 			return item
 		}
 	}
