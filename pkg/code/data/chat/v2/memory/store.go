@@ -71,8 +71,17 @@ func (s *store) GetMessageById(_ context.Context, chatId chat.ChatId, messageId 
 	return &cloned, nil
 }
 
-// GetAllMessagesByChat implements chat.Store.GetAllMessagesByChat
-func (s *store) GetAllMessagesByChat(_ context.Context, chatId chat.ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MessageRecord, error) {
+// GetAllMembersByChatId implements chat.Store.GetAllMembersByChatId
+func (s *store) GetAllMembersByChatId(_ context.Context, chatId chat.ChatId) ([]*chat.MemberRecord, error) {
+	items := s.findMembersByChatId(chatId)
+	if len(items) == 0 {
+		return nil, chat.ErrMemberNotFound
+	}
+	return cloneMemberRecords(items), nil
+}
+
+// GetAllMessagesByChatId implements chat.Store.GetAllMessagesByChatId
+func (s *store) GetAllMessagesByChatId(_ context.Context, chatId chat.ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MessageRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -81,10 +90,10 @@ func (s *store) GetAllMessagesByChat(_ context.Context, chatId chat.ChatId, curs
 	if err != nil {
 		return nil, err
 	}
+
 	if len(items) == 0 {
 		return nil, chat.ErrMessageNotFound
 	}
-
 	return cloneMessageRecords(items), nil
 }
 
@@ -275,6 +284,16 @@ func (s *store) findMemberById(chatId chat.ChatId, memberId chat.MemberId) *chat
 	return nil
 }
 
+func (s *store) findMembersByChatId(chatId chat.ChatId) []*chat.MemberRecord {
+	var res []*chat.MemberRecord
+	for _, item := range s.memberRecords {
+		if bytes.Equal(chatId[:], item.ChatId[:]) {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
 func (s *store) findMessage(data *chat.MessageRecord) *chat.MessageRecord {
 	for _, item := range s.messageRecords {
 		if data.Id == item.Id {
@@ -360,6 +379,15 @@ func (s *store) reset() {
 	s.lastChatId = 0
 	s.lastMemberId = 0
 	s.lastMessageId = 0
+}
+
+func cloneMemberRecords(items []*chat.MemberRecord) []*chat.MemberRecord {
+	res := make([]*chat.MemberRecord, len(items))
+	for i, item := range items {
+		cloned := item.Clone()
+		res[i] = &cloned
+	}
+	return res
 }
 
 func cloneMessageRecords(items []*chat.MessageRecord) []*chat.MessageRecord {

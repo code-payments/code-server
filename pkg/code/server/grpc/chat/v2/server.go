@@ -299,8 +299,8 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	sendPingCh := time.After(0)
 	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
 
-	// todo: We should also "flush" pointers for each chat member
 	go s.flushMessages(ctx, chatId, owner, stream)
+	go s.flushPointers(ctx, chatId, stream)
 
 	for {
 		select {
@@ -381,6 +381,49 @@ func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *c
 		if err := stream.notify(event, streamNotifyTimeout); err != nil {
 			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
 			return
+		}
+	}
+}
+
+func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *chatEventStream) {
+	log := s.log.WithFields(logrus.Fields{
+		"method":  "flushPointers",
+		"chat_id": chatId.String(),
+	})
+
+	memberRecords, err := s.data.GetAllChatMembersV2(ctx, chatId)
+	if err == chat.ErrMemberNotFound {
+		return
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting chat members")
+		return
+	}
+
+	for _, memberRecord := range memberRecords {
+		for _, optionalPointer := range []struct {
+			kind  chat.PointerType
+			value *chat.MessageId
+		}{
+			{chat.PointerTypeDelivered, memberRecord.DeliveryPointer},
+			{chat.PointerTypeRead, memberRecord.ReadPointer},
+		} {
+			if optionalPointer.value == nil {
+				continue
+			}
+
+			event := &chatpb.ChatStreamEvent{
+				Type: &chatpb.ChatStreamEvent_Pointer{
+					Pointer: &chatpb.Pointer{
+						Kind:     optionalPointer.kind.ToProto(),
+						Value:    optionalPointer.value.ToProto(),
+						MemberId: memberRecord.MemberId.ToProto(),
+					},
+				},
+			}
+			if err := stream.notify(event, streamNotifyTimeout); err != nil {
+				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
+				return
+			}
 		}
 	}
 }

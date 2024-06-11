@@ -28,10 +28,15 @@ type Store interface {
 	// GetMessageById gets a chat message by the chat and message IDs
 	GetMessageById(ctx context.Context, chatId ChatId, messageId MessageId) (*MessageRecord, error)
 
-	// GetAllMessagesByChat gets all messages for a given chat
+	// GetAllMembersByChatId gets all members for a given chat
+	//
+	// todo: Add paging when we introduce group chats
+	GetAllMembersByChatId(ctx context.Context, chatId ChatId) ([]*MemberRecord, error)
+
+	// GetAllMessagesByChatId gets all messages for a given chat
 	//
 	// Note: Cursor is a message ID
-	GetAllMessagesByChat(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
+	GetAllMessagesByChatId(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
 
 	// PutChat creates a new chat
 	PutChat(ctx context.Context, record *ChatRecord) error
