@@ -127,7 +127,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	case nil:
 	case chat.ErrChatNotFound:
 		return &chatpb.GetMessagesResponse{
-			Result: chatpb.GetMessagesResponse_MESSAGE_NOT_FOUND,
+			Result: chatpb.GetMessagesResponse_CHAT_NOT_FOUND,
 		}, nil
 	default:
 		log.WithError(err).Warn("failure getting chat record")
@@ -174,7 +174,11 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		query.WithDirection(direction),
 		query.WithLimit(limit),
 	)
-	if err != nil {
+	if err == chat.ErrMessageNotFound {
+		return &chatpb.GetMessagesResponse{
+			Result: chatpb.GetMessagesResponse_MESSAGE_NOT_FOUND,
+		}, nil
+	} else if err != nil {
 		log.WithError(err).Warn("failure getting chat messages")
 		return nil, status.Error(codes.Internal, "")
 	}
