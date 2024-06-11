@@ -48,6 +48,13 @@ func (c ChatId) Validate() error {
 	return nil
 }
 
+// Clone clones a chat ID
+func (c ChatId) Clone() ChatId {
+	var cloned ChatId
+	copy(cloned[:], c[:])
+	return cloned
+}
+
 // String returns the string representation of a ChatId
 func (c ChatId) String() string {
 	return hex.EncodeToString(c[:])
@@ -100,6 +107,13 @@ func (m MemberId) Validate() error {
 	}
 
 	return nil
+}
+
+// Clone clones a chat member ID
+func (m MemberId) Clone() MemberId {
+	var cloned MemberId
+	copy(cloned[:], m[:])
+	return cloned
 }
 
 // String returns the string representation of a MemberId
@@ -216,6 +230,13 @@ func (m MessageId) Validate() error {
 	}
 
 	return nil
+}
+
+// Clone clones a chat message ID
+func (m MessageId) Clone() MessageId {
+	var cloned MessageId
+	copy(cloned[:], m[:])
+	return cloned
 }
 
 // String returns the string representation of a MessageId
