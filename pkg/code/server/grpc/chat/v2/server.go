@@ -395,13 +395,11 @@ func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *c
 		"owner_account": owner.PublicKey().ToBase58(),
 	})
 
-	cursorValue := chat.GenerateMessageIdAtTime(time.Now().Add(2 * time.Second))
-
 	protoChatMessages, err := s.getProtoChatMessages(
 		ctx,
 		chatId,
 		owner,
-		query.WithCursor(cursorValue[:]),
+		query.WithCursor(query.EmptyCursor),
 		query.WithDirection(query.Descending),
 		query.WithLimit(flushMessageCount),
 	)
