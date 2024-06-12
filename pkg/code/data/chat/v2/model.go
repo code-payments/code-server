@@ -102,7 +102,7 @@ type MessagesById []*MessageRecord
 func (a MessagesById) Len() int      { return len(a) }
 func (a MessagesById) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a MessagesById) Less(i, j int) bool {
-	return a[i].MessageId.Before(a[i].MessageId)
+	return a[i].MessageId.Before(a[j].MessageId)
 }
 
 // GetChatIdFromProto gets a chat ID from the protobuf variant
