@@ -38,7 +38,6 @@ const (
 	flushMessageCount      = 100
 )
 
-// todo: Ensure all relevant logging fields are set
 type server struct {
 	log *logrus.Entry
 
