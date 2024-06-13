@@ -80,6 +80,34 @@ func (s *store) GetAllMembersByChatId(_ context.Context, chatId chat.ChatId) ([]
 	return cloneMemberRecords(items), nil
 }
 
+// GetAllMembersByPlatformId implements chat.store.GetAllMembersByPlatformId
+func (s *store) GetAllMembersByPlatformId(_ context.Context, platform chat.Platform, platformId string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findMembersByPlatformId(platform, platformId)
+	items, err := s.getMemberRecordPage(items, cursor, direction, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(items) == 0 {
+		return nil, chat.ErrMemberNotFound
+	}
+	return cloneMemberRecords(items), nil
+}
+
+// GetUnreadCount implements chat.store.GetUnreadCount
+func (s *store) GetUnreadCount(_ context.Context, chatId chat.ChatId, readPointer chat.MessageId) (uint32, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findMessagesByChatId(chatId)
+	items = s.filterMessagesAfter(items, readPointer)
+	items = s.filterNotifiedMessages(items)
+	return uint32(len(items)), nil
+}
+
 // GetAllMessagesByChatId implements chat.Store.GetAllMessagesByChatId
 func (s *store) GetAllMessagesByChatId(_ context.Context, chatId chat.ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MessageRecord, error) {
 	s.mu.Lock()
@@ -296,6 +324,55 @@ func (s *store) findMembersByChatId(chatId chat.ChatId) []*chat.MemberRecord {
 	return res
 }
 
+func (s *store) findMembersByPlatformId(platform chat.Platform, platformId string) []*chat.MemberRecord {
+	var res []*chat.MemberRecord
+	for _, item := range s.memberRecords {
+		if platform == item.Platform && platformId == item.PlatformId {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (s *store) getMemberRecordPage(items []*chat.MemberRecord, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+
+	var memberIdCursor *uint64
+	if len(cursor) > 0 {
+		cursorValue := query.FromCursor(cursor)
+		memberIdCursor = &cursorValue
+	}
+
+	var res []*chat.MemberRecord
+	if memberIdCursor == nil {
+		res = items
+	} else {
+		for _, item := range items {
+			if item.Id > int64(*memberIdCursor) && direction == query.Ascending {
+				res = append(res, item)
+			}
+
+			if item.Id < int64(*memberIdCursor) && direction == query.Descending {
+				res = append(res, item)
+			}
+		}
+	}
+
+	if direction == query.Ascending {
+		sort.Sort(chat.MembersById(res))
+	} else {
+		sort.Sort(sort.Reverse(chat.MembersById(res)))
+	}
+
+	if len(res) >= int(limit) {
+		return res[:limit], nil
+	}
+
+	return res, nil
+}
+
 func (s *store) findMessage(data *chat.MessageRecord) *chat.MessageRecord {
 	for _, item := range s.messageRecords {
 		if data.Id == item.Id {
@@ -322,6 +399,26 @@ func (s *store) findMessagesByChatId(chatId chat.ChatId) []*chat.MessageRecord {
 	var res []*chat.MessageRecord
 	for _, item := range s.messageRecords {
 		if bytes.Equal(chatId[:], item.ChatId[:]) {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (s *store) filterMessagesAfter(items []*chat.MessageRecord, pointer chat.MessageId) []*chat.MessageRecord {
+	var res []*chat.MessageRecord
+	for _, item := range items {
+		if item.MessageId.After(pointer) {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (s *store) filterNotifiedMessages(items []*chat.MessageRecord) []*chat.MessageRecord {
+	var res []*chat.MessageRecord
+	for _, item := range items {
+		if !item.IsSilent {
 			res = append(res, item)
 		}
 	}
@@ -358,9 +455,9 @@ func (s *store) getMessageRecordPage(items []*chat.MessageRecord, cursor query.C
 	}
 
 	if direction == query.Ascending {
-		sort.Sort(chat.MessagesById(res))
+		sort.Sort(chat.MessagesByMessageId(res))
 	} else {
-		sort.Sort(sort.Reverse(chat.MessagesById(res)))
+		sort.Sort(sort.Reverse(chat.MessagesByMessageId(res)))
 	}
 
 	if len(res) >= int(limit) {

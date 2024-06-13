@@ -33,10 +33,17 @@ type Store interface {
 	// todo: Add paging when we introduce group chats
 	GetAllMembersByChatId(ctx context.Context, chatId ChatId) ([]*MemberRecord, error)
 
+	// GetAllMembersByPlatformId gets all members for a given platform user across
+	// all chats
+	GetAllMembersByPlatformId(ctx context.Context, platform Platform, platformId string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MemberRecord, error)
+
 	// GetAllMessagesByChatId gets all messages for a given chat
 	//
 	// Note: Cursor is a message ID
 	GetAllMessagesByChatId(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
+
+	// GetUnreadCount gets the unread message count for a chat ID at a read pointer
+	GetUnreadCount(ctx context.Context, chatId ChatId, readPointer MessageId) (uint32, error)
 
 	// PutChat creates a new chat
 	PutChat(ctx context.Context, record *ChatRecord) error
