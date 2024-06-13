@@ -98,12 +98,13 @@ func (s *store) GetAllMembersByPlatformId(_ context.Context, platform chat.Platf
 }
 
 // GetUnreadCount implements chat.store.GetUnreadCount
-func (s *store) GetUnreadCount(_ context.Context, chatId chat.ChatId, readPointer chat.MessageId) (uint32, error) {
+func (s *store) GetUnreadCount(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, readPointer chat.MessageId) (uint32, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	items := s.findMessagesByChatId(chatId)
 	items = s.filterMessagesAfter(items, readPointer)
+	items = s.filterMessagesNotSentBy(items, memberId)
 	items = s.filterNotifiedMessages(items)
 	return uint32(len(items)), nil
 }
@@ -408,6 +409,16 @@ func (s *store) filterMessagesAfter(items []*chat.MessageRecord, pointer chat.Me
 	var res []*chat.MessageRecord
 	for _, item := range items {
 		if item.MessageId.After(pointer) {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+func (s *store) filterMessagesNotSentBy(items []*chat.MessageRecord, sender chat.MemberId) []*chat.MessageRecord {
+	var res []*chat.MessageRecord
+	for _, item := range items {
+		if item.Sender == nil || !bytes.Equal(item.Sender[:], sender[:]) {
 			res = append(res, item)
 		}
 	}
