@@ -8,12 +8,12 @@ import (
 
 	"github.com/mr-tron/base58"
 
-	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var (
@@ -66,7 +66,7 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, useCase 
 		defer globalNonceLock.Unlock()
 
 		randomRecord, err := data.GetRandomAvailableNonceByPurpose(ctx, useCase)
-		if err == nonce.ErrNonceNotFound {
+		if errors.Is(err, nonce.ErrNonceNotFound) {
 			return ErrNoAvailableNonces
 		} else if err != nil {
 			return err
@@ -77,14 +77,14 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, useCase 
 		lock = getNonceLock(record.Address)
 		lock.Lock()
 
-		// Refetch because the state could have changed by the time we got the lock
+		// Re-fetch because the state could have changed by the time we got the lock
 		record, err = data.GetNonce(ctx, record.Address)
 		if err != nil {
 			lock.Unlock()
 			return err
 		}
 
-		if record.State != nonce.StateAvailable {
+		if !record.IsAvailable() {
 			// Unlock and try again
 			lock.Unlock()
 			return errors.New("selected nonce that became unavailable")
@@ -105,6 +105,8 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, useCase 
 
 		// Reserve the nonce for use with a fulfillment
 		record.State = nonce.StateReserved
+		record.ClaimNodeId = ""
+		record.ClaimExpiresAt = time.UnixMilli(0)
 		err = data.SaveNonce(ctx, record)
 		if err != nil {
 			lock.Unlock()
@@ -212,12 +214,15 @@ func (n *SelectedNonce) MarkReservedWithSignature(ctx context.Context, sig strin
 		return n.data.SaveNonce(ctx, n.record)
 	}
 
-	if n.record.State != nonce.StateAvailable {
+	if !n.record.IsAvailable() {
 		return errors.New("nonce must be available to reserve")
 	}
 
 	n.record.State = nonce.StateReserved
 	n.record.Signature = sig
+	n.record.ClaimNodeId = ""
+	n.record.ClaimExpiresAt = time.UnixMilli(0)
+
 	return n.data.SaveNonce(ctx, n.record)
 }
 
@@ -250,8 +255,8 @@ func (n *SelectedNonce) UpdateSignature(ctx context.Context, sig string) error {
 
 // ReleaseIfNotReserved makes a nonce available if it hasn't been reserved with
 // a signature. It's recommended to call this in tandem with Unlock when the
-// caller knows it's safe to go from the reserved to available state (ie. don't
-// use this in uprade flows!).
+// caller knows it's safe to go from the reserved to available state (i.e. don't
+// use this in upgrade flows!).
 func (n *SelectedNonce) ReleaseIfNotReserved() error {
 	n.localLock.Lock()
 	defer n.localLock.Unlock()
@@ -262,6 +267,12 @@ func (n *SelectedNonce) ReleaseIfNotReserved() error {
 
 	if n.record.State == nonce.StateAvailable {
 		return nil
+	}
+
+	if n.record.State == nonce.StateClaimed {
+		n.record.State = nonce.StateAvailable
+		n.record.ClaimNodeId = ""
+		n.record.ClaimExpiresAt = time.UnixMilli(0)
 	}
 
 	// A nonce is not fully reserved if it's state is reserved, but there is no
