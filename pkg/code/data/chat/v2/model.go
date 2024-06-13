@@ -114,7 +114,43 @@ func (a MessagesByMessageId) Less(i, j int) bool {
 }
 
 // GetChatTypeFromProto gets a chat type from the protobuf variant
-func GetChatTypeFromProto(proto chatpb.ChatType) ChatType {
+func GetChatTypeFromProto(proto chatpb.ChatMetadata_Kind) ChatType {
+	switch proto {
+	case chatpb.ChatMetadata_NOTIFICATION:
+		return ChatTypeNotification
+	case chatpb.ChatMetadata_TWO_WAY:
+		return ChatTypeTwoWay
+	default:
+		return ChatTypeUnknown
+	}
+}
+
+// ToProto returns the proto representation of the chat type
+func (c ChatType) ToProto() chatpb.ChatMetadata_Kind {
+	switch c {
+	case ChatTypeNotification:
+		return chatpb.ChatMetadata_NOTIFICATION
+	case ChatTypeTwoWay:
+		return chatpb.ChatMetadata_TWO_WAY
+	default:
+		return chatpb.ChatMetadata_UNKNOWN
+	}
+}
+
+// String returns the string representation of the chat type
+func (c ChatType) String() string {
+	switch c {
+	case ChatTypeNotification:
+		return "notification"
+	case ChatTypeTwoWay:
+		return "two-way"
+	default:
+		return "unknown"
+	}
+}
+
+// GetPointerTypeFromProto gets a chat ID from the protobuf variant
+func GetPointerTypeFromProto(proto chatpb.Pointer_Kind) PointerType {
 	switch proto {
 	case chatpb.ChatType_NOTIFICATION:
 		return ChatTypeNotification
@@ -192,22 +228,12 @@ func (p PointerType) String() string {
 }
 
 // ToProto returns the proto representation of the platform
-func GetPlatformFromProto(proto chatpb.Platform) Platform {
-	switch proto {
-	case chatpb.Platform_TWITTER:
-		return PlatformTwitter
-	default:
-		return PlatformUnknown
-	}
-}
-
-// ToProto returns the proto representation of the platform
-func (p Platform) ToProto() chatpb.Platform {
+func (p Platform) ToProto() chatpb.ChatMemberIdentity_Platform {
 	switch p {
 	case PlatformTwitter:
-		return chatpb.Platform_TWITTER
+		return chatpb.ChatMemberIdentity_TWITTER
 	default:
-		return chatpb.Platform_UNKNOWN_PLATFORM
+		return chatpb.ChatMemberIdentity_UNKNOWN
 	}
 }
 

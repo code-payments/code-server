@@ -82,12 +82,12 @@ func (s *store) GetAllMembersByChatId(_ context.Context, chatId chat.ChatId) ([]
 	return cloneMemberRecords(items), nil
 }
 
-// GetAllMembersByPlatformIds implements chat.store.GetAllMembersByPlatformIds
-func (s *store) GetAllMembersByPlatformIds(_ context.Context, idByPlatform map[chat.Platform]string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
+// GetAllMembersByPlatformId implements chat.store.GetAllMembersByPlatformId
+func (s *store) GetAllMembersByPlatformId(_ context.Context, platform chat.Platform, platformId string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findMembersByPlatformIds(idByPlatform)
+	items := s.findMembersByPlatformId(platform, platformId)
 	items, err := s.getMemberRecordPage(items, cursor, direction, limit)
 	if err != nil {
 		return nil, err
@@ -100,13 +100,12 @@ func (s *store) GetAllMembersByPlatformIds(_ context.Context, idByPlatform map[c
 }
 
 // GetUnreadCount implements chat.store.GetUnreadCount
-func (s *store) GetUnreadCount(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, readPointer chat.MessageId) (uint32, error) {
+func (s *store) GetUnreadCount(_ context.Context, chatId chat.ChatId, readPointer chat.MessageId) (uint32, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	items := s.findMessagesByChatId(chatId)
 	items = s.filterMessagesAfter(items, readPointer)
-	items = s.filterMessagesNotSentBy(items, memberId)
 	items = s.filterNotifiedMessages(items)
 	return uint32(len(items)), nil
 }
@@ -351,15 +350,10 @@ func (s *store) findMembersByChatId(chatId chat.ChatId) []*chat.MemberRecord {
 	return res
 }
 
-func (s *store) findMembersByPlatformIds(idByPlatform map[chat.Platform]string) []*chat.MemberRecord {
+func (s *store) findMembersByPlatformId(platform chat.Platform, platformId string) []*chat.MemberRecord {
 	var res []*chat.MemberRecord
 	for _, item := range s.memberRecords {
-		platformId, ok := idByPlatform[item.Platform]
-		if !ok {
-			continue
-		}
-
-		if platformId == item.PlatformId {
+		if platform == item.Platform && platformId == item.PlatformId {
 			res = append(res, item)
 		}
 	}
@@ -441,16 +435,6 @@ func (s *store) filterMessagesAfter(items []*chat.MessageRecord, pointer chat.Me
 	var res []*chat.MessageRecord
 	for _, item := range items {
 		if item.MessageId.After(pointer) {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) filterMessagesNotSentBy(items []*chat.MessageRecord, sender chat.MemberId) []*chat.MessageRecord {
-	var res []*chat.MessageRecord
-	for _, item := range items {
-		if item.Sender == nil || !bytes.Equal(item.Sender[:], sender[:]) {
 			res = append(res, item)
 		}
 	}
