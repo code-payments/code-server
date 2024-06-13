@@ -42,8 +42,8 @@ type Store interface {
 	// Note: Cursor is a message ID
 	GetAllMessagesByChatId(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
 
-	// GetUnreadCount gets the unread message count for a chat ID at a read pointer
-	GetUnreadCount(ctx context.Context, chatId ChatId, readPointer MessageId) (uint32, error)
+	// GetUnreadCount gets the unread message count for a chat ID at a read pointer for a given chat member
+	GetUnreadCount(ctx context.Context, chatId ChatId, memberId MemberId, readPointer MessageId) (uint32, error)
 
 	// PutChat creates a new chat
 	PutChat(ctx context.Context, record *ChatRecord) error

@@ -255,7 +255,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			if platformUserMemberRecord.ReadPointer != nil {
 				readPointer = *platformUserMemberRecord.ReadPointer
 			}
-			unreadCount, err := s.data.GetChatUnreadCountV2(ctx, chatRecord.ChatId, readPointer)
+			unreadCount, err := s.data.GetChatUnreadCountV2(ctx, chatRecord.ChatId, platformUserMemberRecord.MemberId, readPointer)
 			if err != nil {
 				log.WithError(err).Warn("failure getting unread count")
 				return nil, status.Error(codes.Internal, "")
