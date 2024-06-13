@@ -406,7 +406,7 @@ type DatabaseData interface {
 	PutChatV2(ctx context.Context, record *chat_v2.ChatRecord) error
 	PutChatMemberV2(ctx context.Context, record *chat_v2.MemberRecord) error
 	PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error
-	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error
+	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) (bool, error)
 	SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error
 	SetChatSubscriptionStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isSubscribed bool) error
 
@@ -1504,7 +1504,7 @@ func (dp *DatabaseProvider) PutChatMemberV2(ctx context.Context, record *chat_v2
 func (dp *DatabaseProvider) PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error {
 	return dp.chatv2.PutMessage(ctx, record)
 }
-func (dp *DatabaseProvider) AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) error {
+func (dp *DatabaseProvider) AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) (bool, error) {
 	return dp.chatv2.AdvancePointer(ctx, chatId, memberId, pointerType, pointer)
 }
 func (dp *DatabaseProvider) SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error {

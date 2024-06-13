@@ -851,20 +851,21 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	// Note: Guarantees that pointer will never be advanced to some point in the past
-	err = s.data.AdvanceChatPointerV2(ctx, chatId, memberId, pointerType, pointerValue)
+	isAdvanced, err := s.data.AdvanceChatPointerV2(ctx, chatId, memberId, pointerType, pointerValue)
 	if err != nil {
 		log.WithError(err).Warn("failure advancing chat pointer")
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	event := &chatpb.ChatStreamEvent{
-		Type: &chatpb.ChatStreamEvent_Pointer{
-			Pointer: req.Pointer,
-		},
-	}
-	if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
-		log.WithError(err).Warn("failure notifying chat event")
+	if isAdvanced {
+		event := &chatpb.ChatStreamEvent{
+			Type: &chatpb.ChatStreamEvent_Pointer{
+				Pointer: req.Pointer,
+			},
+		}
+		if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
+			log.WithError(err).Warn("failure notifying chat event")
+		}
 	}
 
 	return &chatpb.AdvancePointerResponse{

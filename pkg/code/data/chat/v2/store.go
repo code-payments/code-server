@@ -55,7 +55,7 @@ type Store interface {
 	PutMessage(ctx context.Context, record *MessageRecord) error
 
 	// AdvancePointer advances a chat pointer for a chat member
-	AdvancePointer(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) error
+	AdvancePointer(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) (bool, error)
 
 	// SetMuteState updates the mute state for a chat member
 	SetMuteState(ctx context.Context, chatId ChatId, memberId MemberId, isMuted bool) error

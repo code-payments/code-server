@@ -201,11 +201,11 @@ func (s *store) PutMessage(_ context.Context, record *chat.MessageRecord) error 
 }
 
 // AdvancePointer implements chat.Store.AdvancePointer
-func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, pointerType chat.PointerType, pointer chat.MessageId) error {
+func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, pointerType chat.PointerType, pointer chat.MessageId) (bool, error) {
 	switch pointerType {
 	case chat.PointerTypeDelivered, chat.PointerTypeRead:
 	default:
-		return chat.ErrInvalidPointerType
+		return false, chat.ErrInvalidPointerType
 	}
 
 	s.mu.Lock()
@@ -213,7 +213,7 @@ func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId c
 
 	item := s.findMemberById(chatId, memberId)
 	if item == nil {
-		return chat.ErrMemberNotFound
+		return false, chat.ErrMemberNotFound
 	}
 
 	var currentPointer *chat.MessageId
@@ -224,20 +224,19 @@ func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId c
 		currentPointer = item.ReadPointer
 	}
 
-	if currentPointer != nil && currentPointer.After(pointer) {
-		return nil
-	}
+	if currentPointer == nil || currentPointer.Before(pointer) {
+		switch pointerType {
+		case chat.PointerTypeDelivered:
+			cloned := pointer.Clone()
+			item.DeliveryPointer = &cloned
+		case chat.PointerTypeRead:
+			cloned := pointer.Clone()
+			item.ReadPointer = &cloned
+		}
 
-	switch pointerType {
-	case chat.PointerTypeDelivered:
-		cloned := pointer.Clone()
-		item.DeliveryPointer = &cloned
-	case chat.PointerTypeRead:
-		cloned := pointer.Clone()
-		item.ReadPointer = &cloned
+		return true, nil
 	}
-
-	return nil
+	return false, nil
 }
 
 // SetMuteState implements chat.Store.SetMuteState
