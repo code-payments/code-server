@@ -114,11 +114,11 @@ func (a MessagesByMessageId) Less(i, j int) bool {
 }
 
 // GetChatTypeFromProto gets a chat type from the protobuf variant
-func GetChatTypeFromProto(proto chatpb.ChatMetadata_Kind) ChatType {
+func GetChatTypeFromProto(proto chatpb.ChatType) ChatType {
 	switch proto {
-	case chatpb.ChatMetadata_NOTIFICATION:
+	case chatpb.ChatType_NOTIFICATION:
 		return ChatTypeNotification
-	case chatpb.ChatMetadata_TWO_WAY:
+	case chatpb.ChatType_TWO_WAY:
 		return ChatTypeTwoWay
 	default:
 		return ChatTypeUnknown
@@ -126,14 +126,14 @@ func GetChatTypeFromProto(proto chatpb.ChatMetadata_Kind) ChatType {
 }
 
 // ToProto returns the proto representation of the chat type
-func (c ChatType) ToProto() chatpb.ChatMetadata_Kind {
+func (c ChatType) ToProto() chatpb.ChatType {
 	switch c {
 	case ChatTypeNotification:
-		return chatpb.ChatMetadata_NOTIFICATION
+		return chatpb.ChatType_NOTIFICATION
 	case ChatTypeTwoWay:
-		return chatpb.ChatMetadata_TWO_WAY
+		return chatpb.ChatType_TWO_WAY
 	default:
-		return chatpb.ChatMetadata_UNKNOWN
+		return chatpb.ChatType_UNKNOWN_CHAT_TYPE
 	}
 }
 
@@ -150,13 +150,13 @@ func (c ChatType) String() string {
 }
 
 // GetPointerTypeFromProto gets a chat ID from the protobuf variant
-func GetPointerTypeFromProto(proto chatpb.Pointer_Kind) PointerType {
+func GetPointerTypeFromProto(proto chatpb.PointerType) PointerType {
 	switch proto {
-	case chatpb.Pointer_SENT:
+	case chatpb.PointerType_SENT:
 		return PointerTypeSent
-	case chatpb.Pointer_DELIVERED:
+	case chatpb.PointerType_DELIVERED:
 		return PointerTypeDelivered
-	case chatpb.Pointer_READ:
+	case chatpb.PointerType_READ:
 		return PointerTypeRead
 	default:
 		return PointerTypeUnknown
@@ -164,16 +164,16 @@ func GetPointerTypeFromProto(proto chatpb.Pointer_Kind) PointerType {
 }
 
 // ToProto returns the proto representation of the pointer type
-func (p PointerType) ToProto() chatpb.Pointer_Kind {
+func (p PointerType) ToProto() chatpb.PointerType {
 	switch p {
 	case PointerTypeSent:
-		return chatpb.Pointer_SENT
+		return chatpb.PointerType_SENT
 	case PointerTypeDelivered:
-		return chatpb.Pointer_DELIVERED
+		return chatpb.PointerType_DELIVERED
 	case PointerTypeRead:
-		return chatpb.Pointer_READ
+		return chatpb.PointerType_READ
 	default:
-		return chatpb.Pointer_UNKNOWN
+		return chatpb.PointerType_UNKNOWN_POINTER_TYPE
 	}
 }
 
