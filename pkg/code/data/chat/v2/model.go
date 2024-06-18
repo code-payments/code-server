@@ -192,12 +192,22 @@ func (p PointerType) String() string {
 }
 
 // ToProto returns the proto representation of the platform
-func (p Platform) ToProto() chatpb.ChatMemberIdentity_Platform {
+func GetPlatformFromProto(proto chatpb.Platform) Platform {
+	switch proto {
+	case chatpb.Platform_TWITTER:
+		return PlatformTwitter
+	default:
+		return PlatformUnknown
+	}
+}
+
+// ToProto returns the proto representation of the platform
+func (p Platform) ToProto() chatpb.Platform {
 	switch p {
 	case PlatformTwitter:
-		return chatpb.ChatMemberIdentity_TWITTER
+		return chatpb.Platform_TWITTER
 	default:
-		return chatpb.ChatMemberIdentity_UNKNOWN
+		return chatpb.Platform_UNKNOWN_PLATFORM
 	}
 }
 

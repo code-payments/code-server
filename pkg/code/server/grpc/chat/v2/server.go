@@ -520,7 +520,7 @@ func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *
 }
 
 func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
-	log := s.log.WithField("method", "SendMessage")
+	log := s.log.WithField("method", "StartChat")
 	log = client.InjectLoggingMetadata(ctx, log)
 
 	owner, err := common.NewAccountFromProto(req.Owner)
@@ -1043,17 +1043,20 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	chatLock.Lock()
 	defer chatLock.Unlock()
 
-	chatMessage := newProtoChatMessage(
-		memberId,
-		&chatpb.Content{
-			Type: &chatpb.Content_IdentityRevealed{
-				IdentityRevealed: &chatpb.IdentityRevealedContent{
-					MemberId: req.MemberId,
-					Identity: req.Identity,
-				},
+	messageId := chat.GenerateMessageId()
+	ts, _ := messageId.GetTimestamp()
+
+	chatMessage := &chatpb.ChatMessage{
+		MessageId: messageId.ToProto(),
+		SenderId:  req.MemberId,
+		Content: []*chatpb.Content{
+			{
+				Type: &chatpb.Content_IdentityRevealed{},
 			},
 		},
-	)
+		Ts:     timestamppb.New(ts),
+		Cursor: &chatpb.Cursor{Value: messageId[:]},
+	}
 
 	err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 		err = s.data.UpgradeChatMemberIdentityV2(ctx, chatId, memberId, platform, req.Identity.Username)
@@ -1073,14 +1076,22 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	})
 
 	if err == nil {
-		s.onPersistChatMessage(log, chatId, chatMessage)
+		event := &chatpb.ChatStreamEvent{
+			Type: &chatpb.ChatStreamEvent_Message{
+				Message: chatMessage,
+			},
+		}
+		if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
+			log.WithError(err).Warn("failure notifying chat event")
+		}
+
+		// todo: send the push
 	}
 
 	switch err {
 	case nil:
 		return &chatpb.RevealIdentityResponse{
-			Result:  chatpb.RevealIdentityResponse_OK,
-			Message: chatMessage,
+			Result: chatpb.RevealIdentityResponse_OK,
 		}, nil
 	case chat.ErrMemberIdentityAlreadyUpgraded:
 		return &chatpb.RevealIdentityResponse{
@@ -1140,7 +1151,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
-	} else if !isChatMember {
+	} else if !ownsChatMember {
 		return &chatpb.SetMuteStateResponse{
 			Result: chatpb.SetMuteStateResponse_DENIED,
 		}, nil
@@ -1461,7 +1472,7 @@ func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (m
 	return identities, nil
 }
 
-func (s *server) ownsChatMember(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
+func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
 	memberRecord, err := s.data.GetChatMemberByIdV2(ctx, chatId, memberId)
 	switch err {
 	case nil:
