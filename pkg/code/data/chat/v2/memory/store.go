@@ -80,12 +80,12 @@ func (s *store) GetAllMembersByChatId(_ context.Context, chatId chat.ChatId) ([]
 	return cloneMemberRecords(items), nil
 }
 
-// GetAllMembersByPlatformId implements chat.store.GetAllMembersByPlatformId
-func (s *store) GetAllMembersByPlatformId(_ context.Context, platform chat.Platform, platformId string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
+// GetAllMembersByPlatformIds implements chat.store.GetAllMembersByPlatformIds
+func (s *store) GetAllMembersByPlatformIds(_ context.Context, idByPlatform map[chat.Platform]string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findMembersByPlatformId(platform, platformId)
+	items := s.findMembersByPlatformIds(idByPlatform)
 	items, err := s.getMemberRecordPage(items, cursor, direction, limit)
 	if err != nil {
 		return nil, err
@@ -324,10 +324,15 @@ func (s *store) findMembersByChatId(chatId chat.ChatId) []*chat.MemberRecord {
 	return res
 }
 
-func (s *store) findMembersByPlatformId(platform chat.Platform, platformId string) []*chat.MemberRecord {
+func (s *store) findMembersByPlatformIds(idByPlatform map[chat.Platform]string) []*chat.MemberRecord {
 	var res []*chat.MemberRecord
 	for _, item := range s.memberRecords {
-		if platform == item.Platform && platformId == item.PlatformId {
+		platformId, ok := idByPlatform[item.Platform]
+		if !ok {
+			continue
+		}
+
+		if platformId == item.PlatformId {
 			res = append(res, item)
 		}
 	}

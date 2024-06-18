@@ -400,7 +400,7 @@ type DatabaseData interface {
 	GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error)
 	GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error)
 	GetAllChatMembersV2(ctx context.Context, chatId chat_v2.ChatId) ([]*chat_v2.MemberRecord, error)
-	GetPlatformUserChatMembershipV2(ctx context.Context, platform chat_v2.Platform, platformId string, opts ...query.Option) ([]*chat_v2.MemberRecord, error)
+	GetPlatformUserChatMembershipV2(ctx context.Context, idByPlatform map[chat_v2.Platform]string, opts ...query.Option) ([]*chat_v2.MemberRecord, error)
 	GetAllChatMessagesV2(ctx context.Context, chatId chat_v2.ChatId, opts ...query.Option) ([]*chat_v2.MessageRecord, error)
 	GetChatUnreadCountV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, readPointer chat_v2.MessageId) (uint32, error)
 	PutChatV2(ctx context.Context, record *chat_v2.ChatRecord) error
@@ -1478,12 +1478,12 @@ func (dp *DatabaseProvider) GetChatMessageByIdV2(ctx context.Context, chatId cha
 func (dp *DatabaseProvider) GetAllChatMembersV2(ctx context.Context, chatId chat_v2.ChatId) ([]*chat_v2.MemberRecord, error) {
 	return dp.chatv2.GetAllMembersByChatId(ctx, chatId)
 }
-func (dp *DatabaseProvider) GetPlatformUserChatMembershipV2(ctx context.Context, platform chat_v2.Platform, platformId string, opts ...query.Option) ([]*chat_v2.MemberRecord, error) {
+func (dp *DatabaseProvider) GetPlatformUserChatMembershipV2(ctx context.Context, idByPlatform map[chat_v2.Platform]string, opts ...query.Option) ([]*chat_v2.MemberRecord, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
 	}
-	return dp.chatv2.GetAllMembersByPlatformId(ctx, platform, platformId, req.Cursor, req.SortBy, req.Limit)
+	return dp.chatv2.GetAllMembersByPlatformIds(ctx, idByPlatform, req.Cursor, req.SortBy, req.Limit)
 }
 func (dp *DatabaseProvider) GetAllChatMessagesV2(ctx context.Context, chatId chat_v2.ChatId, opts ...query.Option) ([]*chat_v2.MessageRecord, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
