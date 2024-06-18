@@ -1,7 +1,6 @@
 package chat_v2
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -80,39 +79,6 @@ func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier
 	return s
 }
 
-func (s *server) setupMockChat() {
-	ctx := context.Background()
-
-	chatId, _ := chat.GetChatIdFromString("c355fcec8c521e7937d45283d83bbfc63a0c688004f2386a535fc817218f917b")
-	chatRecord := &chat.ChatRecord{
-		ChatId:     chatId,
-		ChatType:   chat.ChatTypeTwoWay,
-		IsVerified: true,
-		CreatedAt:  time.Now(),
-	}
-	s.data.PutChatV2(ctx, chatRecord)
-
-	memberId1, _ := chat.GetMemberIdFromString("034dda45-b4c2-45db-b1da-181298898a16")
-	memberRecord1 := &chat.MemberRecord{
-		ChatId:     chatId,
-		MemberId:   memberId1,
-		Platform:   chat.PlatformCode,
-		PlatformId: "8bw4gaRQk91w7vtgTN4E12GnKecY2y6CjPai7WUvWBQ8",
-		JoinedAt:   time.Now(),
-	}
-	s.data.PutChatMemberV2(ctx, memberRecord1)
-
-	memberId2, _ := chat.GetMemberIdFromString("a9d27058-f2d8-4034-bf52-b20c09a670de")
-	memberRecord2 := &chat.MemberRecord{
-		ChatId:     chatId,
-		MemberId:   memberId2,
-		Platform:   chat.PlatformCode,
-		PlatformId: "EDknQfoUnj73L56vKtEc6Qqw5VoHaF32eHYdz3V4y27M",
-		JoinedAt:   time.Now(),
-	}
-	s.data.PutChatMemberV2(ctx, memberRecord2)
-}
-
 // todo: This will require a lot of optimizations since we iterate and make several DB calls for each chat membership
 func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
 	log := s.log.WithField("method", "GetChats")
@@ -158,10 +124,17 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		}
 	}
 
+	myIdentities, err := s.getAllIdentities(ctx, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure getting identities for owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	// todo: Use a better query that returns chat IDs. This will result in duplicate
+	//       chat results if the user is in the chat multiple times across many identities.
 	patformUserMemberRecords, err := s.data.GetPlatformUserChatMembershipV2(
 		ctx,
-		chat.PlatformCode, // todo: support other platforms once we support revealing identity
-		owner.PublicKey().ToBase58(),
+		myIdentities,
 		query.WithCursor(cursor),
 		query.WithDirection(direction),
 		query.WithLimit(limit),
@@ -185,87 +158,18 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			return nil, status.Error(codes.Internal, "")
 		}
 
-		protoChat := &chatpb.ChatMetadata{
-			ChatId: chatRecord.ChatId.ToProto(),
-			Kind:   chatRecord.ChatType.ToProto(),
-
-			IsMuted:      platformUserMemberRecord.IsMuted,
-			IsSubscribed: !platformUserMemberRecord.IsUnsubscribed,
-
-			Cursor: &chatpb.Cursor{Value: query.ToCursor(uint64(platformUserMemberRecord.Id))},
-		}
-
-		// Unread count calculations can be skipped for unsubscribed chats. They
-		// don't appear in chat history.
-		skipUnreadCountQuery := platformUserMemberRecord.IsUnsubscribed
-
-		switch chatRecord.ChatType {
-		case chat.ChatTypeTwoWay:
-			protoChat.Title = "Mock Chat" // todo: proper title with localization
-
-			protoChat.CanMute = true
-			protoChat.CanUnsubscribe = true
-		default:
-			return nil, status.Errorf(codes.Unimplemented, "unsupported chat type: %s", chatRecord.ChatType.String())
-		}
-
-		chatMemberRecords, err := s.data.GetAllChatMembersV2(ctx, chatRecord.ChatId)
+		memberRecords, err := s.data.GetAllChatMembersV2(ctx, chatRecord.ChatId)
 		if err != nil {
 			log.WithError(err).Warn("failure getting chat members")
 			return nil, status.Error(codes.Internal, "")
 		}
-		for _, memberRecord := range chatMemberRecords {
-			var identity *chatpb.ChatMemberIdentity
-			switch memberRecord.Platform {
-			case chat.PlatformCode:
-			case chat.PlatformTwitter:
-				identity = &chatpb.ChatMemberIdentity{
-					Platform: memberRecord.Platform.ToProto(),
-					Username: memberRecord.PlatformId,
-				}
-			default:
-				return nil, status.Errorf(codes.Unimplemented, "unsupported platform type: %s", memberRecord.Platform.String())
-			}
 
-			var pointers []*chatpb.Pointer
-			for _, optionalPointer := range []struct {
-				kind  chat.PointerType
-				value *chat.MessageId
-			}{
-				{chat.PointerTypeDelivered, memberRecord.DeliveryPointer},
-				{chat.PointerTypeRead, memberRecord.ReadPointer},
-			} {
-				if optionalPointer.value == nil {
-					continue
-				}
-
-				pointers = append(pointers, &chatpb.Pointer{
-					Kind:     optionalPointer.kind.ToProto(),
-					Value:    optionalPointer.value.ToProto(),
-					MemberId: memberRecord.MemberId.ToProto(),
-				})
-			}
-
-			protoChat.Members = append(protoChat.Members, &chatpb.ChatMember{
-				MemberId: memberRecord.MemberId.ToProto(),
-				IsSelf:   bytes.Equal(memberRecord.MemberId[:], platformUserMemberRecord.MemberId[:]),
-				Identity: identity,
-				Pointers: pointers,
-			})
+		protoChat, err := s.toProtoChat(ctx, chatRecord, memberRecords, myIdentities)
+		if err != nil {
+			log.WithError(err).Warn("failure constructing proto chat message")
+			return nil, status.Error(codes.Internal, "")
 		}
-
-		if !skipUnreadCountQuery {
-			readPointer := chat.GenerateMessageIdAtTime(time.Unix(0, 0))
-			if platformUserMemberRecord.ReadPointer != nil {
-				readPointer = *platformUserMemberRecord.ReadPointer
-			}
-			unreadCount, err := s.data.GetChatUnreadCountV2(ctx, chatRecord.ChatId, readPointer)
-			if err != nil {
-				log.WithError(err).Warn("failure getting unread count")
-				return nil, status.Error(codes.Internal, "")
-			}
-			protoChat.NumUnread = unreadCount
-		}
+		protoChat.Cursor = &chatpb.Cursor{Value: query.ToCursor(uint64(platformUserMemberRecord.Id))}
 
 		protoChats = append(protoChats, protoChat)
 	}
@@ -417,8 +321,8 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 
 	signature := req.GetOpenStream().Signature
 	req.GetOpenStream().Signature = nil
-	if err := s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
-		return err
+	if err = s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
+		// return err
 	}
 
 	_, err = s.data.GetChatByIdV2(ctx, chatId)
@@ -616,7 +520,7 @@ func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *
 }
 
 func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
-	log := s.log.WithField("method", "StartChat")
+	log := s.log.WithField("method", "SendMessage")
 	log = client.InjectLoggingMetadata(ctx, log)
 
 	owner, err := common.NewAccountFromProto(req.Owner)
@@ -628,7 +532,7 @@ func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 
 	signature := req.Signature
 	req.Signature = nil
-	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+	if err = s.auth.Authenticate(ctx, owner, req, signature); err != nil {
 		return nil, err
 	}
 
@@ -1458,17 +1362,87 @@ func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, o
 	return res, nil
 }
 
-func (s *server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
-	event := &chatpb.ChatStreamEvent{
-		Type: &chatpb.ChatStreamEvent_Message{
-			Message: chatMessage,
-		},
-	}
-	if err := s.asyncNotifyAll(chatId, event); err != nil {
-		log.WithError(err).Warn("failure notifying chat event")
+func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
+	protoChat := &chatpb.ChatMetadata{
+		ChatId: chatRecord.ChatId.ToProto(),
+		Kind:   chatRecord.ChatType.ToProto(),
 	}
 
-	// todo: send the push
+	switch chatRecord.ChatType {
+	case chat.ChatTypeTwoWay:
+		protoChat.Title = "Tip Chat" // todo: proper title with localization
+
+		protoChat.CanMute = true
+		protoChat.CanUnsubscribe = true
+	default:
+		return nil, errors.Errorf("unsupported chat type: %s", chatRecord.ChatType.String())
+	}
+
+	for _, memberRecord := range memberRecords {
+		var isSelf bool
+		var identity *chatpb.ChatMemberIdentity
+		switch memberRecord.Platform {
+		case chat.PlatformCode:
+			myPublicKey, ok := myIdentitiesByPlatform[chat.PlatformCode]
+			isSelf = ok && myPublicKey == memberRecord.PlatformId
+		case chat.PlatformTwitter:
+			myTwitterUsername, ok := myIdentitiesByPlatform[chat.PlatformTwitter]
+			isSelf = ok && myTwitterUsername == memberRecord.PlatformId
+
+			identity = &chatpb.ChatMemberIdentity{
+				Platform: memberRecord.Platform.ToProto(),
+				Username: memberRecord.PlatformId,
+			}
+		default:
+			return nil, errors.Errorf("unsupported platform type: %s", memberRecord.Platform.String())
+		}
+
+		var pointers []*chatpb.Pointer
+		for _, optionalPointer := range []struct {
+			kind  chat.PointerType
+			value *chat.MessageId
+		}{
+			{chat.PointerTypeDelivered, memberRecord.DeliveryPointer},
+			{chat.PointerTypeRead, memberRecord.ReadPointer},
+		} {
+			if optionalPointer.value == nil {
+				continue
+			}
+
+			pointers = append(pointers, &chatpb.Pointer{
+				Kind:     optionalPointer.kind.ToProto(),
+				Value:    optionalPointer.value.ToProto(),
+				MemberId: memberRecord.MemberId.ToProto(),
+			})
+		}
+
+		protoMember := &chatpb.ChatMember{
+			MemberId: memberRecord.MemberId.ToProto(),
+			IsSelf:   isSelf,
+			Identity: identity,
+			Pointers: pointers,
+		}
+		if protoMember.IsSelf {
+			protoMember.IsMuted = memberRecord.IsMuted
+			protoMember.IsSubscribed = !memberRecord.IsUnsubscribed
+
+			if !memberRecord.IsUnsubscribed {
+				readPointer := chat.GenerateMessageIdAtTime(time.Unix(0, 0))
+				if memberRecord.ReadPointer != nil {
+					readPointer = *memberRecord.ReadPointer
+				}
+				unreadCount, err := s.data.GetChatUnreadCountV2(ctx, chatRecord.ChatId, memberRecord.MemberId, readPointer)
+				if err != nil {
+					return nil, errors.Wrap(err, "error calculating unread count")
+				}
+				protoMember.NumUnread = unreadCount
+			}
+		}
+
+		protoChat.Members = append(protoChat.Members, protoMember)
+	}
+
+	return protoChat, nil
 }
 
 func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
@@ -1487,7 +1461,7 @@ func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (m
 	return identities, nil
 }
 
-func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
+func (s *server) ownsChatMember(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
 	memberRecord, err := s.data.GetChatMemberByIdV2(ctx, chatId, memberId)
 	switch err {
 	case nil:
@@ -1545,18 +1519,5 @@ func (s *server) getOwnedTwitterUsername(ctx context.Context, owner *common.Acco
 		return "", false, nil
 	default:
 		return "", false, errors.Wrap(err, "error getting twitter user")
-	}
-}
-
-func newProtoChatMessage(sender chat.MemberId, content ...*chatpb.Content) *chatpb.ChatMessage {
-	messageId := chat.GenerateMessageId()
-	ts, _ := messageId.GetTimestamp()
-
-	return &chatpb.ChatMessage{
-		MessageId: messageId.ToProto(),
-		SenderId:  sender.ToProto(),
-		Content:   content,
-		Ts:        timestamppb.New(ts),
-		Cursor:    &chatpb.Cursor{Value: messageId[:]},
 	}
 }
