@@ -36,6 +36,8 @@ import (
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 
+// todo: resolve some common code for sending chat messages across RPCs
+
 const (
 	maxGetChatsPageSize    = 100
 	maxGetMessagesPageSize = 100
@@ -221,7 +223,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	ownsChatMember, err := s.ownsChatMemberWithoutRecord(ctx, chatId, memberId, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
@@ -337,7 +339,7 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 		return status.Error(codes.Internal, "")
 	}
 
-	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	ownsChatMember, err := s.ownsChatMemberWithoutRecord(ctx, chatId, memberId, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return status.Error(codes.Internal, "")
@@ -518,7 +520,7 @@ func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *
 }
 
 func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
-	log := s.log.WithField("method", "SendMessage")
+	log := s.log.WithField("method", "StartChat")
 	log = client.InjectLoggingMetadata(ctx, log)
 
 	owner, err := common.NewAccountFromProto(req.Owner)
@@ -751,7 +753,7 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		}, nil
 	}
 
-	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	ownsChatMember, err := s.ownsChatMemberWithoutRecord(ctx, chatId, memberId, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
@@ -910,7 +912,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	ownsChatMember, err := s.ownsChatMemberWithoutRecord(ctx, chatId, memberId, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
@@ -952,6 +954,171 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	return &chatpb.AdvancePointerResponse{
 		Result: chatpb.AdvancePointerResponse_OK,
 	}, nil
+}
+
+func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityRequest) (*chatpb.RevealIdentityResponse, error) {
+	log := s.log.WithField("method", "RevealIdentity")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	owner, err := common.NewAccountFromProto(req.Owner)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
+
+	chatId, err := chat.GetChatIdFromProto(req.ChatId)
+	if err != nil {
+		log.WithError(err).Warn("invalid chat id")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("chat_id", chatId.String())
+
+	memberId, err := chat.GetMemberIdFromProto(req.MemberId)
+	if err != nil {
+		log.WithError(err).Warn("invalid member id")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("member_id", memberId.String())
+
+	signature := req.Signature
+	req.Signature = nil
+	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+		return nil, err
+	}
+
+	platform := chat.GetPlatformFromProto(req.Identity.Platform)
+
+	log = log.WithFields(logrus.Fields{
+		"platform": platform.String(),
+		"username": req.Identity.Username,
+	})
+
+	_, err = s.data.GetChatByIdV2(ctx, chatId)
+	switch err {
+	case nil:
+	case chat.ErrChatNotFound:
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_CHAT_NOT_FOUND,
+		}, nil
+	default:
+		log.WithError(err).Warn("failure getting chat record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	memberRecord, err := s.data.GetChatMemberByIdV2(ctx, chatId, memberId)
+	switch err {
+	case nil:
+	case chat.ErrMemberNotFound:
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_DENIED,
+		}, nil
+	default:
+		log.WithError(err).Warn("failure getting member record")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	ownsChatMember, err := s.ownsChatMemberWithRecord(ctx, chatId, memberRecord, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure determing chat member ownership")
+		return nil, status.Error(codes.Internal, "")
+	} else if !ownsChatMember {
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_DENIED,
+		}, nil
+	}
+
+	switch platform {
+	case chat.PlatformTwitter:
+		ownsUsername, err := s.ownsTwitterUsername(ctx, owner, req.Identity.Username)
+		if err != nil {
+			log.WithError(err).Warn("failure determing twitter username ownership")
+			return nil, status.Error(codes.Internal, "")
+		} else if !ownsUsername {
+			return &chatpb.RevealIdentityResponse{
+				Result: chatpb.RevealIdentityResponse_DENIED,
+			}, nil
+		}
+	default:
+		return nil, status.Error(codes.InvalidArgument, "RevealIdentityRequest.Identity.Platform must be TWITTER")
+	}
+
+	// Idempotent RPC call using the same platform and username
+	if memberRecord.Platform == platform && memberRecord.PlatformId == req.Identity.Username {
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_OK,
+		}, nil
+	}
+
+	// Identity was already revealed, and it isn't the specified platform and username
+	if memberRecord.Platform != chat.PlatformCode {
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_DIFFERENT_IDENTITY_REVEALED,
+		}, nil
+	}
+
+	chatLock := s.chatLocks.Get(chatId[:])
+	chatLock.Lock()
+	defer chatLock.Unlock()
+
+	messageId := chat.GenerateMessageId()
+	ts, _ := messageId.GetTimestamp()
+
+	chatMessage := &chatpb.ChatMessage{
+		MessageId: messageId.ToProto(),
+		SenderId:  req.MemberId,
+		Content: []*chatpb.Content{
+			{
+				Type: &chatpb.Content_IdentityRevealed{},
+			},
+		},
+		Ts:     timestamppb.New(ts),
+		Cursor: &chatpb.Cursor{Value: messageId[:]},
+	}
+
+	err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+		err = s.data.UpgradeChatMemberIdentityV2(ctx, chatId, memberId, platform, req.Identity.Username)
+		switch err {
+		case nil:
+		case chat.ErrMemberIdentityAlreadyUpgraded:
+			return err
+		default:
+			return errors.Wrap(err, "error updating chat member identity")
+		}
+
+		err := s.persistChatMessage(ctx, chatId, chatMessage)
+		if err != nil {
+			return errors.Wrap(err, "error persisting chat message")
+		}
+		return nil
+	})
+
+	if err == nil {
+		event := &chatpb.ChatStreamEvent{
+			Type: &chatpb.ChatStreamEvent_Message{
+				Message: chatMessage,
+			},
+		}
+		if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
+			log.WithError(err).Warn("failure notifying chat event")
+		}
+
+		// todo: send the push
+	}
+
+	switch err {
+	case nil:
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_OK,
+		}, nil
+	case chat.ErrMemberIdentityAlreadyUpgraded:
+		return &chatpb.RevealIdentityResponse{
+			Result: chatpb.RevealIdentityResponse_DIFFERENT_IDENTITY_REVEALED,
+		}, nil
+	default:
+		log.WithError(err).Warn("failure upgrading chat member identity")
+		return nil, status.Error(codes.Internal, "")
+	}
 }
 
 func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateRequest) (*chatpb.SetMuteStateResponse, error) {
@@ -998,11 +1165,11 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	isChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	ownsChatMember, err := s.ownsChatMemberWithoutRecord(ctx, chatId, memberId, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
-	} else if !isChatMember {
+	} else if !ownsChatMember {
 		return &chatpb.SetMuteStateResponse{
 			Result: chatpb.SetMuteStateResponse_DENIED,
 		}, nil
@@ -1063,7 +1230,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	ownsChatMember, err := s.ownsChatMember(ctx, chatId, memberId, owner)
+	ownsChatMember, err := s.ownsChatMemberWithoutRecord(ctx, chatId, memberId, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure determing chat member ownership")
 		return nil, status.Error(codes.Internal, "")
@@ -1239,7 +1406,7 @@ func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (m
 	return identities, nil
 }
 
-func (s *server) ownsChatMember(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
+func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
 	memberRecord, err := s.data.GetChatMemberByIdV2(ctx, chatId, memberId)
 	switch err {
 	case nil:
@@ -1249,6 +1416,10 @@ func (s *server) ownsChatMember(ctx context.Context, chatId chat.ChatId, memberI
 		return false, errors.Wrap(err, "error getting member record")
 	}
 
+	return s.ownsChatMemberWithRecord(ctx, chatId, memberRecord, owner)
+}
+
+func (s *server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatId, memberRecord *chat.MemberRecord, owner *common.Account) (bool, error) {
 	switch memberRecord.Platform {
 	case chat.PlatformCode:
 		return memberRecord.PlatformId == owner.PublicKey().ToBase58(), nil
