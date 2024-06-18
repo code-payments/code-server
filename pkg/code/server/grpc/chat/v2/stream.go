@@ -133,10 +133,6 @@ func (s *server) asyncChatEventStreamNotifier(workerId int, channel <-chan inter
 				continue
 			}
 
-			if strings.HasSuffix(key, typedValue.memberId.String()) {
-				continue
-			}
-
 			if err := stream.notify(typedValue.event, streamNotifyTimeout); err != nil {
 				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
 			}

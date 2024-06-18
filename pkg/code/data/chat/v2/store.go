@@ -8,13 +8,14 @@ import (
 )
 
 var (
-	ErrChatExists         = errors.New("chat already exists")
-	ErrChatNotFound       = errors.New("chat not found")
-	ErrMemberExists       = errors.New("chat member already exists")
-	ErrMemberNotFound     = errors.New("chat member not found")
-	ErrMessageExsits      = errors.New("chat message already exists")
-	ErrMessageNotFound    = errors.New("chat message not found")
-	ErrInvalidPointerType = errors.New("invalid pointer type")
+	ErrChatExists                    = errors.New("chat already exists")
+	ErrChatNotFound                  = errors.New("chat not found")
+	ErrMemberExists                  = errors.New("chat member already exists")
+	ErrMemberNotFound                = errors.New("chat member not found")
+	ErrMemberIdentityAlreadyUpgraded = errors.New("chat member identity already upgraded")
+	ErrMessageExsits                 = errors.New("chat message already exists")
+	ErrMessageNotFound               = errors.New("chat message not found")
+	ErrInvalidPointerType            = errors.New("invalid pointer type")
 )
 
 // todo: Define interface methods
@@ -55,6 +56,9 @@ type Store interface {
 
 	// AdvancePointer advances a chat pointer for a chat member
 	AdvancePointer(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) (bool, error)
+
+	// UpgradeIdentity upgrades a chat member's identity from an anonymous state
+	UpgradeIdentity(ctx context.Context, chatId ChatId, memberId MemberId, platform Platform, platformId string) error
 
 	// SetMuteState updates the mute state for a chat member
 	SetMuteState(ctx context.Context, chatId ChatId, memberId MemberId, isMuted bool) error

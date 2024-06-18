@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+
 	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/database/query"
 )
@@ -238,6 +240,31 @@ func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId c
 		return true, nil
 	}
 	return false, nil
+}
+
+// UpgradeIdentity implements chat.Store.UpgradeIdentity
+func (s *store) UpgradeIdentity(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, platform chat.Platform, platformId string) error {
+	switch platform {
+	case chat.PlatformTwitter:
+	default:
+		return errors.Errorf("platform not supported for identity upgrades: %s", platform.String())
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item := s.findMemberById(chatId, memberId)
+	if item == nil {
+		return chat.ErrMemberNotFound
+	}
+	if item.Platform != chat.PlatformCode {
+		return chat.ErrMemberIdentityAlreadyUpgraded
+	}
+
+	item.Platform = platform
+	item.PlatformId = platformId
+
+	return nil
 }
 
 // SetMuteState implements chat.Store.SetMuteState
