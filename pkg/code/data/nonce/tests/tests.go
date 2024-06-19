@@ -3,6 +3,8 @@ package tests
 import (
 	"context"
 	"fmt"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,6 +24,8 @@ func RunTests(t *testing.T, s nonce.Store, teardown func()) {
 		testGetAllByState,
 		testGetCount,
 		testGetRandomAvailableByPurpose,
+		testBatch,
+		testBatchClaimExpirationRandomness,
 	} {
 		tf(t, s)
 		teardown()
@@ -401,5 +405,184 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 			selectedByAddress[actual.Address] = struct{}{}
 		}
 		assert.True(t, len(selectedByAddress) > 10)
+	})
+}
+
+func testBatch(t *testing.T, s nonce.Store) {
+	t.Run("testBatch", func(t *testing.T) {
+		ctx := context.Background()
+
+		minExpiry := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+		maxExpiry := time.Now().Add(2 * time.Hour).Truncate(time.Millisecond)
+
+		nonces, err := s.BatchClaimAvailableByPurpose(
+			ctx,
+			nonce.PurposeClientTransaction,
+			100,
+			"my-id",
+			minExpiry,
+			maxExpiry,
+		)
+		require.Empty(t, nonces)
+		require.Nil(t, err)
+
+		// Initialize nonce pool.
+		for _, purpose := range []nonce.Purpose{
+			nonce.PurposeClientTransaction,
+			nonce.PurposeInternalServerProcess,
+		} {
+			for _, state := range []nonce.State{
+				nonce.StateUnknown,
+				nonce.StateAvailable,
+				nonce.StateReserved,
+				nonce.StateClaimed,
+			} {
+				for i := 0; i < 50; i++ {
+					record := &nonce.Record{
+						Address:   fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
+						Authority: "authority",
+						Blockhash: "bh",
+						Purpose:   purpose,
+						State:     state,
+						Signature: "",
+					}
+					if state == nonce.StateClaimed {
+						record.ClaimNodeId = "my-node-id"
+
+						if i < 25 {
+							record.ClaimExpiresAt = time.Now().Add(-time.Hour)
+						} else {
+							record.ClaimExpiresAt = time.Now().Add(time.Hour)
+						}
+					}
+
+					require.NoError(t, s.Save(ctx, record))
+				}
+			}
+		}
+
+		// Iteratively grab a subset until there are none left.
+		//
+		// Note: The odd amount ensures we try grabbing more than exists.
+		var claimed []*nonce.Record
+		for remaining := 75; remaining > 0; {
+			nonces, err = s.BatchClaimAvailableByPurpose(
+				ctx,
+				nonce.PurposeClientTransaction,
+				10,
+				"my-id",
+				minExpiry,
+				maxExpiry,
+			)
+			require.NoError(t, err)
+			require.Len(t, nonces, min(remaining, 10))
+
+			remaining -= len(nonces)
+
+			for _, n := range nonces {
+				actual, err := s.Get(ctx, n.Address)
+				require.NoError(t, err)
+				require.Equal(t, nonce.StateClaimed, actual.State)
+				require.Equal(t, "my-id", actual.ClaimNodeId)
+				require.GreaterOrEqual(t, actual.ClaimExpiresAt, minExpiry)
+				require.LessOrEqual(t, actual.ClaimExpiresAt, maxExpiry)
+				require.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
+
+				claimed = append(claimed, actual)
+			}
+		}
+
+		// Ensure no more nonces.
+		nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.PurposeClientTransaction, 10, "my-id", minExpiry, maxExpiry)
+		require.NoError(t, err)
+		require.Empty(t, nonces)
+
+		// Release and reclaim
+		for i := range claimed[:20] {
+			claimed[i].State = nonce.StateAvailable
+			s.Save(ctx, claimed[i])
+		}
+
+		nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.PurposeClientTransaction, 30, "my-id2", minExpiry, maxExpiry)
+		require.NoError(t, err)
+		require.Len(t, nonces, 20)
+
+		// We sort the sets so we can trivially compare and ensure
+		// that it's the same set.
+		slices.SortFunc(claimed[:20], func(a, b *nonce.Record) int {
+			return strings.Compare(a.Address, b.Address)
+		})
+		slices.SortFunc(nonces, func(a, b *nonce.Record) int {
+			return strings.Compare(a.Address, b.Address)
+		})
+
+		for i, actual := range nonces {
+			require.Equal(t, nonce.StateClaimed, actual.State)
+			require.Equal(t, "my-id2", actual.ClaimNodeId)
+			require.GreaterOrEqual(t, actual.ClaimExpiresAt, minExpiry)
+			require.LessOrEqual(t, actual.ClaimExpiresAt, maxExpiry)
+			require.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
+			require.Equal(t, claimed[i].Address, actual.Address)
+		}
+	})
+}
+
+func testBatchClaimExpirationRandomness(t *testing.T, s nonce.Store) {
+	t.Run("testBatch", func(t *testing.T) {
+		ctx := context.Background()
+
+		min := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+		max := time.Now().Add(2 * time.Hour).Truncate(time.Millisecond)
+
+		for i := 0; i < 1000; i++ {
+			record := &nonce.Record{
+				Address:   fmt.Sprintf("nonce_%s_%s_%d", nonce.PurposeClientTransaction, nonce.StateAvailable, i),
+				Authority: "authority",
+				Blockhash: "bh",
+				Purpose:   nonce.PurposeClientTransaction,
+				State:     nonce.StateAvailable,
+				Signature: "",
+			}
+
+			require.NoError(t, s.Save(ctx, record))
+		}
+
+		nonces, err := s.BatchClaimAvailableByPurpose(
+			ctx,
+			nonce.PurposeClientTransaction,
+			1000,
+			"my-id",
+			min,
+			max,
+		)
+		require.NoError(t, err)
+		require.Len(t, nonces, 1000)
+
+		// To verify that we have a rough random distribution of expirations,
+		// we bucket the expiration space, and compute the standard deviation.
+		//
+		// We then compare against the expected value with a tolerance.
+		// Specifically, we know there should be 50 nonces per bucket in
+		// an ideal world, and we allow for a 15% deviation on this.
+		bins := make([]int64, 20)
+		expected := float64(len(nonces)) / float64(len(bins))
+		for _, n := range nonces {
+			// Formula: bin = k(val - min) / (max-min+1)
+			//
+			// We use '+1' in the divisor to ensure we don't divide by zero.
+			// In practive, this should produce pretty much no bias since our
+			// testing ranges are large.
+			bin := int(n.ClaimExpiresAt.Sub(min).Milliseconds()) * len(bins) / int(max.Sub(min).Milliseconds()+1)
+			bins[bin]++
+		}
+
+		sum := 0.0
+		for _, count := range bins {
+			diff := float64(count) - expected
+			sum += diff * diff
+		}
+
+		stdDev := math.Sqrt(sum / float64(len(bins)))
+		assert.LessOrEqual(t, stdDev, 0.15*expected, "expected: %v, bins %v:", expected, bins)
 	})
 }

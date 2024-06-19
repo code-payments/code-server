@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -69,7 +70,7 @@ func (m *nonceModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 			ON CONFLICT (address)
 			DO UPDATE
 				SET blockhash = $3, state = $5, signature = $6
-				WHERE ` + nonceTableName + `.address = $1 
+				WHERE ` + nonceTableName + `.address = $1
 			RETURNING
 				id, address, authority, blockhash, purpose, state, signature`
 
@@ -130,7 +131,7 @@ func dbGetNonce(ctx context.Context, db *sqlx.DB, address string) (*nonceModel, 
 	res := &nonceModel{}
 
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, purpose, state, signature, claim_node_id, claim_expires_at
 		FROM ` + nonceTableName + `
 		WHERE address = $1
 	`
@@ -244,4 +245,61 @@ func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, purpose non
 
 	err := db.GetContext(ctx, res, query, nonce.StateAvailable, nonce.StateClaimed, nowMs, purpose)
 	return res, pgutil.CheckNoRows(err, nonce.ErrNonceNotFound)
+}
+
+func dbBatchClaimAvailableByPurpose(
+	ctx context.Context,
+	db *sqlx.DB,
+	purpose nonce.Purpose,
+	limit int,
+	nodeId string,
+	minExpireAt time.Time,
+	maxExpireAt time.Time,
+) ([]*nonceModel, error) {
+	tx, err := db.Beginx()
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+	WITH selected_nonces AS (
+		SELECT id, address, authority, blockhash, purpose, state, signature
+		FROM ` + nonceTableName + `
+		WHERE ((state = $1) OR (state = $2 AND claim_expires_at < $3)) AND purpose = $4 AND signature IS NOT NULL
+		LIMIT $5
+		FOR UPDATE
+        )
+        UPDATE ` + nonceTableName + `
+        SET state = $6,
+            claim_node_id = $7,
+            claim_expires_at = $8 + FLOOR(RANDOM() * $9)
+        FROM selected_nonces
+        WHERE ` + nonceTableName + `.id = selected_nonces.id
+        RETURNING ` + nonceTableName + `.*
+	`
+
+	nonceModels := []*nonceModel{}
+	err = tx.SelectContext(
+		ctx,
+		&nonceModels,
+		query,
+		nonce.StateAvailable,
+		nonce.StateClaimed,
+		time.Now().UnixMilli(),
+		purpose,
+		limit,
+		nonce.StateClaimed,
+		nodeId,
+		minExpireAt.UnixMilli(),
+		maxExpireAt.Sub(minExpireAt).Milliseconds(),
+	)
+	if err != nil {
+		if rollBackErr := tx.Rollback(); rollBackErr != nil {
+			return nil, fmt.Errorf("failed to rollback (cause: %w): %w", err, rollBackErr)
+		}
+
+		return nil, err
+	}
+
+	return nonceModels, tx.Commit()
 }
