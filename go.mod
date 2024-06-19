@@ -6,7 +6,7 @@ require (
 	firebase.google.com/go/v4 v4.8.0
 	github.com/aws/aws-sdk-go-v2 v0.17.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
-	github.com/code-payments/code-protobuf-api v1.16.7-0.20240618171829-bb587a7f24ce
+	github.com/code-payments/code-protobuf-api v1.16.7-0.20240619134635-bde7104d4467
 	github.com/emirpasic/gods v1.12.0
 	github.com/envoyproxy/protoc-gen-validate v1.0.4
 	github.com/golang-jwt/jwt/v5 v5.0.0

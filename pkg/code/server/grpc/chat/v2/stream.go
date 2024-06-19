@@ -93,15 +93,14 @@ func boundedStreamChatEventsRecv(
 }
 
 type chatEventNotification struct {
-	chatId   chat.ChatId
-	memberId chat.MemberId
-	event    *chatpb.ChatStreamEvent
-	ts       time.Time
+	chatId chat.ChatId
+	event  *chatpb.ChatStreamEvent
+	ts     time.Time
 }
 
-func (s *server) asyncNotifyAll(chatId chat.ChatId, memberId chat.MemberId, event *chatpb.ChatStreamEvent) error {
+func (s *server) asyncNotifyAll(chatId chat.ChatId, event *chatpb.ChatStreamEvent) error {
 	m := proto.Clone(event).(*chatpb.ChatStreamEvent)
-	ok := s.chatEventChans.Send(chatId[:], &chatEventNotification{chatId, memberId, m, time.Now()})
+	ok := s.chatEventChans.Send(chatId[:], &chatEventNotification{chatId, m, time.Now()})
 	if !ok {
 		return errors.New("chat event channel is full")
 	}
