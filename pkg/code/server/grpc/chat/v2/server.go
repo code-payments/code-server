@@ -321,8 +321,8 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 
 	signature := req.GetOpenStream().Signature
 	req.GetOpenStream().Signature = nil
-	if err = s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
-		// return err
+	if err := s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
+		return err
 	}
 
 	_, err = s.data.GetChatByIdV2(ctx, chatId)
@@ -532,7 +532,7 @@ func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 
 	signature := req.Signature
 	req.Signature = nil
-	if err = s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
 		return nil, err
 	}
 
@@ -729,7 +729,7 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 
 	signature := req.Signature
 	req.Signature = nil
-	if err = s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
 		return nil, err
 	}
 
@@ -767,16 +767,7 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 	chatLock.Lock()
 	defer chatLock.Unlock()
 
-	messageId := chat.GenerateMessageId()
-	ts, _ := messageId.GetTimestamp()
-
-	chatMessage := &chatpb.ChatMessage{
-		MessageId: messageId.ToProto(),
-		SenderId:  req.MemberId,
-		Content:   req.Content,
-		Ts:        timestamppb.New(ts),
-		Cursor:    &chatpb.Cursor{Value: messageId[:]},
-	}
+	chatMessage := newProtoChatMessage(memberId, req.Content...)
 
 	err = s.persistChatMessage(ctx, chatId, chatMessage)
 	if err != nil {
@@ -784,16 +775,7 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	event := &chatpb.ChatStreamEvent{
-		Type: &chatpb.ChatStreamEvent_Message{
-			Message: chatMessage,
-		},
-	}
-	if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
-		log.WithError(err).Warn("failure notifying chat event")
-	}
-
-	// todo: send the push
+	s.onPersistChatMessage(log, chatId, chatMessage)
 
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
@@ -946,7 +928,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 				Pointer: req.Pointer,
 			},
 		}
-		if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
+		if err := s.asyncNotifyAll(chatId, event); err != nil {
 			log.WithError(err).Warn("failure notifying chat event")
 		}
 	}
@@ -1061,20 +1043,17 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	chatLock.Lock()
 	defer chatLock.Unlock()
 
-	messageId := chat.GenerateMessageId()
-	ts, _ := messageId.GetTimestamp()
-
-	chatMessage := &chatpb.ChatMessage{
-		MessageId: messageId.ToProto(),
-		SenderId:  req.MemberId,
-		Content: []*chatpb.Content{
-			{
-				Type: &chatpb.Content_IdentityRevealed{},
+	chatMessage := newProtoChatMessage(
+		memberId,
+		&chatpb.Content{
+			Type: &chatpb.Content_IdentityRevealed{
+				IdentityRevealed: &chatpb.IdentityRevealedContent{
+					MemberId: req.MemberId,
+					Identity: req.Identity,
+				},
 			},
 		},
-		Ts:     timestamppb.New(ts),
-		Cursor: &chatpb.Cursor{Value: messageId[:]},
-	}
+	)
 
 	err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 		err = s.data.UpgradeChatMemberIdentityV2(ctx, chatId, memberId, platform, req.Identity.Username)
@@ -1094,16 +1073,7 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	})
 
 	if err == nil {
-		event := &chatpb.ChatStreamEvent{
-			Type: &chatpb.ChatStreamEvent_Message{
-				Message: chatMessage,
-			},
-		}
-		if err := s.asyncNotifyAll(chatId, memberId, event); err != nil {
-			log.WithError(err).Warn("failure notifying chat event")
-		}
-
-		// todo: send the push
+		s.onPersistChatMessage(log, chatId, chatMessage)
 	}
 
 	switch err {
@@ -1251,66 +1221,11 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	}, nil
 }
 
-func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
-	messageRecords, err := s.data.GetAllChatMessagesV2(
-		ctx,
-		chatId,
-		queryOptions...,
-	)
-	if err == chat.ErrMessageNotFound {
-		return nil, err
-	}
-
-	var userLocale *language.Tag // Loaded lazily when required
-	var res []*chatpb.ChatMessage
-	for _, messageRecord := range messageRecords {
-		var protoChatMessage chatpb.ChatMessage
-		err = proto.Unmarshal(messageRecord.Data, &protoChatMessage)
-		if err != nil {
-			return nil, errors.Wrap(err, "error unmarshalling proto chat message")
-		}
-
-		ts, err := messageRecord.GetTimestamp()
-		if err != nil {
-			return nil, errors.Wrap(err, "error getting message timestamp")
-		}
-
-		for _, content := range protoChatMessage.Content {
-			switch typed := content.Type.(type) {
-			case *chatpb.Content_Localized:
-				if userLocale == nil {
-					loadedUserLocale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
-					if err != nil {
-						return nil, errors.Wrap(err, "error getting user locale")
-					}
-					userLocale = &loadedUserLocale
-				}
-
-				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
-					*userLocale,
-					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
-					typed.Localized.KeyOrText,
-				)
-			}
-		}
-
-		protoChatMessage.MessageId = messageRecord.MessageId.ToProto()
-		if messageRecord.Sender != nil {
-			protoChatMessage.SenderId = messageRecord.Sender.ToProto()
-		}
-		protoChatMessage.Ts = timestamppb.New(ts)
-		protoChatMessage.Cursor = &chatpb.Cursor{Value: messageRecord.MessageId[:]}
-
-		res = append(res, &protoChatMessage)
-	}
-
-	return res, nil
-}
-
 func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
 	protoChat := &chatpb.ChatMetadata{
 		ChatId: chatRecord.ChatId.ToProto(),
 		Kind:   chatRecord.ChatType.ToProto(),
+		Cursor: &chatpb.Cursor{Value: query.ToCursor(uint64(chatRecord.Id))},
 	}
 
 	switch chatRecord.ChatType {
@@ -1390,6 +1305,75 @@ func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 	return protoChat, nil
 }
 
+func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
+	messageRecords, err := s.data.GetAllChatMessagesV2(
+		ctx,
+		chatId,
+		queryOptions...,
+	)
+	if err == chat.ErrMessageNotFound {
+		return nil, err
+	}
+
+	var userLocale *language.Tag // Loaded lazily when required
+	var res []*chatpb.ChatMessage
+	for _, messageRecord := range messageRecords {
+		var protoChatMessage chatpb.ChatMessage
+		err = proto.Unmarshal(messageRecord.Data, &protoChatMessage)
+		if err != nil {
+			return nil, errors.Wrap(err, "error unmarshalling proto chat message")
+		}
+
+		ts, err := messageRecord.GetTimestamp()
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting message timestamp")
+		}
+
+		for _, content := range protoChatMessage.Content {
+			switch typed := content.Type.(type) {
+			case *chatpb.Content_Localized:
+				if userLocale == nil {
+					loadedUserLocale, err := s.data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+					if err != nil {
+						return nil, errors.Wrap(err, "error getting user locale")
+					}
+					userLocale = &loadedUserLocale
+				}
+
+				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
+					*userLocale,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
+					typed.Localized.KeyOrText,
+				)
+			}
+		}
+
+		protoChatMessage.MessageId = messageRecord.MessageId.ToProto()
+		if messageRecord.Sender != nil {
+			protoChatMessage.SenderId = messageRecord.Sender.ToProto()
+		}
+		protoChatMessage.Ts = timestamppb.New(ts)
+		protoChatMessage.Cursor = &chatpb.Cursor{Value: messageRecord.MessageId[:]}
+
+		res = append(res, &protoChatMessage)
+	}
+
+	return res, nil
+}
+
+func (s *server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+	event := &chatpb.ChatStreamEvent{
+		Type: &chatpb.ChatStreamEvent_Message{
+			Message: chatMessage,
+		},
+	}
+	if err := s.asyncNotifyAll(chatId, event); err != nil {
+		log.WithError(err).Warn("failure notifying chat event")
+	}
+
+	// todo: send the push
+}
+
 func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
 	identities := map[chat.Platform]string{
 		chat.PlatformCode: owner.PublicKey().ToBase58(),
@@ -1464,5 +1448,18 @@ func (s *server) getOwnedTwitterUsername(ctx context.Context, owner *common.Acco
 		return "", false, nil
 	default:
 		return "", false, errors.Wrap(err, "error getting twitter user")
+	}
+}
+
+func newProtoChatMessage(sender chat.MemberId, content ...*chatpb.Content) *chatpb.ChatMessage {
+	messageId := chat.GenerateMessageId()
+	ts, _ := messageId.GetTimestamp()
+
+	return &chatpb.ChatMessage{
+		MessageId: messageId.ToProto(),
+		SenderId:  sender.ToProto(),
+		Content:   content,
+		Ts:        timestamppb.New(ts),
+		Cursor:    &chatpb.Cursor{Value: messageId[:]},
 	}
 }
