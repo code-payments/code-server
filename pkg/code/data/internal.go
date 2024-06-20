@@ -180,6 +180,7 @@ type DatabaseData interface {
 	GetNonceCountByStateAndPurpose(ctx context.Context, state nonce.State, purpose nonce.Purpose) (uint64, error)
 	GetAllNonceByState(ctx context.Context, state nonce.State, opts ...query.Option) ([]*nonce.Record, error)
 	GetRandomAvailableNonceByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error)
+	BatchClaimAvailableByPurpose(ctx context.Context, purpose nonce.Purpose, limit int, nodeID string, minExpireAt, maxExpireAt time.Time) ([]*nonce.Record, error)
 	SaveNonce(ctx context.Context, record *nonce.Record) error
 
 	// Fulfillment
@@ -742,6 +743,9 @@ func (dp *DatabaseProvider) GetAllNonceByState(ctx context.Context, state nonce.
 }
 func (dp *DatabaseProvider) GetRandomAvailableNonceByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error) {
 	return dp.nonces.GetRandomAvailableByPurpose(ctx, purpose)
+}
+func (dp *DatabaseProvider) BatchClaimAvailableByPurpose(ctx context.Context, purpose nonce.Purpose, limit int, nodeID string, minExpireAt, maxExpireAt time.Time) ([]*nonce.Record, error) {
+	return dp.nonces.BatchClaimAvailableByPurpose(ctx, purpose, limit, nodeID, minExpireAt, maxExpireAt)
 }
 func (dp *DatabaseProvider) SaveNonce(ctx context.Context, record *nonce.Record) error {
 	return dp.nonces.Save(ctx, record)
