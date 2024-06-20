@@ -1079,7 +1079,8 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	switch err {
 	case nil:
 		return &chatpb.RevealIdentityResponse{
-			Result: chatpb.RevealIdentityResponse_OK,
+			Result:  chatpb.RevealIdentityResponse_OK,
+			Message: chatMessage,
 		}, nil
 	case chat.ErrMemberIdentityAlreadyUpgraded:
 		return &chatpb.RevealIdentityResponse{
@@ -1224,7 +1225,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
 	protoChat := &chatpb.ChatMetadata{
 		ChatId: chatRecord.ChatId.ToProto(),
-		Kind:   chatRecord.ChatType.ToProto(),
+		Type:   chatRecord.ChatType.ToProto(),
 		Cursor: &chatpb.Cursor{Value: query.ToCursor(uint64(chatRecord.Id))},
 	}
 
@@ -1270,7 +1271,7 @@ func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 			}
 
 			pointers = append(pointers, &chatpb.Pointer{
-				Kind:     optionalPointer.kind.ToProto(),
+				Type:     optionalPointer.kind.ToProto(),
 				Value:    optionalPointer.value.ToProto(),
 				MemberId: memberRecord.MemberId.ToProto(),
 			})
