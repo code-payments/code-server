@@ -12,7 +12,7 @@ import (
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
@@ -142,7 +142,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 
 	sendingPhone.tip456KinToCodeUser(t, receivingPhone, twitterUsername).requireSuccess(t)
 
-	chatMessageRecords, err := server.data.GetAllChatMessages(server.ctx, chat.GetChatId(chat_util.CashTransactionsName, sendingPhone.parentAccount.PublicKey().ToBase58(), true))
+	chatMessageRecords, err := server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId(chat_util.CashTransactionsName, sendingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 10)
 
@@ -236,7 +236,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 32.1, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(321), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", sendingPhone.parentAccount.PublicKey().ToBase58(), true))
+	chatMessageRecords, err = server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId("example.com", sendingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 3)
 
@@ -267,7 +267,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 123.0, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(123), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId(chat_util.CashTransactionsName, receivingPhone.parentAccount.PublicKey().ToBase58(), true))
+	chatMessageRecords, err = server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId(chat_util.CashTransactionsName, receivingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 7)
 
@@ -334,7 +334,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 2.1, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(42), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId(chat_util.TipsName, sendingPhone.parentAccount.PublicKey().ToBase58(), true))
+	chatMessageRecords, err = server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId(chat_util.TipsName, sendingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 1)
 
@@ -347,7 +347,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 45.6, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(456), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), true))
+	chatMessageRecords, err = server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 5)
 
@@ -396,7 +396,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 12_345.0, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(12_345), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), false))
+	chatMessageRecords, err = server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId("example.com", receivingPhone.parentAccount.PublicKey().ToBase58(), false))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 1)
 
@@ -409,7 +409,7 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 77.69, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.EqualValues(t, 77690000, protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
 
-	chatMessageRecords, err = server.data.GetAllChatMessages(server.ctx, chat.GetChatId(chat_util.TipsName, receivingPhone.parentAccount.PublicKey().ToBase58(), true))
+	chatMessageRecords, err = server.data.GetAllChatMessagesV1(server.ctx, chat_v1.GetChatId(chat_util.TipsName, receivingPhone.parentAccount.PublicKey().ToBase58(), true))
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 1)
 

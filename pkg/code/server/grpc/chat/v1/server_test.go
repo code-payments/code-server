@@ -1,4 +1,4 @@
-package chat
+package chat_v1
 
 import (
 	"context"
@@ -22,13 +22,14 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/user"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/kin"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -102,8 +103,8 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 		Ts: timestamppb.Now(),
 		Content: []*chatpb.Content{
 			{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: "msg.body.key",
 					},
 				},
@@ -242,7 +243,7 @@ func TestGetChatsAndMessages_HappyPath(t *testing.T) {
 	require.Len(t, getMessagesResp.Messages, 1)
 	assert.Equal(t, expectedCodeTeamMessage.MessageId.Value, getMessagesResp.Messages[0].Cursor.Value)
 	getMessagesResp.Messages[0].Cursor = nil
-	expectedCodeTeamMessage.Content[0].GetLocalized().KeyOrText = "localized message body content"
+	expectedCodeTeamMessage.Content[0].GetServerLocalized().KeyOrText = "localized message body content"
 	assert.True(t, proto.Equal(expectedCodeTeamMessage, getMessagesResp.Messages[0]))
 
 	getMessagesResp, err = env.client.GetMessages(env.ctx, getCashTransactionsMessagesReq)
@@ -288,8 +289,8 @@ func TestChatHistoryReadState_HappyPath(t *testing.T) {
 			Ts: timestamppb.Now(),
 			Content: []*chatpb.Content{
 				{
-					Type: &chatpb.Content_Localized{
-						Localized: &chatpb.LocalizedContent{
+					Type: &chatpb.Content_ServerLocalized{
+						ServerLocalized: &chatpb.ServerLocalizedContent{
 							KeyOrText: fmt.Sprintf("msg.body.key%d", i),
 						},
 					},
@@ -346,8 +347,8 @@ func TestChatHistoryReadState_NegativeProgress(t *testing.T) {
 			Ts: timestamppb.Now(),
 			Content: []*chatpb.Content{
 				{
-					Type: &chatpb.Content_Localized{
-						Localized: &chatpb.LocalizedContent{
+					Type: &chatpb.Content_ServerLocalized{
+						ServerLocalized: &chatpb.ServerLocalizedContent{
 							KeyOrText: fmt.Sprintf("msg.body.key%d", i),
 						},
 					},
@@ -429,8 +430,8 @@ func TestChatHistoryReadState_MessageNotFound(t *testing.T) {
 		Ts: timestamppb.Now(),
 		Content: []*chatpb.Content{
 			{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: "msg.body.key",
 					},
 				},
@@ -743,8 +744,8 @@ func TestUnauthorizedAccess(t *testing.T) {
 		Ts: timestamppb.Now(),
 		Content: []*chatpb.Content{
 			{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: "msg.body.key",
 					},
 				},
@@ -880,7 +881,7 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 		data:   code_data.NewTestDataProvider(),
 	}
 
-	s := NewChatServer(env.data, auth_util.NewRPCSignatureVerifier(env.data))
+	s := NewChatServer(env.data, auth_util.NewRPCSignatureVerifier(env.data), memory_push.NewPushProvider())
 	env.server = s.(*server)
 
 	serv.RegisterService(func(server *grpc.Server) {

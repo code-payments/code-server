@@ -1,14 +1,20 @@
-package chat
+package chat_v1
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"math"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
@@ -18,30 +24,55 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
+	push_lib "github.com/code-payments/code-server/pkg/push"
+	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 
 const (
 	maxPageSize = 100
 )
 
+var (
+	mockTwoWayChat = chat.GetChatId("user1", "user2", true).ToProto()
+)
+
+// todo: Resolve duplication of streaming logic with messaging service. The latest and greatest will live here.
 type server struct {
-	log  *logrus.Entry
-	data code_data.Provider
-	auth *auth_util.RPCSignatureVerifier
+	log    *logrus.Entry
+	data   code_data.Provider
+	auth   *auth_util.RPCSignatureVerifier
+	pusher push_lib.Provider
+
+	streamsMu sync.RWMutex
+	streams   map[string]*chatEventStream
+
+	chatLocks      *sync_util.StripedLock
+	chatEventChans *sync_util.StripedChannel
 
 	chatpb.UnimplementedChatServer
 }
 
-func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) chatpb.ChatServer {
-	return &server{
-		log:  logrus.StandardLogger().WithField("type", "chat/server"),
-		data: data,
-		auth: auth,
+func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier, pusher push_lib.Provider) chatpb.ChatServer {
+	s := &server{
+		log:            logrus.StandardLogger().WithField("type", "chat/v1/server"),
+		data:           data,
+		auth:           auth,
+		pusher:         pusher,
+		streams:        make(map[string]*chatEventStream),
+		chatLocks:      sync_util.NewStripedLock(64),             // todo: configurable parameters
+		chatEventChans: sync_util.NewStripedChannel(64, 100_000), // todo: configurable parameters
 	}
+
+	for i, channel := range s.chatEventChans.GetChannels() {
+		go s.asyncChatEventStreamNotifier(i, channel)
+	}
+
+	return s
 }
 
 func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
@@ -88,7 +119,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		}
 	}
 
-	chatRecords, err := s.data.GetAllChatsForUser(
+	chatRecords, err := s.data.GetAllChatsForUserV1(
 		ctx,
 		owner.PublicKey().ToBase58(),
 		query.WithCursor(cursor),
@@ -147,7 +178,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			}
 
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
-				Localized: &chatpb.LocalizedContent{
+				Localized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.LocalizeWithFallback(
 						locale,
 						localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
@@ -189,7 +220,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 		if !skipUnreadCountQuery && !chatRecord.IsMuted && !chatRecord.IsUnsubscribed {
 			// todo: will need batching when users have a large number of chats
-			unreadCount, err := s.data.GetChatUnreadCount(ctx, chatRecord.ChatId)
+			unreadCount, err := s.data.GetChatUnreadCountV1(ctx, chatRecord.ChatId)
 			if err != nil {
 				log.WithError(err).Warn("failure getting unread count")
 			}
@@ -229,7 +260,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.GetMessagesResponse{
 			Result: chatpb.GetMessagesResponse_NOT_FOUND,
@@ -265,7 +296,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 		cursor = req.Cursor.Value
 	}
 
-	messageRecords, err := s.data.GetAllChatMessages(
+	messageRecords, err := s.data.GetAllChatMessagesV1(
 		ctx,
 		chatId,
 		query.WithCursor(cursor),
@@ -298,11 +329,11 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 
 		for _, content := range protoChatMessage.Content {
 			switch typed := content.Type.(type) {
-			case *chatpb.Content_Localized:
-				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
+			case *chatpb.Content_ServerLocalized:
+				typed.ServerLocalized.KeyOrText = localization.LocalizeWithFallback(
 					locale,
-					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
-					typed.Localized.KeyOrText,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.ServerLocalized.KeyOrText),
+					typed.ServerLocalized.KeyOrText,
 				)
 			}
 		}
@@ -347,26 +378,45 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	chatId := chat.ChatIdFromProto(req.ChatId)
-	log = log.WithField("chat_id", chatId.String())
-
-	messageId := base58.Encode(req.Pointer.Value.Value)
-	log = log.WithFields(logrus.Fields{
-		"message_id":   messageId,
-		"pointer_type": req.Pointer.Kind,
-	})
-
-	if req.Pointer.Kind != chatpb.Pointer_READ {
-		return nil, status.Error(codes.InvalidArgument, "Pointer.Kind must be READ")
-	}
-
 	signature := req.Signature
 	req.Signature = nil
 	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatId := chat.ChatIdFromProto(req.ChatId)
+	messageId := base58.Encode(req.Pointer.Value.Value)
+	log = log.WithFields(logrus.Fields{
+		"chat_id":      chatId.String(),
+		"message_id":   messageId,
+		"pointer_type": req.Pointer.Kind,
+	})
+
+	// todo: Temporary code to simluate real-time
+	if req.Pointer.User != nil {
+		return nil, status.Error(codes.InvalidArgument, "pointer.user cannot be set by clients")
+	}
+	if bytes.Equal(mockTwoWayChat.Value, req.ChatId.Value) {
+		req.Pointer.User = &chatpb.ChatMemberId{Value: req.Owner.Value}
+
+		event := &chatpb.ChatStreamEvent{
+			Pointers: []*chatpb.Pointer{req.Pointer},
+		}
+
+		if err := s.asyncNotifyAll(chatId, owner, event); err != nil {
+			log.WithError(err).Warn("failure notifying chat event")
+		}
+
+		return &chatpb.AdvancePointerResponse{
+			Result: chatpb.AdvancePointerResponse_OK,
+		}, nil
+	}
+
+	if req.Pointer.Kind != chatpb.Pointer_READ {
+		return nil, status.Error(codes.InvalidArgument, "Pointer.Kind must be READ")
+	}
+
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.AdvancePointerResponse{
 			Result: chatpb.AdvancePointerResponse_CHAT_NOT_FOUND,
@@ -380,7 +430,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		return nil, status.Error(codes.PermissionDenied, "")
 	}
 
-	newPointerRecord, err := s.data.GetChatMessage(ctx, chatId, messageId)
+	newPointerRecord, err := s.data.GetChatMessageV1(ctx, chatId, messageId)
 	if err == chat.ErrMessageNotFound {
 		return &chatpb.AdvancePointerResponse{
 			Result: chatpb.AdvancePointerResponse_MESSAGE_NOT_FOUND,
@@ -391,7 +441,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}
 
 	if chatRecord.ReadPointer != nil {
-		oldPointerRecord, err := s.data.GetChatMessage(ctx, chatId, *chatRecord.ReadPointer)
+		oldPointerRecord, err := s.data.GetChatMessageV1(ctx, chatId, *chatRecord.ReadPointer)
 		if err != nil {
 			log.WithError(err).Warn("failure getting chat message record for old pointer value")
 			return nil, status.Error(codes.Internal, "")
@@ -404,7 +454,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 		}
 	}
 
-	err = s.data.AdvanceChatPointer(ctx, chatId, messageId)
+	err = s.data.AdvanceChatPointerV1(ctx, chatId, messageId)
 	if err != nil {
 		log.WithError(err).Warn("failure advancing pointer")
 		return nil, status.Error(codes.Internal, "")
@@ -434,7 +484,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.SetMuteStateResponse{
 			Result: chatpb.SetMuteStateResponse_CHAT_NOT_FOUND,
@@ -461,7 +511,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 		}, nil
 	}
 
-	err = s.data.SetChatMuteState(ctx, chatId, req.IsMuted)
+	err = s.data.SetChatMuteStateV1(ctx, chatId, req.IsMuted)
 	if err != nil {
 		log.WithError(err).Warn("failure setting mute status")
 		return nil, status.Error(codes.Internal, "")
@@ -492,7 +542,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		return nil, err
 	}
 
-	chatRecord, err := s.data.GetChatById(ctx, chatId)
+	chatRecord, err := s.data.GetChatByIdV1(ctx, chatId)
 	if err == chat.ErrChatNotFound {
 		return &chatpb.SetSubscriptionStateResponse{
 			Result: chatpb.SetSubscriptionStateResponse_CHAT_NOT_FOUND,
@@ -519,7 +569,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 		}, nil
 	}
 
-	err = s.data.SetChatSubscriptionState(ctx, chatId, req.IsSubscribed)
+	err = s.data.SetChatSubscriptionStateV1(ctx, chatId, req.IsSubscribed)
 	if err != nil {
 		log.WithError(err).Warn("failure setting subcription status")
 		return nil, status.Error(codes.Internal, "")
@@ -528,4 +578,233 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	return &chatpb.SetSubscriptionStateResponse{
 		Result: chatpb.SetSubscriptionStateResponse_OK,
 	}, nil
+}
+
+//
+// Experimental PoC two-way chat APIs below
+//
+
+func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
+	ctx := streamer.Context()
+
+	log := s.log.WithField("method", "StreamChatEvents")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	req, err := boundedStreamChatEventsRecv(ctx, streamer, 250*time.Millisecond)
+	if err != nil {
+		return err
+	}
+
+	if req.GetOpenStream() == nil {
+		return status.Error(codes.InvalidArgument, "open_stream is nil")
+	}
+
+	if req.GetOpenStream().Signature == nil {
+		return status.Error(codes.InvalidArgument, "signature is nil")
+	}
+
+	if !bytes.Equal(req.GetOpenStream().ChatId.Value, mockTwoWayChat.Value) {
+		return status.Error(codes.Unimplemented, "")
+	}
+	chatId := chat.ChatIdFromProto(req.GetOpenStream().ChatId)
+	log = log.WithField("chat_id", chatId.String())
+
+	owner, err := common.NewAccountFromProto(req.GetOpenStream().Owner)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner", owner.PublicKey().ToBase58())
+
+	signature := req.GetOpenStream().Signature
+	req.GetOpenStream().Signature = nil
+	if err = s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
+		return err
+	}
+
+	streamKey := fmt.Sprintf("%s:%s", chatId.String(), owner.PublicKey().ToBase58())
+
+	s.streamsMu.Lock()
+
+	stream, exists := s.streams[streamKey]
+	if exists {
+		s.streamsMu.Unlock()
+		// There's an existing stream on this server that must be terminated first.
+		// Warn to see how often this happens in practice
+		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", stream)
+		return status.Error(codes.Aborted, "stream already exists")
+	}
+
+	stream = newChatEventStream(streamBufferSize)
+
+	// The race detector complains when reading the stream pointer ref outside of the lock.
+	streamRef := fmt.Sprintf("%p", stream)
+	log.Tracef("setting up new stream (stream=%s)", streamRef)
+	s.streams[streamKey] = stream
+
+	s.streamsMu.Unlock()
+
+	defer func() {
+		s.streamsMu.Lock()
+
+		log.Tracef("closing streamer (stream=%s)", streamRef)
+
+		// We check to see if the current active stream is the one that we created.
+		// If it is, we can just remove it since it's closed. Otherwise, we leave it
+		// be, as another OpenMessageStream() call is handling it.
+		liveStream, exists := s.streams[streamKey]
+		if exists && liveStream == stream {
+			delete(s.streams, streamKey)
+		}
+
+		s.streamsMu.Unlock()
+	}()
+
+	sendPingCh := time.After(0)
+	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
+
+	for {
+		select {
+		case event, ok := <-stream.streamCh:
+			if !ok {
+				log.Tracef("stream closed ; ending stream (stream=%s)", streamRef)
+				return status.Error(codes.Aborted, "stream closed")
+			}
+
+			err := streamer.Send(&chatpb.StreamChatEventsResponse{
+				Type: &chatpb.StreamChatEventsResponse_Events{
+					Events: &chatpb.ChatStreamEventBatch{
+						Events: []*chatpb.ChatStreamEvent{event},
+					},
+				},
+			})
+			if err != nil {
+				log.WithError(err).Info("failed to forward chat message")
+				return err
+			}
+		case <-sendPingCh:
+			log.Tracef("sending ping to client (stream=%s)", streamRef)
+
+			sendPingCh = time.After(streamPingDelay)
+
+			err := streamer.Send(&chatpb.StreamChatEventsResponse{
+				Type: &chatpb.StreamChatEventsResponse_Ping{
+					Ping: &commonpb.ServerPing{
+						Timestamp: timestamppb.Now(),
+						PingDelay: durationpb.New(streamPingDelay),
+					},
+				},
+			})
+			if err != nil {
+				log.Tracef("stream is unhealthy ; aborting (stream=%s)", streamRef)
+				return status.Error(codes.Aborted, "terminating unhealthy stream")
+			}
+		case <-streamHealthCh:
+			log.Tracef("stream is unhealthy ; aborting (stream=%s)", streamRef)
+			return status.Error(codes.Aborted, "terminating unhealthy stream")
+		case <-ctx.Done():
+			log.Tracef("stream context cancelled ; ending stream (stream=%s)", streamRef)
+			return status.Error(codes.Canceled, "")
+		}
+	}
+}
+
+func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
+	log := s.log.WithField("method", "SendMessage")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	if !bytes.Equal(req.ChatId.Value, mockTwoWayChat.Value) {
+		return nil, status.Error(codes.Unimplemented, "")
+	}
+	chatId := chat.ChatIdFromProto(req.ChatId)
+	log = log.WithField("chat_id", chatId.String())
+
+	owner, err := common.NewAccountFromProto(req.Owner)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner", owner.PublicKey().ToBase58())
+
+	signature := req.Signature
+	req.Signature = nil
+	if err = s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+		return nil, err
+	}
+
+	switch req.Content[0].Type.(type) {
+	case *chatpb.Content_Text, *chatpb.Content_ThankYou:
+	default:
+		return nil, status.Error(codes.InvalidArgument, "content[0] must be Text or ThankYou")
+	}
+
+	chatLock := s.chatLocks.Get(chatId[:])
+	chatLock.Lock()
+	defer chatLock.Unlock()
+
+	// todo: Revisit message IDs
+	messageId, err := common.NewRandomAccount()
+	if err != nil {
+		log.WithError(err).Warn("failure generating random message id")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	chatMessage := &chatpb.ChatMessage{
+		MessageId: &chatpb.ChatMessageId{Value: messageId.ToProto().Value},
+		Ts:        timestamppb.Now(),
+		Content:   req.Content,
+		Sender:    &chatpb.ChatMemberId{Value: req.Owner.Value},
+		Cursor:    nil, // todo: Don't have cursor until we save it to the DB
+	}
+
+	// todo: Save the message to the DB
+
+	event := &chatpb.ChatStreamEvent{
+		Messages: []*chatpb.ChatMessage{chatMessage},
+	}
+
+	if err := s.asyncNotifyAll(chatId, owner, event); err != nil {
+		log.WithError(err).Warn("failure notifying chat event")
+	}
+
+	s.asyncPushChatMessage(owner, chatId, chatMessage)
+
+	return &chatpb.SendMessageResponse{
+		Result:  chatpb.SendMessageResponse_OK,
+		Message: chatMessage,
+	}, nil
+}
+
+// todo: doesn't respect mute/unsubscribe rules
+// todo: only sends pushes to active stream listeners instead of all message recipients
+func (s *server) asyncPushChatMessage(sender *common.Account, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+	ctx := context.TODO()
+
+	go func() {
+		s.streamsMu.RLock()
+		for key := range s.streams {
+			if !strings.HasPrefix(key, chatId.String()) {
+				continue
+			}
+
+			receiver, err := common.NewAccountFromPublicKeyString(strings.Split(key, ":")[1])
+			if err != nil {
+				continue
+			}
+
+			if bytes.Equal(sender.PublicKey().ToBytes(), receiver.PublicKey().ToBytes()) {
+				continue
+			}
+
+			go push_util.SendChatMessagePushNotification(
+				ctx,
+				s.data,
+				s.pusher,
+				"TontonTwitch",
+				receiver,
+				chatMessage,
+			)
+		}
+		s.streamsMu.RUnlock()
+	}()
 }
