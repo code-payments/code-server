@@ -19,7 +19,7 @@ type VmInitInstructionArgs struct {
 type VmInitInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
-	Omnibus     ed25519.PublicKey
+	VmOmnibus   ed25519.PublicKey
 	Mint        ed25519.PublicKey
 }
 
@@ -56,7 +56,7 @@ func NewVmInitInstruction(
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.Omnibus,
+				PublicKey:  accounts.VmOmnibus,
 				IsWritable: true,
 				IsSigner:   false,
 			},

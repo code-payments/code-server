@@ -115,13 +115,13 @@ func GetVirtualTimelockVaultAddress(args *GetVirtualTimelockVaultAddressArgs) (e
 	)
 }
 
-type GetUnlockStateAccountAddressArgs struct {
+type GetVmUnlockStateAccountAddressArgs struct {
 	Owner           ed25519.PublicKey
 	VirtualTimelock ed25519.PublicKey
 	Vm              ed25519.PublicKey
 }
 
-func GetUnlockStateAccountAddress(args *GetUnlockStateAccountAddressArgs) (ed25519.PublicKey, uint8, error) {
+func GetVmUnlockStateAccountAddress(args *GetVmUnlockStateAccountAddressArgs) (ed25519.PublicKey, uint8, error) {
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,

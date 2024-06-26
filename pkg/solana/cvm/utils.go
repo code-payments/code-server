@@ -59,6 +59,10 @@ func getUint8(src []byte, dst *uint8, offset *int) {
 	*offset += 1
 }
 
+func putUint16(dst []byte, v uint16, offset *int) {
+	binary.LittleEndian.PutUint16(dst[*offset:], v)
+	*offset += 2
+}
 func getUint16(src []byte, dst *uint16, offset *int) {
 	*dst = binary.LittleEndian.Uint16(src[*offset:])
 	*offset += 2
