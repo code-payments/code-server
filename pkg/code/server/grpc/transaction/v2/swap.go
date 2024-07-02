@@ -176,6 +176,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		50,   // todo: configurable slippage or something based on liquidity?
 		true, // Direct routes for now since we're using legacy instructions
 		16,   // Max accounts limited due to the use of legacy instructions
+		true, // Use shared accounts so we don't have to manage ATAs
 		true, // Force legacy instructions
 	)
 	if err != nil {
