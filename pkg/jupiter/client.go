@@ -44,6 +44,7 @@ func NewClient(baseUrl string) *Client {
 type Quote struct {
 	jsonString            string
 	estimatedSwapAmount   uint64
+	useSharedAccounts     bool
 	useLegacyInstructions bool
 }
 
@@ -60,13 +61,14 @@ func (c *Client) GetQuote(
 	slippageBps uint32,
 	forceDirectRoute bool,
 	maxAccounts uint8,
+	useSharedAccounts bool,
 	useLegacyInstruction bool,
 ) (*Quote, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "GetQuote")
 	defer tracer.End()
 
 	url := fmt.Sprintf(
-		"%s%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d&onlyDirectRoutes=%v&maxAccounts=%d&asLegacyTransaction=%v",
+		"%s%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d&onlyDirectRoutes=%v&maxAccounts=%d&useSharedAccounts=%v&asLegacyTransaction=%v",
 		c.baseUrl,
 		quoteEndpointName,
 		inputMint,
@@ -75,6 +77,7 @@ func (c *Client) GetQuote(
 		slippageBps,
 		forceDirectRoute,
 		maxAccounts,
+		useSharedAccounts,
 		useLegacyInstruction,
 	)
 
@@ -107,6 +110,7 @@ func (c *Client) GetQuote(
 	return &Quote{
 		jsonString:            string(respBody),
 		estimatedSwapAmount:   estimatedSwapAmount,
+		useSharedAccounts:     useSharedAccounts,
 		useLegacyInstructions: useLegacyInstruction,
 	}, nil
 }
@@ -136,10 +140,11 @@ func (c *Client) GetSwapInstructions(
 
 	// todo: struct this
 	reqBody := fmt.Sprintf(
-		`{"quoteResponse": %s, "userPublicKey": "%s", "destinationTokenAccount": "%s", "prioritizationFeeLamports": "auto", "asLegacyTransaction": %v}`,
+		`{"quoteResponse": %s, "userPublicKey": "%s", "destinationTokenAccount": "%s", "prioritizationFeeLamports": "auto", "useSharedAccounts": %v, "asLegacyTransaction": %v}`,
 		quote.jsonString,
 		owner,
 		destinationTokenAccount,
+		quote.useSharedAccounts,
 		quote.useLegacyInstructions,
 	)
 
