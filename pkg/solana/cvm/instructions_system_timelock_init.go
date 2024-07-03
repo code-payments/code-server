@@ -1,6 +1,10 @@
 package cvm
 
-import "crypto/ed25519"
+import (
+	"crypto/ed25519"
+
+	"github.com/code-payments/code-server/pkg/solana"
+)
 
 var SystemTimelockInitInstructionDiscriminator = []byte{
 	0x07, 0x0b, 0xf5, 0xc5, 0x68, 0xfe, 0xb7, 0xb6,
@@ -30,7 +34,7 @@ type SystemTimelockInitInstructionAccounts struct {
 func NewSystemTimelockInitInstruction(
 	accounts *SystemTimelockInitInstructionAccounts,
 	args *SystemTimelockInitInstructionArgs,
-) Instruction {
+) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
@@ -44,14 +48,14 @@ func NewSystemTimelockInitInstruction(
 	putUint8(data, args.VirtualVaultBump, &offset)
 	putUint8(data, args.VmUnlockPdaBump, &offset)
 
-	return Instruction{
+	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
 
 		// Instruction args
 		Data: data,
 
 		// Instruction accounts
-		Accounts: []AccountMeta{
+		Accounts: []solana.AccountMeta{
 			{
 				PublicKey:  accounts.VmAuthority,
 				IsWritable: true,

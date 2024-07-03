@@ -14,7 +14,7 @@ const (
 var (
 	CodeVmPrefix                   = []byte("code-vm")
 	TimelockStateAccountPrefix     = []byte("timelock_state")
-	TimelockVaultAccountPrefix     = []byte("timelock_state")
+	TimelockVaultAccountPrefix     = []byte("timelock_vault")
 	VmMemoryAccountPrefix          = []byte("vm_memory_account")
 	VmOmnibusPrefix                = []byte("vm_omnibus")
 	VmUnlockPdaAccountPrefix       = []byte("vm_unlock_pda_account")

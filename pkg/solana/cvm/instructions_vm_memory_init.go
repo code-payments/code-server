@@ -2,6 +2,8 @@ package cvm
 
 import (
 	"crypto/ed25519"
+
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var VmMemoryInitInstructionDiscriminator = []byte{
@@ -26,7 +28,7 @@ type VmMemoryInitInstructionAccounts struct {
 func NewVmMemoryInitInstruction(
 	accounts *VmMemoryInitInstructionAccounts,
 	args *VmMemoryInitInstructionArgs,
-) Instruction {
+) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
@@ -37,14 +39,14 @@ func NewVmMemoryInitInstruction(
 	putDiscriminator(data, VmMemoryInitInstructionDiscriminator, &offset)
 	putString(data, args.Name, &offset)
 
-	return Instruction{
+	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
 
 		// Instruction args
 		Data: data,
 
 		// Instruction accounts
-		Accounts: []AccountMeta{
+		Accounts: []solana.AccountMeta{
 			{
 				PublicKey:  accounts.VmAuthority,
 				IsWritable: true,
