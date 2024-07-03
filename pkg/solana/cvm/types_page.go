@@ -26,7 +26,7 @@ func (obj *Page) Unmarshal(data []byte) error {
 	obj.Data = make([]byte, PageDataLen)
 
 	getBool(data, &obj.IsAllocated, &offset)
-	getData(data, obj.Data, PageDataLen, &offset)
+	getBytes(data, obj.Data, PageDataLen, &offset)
 	getUint8(data, &obj.NextPage, &offset)
 
 	return nil

@@ -2,6 +2,8 @@ package cvm
 
 import (
 	"crypto/ed25519"
+
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var TimelockDepositInstructionDiscriminator = []byte{
@@ -30,7 +32,7 @@ type TimelockDepositInstructionAccounts struct {
 func NewTimelockDepositInstruction(
 	accounts *TimelockDepositInstructionAccounts,
 	args *TimelockDepositInstructionArgs,
-) Instruction {
+) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
@@ -42,14 +44,14 @@ func NewTimelockDepositInstruction(
 	putUint16(data, args.AccountIndex, &offset)
 	putUint64(data, args.Amount, &offset)
 
-	return Instruction{
+	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
 
 		// Instruction args
 		Data: data,
 
 		// Instruction accounts
-		Accounts: []AccountMeta{
+		Accounts: []solana.AccountMeta{
 			{
 				PublicKey:  accounts.VmAuthority,
 				IsWritable: true,

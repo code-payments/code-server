@@ -24,20 +24,6 @@ var (
 	SPL_TOKEN_PROGRAM_ID = ed25519.PublicKey(mustBase58Decode("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
 	TIMELOCK_PROGRAM_ID  = ed25519.PublicKey(mustBase58Decode("time2Z2SCnn3qYg3ULKVtdkh8YmZ5jFdKicnA1W2YnJ"))
 
+	SYSVAR_IXNS_PUBKEY = ed25519.PublicKey(mustBase58Decode("Sysvar1nstructions1111111111111111111111111"))
 	SYSVAR_RENT_PUBKEY = ed25519.PublicKey(mustBase58Decode("SysvarRent111111111111111111111111111111111"))
 )
-
-// AccountMeta represents the account information required
-// for building transactions.
-type AccountMeta struct {
-	PublicKey  ed25519.PublicKey
-	IsWritable bool
-	IsSigner   bool
-}
-
-// Instruction represents a transaction instruction.
-type Instruction struct {
-	Program  ed25519.PublicKey
-	Accounts []AccountMeta
-	Data     []byte
-}

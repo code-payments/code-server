@@ -1,6 +1,10 @@
 package cvm
 
-import "crypto/ed25519"
+import (
+	"crypto/ed25519"
+
+	"github.com/code-payments/code-server/pkg/solana"
+)
 
 var SystemNonceInitInstructionDiscriminator = []byte{
 	0x0d, 0xb2, 0x98, 0x60, 0xa7, 0x2c, 0x96, 0x30,
@@ -24,7 +28,7 @@ type SystemNonceInitInstructionAccounts struct {
 func NewSystemNonceInitInstruction(
 	accounts *SystemNonceInitInstructionAccounts,
 	args *SystemNonceInitInstructionArgs,
-) Instruction {
+) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
@@ -35,14 +39,14 @@ func NewSystemNonceInitInstruction(
 	putDiscriminator(data, SystemNonceInitInstructionDiscriminator, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 
-	return Instruction{
+	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
 
 		// Instruction args
 		Data: data,
 
 		// Instruction accounts
-		Accounts: []AccountMeta{
+		Accounts: []solana.AccountMeta{
 			{
 				PublicKey:  accounts.VmAuthority,
 				IsWritable: true,
