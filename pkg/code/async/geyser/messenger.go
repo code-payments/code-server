@@ -15,7 +15,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	"github.com/code-payments/code-server/pkg/database/query"
@@ -169,13 +169,13 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				ctx,
 				data,
 				asciiBaseDomain,
-				chat.ChatTypeExternalApp,
+				chat_v1.ChatTypeExternalApp,
 				true,
 				recipientOwner,
 				chatMessage,
 				false,
 			)
-			if err != nil && err != chat.ErrMessageAlreadyExists {
+			if err != nil && err != chat_v1.ErrMessageAlreadyExists {
 				return errors.Wrap(err, "error persisting chat message")
 			}
 

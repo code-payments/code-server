@@ -373,7 +373,7 @@ func (c *clientEnv) receiveMessagesInRealTime(t *testing.T, rendezvousKey *commo
 				case *messagingpb.OpenMessageStreamWithKeepAliveResponse_Ping:
 					require.NoError(t, streamer.streamWithKeepAlives.Send(&messagingpb.OpenMessageStreamWithKeepAliveRequest{
 						RequestOrPong: &messagingpb.OpenMessageStreamWithKeepAliveRequest_Pong{
-							Pong: &messagingpb.ClientPong{
+							Pong: &commonpb.ClientPong{
 								Timestamp: timestamppb.Now(),
 							},
 						},
@@ -467,7 +467,7 @@ func (c *clientEnv) waitUntilStreamTerminationOrTimeout(t *testing.T, rendezvous
 			if keepStreamAlive {
 				require.NoError(t, streamer.streamWithKeepAlives.Send(&messagingpb.OpenMessageStreamWithKeepAliveRequest{
 					RequestOrPong: &messagingpb.OpenMessageStreamWithKeepAliveRequest_Pong{
-						Pong: &messagingpb.ClientPong{
+						Pong: &commonpb.ClientPong{
 							Timestamp: timestamppb.Now(),
 						},
 					},
