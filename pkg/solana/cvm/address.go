@@ -17,6 +17,7 @@ var (
 	TimelockVaultAccountPrefix     = []byte("timelock_vault")
 	VmMemoryAccountPrefix          = []byte("vm_memory_account")
 	VmOmnibusPrefix                = []byte("vm_omnibus")
+	VmDepositPdaPrefix             = []byte("vm_deposit_pda")
 	VmUnlockPdaAccountPrefix       = []byte("vm_unlock_pda_account")
 	VmWithdrawReceiptAccountPrefix = []byte("vm_withdraw_receipt_account")
 )
@@ -112,6 +113,21 @@ func GetVirtualTimelockVaultAddress(args *GetVirtualTimelockVaultAddressArgs) (e
 		TimelockVaultAccountPrefix,
 		args.VirtualTimelock,
 		[]byte{byte(TimelockDataVersion1)},
+	)
+}
+
+type GetVmDepositAddressArgs struct {
+	Depositor ed25519.PublicKey
+	Vm        ed25519.PublicKey
+}
+
+func GetVmDepositAddress(args *GetVmDepositAddressArgs) (ed25519.PublicKey, uint8, error) {
+	return solana.FindProgramAddressAndBump(
+		PROGRAM_ID,
+		CodeVmPrefix,
+		VmDepositPdaPrefix,
+		args.Depositor,
+		args.Vm,
 	)
 }
 
