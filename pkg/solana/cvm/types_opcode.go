@@ -4,6 +4,7 @@ type Opcode uint8
 
 const (
 	OpcodeTimelockTransferInternal Opcode = 36
+	OpcodeTimelockTransferExternal Opcode = 37
 )
 
 func putOpcode(dst []byte, v Opcode, offset *int) {
