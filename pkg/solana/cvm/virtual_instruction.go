@@ -6,6 +6,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/solana"
 	solana_ed25519 "github.com/code-payments/code-server/pkg/solana/ed25519"
+	"github.com/code-payments/code-server/pkg/solana/memo"
 	"github.com/code-payments/code-server/pkg/solana/system"
 )
 
@@ -50,4 +51,8 @@ func getTxnMessageHash(txn solana.Transaction) Hash {
 	var typed Hash
 	copy(typed[:], bytes)
 	return typed
+}
+
+func newKreMemoIxn() solana.Instruction {
+	return memo.Instruction("ZTAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 }
