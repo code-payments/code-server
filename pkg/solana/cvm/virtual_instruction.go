@@ -14,7 +14,7 @@ import (
 type VirtualInstruction struct {
 	Opcode Opcode
 	Data   []byte
-	Hash   Hash
+	Hash   *Hash // Provided when user signature is required
 }
 
 type VirtualInstructionCtor func() (Opcode, []solana.Instruction, []byte)
@@ -25,17 +25,24 @@ func NewVirtualInstruction(
 	vixnCtor VirtualInstructionCtor,
 ) VirtualInstruction {
 	opcode, ixns, data := vixnCtor()
-	ixns = append([]solana.Instruction{system.AdvanceNonce(nonce.Address, vmAuthority)}, ixns...)
-	txn := solana.NewTransaction(
-		vmAuthority,
-		ixns...,
-	)
-	txn.SetBlockhash(solana.Blockhash(nonce.Nonce))
+
+	var hash *Hash
+	if len(ixns) > 0 {
+		ixns = append([]solana.Instruction{system.AdvanceNonce(nonce.Address, vmAuthority)}, ixns...)
+		txn := solana.NewTransaction(
+			vmAuthority,
+			ixns...,
+		)
+		txn.SetBlockhash(solana.Blockhash(nonce.Nonce))
+
+		txnHash := getTxnMessageHash(txn)
+		hash = &txnHash
+	}
 
 	return VirtualInstruction{
 		Opcode: opcode,
 		Data:   data,
-		Hash:   getTxnMessageHash(txn),
+		Hash:   hash,
 	}
 }
 

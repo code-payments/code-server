@@ -139,11 +139,8 @@ func NewVmExecInstruction(
 
 func getVmExecInstructionArgSize(args *VmExecInstructionArgs) int {
 	return (1 + // opcode
-		4 + // len(mem_indices)
-		2*len(args.MemIndices) + // mem_indices
-		4 + // len(mem_banks)
-		len(args.MemBanks) + // mem_banks
+		4 + 2*len(args.MemIndices) + // mem_indices
+		4 + len(args.MemBanks) + // mem_banks
 		1 + // signature_index
-		4 + // len(data)
-		len(args.Data)) // data
+		4 + len(args.Data)) // data
 }

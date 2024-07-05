@@ -6,37 +6,35 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var VmMemoryInitInstructionDiscriminator = []byte{
-	0x05, 0xd3, 0xfb, 0x74, 0x39, 0xbc, 0xc1, 0xad,
+var RelaySaveRecentRootInstructionDiscriminator = []byte{
+	0x9a, 0x54, 0x94, 0x43, 0x6e, 0xcc, 0x63, 0xcc,
 }
 
 const (
-	VmMemoryInitInstructionArgsSize = (4 + MaxMemoryAccountNameLength) // name
+	RelaySaveRecentRootInstructionArgsSize = 0
 )
 
-type VmMemoryInitInstructionArgs struct {
-	Name string
+type RelaySaveRecentRootInstructionArgs struct {
 }
 
-type VmMemoryInitInstructionAccounts struct {
+type RelaySaveRecentRootInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
-	VmMemory    ed25519.PublicKey
+	Relay       ed25519.PublicKey
 }
 
-func NewVmMemoryInitInstruction(
-	accounts *VmMemoryInitInstructionAccounts,
-	args *VmMemoryInitInstructionArgs,
+func NewRelaySaveRecentRootInstruction(
+	accounts *RelaySaveRecentRootInstructionAccounts,
+	args *RelaySaveRecentRootInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
 	data := make([]byte,
-		len(VmMemoryInitInstructionDiscriminator)+
-			VmMemoryInitInstructionArgsSize)
+		len(RelaySaveRecentRootInstructionDiscriminator)+
+			RelaySaveRecentRootInstructionArgsSize)
 
-	putDiscriminator(data, VmMemoryInitInstructionDiscriminator, &offset)
-	putString(data, args.Name, &offset)
+	putDiscriminator(data, RelaySaveRecentRootInstructionDiscriminator, &offset)
 
 	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
@@ -57,7 +55,7 @@ func NewVmMemoryInitInstruction(
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.VmMemory,
+				PublicKey:  accounts.Relay,
 				IsWritable: true,
 				IsSigner:   false,
 			},
