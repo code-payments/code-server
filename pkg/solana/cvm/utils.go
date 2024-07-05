@@ -18,6 +18,10 @@ func getDiscriminator(src []byte, dst *[]byte, offset *int) {
 	*offset += 8
 }
 
+func putKey(dst []byte, v ed25519.PublicKey, offset *int) {
+	copy(dst[*offset:], v)
+	*offset += ed25519.PublicKeySize
+}
 func getKey(src []byte, dst *ed25519.PublicKey, offset *int) {
 	*dst = make([]byte, ed25519.PublicKeySize)
 	copy(*dst, src[*offset:])
@@ -33,10 +37,17 @@ func getBool(src []byte, dst *bool, offset *int) {
 	*offset += 1
 }
 
-func putString(dst []byte, src string, offset *int) {
-	putUint32(dst, uint32(len(src)), offset)
-	copy(dst[*offset:], src)
-	*offset += len(src)
+func putString(dst []byte, v string, offset *int) {
+	putUint32(dst, uint32(len(v)), offset)
+	copy(dst[*offset:], v)
+	*offset += len(v)
+}
+func getString(data []byte, dst *string, offset *int) {
+	length := int(binary.LittleEndian.Uint32(data[*offset:]))
+	*offset += 4
+
+	*dst = string(data[*offset : *offset+length])
+	*offset += length
 }
 
 func getFixedString(data []byte, dst *string, length int, offset *int) {
