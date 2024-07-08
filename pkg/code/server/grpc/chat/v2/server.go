@@ -785,12 +785,16 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 }
 
 // TODO(api): This likely needs an RPC that can be called from any other Server.
-func (s *Server) NotifyNewMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) error {
+func (s *Server) NotifyMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) {
 	members, err := s.data.GetAllChatMembersV2(ctx, chatID)
 	if errors.Is(err, chat.ErrMemberNotFound) {
-		return nil
+		return
 	} else if err != nil {
-		return err
+		s.log.WithError(err).
+			WithField("chat_id", chatID.String()).
+			Warn("failed to get members for chat notification")
+
+		return
 	}
 
 	event := &chatpb.ChatStreamEvent{
@@ -822,8 +826,6 @@ func (s *Server) NotifyNewMessage(ctx context.Context, chatID chat.ChatId, messa
 	}
 
 	_ = eg.Wait()
-
-	return nil
 }
 
 // todo: This belongs in the common chat utility, which currently only operates on v1 chats
