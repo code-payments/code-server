@@ -165,7 +165,7 @@ func processPotentialBlockchainMessage(ctx context.Context, data code_data.Provi
 				return errors.Wrap(err, "error creating proto message")
 			}
 
-			canPush, err := chat_util.SendChatMessage(
+			canPush, err := chat_util.SendNotificationChatMessageV1(
 				ctx,
 				data,
 				asciiBaseDomain,

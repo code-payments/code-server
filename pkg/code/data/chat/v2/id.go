@@ -2,7 +2,10 @@ package chat_v2
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +30,14 @@ func GetChatIdFromBytes(buffer []byte) (ChatId, error) {
 	}
 
 	return typed, nil
+}
+
+func GetChatId(sender, receiver string, isVerified bool) ChatId {
+	combined := []byte(fmt.Sprintf("%s:%s:%v", sender, receiver, isVerified))
+	if strings.Compare(sender, receiver) > 0 {
+		combined = []byte(fmt.Sprintf("%s:%s:%v", receiver, sender, isVerified))
+	}
+	return sha256.Sum256(combined)
 }
 
 // GetChatIdFromBytes gets a chat ID from the string representation

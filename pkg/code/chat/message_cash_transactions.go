@@ -148,7 +148,7 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 			return errors.Wrap(err, "error creating proto chat message")
 		}
 
-		_, err = SendChatMessage(
+		_, err = SendNotificationChatMessageV1(
 			ctx,
 			data,
 			CashTransactionsName,

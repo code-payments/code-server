@@ -33,9 +33,8 @@ func TestSendChatMessage_HappyPath(t *testing.T) {
 		chatMessage := newRandomChatMessage(t, i+1)
 		expectedBadgeCount += 1
 
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
+		canPush, err := SendNotificationChatMessageV1(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 		require.NoError(t, err)
-
 		assert.True(t, canPush)
 
 		assert.NotNil(t, chatMessage.MessageId)
@@ -56,7 +55,7 @@ func TestSendChatMessage_VerifiedChat(t *testing.T) {
 
 	for _, isVerified := range []bool{true, false} {
 		chatMessage := newRandomChatMessage(t, 1)
-		_, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, isVerified, receiver, chatMessage, true)
+		_, err := SendNotificationChatMessageV1(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, isVerified, receiver, chatMessage, true)
 		require.NoError(t, err)
 		env.assertChatRecordSaved(t, chatTitle, receiver, isVerified)
 	}
@@ -71,7 +70,7 @@ func TestSendChatMessage_SilentMessage(t *testing.T) {
 
 	for i, isSilent := range []bool{true, false} {
 		chatMessage := newRandomChatMessage(t, 1)
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, isSilent)
+		canPush, err := SendNotificationChatMessageV1(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, isSilent)
 		require.NoError(t, err)
 		assert.Equal(t, !isSilent, canPush)
 		env.assertChatMessageRecordSaved(t, chatId, chatMessage, isSilent)
@@ -92,7 +91,7 @@ func TestSendChatMessage_MuteState(t *testing.T) {
 		}
 
 		chatMessage := newRandomChatMessage(t, 1)
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
+		canPush, err := SendNotificationChatMessageV1(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 		require.NoError(t, err)
 		assert.Equal(t, !isMuted, canPush)
 		env.assertChatMessageRecordSaved(t, chatId, chatMessage, false)
@@ -113,7 +112,7 @@ func TestSendChatMessage_SubscriptionState(t *testing.T) {
 		}
 
 		chatMessage := newRandomChatMessage(t, 1)
-		canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
+		canPush, err := SendNotificationChatMessageV1(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 		require.NoError(t, err)
 		assert.Equal(t, !isUnsubscribed, canPush)
 		if isUnsubscribed {
@@ -135,7 +134,7 @@ func TestSendChatMessage_InvalidProtoMessage(t *testing.T) {
 	chatMessage := newRandomChatMessage(t, 1)
 	chatMessage.Content = nil
 
-	canPush, err := SendChatMessage(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
+	canPush, err := SendNotificationChatMessageV1(env.ctx, env.data, chatTitle, chat_v1.ChatTypeInternal, true, receiver, chatMessage, false)
 	assert.Error(t, err)
 	assert.False(t, canPush)
 	env.assertChatRecordNotSaved(t, chatId)
