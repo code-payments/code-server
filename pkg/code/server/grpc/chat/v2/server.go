@@ -12,6 +12,7 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/language"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -781,6 +782,48 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		Result:  chatpb.SendMessageResponse_OK,
 		Message: chatMessage,
 	}, nil
+}
+
+// TODO(api): This likely needs an RPC that can be called from any other server.
+func (s *server) NotifyNewMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) error {
+	members, err := s.data.GetAllChatMembersV2(ctx, chatID)
+	if errors.Is(err, chat.ErrMemberNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	event := &chatpb.ChatStreamEvent{
+		Type: &chatpb.ChatStreamEvent_Message{Message: message},
+	}
+
+	var eg errgroup.Group
+	eg.SetLimit(min(32, len(members)))
+
+	for _, m := range members {
+		eg.Go(func() error {
+			streamKey := fmt.Sprintf("%s:%s", chatID, m.MemberId.String())
+			s.streamsMu.RLock()
+			stream := s.streams[streamKey]
+			s.streamsMu.RUnlock()
+
+			if stream == nil {
+				return nil
+			}
+
+			if err = stream.notify(event, time.Second); err != nil {
+				s.log.WithError(err).
+					WithField("member", m.MemberId.String()).
+					Info("Failed to notify chat stream")
+			}
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait()
+
+	return nil
 }
 
 // todo: This belongs in the common chat utility, which currently only operates on v1 chats

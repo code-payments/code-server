@@ -23,7 +23,7 @@ func GetKinPurchasesChatId(owner *common.Account) chat_v1.ChatId {
 
 // SendKinPurchasesMessage sends a message to the Kin Purchases chat.
 func SendKinPurchasesMessage(ctx context.Context, data code_data.Provider, receiver *common.Account, chatMessage *chatpb.ChatMessage) (bool, error) {
-	return SendChatMessage(
+	return SendNotificationChatMessageV1(
 		ctx,
 		data,
 		KinPurchasesName,
