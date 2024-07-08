@@ -45,7 +45,7 @@ const (
 	flushMessageCount      = 100
 )
 
-type server struct {
+type Server struct {
 	log *logrus.Entry
 
 	data code_data.Provider
@@ -60,9 +60,9 @@ type server struct {
 	chatpb.UnimplementedChatServer
 }
 
-func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) chatpb.ChatServer {
-	s := &server{
-		log: logrus.StandardLogger().WithField("type", "chat/v2/server"),
+func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) *Server {
+	s := &Server{
+		log: logrus.StandardLogger().WithField("type", "chat/v2/Server"),
 
 		data: data,
 		auth: auth,
@@ -81,7 +81,7 @@ func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier
 }
 
 // todo: This will require a lot of optimizations since we iterate and make several DB calls for each chat membership
-func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
+func (s *Server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
 	log := s.log.WithField("method", "GetChats")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -181,7 +181,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 	}, nil
 }
 
-func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest) (*chatpb.GetMessagesResponse, error) {
+func (s *Server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest) (*chatpb.GetMessagesResponse, error) {
 	log := s.log.WithField("method", "GetMessages")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -284,7 +284,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}, nil
 }
 
-func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
+func (s *Server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
 	ctx := streamer.Context()
 
 	log := s.log.WithField("method", "StreamChatEvents")
@@ -359,9 +359,9 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	stream, exists := s.streams[streamKey]
 	if exists {
 		s.streamsMu.Unlock()
-		// There's an existing stream on this server that must be terminated first.
+		// There's an existing stream on this Server that must be terminated first.
 		// Warn to see how often this happens in practice
-		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", stream)
+		log.Warnf("existing stream detected on this Server (stream=%p) ; aborting", stream)
 		return status.Error(codes.Aborted, "stream already exists")
 	}
 
@@ -442,7 +442,7 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	}
 }
 
-func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
+func (s *Server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":        "flushMessages",
 		"chat_id":       chatId.String(),
@@ -477,7 +477,7 @@ func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *c
 	}
 }
 
-func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *chatEventStream) {
+func (s *Server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *chatEventStream) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":  "flushPointers",
 		"chat_id": chatId.String(),
@@ -520,7 +520,7 @@ func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *
 	}
 }
 
-func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
+func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
 	log := s.log.WithField("method", "StartChat")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -695,7 +695,7 @@ func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 	}
 }
 
-func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
+func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
 	log := s.log.WithField("method", "SendMessage")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -784,8 +784,8 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 	}, nil
 }
 
-// TODO(api): This likely needs an RPC that can be called from any other server.
-func (s *server) NotifyNewMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) error {
+// TODO(api): This likely needs an RPC that can be called from any other Server.
+func (s *Server) NotifyNewMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) error {
 	members, err := s.data.GetAllChatMembersV2(ctx, chatID)
 	if errors.Is(err, chat.ErrMemberNotFound) {
 		return nil
@@ -827,7 +827,7 @@ func (s *server) NotifyNewMessage(ctx context.Context, chatID chat.ChatId, messa
 }
 
 // todo: This belongs in the common chat utility, which currently only operates on v1 chats
-func (s *server) persistChatMessage(ctx context.Context, chatId chat.ChatId, protoChatMessage *chatpb.ChatMessage) error {
+func (s *Server) persistChatMessage(ctx context.Context, chatId chat.ChatId, protoChatMessage *chatpb.ChatMessage) error {
 	if err := protoChatMessage.Validate(); err != nil {
 		return errors.Wrap(err, "proto chat message failed validation")
 	}
@@ -877,7 +877,7 @@ func (s *server) persistChatMessage(ctx context.Context, chatId chat.ChatId, pro
 	return nil
 }
 
-func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerRequest) (*chatpb.AdvancePointerResponse, error) {
+func (s *Server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerRequest) (*chatpb.AdvancePointerResponse, error) {
 	log := s.log.WithField("method", "AdvancePointer")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -981,7 +981,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}, nil
 }
 
-func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityRequest) (*chatpb.RevealIdentityResponse, error) {
+func (s *Server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityRequest) (*chatpb.RevealIdentityResponse, error) {
 	log := s.log.WithField("method", "RevealIdentity")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -1135,7 +1135,7 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	}
 }
 
-func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateRequest) (*chatpb.SetMuteStateResponse, error) {
+func (s *Server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateRequest) (*chatpb.SetMuteStateResponse, error) {
 	log := s.log.WithField("method", "SetMuteState")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -1200,7 +1200,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 	}, nil
 }
 
-func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscriptionStateRequest) (*chatpb.SetSubscriptionStateResponse, error) {
+func (s *Server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscriptionStateRequest) (*chatpb.SetSubscriptionStateResponse, error) {
 	log := s.log.WithField("method", "SetSubscriptionState")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -1265,7 +1265,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	}, nil
 }
 
-func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
+func (s *Server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
 	protoChat := &chatpb.ChatMetadata{
 		ChatId: chatRecord.ChatId.ToProto(),
 		Type:   chatRecord.ChatType.ToProto(),
@@ -1349,7 +1349,7 @@ func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 	return protoChat, nil
 }
 
-func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
+func (s *Server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
 	messageRecords, err := s.data.GetAllChatMessagesV2(
 		ctx,
 		chatId,
@@ -1405,7 +1405,7 @@ func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, o
 	return res, nil
 }
 
-func (s *server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+func (s *Server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
 	event := &chatpb.ChatStreamEvent{
 		Type: &chatpb.ChatStreamEvent_Message{
 			Message: chatMessage,
@@ -1418,7 +1418,7 @@ func (s *server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, cha
 	// todo: send the push
 }
 
-func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
+func (s *Server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
 	identities := map[chat.Platform]string{
 		chat.PlatformCode: owner.PublicKey().ToBase58(),
 	}
@@ -1434,7 +1434,7 @@ func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (m
 	return identities, nil
 }
 
-func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
+func (s *Server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
 	memberRecord, err := s.data.GetChatMemberByIdV2(ctx, chatId, memberId)
 	switch err {
 	case nil:
@@ -1447,7 +1447,7 @@ func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.Ch
 	return s.ownsChatMemberWithRecord(ctx, chatId, memberRecord, owner)
 }
 
-func (s *server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatId, memberRecord *chat.MemberRecord, owner *common.Account) (bool, error) {
+func (s *Server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatId, memberRecord *chat.MemberRecord, owner *common.Account) (bool, error) {
 	switch memberRecord.Platform {
 	case chat.PlatformCode:
 		return memberRecord.PlatformId == owner.PublicKey().ToBase58(), nil
@@ -1459,7 +1459,7 @@ func (s *server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatI
 }
 
 // todo: This logic should live elsewhere in somewhere more common
-func (s *server) ownsTwitterUsername(ctx context.Context, owner *common.Account, username string) (bool, error) {
+func (s *Server) ownsTwitterUsername(ctx context.Context, owner *common.Account, username string) (bool, error) {
 	ownerTipAccount, err := owner.ToTimelockVault(timelock_token.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return false, errors.Wrap(err, "error deriving twitter tip address")
@@ -1478,7 +1478,7 @@ func (s *server) ownsTwitterUsername(ctx context.Context, owner *common.Account,
 }
 
 // todo: This logic should live elsewhere in somewhere more common
-func (s *server) getOwnedTwitterUsername(ctx context.Context, owner *common.Account) (string, bool, error) {
+func (s *Server) getOwnedTwitterUsername(ctx context.Context, owner *common.Account) (string, bool, error) {
 	ownerTipAccount, err := owner.ToTimelockVault(timelock_token.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return "", false, errors.Wrap(err, "error deriving twitter tip address")
