@@ -8,29 +8,29 @@ import (
 )
 
 const (
-	TimelockTransferExternalVirtrualInstructionDataSize = 8 // amount
+	TimelockTransferRelayVirtrualInstructionDataSize = 8 // amount
 )
 
-type TimelockTransferExternalVirtualInstructionArgs struct {
+type TimelockTransferRelayVirtualInstructionArgs struct {
 	TimelockBump uint8
 	Amount       uint64
 }
 
-type TimelockTransferExternalVirtualInstructionAccounts struct {
+type TimelockTransferRelayVirtualInstructionAccounts struct {
 	VmAuthority          ed25519.PublicKey
 	VirtualTimelock      ed25519.PublicKey
 	VirtualTimelockVault ed25519.PublicKey
 	Owner                ed25519.PublicKey
-	Destination          ed25519.PublicKey
+	RelayVault           ed25519.PublicKey
 }
 
-func NewTimelockTransferExternalVirtualInstructionCtor(
-	accounts *TimelockTransferExternalVirtualInstructionAccounts,
-	args *TimelockTransferExternalVirtualInstructionArgs,
+func NewTimelockTransferRelayVirtualInstructionCtor(
+	accounts *TimelockTransferRelayVirtualInstructionAccounts,
+	args *TimelockTransferRelayVirtualInstructionArgs,
 ) VirtualInstructionCtor {
 	return func() (Opcode, []solana.Instruction, []byte) {
 		var offset int
-		data := make([]byte, TimelockTransferExternalVirtrualInstructionDataSize)
+		data := make([]byte, TimelockTransferRelayVirtrualInstructionDataSize)
 		putUint64(data, args.Amount, &offset)
 
 		ixns := []solana.Instruction{
@@ -41,7 +41,7 @@ func NewTimelockTransferExternalVirtualInstructionCtor(
 					Vault:         accounts.VirtualTimelockVault,
 					VaultOwner:    accounts.Owner,
 					TimeAuthority: accounts.VmAuthority,
-					Destination:   accounts.Destination,
+					Destination:   accounts.RelayVault,
 					Payer:         accounts.VmAuthority,
 				},
 				&timelock_token.TransferWithAuthorityInstructionArgs{
@@ -51,6 +51,6 @@ func NewTimelockTransferExternalVirtualInstructionCtor(
 			).ToLegacyInstruction(),
 		}
 
-		return OpcodeTimelockTransferExternal, ixns, data
+		return OpcodeTimelockTransferRelay, ixns, data
 	}
 }
