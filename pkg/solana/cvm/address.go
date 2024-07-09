@@ -20,6 +20,7 @@ var (
 	VmMemoryAccountPrefix          = []byte("vm_memory_account")
 	VmOmnibusPrefix                = []byte("vm_omnibus")
 	VmDepositPdaPrefix             = []byte("vm_deposit_pda")
+	VmProofAccountPrefix           = []byte("vm_proof_account")
 	VmRelayAccountPrefix           = []byte("vm_relay_account")
 	VmRelayVaultPrefix             = []byte("vm_relay_vault")
 	VmUnlockPdaAccountPrefix       = []byte("vm_unlock_pda_account")
@@ -90,7 +91,7 @@ func GetRelayAccountAddress(args *GetRelayAccountAddressArgs) (ed25519.PublicKey
 }
 
 type GetRelayVaultAddressArgs struct {
-	Relay ed25519.PublicKey
+	RelayOrProof ed25519.PublicKey
 }
 
 func GetRelayVaultAddress(args *GetRelayVaultAddressArgs) (ed25519.PublicKey, uint8, error) {
@@ -98,7 +99,24 @@ func GetRelayVaultAddress(args *GetRelayVaultAddressArgs) (ed25519.PublicKey, ui
 		PROGRAM_ID,
 		CodeVmPrefix,
 		VmRelayVaultPrefix,
+		args.RelayOrProof,
+	)
+}
+
+type GetRelayProofAddressArgs struct {
+	Relay      ed25519.PublicKey
+	MerkleRoot Hash
+	Commitment Hash
+}
+
+func GetRelayProofAddress(args *GetRelayProofAddressArgs) (ed25519.PublicKey, uint8, error) {
+	return solana.FindProgramAddressAndBump(
+		PROGRAM_ID,
+		CodeVmPrefix,
+		VmProofAccountPrefix,
 		args.Relay,
+		args.MerkleRoot[:],
+		args.Commitment[:],
 	)
 }
 

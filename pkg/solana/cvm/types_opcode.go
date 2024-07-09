@@ -5,6 +5,7 @@ type Opcode uint8
 const (
 	OpcodeTimelockTransferInternal Opcode = 36
 	OpcodeTimelockTransferExternal Opcode = 37
+	OpcodeTimelockTransferRelay    Opcode = 38
 
 	OpcodeTransferWithCommitmentInternal Opcode = 52
 	OpcodeTransferWithCommitmentExternal Opcode = 53

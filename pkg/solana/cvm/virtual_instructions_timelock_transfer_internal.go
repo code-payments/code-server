@@ -17,11 +17,11 @@ type TimelockTransferInternalVirtualInstructionArgs struct {
 }
 
 type TimelockTransferInternalVirtualInstructionAccounts struct {
-	VmAuthority     ed25519.PublicKey
-	VirtualTimelock ed25519.PublicKey
-	VirtualVault    ed25519.PublicKey
-	Owner           ed25519.PublicKey
-	Destination     ed25519.PublicKey
+	VmAuthority          ed25519.PublicKey
+	VirtualTimelock      ed25519.PublicKey
+	VirtualTimelockVault ed25519.PublicKey
+	Owner                ed25519.PublicKey
+	Destination          ed25519.PublicKey
 }
 
 func NewTimelockTransferInternalVirtualInstructionCtor(
@@ -38,7 +38,7 @@ func NewTimelockTransferInternalVirtualInstructionCtor(
 			timelock_token.NewTransferWithAuthorityInstruction(
 				&timelock_token.TransferWithAuthorityInstructionAccounts{
 					Timelock:      accounts.VirtualTimelock,
-					Vault:         accounts.VirtualVault,
+					Vault:         accounts.VirtualTimelockVault,
 					VaultOwner:    accounts.Owner,
 					TimeAuthority: accounts.VmAuthority,
 					Destination:   accounts.Destination,
