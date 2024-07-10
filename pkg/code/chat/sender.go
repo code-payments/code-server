@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mr-tron/base58"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
@@ -132,6 +133,8 @@ func SendNotificationChatMessageV2(
 	intentId string,
 	isSilentMessage bool,
 ) (canPushMessage bool, err error) {
+	log := logrus.StandardLogger().WithField("type", "sendNotificationChatMessageV2")
+
 	chatId := chat_v2.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), isVerifiedChat)
 
 	if protoMessage.Cursor != nil {
@@ -182,9 +185,10 @@ func SendNotificationChatMessageV2(
 				return fmt.Errorf("failed to initialize chat: %w", err)
 			}
 
+			memberId := chat_v2.GenerateMemberId()
 			err = data.PutChatMemberV2(ctx, &chat_v2.MemberRecord{
 				ChatId:     chatId,
-				MemberId:   chat_v2.GenerateMemberId(),
+				MemberId:   memberId,
 				Platform:   chat_v2.PlatformCode,
 				PlatformId: receiver.PublicKey().ToBase58(),
 				JoinedAt:   time.Now(),
@@ -192,6 +196,12 @@ func SendNotificationChatMessageV2(
 			if err != nil {
 				return fmt.Errorf("failed to initialize chat with member: %w", err)
 			}
+
+			log.WithFields(logrus.Fields{
+				"chat_id":     chatId.String(),
+				"member":      memberId.String(),
+				"platform_id": receiver.PublicKey().ToBase58(),
+			}).Info("Initialized chat for tip")
 
 			return nil
 		})
@@ -241,6 +251,8 @@ func SendNotificationChatMessageV2(
 		}
 
 		notifier.NotifyMessage(ctx, chatId, protoMessage)
+
+		log.WithField("chat_id", chatId.String()).Info("Put and notified")
 	}
 
 	// TODO: Once we move more things over to chatv2, we will need to increment

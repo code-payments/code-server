@@ -133,7 +133,7 @@ func (s *Server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 	// todo: Use a better query that returns chat IDs. This will result in duplicate
 	//       chat results if the user is in the chat multiple times across many identities.
-	patformUserMemberRecords, err := s.data.GetPlatformUserChatMembershipV2(
+	platformUserMemberRecords, err := s.data.GetPlatformUserChatMembershipV2(
 		ctx,
 		myIdentities,
 		query.WithCursor(cursor),
@@ -149,8 +149,10 @@ func (s *Server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	log.WithField("chats", len(platformUserMemberRecords)).Info("Retrieved chatlist for user")
+
 	var protoChats []*chatpb.ChatMetadata
-	for _, platformUserMemberRecord := range patformUserMemberRecords {
+	for _, platformUserMemberRecord := range platformUserMemberRecords {
 		log := log.WithField("chat_id", platformUserMemberRecord.ChatId.String())
 
 		chatRecord, err := s.data.GetChatByIdV2(ctx, platformUserMemberRecord.ChatId)
@@ -786,8 +788,14 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 
 // TODO(api): This likely needs an RPC that can be called from any other Server.
 func (s *Server) NotifyMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) {
+	log := s.log.WithFields(logrus.Fields{
+		"chat_id":   chatID.String(),
+		"messge_id": message.MessageId.String(),
+	})
+
 	members, err := s.data.GetAllChatMembersV2(ctx, chatID)
 	if errors.Is(err, chat.ErrMemberNotFound) {
+		log.Info("Dropping message notification, no members")
 		return
 	} else if err != nil {
 		s.log.WithError(err).
@@ -805,6 +813,8 @@ func (s *Server) NotifyMessage(ctx context.Context, chatID chat.ChatId, message 
 	eg.SetLimit(min(32, len(members)))
 
 	for _, m := range members {
+		m := m
+
 		eg.Go(func() error {
 			streamKey := fmt.Sprintf("%s:%s", chatID, m.MemberId.String())
 			s.streamsMu.RLock()
@@ -815,6 +825,7 @@ func (s *Server) NotifyMessage(ctx context.Context, chatID chat.ChatId, message 
 				return nil
 			}
 
+			log.WithField("member_id", m.MemberId.String()).Info("Notifying member stream")
 			if err = stream.notify(event, time.Second); err != nil {
 				s.log.WithError(err).
 					WithField("member", m.MemberId.String()).
