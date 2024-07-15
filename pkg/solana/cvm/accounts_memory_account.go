@@ -16,7 +16,7 @@ type MemoryAccountWithData struct {
 	Vm   ed25519.PublicKey
 	Bump uint8
 	Name string
-	Data AccountBuffer
+	Data PagedMemory
 }
 
 const MemoryAccountWithDataSize = (8 + // discriminator
@@ -24,7 +24,7 @@ const MemoryAccountWithDataSize = (8 + // discriminator
 	1 + // bump
 	MaxMemoryAccountNameLength + // name
 	1 + // padding
-	AccountBufferSize) // data
+	PagedMemorySize) // data
 
 var MemoryAccountDiscriminator = []byte{0x89, 0x7a, 0xdc, 0x6e, 0xdd, 0xca, 0x3e, 0x7f}
 
@@ -45,7 +45,7 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 	getUint8(data, &obj.Bump, &offset)
 	getFixedString(data, &obj.Name, MaxMemoryAccountNameLength, &offset)
 	offset += 1 // padding
-	getAccountBuffer(data, &obj.Data, &offset)
+	getPagedMemory(data, &obj.Data, &offset)
 
 	return nil
 }
