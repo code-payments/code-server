@@ -1291,6 +1291,15 @@ func (s *Server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 
 		protoChat.CanMute = true
 		protoChat.CanUnsubscribe = true
+	case chat.ChatTypeNotification:
+		if chatRecord.ChatTitle == nil {
+			// TODO: we shouldn't fail the whole RPC
+			return nil, fmt.Errorf("invalid notification chat: missing title")
+		}
+
+		// TODO: Localization
+		protoChat.Title = *chatRecord.ChatTitle
+
 	default:
 		return nil, errors.Errorf("unsupported chat type: %s", chatRecord.ChatType.String())
 	}
