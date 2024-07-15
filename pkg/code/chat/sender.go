@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -179,35 +178,32 @@ func SendNotificationChatMessageV2(
 			CreatedAt: time.Now(),
 		}
 
-		err = data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
-			err = data.PutChatV2(ctx, chatRecord)
-			if err != nil && !errors.Is(err, chat_v2.ErrChatExists) {
-				return fmt.Errorf("failed to initialize chat: %w", err)
-			}
+		// TODO: These should be run in a transaction, but so far
+		// we're being called in a transaction. We should have some kind
+		// of safety check here...
+		err = data.PutChatV2(ctx, chatRecord)
+		if err != nil && !errors.Is(err, chat_v2.ErrChatExists) {
+			return false, fmt.Errorf("failed to initialize chat: %w", err)
+		}
 
-			memberId := chat_v2.GenerateMemberId()
-			err = data.PutChatMemberV2(ctx, &chat_v2.MemberRecord{
-				ChatId:     chatId,
-				MemberId:   memberId,
-				Platform:   chat_v2.PlatformCode,
-				PlatformId: receiver.PublicKey().ToBase58(),
-				JoinedAt:   time.Now(),
-			})
-			if err != nil {
-				return fmt.Errorf("failed to initialize chat with member: %w", err)
-			}
-
-			log.WithFields(logrus.Fields{
-				"chat_id":     chatId.String(),
-				"member":      memberId.String(),
-				"platform_id": receiver.PublicKey().ToBase58(),
-			}).Info("Initialized chat for tip")
-
-			return nil
+		memberId := chat_v2.GenerateMemberId()
+		err = data.PutChatMemberV2(ctx, &chat_v2.MemberRecord{
+			ChatId:     chatId,
+			MemberId:   memberId,
+			Platform:   chat_v2.PlatformCode,
+			PlatformId: receiver.PublicKey().ToBase58(),
+			JoinedAt:   time.Now(),
 		})
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("failed to initialize chat with member: %w", err)
 		}
+
+		log.WithFields(logrus.Fields{
+			"chat_id":     chatId.String(),
+			"member":      memberId.String(),
+			"platform_id": receiver.PublicKey().ToBase58(),
+		}).Info("Initialized chat for tip")
+
 	} else if err != nil {
 		return false, err
 	}
