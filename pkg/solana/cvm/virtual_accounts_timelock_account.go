@@ -27,6 +27,22 @@ type VirtualTimelockAccount struct {
 	Bump    uint8
 }
 
+func (obj *VirtualTimelockAccount) Marshal() []byte {
+	data := make([]byte, VirtualTimelockAccountSize)
+
+	var offset int
+
+	putKey(data, obj.Owner, &offset)
+	putHash(data, obj.Nonce, &offset)
+	putUint8(data, obj.TokenBump, &offset)
+	putUint8(data, obj.UnlockBump, &offset)
+	putUint8(data, obj.WithdrawBump, &offset)
+	putUint64(data, obj.Balance, &offset)
+	putUint8(data, obj.Bump, &offset)
+
+	return data
+}
+
 func (obj *VirtualTimelockAccount) UnmarshalDirectly(data []byte) error {
 	if len(data) < VirtualTimelockAccountSize {
 		return ErrInvalidVirtualAccountData
