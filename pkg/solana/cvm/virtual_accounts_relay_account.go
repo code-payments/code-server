@@ -19,6 +19,19 @@ type VirtualRelayAccount struct {
 	Destination ed25519.PublicKey
 }
 
+func (obj *VirtualRelayAccount) Marshal() []byte {
+	data := make([]byte, VirtualRelayAccountSize)
+
+	var offset int
+
+	putKey(data, obj.Address, &offset)
+	putHash(data, obj.Commitment, &offset)
+	putHash(data, obj.RecentRoot, &offset)
+	putKey(data, obj.Destination, &offset)
+
+	return data
+}
+
 func (obj *VirtualRelayAccount) UnmarshalDirectly(data []byte) error {
 	if len(data) < VirtualRelayAccountSize {
 		return ErrInvalidVirtualAccountData

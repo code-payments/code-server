@@ -15,6 +15,17 @@ type VirtualDurableNonce struct {
 	Nonce   Hash
 }
 
+func (obj *VirtualDurableNonce) Marshal() []byte {
+	data := make([]byte, VirtualDurableNonceSize)
+
+	var offset int
+
+	putKey(data, obj.Address, &offset)
+	putHash(data, obj.Nonce, &offset)
+
+	return data
+}
+
 func (obj *VirtualDurableNonce) UnmarshalDirectly(data []byte) error {
 	if len(data) < VirtualDurableNonceSize {
 		return ErrInvalidVirtualAccountData
