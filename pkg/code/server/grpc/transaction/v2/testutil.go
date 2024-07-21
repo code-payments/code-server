@@ -31,6 +31,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
+	"github.com/code-payments/code-server/pkg/code/chat"
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -57,7 +58,6 @@ import (
 	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	chat_server "github.com/code-payments/code-server/pkg/code/server/grpc/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -187,7 +187,7 @@ func setupTestEnv(t *testing.T, serverOverrides *testOverrides) (serverTestEnv, 
 	testService := NewTransactionServer(
 		db,
 		memory_push.NewPushProvider(),
-		chat_server.NewNoopNotifier(),
+		chat.NewNoopNotifier(),
 		nil,
 		messaging.NewMessagingClient(db),
 		nil,

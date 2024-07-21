@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
+	chatv2pb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
@@ -410,5 +411,149 @@ func SendChatMessagePushNotification(
 	if anyErrorPushingContent {
 		return errors.New("at least one piece of content failed to push")
 	}
+	return nil
+}
+
+func SendChatMessagePushNotificationV2(
+	ctx context.Context,
+	data code_data.Provider,
+	pusher push_lib.Provider,
+	chatTitle string,
+	owner *common.Account,
+	chatMessage *chatv2pb.ChatMessage,
+) error {
+	log := logrus.StandardLogger().WithFields(logrus.Fields{
+		"method": "SendChatMessagePushNotificationV2",
+		"owner":  owner.PublicKey().ToBase58(),
+		"chat":   chatTitle,
+	})
+
+	// Best-effort try to update the badge count before pushing message content
+	//
+	// Note: Only chat messages generate badge counts
+	err := UpdateBadgeCount(ctx, data, pusher, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure updating badge count on device")
+	}
+
+	locale, err := data.GetUserLocale(ctx, owner.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting user locale")
+		return err
+	}
+
+	var localizedPushTitle string
+
+	chatProperties, ok := chat_util.InternalChatProperties[chatTitle]
+	if ok {
+		localized, err := localization.Localize(locale, chatProperties.TitleLocalizationKey)
+		if err != nil {
+			return nil
+		}
+		localizedPushTitle = localized
+	} else {
+		domainDisplayName, err := thirdparty.GetDomainDisplayName(chatTitle)
+		if err == nil {
+			localizedPushTitle = domainDisplayName
+		} else {
+			return nil
+		}
+	}
+
+	var anyErrorPushingContent bool
+	for _, content := range chatMessage.Content {
+		var contentToPush *chatv2pb.Content
+		switch typedContent := content.Type.(type) {
+		case *chatv2pb.Content_Localized:
+			localizedPushBody, err := localization.Localize(locale, typedContent.Localized.KeyOrText)
+			if err != nil {
+				continue
+			}
+
+			contentToPush = &chatv2pb.Content{
+				Type: &chatv2pb.Content_Localized{
+					Localized: &chatv2pb.LocalizedContent{
+						KeyOrText: localizedPushBody,
+					},
+				},
+			}
+		case *chatv2pb.Content_ExchangeData:
+			var currencyCode currency_lib.Code
+			var nativeAmount float64
+			if typedContent.ExchangeData.GetExact() != nil {
+				exchangeData := typedContent.ExchangeData.GetExact()
+				currencyCode = currency_lib.Code(exchangeData.Currency)
+				nativeAmount = exchangeData.NativeAmount
+			} else {
+				exchangeData := typedContent.ExchangeData.GetPartial()
+				currencyCode = currency_lib.Code(exchangeData.Currency)
+				nativeAmount = exchangeData.NativeAmount
+			}
+
+			localizedPushBody, err := localization.LocalizeFiatWithVerb(
+				locale,
+				chatpb.ExchangeDataContent_Verb(typedContent.ExchangeData.Verb),
+				currencyCode,
+				nativeAmount,
+				true,
+			)
+			if err != nil {
+				continue
+			}
+
+			contentToPush = &chatv2pb.Content{
+				Type: &chatv2pb.Content_Localized{
+					Localized: &chatv2pb.LocalizedContent{
+						KeyOrText: localizedPushBody,
+					},
+				},
+			}
+		case *chatv2pb.Content_NaclBox, *chatv2pb.Content_Text:
+			contentToPush = content
+		case *chatv2pb.Content_ThankYou:
+			contentToPush = &chatv2pb.Content{
+				Type: &chatv2pb.Content_Localized{
+					Localized: &chatv2pb.LocalizedContent{
+						// todo: localize this
+						KeyOrText: "🙏 They thanked you for their tip",
+					},
+				},
+			}
+		}
+
+		if contentToPush == nil {
+			continue
+		}
+
+		marshalledContent, err := proto.Marshal(contentToPush)
+		if err != nil {
+			log.WithError(err).Warn("failure marshalling chat content")
+			return err
+		}
+
+		kvs := map[string]string{
+			"chat_title":      localizedPushTitle,
+			"message_content": base64.StdEncoding.EncodeToString(marshalledContent),
+		}
+
+		err = sendMutableNotificationToOwner(
+			ctx,
+			data,
+			pusher,
+			owner,
+			chatMessageDataPush,
+			chatTitle,
+			kvs,
+		)
+		if err != nil {
+			anyErrorPushingContent = true
+			log.WithError(err).Warn("failure sending data push notification")
+		}
+	}
+
+	if anyErrorPushingContent {
+		return errors.New("at least one piece of content failed to push")
+	}
+
 	return nil
 }

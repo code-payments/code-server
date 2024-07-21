@@ -18,7 +18,6 @@ import (
 	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	chat_v2 "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	chat_server "github.com/code-payments/code-server/pkg/code/server/grpc/chat/v2"
 )
 
 // SendTipsExchangeMessage sends a message to the Tips chat with exchange data
@@ -26,7 +25,7 @@ import (
 // Tips chat will be ignored.
 //
 // Note: Tests covered in SubmitIntent history tests
-func SendTipsExchangeMessage(ctx context.Context, data code_data.Provider, notifier chat_server.Notifier, intentRecord *intent.Record) ([]*MessageWithOwner, error) {
+func SendTipsExchangeMessage(ctx context.Context, data code_data.Provider, notifier Notifier, intentRecord *intent.Record) ([]*MessageWithOwner, error) {
 	intentIdRaw, err := base58.Decode(intentRecord.IntentId)
 	if err != nil {
 		return nil, fmt.Errorf("invalid intent id: %w", err)

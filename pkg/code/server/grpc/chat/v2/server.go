@@ -25,14 +25,17 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
+	chatv2 "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
+	"github.com/code-payments/code-server/pkg/push"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
@@ -50,6 +53,7 @@ type Server struct {
 
 	data code_data.Provider
 	auth *auth_util.RPCSignatureVerifier
+	push push.Provider
 
 	streamsMu sync.RWMutex
 	streams   map[string]*chatEventStream
@@ -60,12 +64,17 @@ type Server struct {
 	chatpb.UnimplementedChatServer
 }
 
-func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) *Server {
+func NewChatServer(
+	data code_data.Provider,
+	auth *auth_util.RPCSignatureVerifier,
+	push push.Provider,
+) *Server {
 	s := &Server{
 		log: logrus.StandardLogger().WithField("type", "chat/v2/Server"),
 
 		data: data,
 		auth: auth,
+		push: push,
 
 		streams: make(map[string]*chatEventStream),
 
@@ -631,8 +640,9 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 					ChatId:   chatId,
 					MemberId: chat.GenerateMemberId(),
 
-					Platform:   chat.PlatformTwitter,
-					PlatformId: twitterUsername,
+					Platform:     chat.PlatformTwitter,
+					PlatformId:   twitterUsername,
+					OwnerAccount: owner.PublicKey().ToBase58(),
 
 					JoinedAt: creationTs,
 				},
@@ -748,8 +758,10 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	var chatTitle string
 	switch chatRecord.ChatType {
 	case chat.ChatTypeTwoWay:
+		chatTitle = chatv2.TwoWayChatName
 	default:
 		return &chatpb.SendMessageResponse{
 			Result: chatpb.SendMessageResponse_INVALID_CHAT_TYPE,
@@ -779,6 +791,7 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 	}
 
 	s.onPersistChatMessage(log, chatId, chatMessage)
+	s.sendPushNotifications(chatId, chatTitle, chatMessage)
 
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
@@ -787,56 +800,13 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 }
 
 // TODO(api): This likely needs an RPC that can be called from any other Server.
-func (s *Server) NotifyMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) {
+func (s *Server) NotifyMessage(_ context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) {
 	log := s.log.WithFields(logrus.Fields{
 		"chat_id":   chatID.String(),
 		"messge_id": message.MessageId.String(),
 	})
 
-	members, err := s.data.GetAllChatMembersV2(ctx, chatID)
-	if errors.Is(err, chat.ErrMemberNotFound) {
-		log.Info("Dropping message notification, no members")
-		return
-	} else if err != nil {
-		s.log.WithError(err).
-			WithField("chat_id", chatID.String()).
-			Warn("failed to get members for chat notification")
-
-		return
-	}
-
-	event := &chatpb.ChatStreamEvent{
-		Type: &chatpb.ChatStreamEvent_Message{Message: message},
-	}
-
-	var eg errgroup.Group
-	eg.SetLimit(min(32, len(members)))
-
-	for _, m := range members {
-		m := m
-
-		eg.Go(func() error {
-			streamKey := fmt.Sprintf("%s:%s", chatID, m.MemberId.String())
-			s.streamsMu.RLock()
-			stream := s.streams[streamKey]
-			s.streamsMu.RUnlock()
-
-			if stream == nil {
-				return nil
-			}
-
-			log.WithField("member_id", m.MemberId.String()).Info("Notifying member stream")
-			if err = stream.notify(event, time.Second); err != nil {
-				s.log.WithError(err).
-					WithField("member", m.MemberId.String()).
-					Info("Failed to notify chat stream")
-			}
-
-			return nil
-		})
-	}
-
-	_ = eg.Wait()
+	s.onPersistChatMessage(log, chatID, message)
 }
 
 // todo: This belongs in the common chat utility, which currently only operates on v1 chats
@@ -1433,11 +1403,61 @@ func (s *Server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, cha
 			Message: chatMessage,
 		},
 	}
+
 	if err := s.asyncNotifyAll(chatId, event); err != nil {
 		log.WithError(err).Warn("failure notifying chat event")
 	}
+}
 
-	// todo: send the push
+func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, message *chatpb.ChatMessage) {
+	log := s.log.WithFields(logrus.Fields{
+		"method":  "sendPushNotifications",
+		"chat_id": chatId.String(),
+	})
+
+	// todo: err group
+	members, err := s.data.GetAllChatMembersV2(context.Background(), chatId)
+	if err != nil {
+		log.WithError(err).Warn("failure getting chat members")
+		return
+	}
+
+	var eg errgroup.Group
+	eg.SetLimit(min(32, len(members)))
+
+	for _, m := range members {
+		if m.IsMuted || m.IsUnsubscribed {
+			continue
+		}
+
+		owner, err := common.NewAccountFromPublicKeyString(m.GetOwner())
+		if err != nil {
+			log.WithError(err).WithField("member", m.MemberId.String()).Warn("failure getting owner")
+			continue
+		}
+
+		m := m
+		eg.Go(func() error {
+			err = push_util.SendChatMessagePushNotificationV2(
+				context.Background(),
+				s.data,
+				s.push,
+				chatTitle,
+				owner,
+				message,
+			)
+			if err != nil {
+				log.
+					WithError(err).
+					WithField("member", m.MemberId).
+					Warn("failure sending push notification")
+			}
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait()
 }
 
 func (s *Server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
