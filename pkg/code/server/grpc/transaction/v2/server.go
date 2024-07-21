@@ -11,10 +11,10 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
+	"github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/lawenforcement"
-	chat_server "github.com/code-payments/code-server/pkg/code/server/grpc/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
 	"github.com/code-payments/code-server/pkg/jupiter"
 	"github.com/code-payments/code-server/pkg/kin"
@@ -31,7 +31,7 @@ type transactionServer struct {
 	auth *auth_util.RPCSignatureVerifier
 
 	pusher   push_lib.Provider
-	notifier chat_server.Notifier
+	notifier chat.Notifier
 
 	jupiterClient *jupiter.Client
 
@@ -67,7 +67,7 @@ type transactionServer struct {
 func NewTransactionServer(
 	data code_data.Provider,
 	pusher push_lib.Provider,
-	notifier chat_server.Notifier,
+	notifier chat.Notifier,
 	jupiterClient *jupiter.Client,
 	messagingClient messaging.InternalMessageClient,
 	maxmind *maxminddb.Reader,

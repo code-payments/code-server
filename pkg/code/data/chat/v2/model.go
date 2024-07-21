@@ -70,6 +70,11 @@ type MemberRecord struct {
 	Platform   Platform
 	PlatformId string
 
+	// If Platform != PlatformCode, this store the owner
+	// of the account (at time of creation). This allows
+	// us to send push notifications for non-code users.
+	OwnerAccount string
+
 	DeliveryPointer *MessageId
 	ReadPointer     *MessageId
 
@@ -77,6 +82,14 @@ type MemberRecord struct {
 	IsUnsubscribed bool
 
 	JoinedAt time.Time
+}
+
+func (m *MemberRecord) GetOwner() string {
+	if m.Platform == PlatformCode {
+		return m.PlatformId
+	}
+
+	return m.OwnerAccount
 }
 
 type MessageRecord struct {
@@ -292,6 +305,9 @@ func (r *MemberRecord) Validate() error {
 	if len(r.PlatformId) == 0 {
 		return errors.New("platform id is required")
 	}
+	if r.Platform != PlatformCode && len(r.OwnerAccount) == 0 {
+		return errors.New("owner account is required for non code platform members")
+	}
 
 	switch r.Platform {
 	case PlatformCode:
@@ -349,8 +365,9 @@ func (r *MemberRecord) Clone() MemberRecord {
 		ChatId:   r.ChatId,
 		MemberId: r.MemberId,
 
-		Platform:   r.Platform,
-		PlatformId: r.PlatformId,
+		Platform:     r.Platform,
+		PlatformId:   r.PlatformId,
+		OwnerAccount: r.OwnerAccount,
 
 		DeliveryPointer: deliveryPointerCopy,
 		ReadPointer:     readPointerCopy,
@@ -370,6 +387,7 @@ func (r *MemberRecord) CopyTo(dst *MemberRecord) {
 
 	dst.Platform = r.Platform
 	dst.PlatformId = r.PlatformId
+	dst.OwnerAccount = r.OwnerAccount
 
 	if r.DeliveryPointer != nil {
 		cloned := r.DeliveryPointer.Clone()

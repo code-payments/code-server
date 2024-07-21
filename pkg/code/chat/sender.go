@@ -17,7 +17,6 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	chat_v2 "github.com/code-payments/code-server/pkg/code/data/chat/v2"
-	chatserver "github.com/code-payments/code-server/pkg/code/server/grpc/chat/v2"
 )
 
 // SendNotificationChatMessageV1 sends a chat message to a receiving owner account.
@@ -124,7 +123,7 @@ func SendNotificationChatMessageV1(
 func SendNotificationChatMessageV2(
 	ctx context.Context,
 	data code_data.Provider,
-	notifier chatserver.Notifier,
+	notifier Notifier,
 	chatTitle string,
 	isVerifiedChat bool,
 	receiver *common.Account,
