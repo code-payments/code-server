@@ -791,7 +791,7 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 	}
 
 	s.onPersistChatMessage(log, chatId, chatMessage)
-	s.sendPushNotifications(chatId, chatTitle, chatMessage)
+	s.sendPushNotifications(chatId, chatTitle, memberId, chatMessage)
 
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
@@ -1409,7 +1409,7 @@ func (s *Server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, cha
 	}
 }
 
-func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, message *chatpb.ChatMessage) {
+func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sender chat.MemberId, message *chatpb.ChatMessage) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":  "sendPushNotifications",
 		"chat_id": chatId.String(),
@@ -1426,7 +1426,7 @@ func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, mes
 	eg.SetLimit(min(32, len(members)))
 
 	for _, m := range members {
-		if m.IsMuted || m.IsUnsubscribed {
+		if m.MemberId == sender || m.IsMuted || m.IsUnsubscribed {
 			continue
 		}
 
