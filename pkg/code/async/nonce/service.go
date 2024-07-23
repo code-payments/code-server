@@ -66,11 +66,12 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		p.size = size
 	}
 
-	// Generate vault keys until we have at least 10 in reserve to use for the pool
+	// Generate vault keys until we have a minimum in reserve to use for the pool
+	// on Solana mainnet
 	go p.generateKeys(ctx)
 
-	// Watch the size of the nonce pool and create accounts if necessary
-	go p.generateNonceAccounts(ctx)
+	// Watch the size of the Solana mainnet nonce pool and create accounts if necessary
+	go p.generateNonceAccountsOnSolanaMainnet(ctx)
 
 	// Setup workers to watch for nonce state changes on the Solana side
 	for _, item := range []nonce.State{
@@ -79,7 +80,7 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	} {
 		go func(state nonce.State) {
 
-			err := p.worker(ctx, state, interval)
+			err := p.worker(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, interval)
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
 			}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/mr-tron/base58/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/pkg/errors"
 
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
@@ -17,9 +18,13 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/system"
 )
 
-func (p *service) worker(serviceCtx context.Context, state nonce.State, interval time.Duration) error {
+func (p *service) worker(serviceCtx context.Context, env nonce.Environment, instance string, state nonce.State, interval time.Duration) error {
 	var cursor query.Cursor
 	delay := interval
+
+	if env != nonce.EnvironmentSolana {
+		return errors.Errorf("%s environment not supported", env.String())
+	}
 
 	err := retry.Loop(
 		func() (err error) {
@@ -33,6 +38,8 @@ func (p *service) worker(serviceCtx context.Context, state nonce.State, interval
 			// Get a batch of nonce records in similar state (e.g. newly created, released, reserved, etc...)
 			items, err := p.data.GetAllNonceByState(
 				tracedCtx,
+				env,
+				instance,
 				state,
 				query.WithLimit(nonceBatchSize),
 				query.WithCursor(cursor),

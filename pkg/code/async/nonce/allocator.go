@@ -11,7 +11,7 @@ import (
 	"github.com/code-payments/code-server/pkg/retry"
 )
 
-func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
+func (p *service) generateNonceAccountsOnSolanaMainnet(serviceCtx context.Context) error {
 
 	hasWarnedUser := false
 	err := retry.Loop(
@@ -23,7 +23,7 @@ func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-			num_invalid, err := p.data.GetNonceCountByState(tracedCtx, nonce.StateInvalid)
+			num_invalid, err := p.data.GetNonceCountByState(tracedCtx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid)
 			if err != nil {
 				return err
 			}
@@ -33,17 +33,17 @@ func (p *service) generateNonceAccounts(serviceCtx context.Context) error {
 				return ErrInvalidNonceLimitExceeded
 			}
 
-			num_available, err := p.data.GetNonceCountByState(tracedCtx, nonce.StateAvailable)
+			num_available, err := p.data.GetNonceCountByState(tracedCtx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateAvailable)
 			if err != nil {
 				return err
 			}
 
-			num_released, err := p.data.GetNonceCountByState(tracedCtx, nonce.StateReleased)
+			num_released, err := p.data.GetNonceCountByState(tracedCtx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReleased)
 			if err != nil {
 				return err
 			}
 
-			num_unknown, err := p.data.GetNonceCountByState(tracedCtx, nonce.StateUnknown)
+			num_unknown, err := p.data.GetNonceCountByState(tracedCtx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown)
 			if err != nil {
 				return err
 			}

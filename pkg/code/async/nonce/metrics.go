@@ -2,10 +2,11 @@ package async_nonce
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
@@ -35,12 +36,12 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 					nonce.StateReserved,
 					nonce.StateInvalid,
 				} {
-					count, err := p.data.GetNonceCountByStateAndPurpose(ctx, state, useCase)
+					count, err := p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, useCase)
 					if err != nil {
 						continue
 					}
 
-					recordNonceCountEvent(ctx, state, useCase, count)
+					recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, useCase, count)
 				}
 			}
 
@@ -49,8 +50,9 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 	}
 }
 
-func recordNonceCountEvent(ctx context.Context, state nonce.State, useCase nonce.Purpose, count uint64) {
+func recordNonceCountEvent(ctx context.Context, env nonce.Environment, instance string, state nonce.State, useCase nonce.Purpose, count uint64) {
 	metrics.RecordEvent(ctx, nonceCountCheckEventName, map[string]interface{}{
+		"pool":     fmt.Sprintf("%s:%s", env.String(), instance),
 		"use_case": useCase.String(),
 		"state":    state.String(),
 		"count":    count,
