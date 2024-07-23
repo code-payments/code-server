@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 
+	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/mr-tron/base58"
 )
 
@@ -43,8 +44,10 @@ type Record struct {
 	Address   string
 	Authority string
 	Blockhash string
-	Purpose   Purpose
-	State     State
+	Vm        *string // If null, a real nonce on Solana. Otherwise, a virtual nonce in a VM.
+
+	Purpose Purpose
+	State   State
 
 	Signature string
 }
@@ -53,12 +56,17 @@ func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {
 	return base58.Decode(r.Address)
 }
 
+func (r *Record) IsVirtual() bool {
+	return r.Vm != nil
+}
+
 func (r *Record) Clone() Record {
 	return Record{
 		Id:        r.Id,
 		Address:   r.Address,
 		Authority: r.Authority,
 		Blockhash: r.Blockhash,
+		Vm:        pointer.StringCopy(r.Vm),
 		Purpose:   r.Purpose,
 		State:     r.State,
 		Signature: r.Signature,
@@ -70,6 +78,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Address = r.Address
 	dst.Authority = r.Authority
 	dst.Blockhash = r.Blockhash
+	dst.Vm = pointer.StringCopy(r.Vm)
 	dst.Purpose = r.Purpose
 	dst.State = r.State
 	dst.Signature = r.Signature

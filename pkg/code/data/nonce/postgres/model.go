@@ -7,6 +7,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/pointer"
 
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
@@ -17,13 +18,14 @@ const (
 )
 
 type nonceModel struct {
-	Id        sql.NullInt64 `db:"id"`
-	Address   string        `db:"address"`
-	Authority string        `db:"authority"`
-	Blockhash string        `db:"blockhash"`
-	Purpose   uint          `db:"purpose"`
-	State     uint          `db:"state"`
-	Signature string        `db:"signature"`
+	Id        sql.NullInt64  `db:"id"`
+	Address   string         `db:"address"`
+	Authority string         `db:"authority"`
+	Blockhash string         `db:"blockhash"`
+	Vm        sql.NullString `db:"vm"`
+	Purpose   uint           `db:"purpose"`
+	State     uint           `db:"state"`
+	Signature string         `db:"signature"`
 }
 
 func toNonceModel(obj *nonce.Record) (*nonceModel, error) {
@@ -36,6 +38,10 @@ func toNonceModel(obj *nonce.Record) (*nonceModel, error) {
 		Address:   obj.Address,
 		Authority: obj.Authority,
 		Blockhash: obj.Blockhash,
+		Vm: sql.NullString{
+			Valid:  obj.Vm != nil,
+			String: *pointer.StringOrDefault(obj.Vm, ""),
+		},
 		Purpose:   uint(obj.Purpose),
 		State:     uint(obj.State),
 		Signature: obj.Signature,
@@ -48,6 +54,7 @@ func fromNonceModel(obj *nonceModel) *nonce.Record {
 		Address:   obj.Address,
 		Authority: obj.Authority,
 		Blockhash: obj.Blockhash,
+		Vm:        pointer.StringIfValid(obj.Vm.Valid, obj.Vm.String),
 		Purpose:   nonce.Purpose(obj.Purpose),
 		State:     nonce.State(obj.State),
 		Signature: obj.Signature,
@@ -57,14 +64,14 @@ func fromNonceModel(obj *nonceModel) *nonce.Record {
 func (m *nonceModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + nonceTableName + `
-			(address, authority, blockhash, purpose, state, signature)
-			VALUES ($1,$2,$3,$4,$5,$6)
+			(address, authority, blockhash, vm, purpose, state, signature)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
 			ON CONFLICT (address)
 			DO UPDATE
-				SET blockhash = $3, state = $5, signature = $6
+				SET blockhash = $3, state = $6, signature = $7
 				WHERE ` + nonceTableName + `.address = $1 
 			RETURNING
-				id, address, authority, blockhash, purpose, state, signature`
+				id, address, authority, blockhash, vm, purpose, state, signature`
 
 		err := tx.QueryRowxContext(
 			ctx,
@@ -72,6 +79,7 @@ func (m *nonceModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.Address,
 			m.Authority,
 			m.Blockhash,
+			m.Vm,
 			m.Purpose,
 			m.State,
 			m.Signature,
@@ -121,7 +129,7 @@ func dbGetNonce(ctx context.Context, db *sqlx.DB, address string) (*nonceModel, 
 	res := &nonceModel{}
 
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, vm, purpose, state, signature
 		FROM ` + nonceTableName + `
 		WHERE address = $1
 	`
@@ -142,7 +150,7 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state nonce.State, cursor
 	//
 	// todo: Fix said nonce records
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, vm, purpose, state, signature
 		FROM ` + nonceTableName + `
 		WHERE (state = $1 AND signature IS NOT NULL)
 	`
@@ -175,14 +183,14 @@ func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, purpose non
 	//
 	// todo: Fix said nonce records
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, vm, purpose, state, signature
 		FROM ` + nonceTableName + `
 		WHERE state = $1 AND purpose = $2 AND signature IS NOT NULL
 		OFFSET FLOOR(RANDOM() * 100)
 		LIMIT 1
 	`
 	fallbackQuery := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, vm, purpose, state, signature
 		FROM ` + nonceTableName + `
 		WHERE state = $1 AND purpose = $2 AND signature IS NOT NULL
 		LIMIT 1

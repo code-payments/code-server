@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s nonce.Store, teardown func()) {
@@ -36,17 +38,22 @@ func testRoundTrip(t *testing.T, s nonce.Store) {
 		Address:   "test_address",
 		Authority: "test_authority",
 		Blockhash: "test_blockhash",
+		Vm:        pointer.String(("test_vm")),
 		Purpose:   nonce.PurposeClientTransaction,
+		State:     nonce.StateReserved,
 	}
+	cloned := expected.Clone()
 	err = s.Save(ctx, &expected)
 	require.NoError(t, err)
 
 	actual, err = s.Get(ctx, "test_address")
 	require.NoError(t, err)
-	assert.Equal(t, expected.Address, actual.Address)
-	assert.Equal(t, expected.Authority, actual.Authority)
-	assert.Equal(t, expected.Blockhash, actual.Blockhash)
-	assert.Equal(t, expected.Purpose, actual.Purpose)
+	assert.Equal(t, cloned.Address, actual.Address)
+	assert.Equal(t, cloned.Authority, actual.Authority)
+	assert.Equal(t, cloned.Blockhash, actual.Blockhash)
+	assert.Equal(t, cloned.Vm, actual.Vm)
+	assert.Equal(t, cloned.Purpose, actual.Purpose)
+	assert.Equal(t, cloned.State, actual.State)
 	assert.EqualValues(t, 1, actual.Id)
 }
 

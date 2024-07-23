@@ -25,6 +25,7 @@ const (
 			address text NOT NULL UNIQUE, 
 			authority text NOT NULL,
 			blockhash text NULL,
+			vm text NULL,
 
 			purpose integer NOT NULL,
 			state integer NOT NULL,
