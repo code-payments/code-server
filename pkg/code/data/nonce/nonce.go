@@ -31,8 +31,8 @@ type State uint8
 const (
 	StateUnknown   State = iota
 	StateReleased        // The nonce is almost ready but we don't know its blockhash yet.
-	StateAvailable       // The nonce is available to be used by a payment intent, subscription, or other nonce-related transaction.
-	StateReserved        // The nonce is reserved by a payment intent, subscription, or other nonce-related transaction.
+	StateAvailable       // The nonce is available to be used by a payment intent, subscription, or other nonce-related transaction/instruction.
+	StateReserved        // The nonce is reserved by a payment intent, subscription, or other nonce-related transaction/instruction.
 	StateInvalid         // The nonce account is invalid (e.g. insufficient funds, etc).
 )
 

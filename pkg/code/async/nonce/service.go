@@ -9,10 +9,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	indexperpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
 )
 
 var (
@@ -32,20 +33,22 @@ const (
 )
 
 type service struct {
-	log  *logrus.Entry
-	data code_data.Provider
+	log             *logrus.Entry
+	data            code_data.Provider
+	vmIndexerClient indexperpb.IndexerClient
 
 	rent   uint64
 	prefix string
 	size   int
 }
 
-func New(data code_data.Provider) async.Service {
+func New(data code_data.Provider, vmIndexerClient indexperpb.IndexerClient) async.Service {
 	return &service{
-		log:    logrus.StandardLogger().WithField("service", "nonce"),
-		data:   data,
-		prefix: nonceKeyPrefixDefault,
-		size:   noncePoolSizeDefault,
+		log:             logrus.StandardLogger().WithField("service", "nonce"),
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
+		prefix:          nonceKeyPrefixDefault,
+		size:            noncePoolSizeDefault,
 	}
 }
 

@@ -11,6 +11,11 @@ import (
 	"github.com/code-payments/code-server/pkg/retry"
 )
 
+// todo: Add process for allocating VDN, which has some key differences:
+// - Don't know the address in advance
+// - Need some level of memory account management with the ability to find a free index
+// - Does not require a vault key record
+
 func (p *service) generateNonceAccountsOnSolanaMainnet(serviceCtx context.Context) error {
 
 	hasWarnedUser := false
