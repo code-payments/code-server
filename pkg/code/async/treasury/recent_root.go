@@ -9,10 +9,6 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
@@ -22,6 +18,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 )
 
 // This method is expected to be extremely safe due to the implications of saving
@@ -184,7 +184,7 @@ func (p *service) maybeSaveRecentRoot(ctx context.Context, treasuryPoolRecord *t
 		State: action.StatePending,
 	}
 
-	selectedNonce, err := transaction.SelectAvailableNonce(ctx, p.data, nonce.PurposeInternalServerProcess)
+	selectedNonce, err := transaction.SelectAvailableNonce(ctx, p.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return err
