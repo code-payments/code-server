@@ -107,7 +107,7 @@ func TestInitializeLockedTimelockAccountFulfillmentHandler_OnDemandTransaction(t
 	}
 
 	env.generateAvailableNonce(t)
-	selectedNonce, err := transaction_util.SelectAvailableNonce(env.ctx, env.data, nonce.PurposeOnDemandTransaction)
+	selectedNonce, err := transaction_util.SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction)
 	require.NoError(t, err)
 
 	assert.True(t, handler.SupportsOnDemandTransactions())
@@ -549,7 +549,7 @@ func TestTransferWithCommitmentFulfillmentHandler_OnDemandTransaction(t *testing
 	handler := env.handlersByType[fulfillment.TransferWithCommitment]
 
 	env.generateAvailableNonce(t)
-	selectedNonce, err := transaction_util.SelectAvailableNonce(env.ctx, env.data, nonce.PurposeOnDemandTransaction)
+	selectedNonce, err := transaction_util.SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction)
 	require.NoError(t, err)
 
 	assert.True(t, handler.SupportsOnDemandTransactions())
@@ -1074,10 +1074,12 @@ func (e *fulfillmentHandlerTestEnv) setupForPayment(t *testing.T, fulfillmentRec
 		Signature: *fulfillmentRecord.Signature,
 
 		// We don't care about the below fields (yet)
-		Authority: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		Blockhash: "bh",
-		Purpose:   nonce.PurposeClientTransaction,
-		State:     nonce.StateReserved,
+		Authority:           testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		Blockhash:           "bh",
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeClientTransaction,
+		State:               nonce.StateReserved,
 	}
 	require.NoError(t, e.data.SaveNonce(e.ctx, nonceRecord))
 	fulfillmentRecord.Nonce = pointer.String(nonceRecord.Address)
@@ -1185,11 +1187,13 @@ func (e *fulfillmentHandlerTestEnv) generateAvailableNonce(t *testing.T) *nonce.
 		CreatedAt:  time.Now(),
 	}
 	nonceRecord := &nonce.Record{
-		Address:   nonceAccount.PublicKey().ToBase58(),
-		Authority: e.subsidizer.PublicKey().ToBase58(),
-		Blockhash: base58.Encode(bh[:]),
-		Purpose:   nonce.PurposeOnDemandTransaction,
-		State:     nonce.StateAvailable,
+		Address:             nonceAccount.PublicKey().ToBase58(),
+		Authority:           e.subsidizer.PublicKey().ToBase58(),
+		Blockhash:           base58.Encode(bh[:]),
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeOnDemandTransaction,
+		State:               nonce.StateAvailable,
 	}
 	require.NoError(t, e.data.SaveKey(e.ctx, nonceKey))
 	require.NoError(t, e.data.SaveNonce(e.ctx, nonceRecord))
