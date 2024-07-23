@@ -8,12 +8,12 @@ import (
 
 	"github.com/mr-tron/base58"
 
-	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var (
@@ -51,11 +51,11 @@ type SelectedNonce struct {
 	Blockhash solana.Blockhash
 }
 
-// SelectAvailableNonce selects an available from the nonce pool for the specified
-// use case. The returned nonce is marked as reserved without a signature, so it
-// cannot be selected again. It's the responsibility of the external caller to make
+// SelectAvailableNonce selects an available from the nonce pool within an environment
+// for the specified use case. The returned nonce is marked as reserved without a signature,
+// so it cannot be selected again. It's the responsibility of the external caller to make
 // it available again if it doesn't get assigned a fulfillment.
-func SelectAvailableNonce(ctx context.Context, data code_data.Provider, useCase nonce.Purpose) (*SelectedNonce, error) {
+func SelectAvailableNonce(ctx context.Context, data code_data.Provider, env nonce.Environment, instance string, useCase nonce.Purpose) (*SelectedNonce, error) {
 	var lock *sync.Mutex
 	var account *common.Account
 	var bh solana.Blockhash
@@ -65,7 +65,7 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, useCase 
 		globalNonceLock.Lock()
 		defer globalNonceLock.Unlock()
 
-		randomRecord, err := data.GetRandomAvailableNonceByPurpose(ctx, useCase)
+		randomRecord, err := data.GetRandomAvailableNonceByPurpose(ctx, env, instance, useCase)
 		if err == nonce.ErrNonceNotFound {
 			return ErrNoAvailableNonces
 		} else if err != nil {
