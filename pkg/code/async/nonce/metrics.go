@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	nonceCountMetricName     = "Nonce/%s_count"
 	nonceCountCheckEventName = "NonceCountPollingCheck"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
+	cvmPublicKey := p.conf.cvmPublicKey.Get(ctx)
+
 	delay := time.Second
 
 	for {
@@ -24,6 +25,7 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 		case <-time.After(delay):
 			start := time.Now()
 
+			// todo: optimize number of queries needed per polling check
 			for _, useCase := range []nonce.Purpose{
 				nonce.PurposeClientTransaction,
 				nonce.PurposeInternalServerProcess,
@@ -40,8 +42,13 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 					if err != nil {
 						continue
 					}
-
 					recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, useCase, count)
+
+					count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentCvm, cvmPublicKey, state, useCase)
+					if err != nil {
+						continue
+					}
+					recordNonceCountEvent(ctx, nonce.EnvironmentCvm, cvmPublicKey, state, useCase, count)
 				}
 			}
 

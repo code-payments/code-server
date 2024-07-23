@@ -2,8 +2,6 @@ package async_nonce
 
 import (
 	"context"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -22,53 +20,25 @@ var (
 	ErrNoAvailableKeys           = errors.New("no available keys in the vault")
 )
 
-const (
-	nonceBatchSize = 100
-
-	noncePoolSizeDefault  = 10 // Reserve is calculated as size * 2
-	nonceKeyPrefixDefault = "non"
-
-	nonceKeyPrefixEnv = "NONCE_PUBKEY_PREFIX"
-	noncePoolSizeEnv  = "NONCE_POOL_SIZE"
-)
-
 type service struct {
 	log             *logrus.Entry
+	conf            *conf
 	data            code_data.Provider
 	vmIndexerClient indexperpb.IndexerClient
 
-	rent   uint64
-	prefix string
-	size   int
+	rent uint64
 }
 
-func New(data code_data.Provider, vmIndexerClient indexperpb.IndexerClient) async.Service {
+func New(data code_data.Provider, vmIndexerClient indexperpb.IndexerClient, configProvider ConfigProvider) async.Service {
 	return &service{
 		log:             logrus.StandardLogger().WithField("service", "nonce"),
+		conf:            configProvider(),
 		data:            data,
 		vmIndexerClient: vmIndexerClient,
-		prefix:          nonceKeyPrefixDefault,
-		size:            noncePoolSizeDefault,
 	}
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-	// Look for user defined prefix value
-	prefix := os.Getenv(nonceKeyPrefixEnv)
-	if len(prefix) > 0 {
-		p.prefix = prefix
-	}
-
-	// Look for user defined pool size value
-	sizeStr := os.Getenv(noncePoolSizeEnv)
-	if len(sizeStr) > 0 {
-		size, err := strconv.Atoi(sizeStr)
-		if err != nil {
-			return errors.Wrap(err, "invalid nonce pool size")
-		}
-		p.size = size
-	}
-
 	// Generate vault keys until we have a minimum in reserve to use for the pool
 	// on Solana mainnet
 	go p.generateKeys(ctx)
@@ -84,6 +54,20 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		go func(state nonce.State) {
 
 			err := p.worker(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, interval)
+			if err != nil && err != context.Canceled {
+				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
+			}
+
+		}(item)
+	}
+
+	// Setup workers to watch for nonce state changes on the CVM side
+	for _, item := range []nonce.State{
+		nonce.StateReleased,
+	} {
+		go func(state nonce.State) {
+
+			err := p.worker(ctx, nonce.EnvironmentCvm, p.conf.cvmPublicKey.Get(ctx), state, interval)
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
 			}
