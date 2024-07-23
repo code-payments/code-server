@@ -112,33 +112,33 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	}
 
 	// Simple get all by state
-	actual, err := s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
+	actual, err := s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateUnknown, query.EmptyCursor, 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateInvalid, query.EmptyCursor, 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 
 	// Simple get all by state (reverse)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateUnknown, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateInvalid, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 
 	// Check items (asc)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
@@ -146,7 +146,7 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t5", actual[2].Address)
 
 	// Check items (desc)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t5", actual[0].Address)
@@ -154,21 +154,21 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t3", actual[2].Address)
 
 	// Check items (asc + limit)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 2, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 2, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
 	assert.Equal(t, "t4", actual[1].Address)
 
 	// Check items (desc + limit)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 2, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 2, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 	assert.Equal(t, "t5", actual[0].Address)
 	assert.Equal(t, "t4", actual[1].Address)
 
 	// Check items (asc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(1), 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(1), 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
@@ -176,7 +176,7 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t5", actual[2].Address)
 
 	// Check items (desc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(6), 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(6), 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t5", actual[0].Address)
@@ -184,20 +184,20 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t3", actual[2].Address)
 
 	// Check items (asc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(3), 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(3), 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 	assert.Equal(t, "t4", actual[0].Address)
 	assert.Equal(t, "t5", actual[1].Address)
 
 	// Check items (desc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(4), 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(4), 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
 
 	// Check items (asc + cursor + limit)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(3), 1, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(3), 1, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 	assert.Equal(t, "t4", actual[0].Address)
@@ -219,7 +219,7 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		item.Environment = nonce.EnvironmentSolana
 		item.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
 
-		count, err := s.Count(ctx)
+		count, err := s.Count(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet)
 		require.NoError(t, err)
 		assert.EqualValues(t, index, count)
 
@@ -227,35 +227,35 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		require.NoError(t, err)
 	}
 
-	count, err := s.CountByState(ctx, nonce.StateAvailable)
+	count, err := s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateAvailable)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, count)
 
-	count, err = s.CountByState(ctx, nonce.StateUnknown)
+	count, err = s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 
-	count, err = s.CountByState(ctx, nonce.StateInvalid)
+	count, err = s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, count)
 
-	count, err = s.CountByState(ctx, nonce.StateReserved)
+	count, err = s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved)
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateReserved, nonce.PurposeClientTransaction)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateReserved, nonce.PurposeInternalServerProcess)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, nonce.PurposeInternalServerProcess)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateUnknown, nonce.PurposeClientTransaction)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateUnknown, nonce.PurposeInternalServerProcess)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeInternalServerProcess)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, count)
 }
@@ -264,7 +264,7 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 	t.Run("testGetRandomAvailableByPurpose", func(t *testing.T) {
 		ctx := context.Background()
 
-		_, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeClientTransaction)
+		_, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 		assert.Equal(t, nonce.ErrNonceNotFound, err)
 
 		for _, purpose := range []nonce.Purpose{
@@ -294,7 +294,7 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 
 		selectedByAddress := make(map[string]struct{})
 		for i := 0; i < 100; i++ {
-			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeClientTransaction)
+			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 			require.NoError(t, err)
 			assert.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
 			assert.Equal(t, nonce.StateAvailable, actual.State)
@@ -304,7 +304,7 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 
 		selectedByAddress = make(map[string]struct{})
 		for i := 0; i < 100; i++ {
-			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeInternalServerProcess)
+			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 			require.NoError(t, err)
 			assert.Equal(t, nonce.PurposeInternalServerProcess, actual.Purpose)
 			assert.Equal(t, nonce.StateAvailable, actual.State)
