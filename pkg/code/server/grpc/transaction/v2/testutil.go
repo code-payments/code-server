@@ -499,11 +499,13 @@ func (s *serverTestEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 		CreatedAt:  time.Now(),
 	}
 	nonceRecord := &nonce.Record{
-		Address:   nonceAccount.PublicKey().ToBase58(),
-		Authority: s.subsidizer.PublicKey().ToBase58(),
-		Blockhash: base58.Encode(bh[:]),
-		Purpose:   nonce.PurposeClientTransaction,
-		State:     nonce.StateAvailable,
+		Address:             nonceAccount.PublicKey().ToBase58(),
+		Authority:           s.subsidizer.PublicKey().ToBase58(),
+		Blockhash:           base58.Encode(bh[:]),
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeClientTransaction,
+		State:               nonce.StateAvailable,
 	}
 	require.NoError(t, s.data.SaveKey(s.ctx, nonceKey))
 	require.NoError(t, s.data.SaveNonce(s.ctx, nonceRecord))
@@ -1195,7 +1197,7 @@ func (s serverTestEnv) assertAirdropped(t *testing.T, phone phoneTestEnv, airdro
 }
 
 func (s serverTestEnv) assertNoNoncesReserved(t *testing.T) {
-	count, err := s.data.GetNonceCountByState(s.ctx, nonce.StateReserved)
+	count, err := s.data.GetNonceCountByState(s.ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, count)
 }
@@ -1203,7 +1205,7 @@ func (s serverTestEnv) assertNoNoncesReserved(t *testing.T) {
 func (s serverTestEnv) assertNoNoncesReservedForIntent(t *testing.T, intentId string) {
 	var cursor query.Cursor
 	for {
-		nonceRecords, err := s.data.GetAllNonceByState(s.ctx, nonce.StateReserved, query.WithCursor(cursor))
+		nonceRecords, err := s.data.GetAllNonceByState(s.ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.WithCursor(cursor))
 		if err == nonce.ErrNonceNotFound {
 			return
 		}
