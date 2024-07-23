@@ -11,11 +11,6 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/retry"
-	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
@@ -24,6 +19,11 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 //
@@ -420,7 +420,7 @@ func (p *service) injectCommitmentVaultManagementFulfillments(ctx context.Contex
 		)},
 		{fulfillment.CloseCommitmentVault, makeCloseCommitmentVaultInstructions(txnAccounts, txnArgs)},
 	} {
-		selectedNonce, err := transaction.SelectAvailableNonce(ctx, p.data, nonce.PurposeInternalServerProcess)
+		selectedNonce, err := transaction.SelectAvailableNonce(ctx, p.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 		if err != nil {
 			return err
 		}
