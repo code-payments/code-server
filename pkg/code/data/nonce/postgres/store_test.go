@@ -25,10 +25,13 @@ const (
 			address text NOT NULL UNIQUE, 
 			authority text NOT NULL,
 			blockhash text NULL,
-			vm text NULL,
+
+			environment integer NOT NULL,
+			environment_instance text NOT NULL,
 
 			purpose integer NOT NULL,
 			state integer NOT NULL,
+
 			signature text NULL
 		);
 	`

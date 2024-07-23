@@ -4,8 +4,21 @@ import (
 	"crypto/ed25519"
 	"errors"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/mr-tron/base58"
+)
+
+type Environment uint8
+
+const (
+	EnvironmentUnknown Environment = iota
+	EnvironmentSolana              // Environment instance is the cluster name (ie. mainnet, devnet, testnet, etc)
+	EnvironmentCvm                 // Environment instance is the VM public key
+)
+
+const (
+	EnvironmentInstanceSolanaMainnet = "mainnet"
+	EnvironmentInstanceSolanaDevnet  = "devnet"
+	EnvironmentInstanceSolanaTestnet = "testnet"
 )
 
 var (
@@ -44,7 +57,9 @@ type Record struct {
 	Address   string
 	Authority string
 	Blockhash string
-	Vm        *string // If null, a real nonce on Solana. Otherwise, a virtual nonce in a VM.
+
+	Environment         Environment
+	EnvironmentInstance string
 
 	Purpose Purpose
 	State   State
@@ -56,20 +71,17 @@ func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {
 	return base58.Decode(r.Address)
 }
 
-func (r *Record) IsVirtual() bool {
-	return r.Vm != nil
-}
-
 func (r *Record) Clone() Record {
 	return Record{
-		Id:        r.Id,
-		Address:   r.Address,
-		Authority: r.Authority,
-		Blockhash: r.Blockhash,
-		Vm:        pointer.StringCopy(r.Vm),
-		Purpose:   r.Purpose,
-		State:     r.State,
-		Signature: r.Signature,
+		Id:                  r.Id,
+		Address:             r.Address,
+		Authority:           r.Authority,
+		Blockhash:           r.Blockhash,
+		Environment:         r.Environment,
+		EnvironmentInstance: r.EnvironmentInstance,
+		Purpose:             r.Purpose,
+		State:               r.State,
+		Signature:           r.Signature,
 	}
 }
 
@@ -78,7 +90,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Address = r.Address
 	dst.Authority = r.Authority
 	dst.Blockhash = r.Blockhash
-	dst.Vm = pointer.StringCopy(r.Vm)
+	dst.Environment = r.Environment
+	dst.EnvironmentInstance = r.EnvironmentInstance
 	dst.Purpose = r.Purpose
 	dst.State = r.State
 	dst.Signature = r.Signature
@@ -93,10 +106,31 @@ func (v *Record) Validate() error {
 		return errors.New("authority address is required")
 	}
 
+	if v.Environment == EnvironmentUnknown {
+		return errors.New("nonce environment must be set")
+	}
+
+	if len(v.EnvironmentInstance) == 0 {
+		return errors.New("nonce environment instance must be set")
+	}
+
 	if v.Purpose == PurposeUnknown {
 		return errors.New("nonce purpose must be set")
 	}
+
 	return nil
+}
+
+func (e Environment) String() string {
+	switch e {
+	case EnvironmentUnknown:
+		return "unknown"
+	case EnvironmentSolana:
+		return "solana"
+	case EnvironmentCvm:
+		return "cvm"
+	}
+	return "unknown"
 }
 
 func (s State) String() string {

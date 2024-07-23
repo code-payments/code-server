@@ -10,7 +10,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s nonce.Store, teardown func()) {
@@ -35,12 +34,13 @@ func testRoundTrip(t *testing.T, s nonce.Store) {
 	assert.Nil(t, actual)
 
 	expected := nonce.Record{
-		Address:   "test_address",
-		Authority: "test_authority",
-		Blockhash: "test_blockhash",
-		Vm:        pointer.String(("test_vm")),
-		Purpose:   nonce.PurposeClientTransaction,
-		State:     nonce.StateReserved,
+		Address:             "test_address",
+		Authority:           "test_authority",
+		Blockhash:           "test_blockhash",
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeClientTransaction,
+		State:               nonce.StateReserved,
 	}
 	cloned := expected.Clone()
 	err = s.Save(ctx, &expected)
@@ -51,7 +51,8 @@ func testRoundTrip(t *testing.T, s nonce.Store) {
 	assert.Equal(t, cloned.Address, actual.Address)
 	assert.Equal(t, cloned.Authority, actual.Authority)
 	assert.Equal(t, cloned.Blockhash, actual.Blockhash)
-	assert.Equal(t, cloned.Vm, actual.Vm)
+	assert.Equal(t, cloned.Environment, actual.Environment)
+	assert.Equal(t, cloned.EnvironmentInstance, actual.EnvironmentInstance)
 	assert.Equal(t, cloned.Purpose, actual.Purpose)
 	assert.Equal(t, cloned.State, actual.State)
 	assert.EqualValues(t, 1, actual.Id)
@@ -61,10 +62,12 @@ func testUpdate(t *testing.T, s nonce.Store) {
 	ctx := context.Background()
 
 	expected := nonce.Record{
-		Address:   "test_address",
-		Authority: "test_authority",
-		Blockhash: "test_blockhash",
-		Purpose:   nonce.PurposeInternalServerProcess,
+		Address:             "test_address",
+		Authority:           "test_authority",
+		Blockhash:           "test_blockhash",
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeInternalServerProcess,
 	}
 	err := s.Save(ctx, &expected)
 	require.NoError(t, err)
@@ -100,6 +103,8 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	}
 
 	for _, item := range expected {
+		item.Environment = nonce.EnvironmentSolana
+		item.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
 		item.Purpose = nonce.PurposeInternalServerProcess
 
 		err := s.Save(ctx, &item)
@@ -211,6 +216,9 @@ func testGetCount(t *testing.T, s nonce.Store) {
 	}
 
 	for index, item := range expected {
+		item.Environment = nonce.EnvironmentSolana
+		item.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
+
 		count, err := s.Count(ctx)
 		require.NoError(t, err)
 		assert.EqualValues(t, index, count)
@@ -270,12 +278,14 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 			} {
 				for i := 0; i < 500; i++ {
 					record := &nonce.Record{
-						Address:   fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
-						Authority: "authority",
-						Blockhash: "bh",
-						Purpose:   purpose,
-						State:     state,
-						Signature: "",
+						Address:             fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
+						Authority:           "authority",
+						Blockhash:           "bh",
+						Environment:         nonce.EnvironmentSolana,
+						EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+						Purpose:             purpose,
+						State:               state,
+						Signature:           "",
 					}
 					require.NoError(t, s.Save(ctx, record))
 				}
