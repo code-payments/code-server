@@ -10,14 +10,14 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/retry"
 )
 
 func (p *service) worker(serviceCtx context.Context, state fulfillment.State, interval time.Duration) error {
@@ -224,7 +224,7 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 			return errors.New("unexpected scheduled fulfillment without transaction data")
 		}
 
-		selectedNonce, err := transaction_util.SelectAvailableNonce(ctx, p.data, nonce.PurposeOnDemandTransaction)
+		selectedNonce, err := transaction_util.SelectAvailableNonce(ctx, p.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction)
 		if err != nil {
 			return err
 		}

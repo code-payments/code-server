@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 func RunTests(t *testing.T, s nonce.Store, teardown func()) {
@@ -33,20 +34,27 @@ func testRoundTrip(t *testing.T, s nonce.Store) {
 	assert.Nil(t, actual)
 
 	expected := nonce.Record{
-		Address:   "test_address",
-		Authority: "test_authority",
-		Blockhash: "test_blockhash",
-		Purpose:   nonce.PurposeClientTransaction,
+		Address:             "test_address",
+		Authority:           "test_authority",
+		Blockhash:           "test_blockhash",
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeClientTransaction,
+		State:               nonce.StateReserved,
 	}
+	cloned := expected.Clone()
 	err = s.Save(ctx, &expected)
 	require.NoError(t, err)
 
 	actual, err = s.Get(ctx, "test_address")
 	require.NoError(t, err)
-	assert.Equal(t, expected.Address, actual.Address)
-	assert.Equal(t, expected.Authority, actual.Authority)
-	assert.Equal(t, expected.Blockhash, actual.Blockhash)
-	assert.Equal(t, expected.Purpose, actual.Purpose)
+	assert.Equal(t, cloned.Address, actual.Address)
+	assert.Equal(t, cloned.Authority, actual.Authority)
+	assert.Equal(t, cloned.Blockhash, actual.Blockhash)
+	assert.Equal(t, cloned.Environment, actual.Environment)
+	assert.Equal(t, cloned.EnvironmentInstance, actual.EnvironmentInstance)
+	assert.Equal(t, cloned.Purpose, actual.Purpose)
+	assert.Equal(t, cloned.State, actual.State)
 	assert.EqualValues(t, 1, actual.Id)
 }
 
@@ -54,10 +62,12 @@ func testUpdate(t *testing.T, s nonce.Store) {
 	ctx := context.Background()
 
 	expected := nonce.Record{
-		Address:   "test_address",
-		Authority: "test_authority",
-		Blockhash: "test_blockhash",
-		Purpose:   nonce.PurposeInternalServerProcess,
+		Address:             "test_address",
+		Authority:           "test_authority",
+		Blockhash:           "test_blockhash",
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeInternalServerProcess,
 	}
 	err := s.Save(ctx, &expected)
 	require.NoError(t, err)
@@ -93,6 +103,8 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	}
 
 	for _, item := range expected {
+		item.Environment = nonce.EnvironmentSolana
+		item.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
 		item.Purpose = nonce.PurposeInternalServerProcess
 
 		err := s.Save(ctx, &item)
@@ -100,33 +112,33 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	}
 
 	// Simple get all by state
-	actual, err := s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
+	actual, err := s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateUnknown, query.EmptyCursor, 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateInvalid, query.EmptyCursor, 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 
 	// Simple get all by state (reverse)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateUnknown, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 
-	actual, err = s.GetAllByState(ctx, nonce.StateInvalid, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 
 	// Check items (asc)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
@@ -134,7 +146,7 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t5", actual[2].Address)
 
 	// Check items (desc)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t5", actual[0].Address)
@@ -142,21 +154,21 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t3", actual[2].Address)
 
 	// Check items (asc + limit)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 2, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 2, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
 	assert.Equal(t, "t4", actual[1].Address)
 
 	// Check items (desc + limit)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.EmptyCursor, 2, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.EmptyCursor, 2, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 	assert.Equal(t, "t5", actual[0].Address)
 	assert.Equal(t, "t4", actual[1].Address)
 
 	// Check items (asc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(1), 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(1), 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
@@ -164,7 +176,7 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t5", actual[2].Address)
 
 	// Check items (desc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(6), 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(6), 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(actual))
 	assert.Equal(t, "t5", actual[0].Address)
@@ -172,20 +184,20 @@ func testGetAllByState(t *testing.T, s nonce.Store) {
 	assert.Equal(t, "t3", actual[2].Address)
 
 	// Check items (asc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(3), 5, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(3), 5, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(actual))
 	assert.Equal(t, "t4", actual[0].Address)
 	assert.Equal(t, "t5", actual[1].Address)
 
 	// Check items (desc + cursor)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(4), 5, query.Descending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(4), 5, query.Descending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 	assert.Equal(t, "t3", actual[0].Address)
 
 	// Check items (asc + cursor + limit)
-	actual, err = s.GetAllByState(ctx, nonce.StateReserved, query.ToCursor(3), 1, query.Ascending)
+	actual, err = s.GetAllByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, query.ToCursor(3), 1, query.Ascending)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(actual))
 	assert.Equal(t, "t4", actual[0].Address)
@@ -204,7 +216,10 @@ func testGetCount(t *testing.T, s nonce.Store) {
 	}
 
 	for index, item := range expected {
-		count, err := s.Count(ctx)
+		item.Environment = nonce.EnvironmentSolana
+		item.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
+
+		count, err := s.Count(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet)
 		require.NoError(t, err)
 		assert.EqualValues(t, index, count)
 
@@ -212,35 +227,35 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		require.NoError(t, err)
 	}
 
-	count, err := s.CountByState(ctx, nonce.StateAvailable)
+	count, err := s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateAvailable)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, count)
 
-	count, err = s.CountByState(ctx, nonce.StateUnknown)
+	count, err = s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 
-	count, err = s.CountByState(ctx, nonce.StateInvalid)
+	count, err = s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateInvalid)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, count)
 
-	count, err = s.CountByState(ctx, nonce.StateReserved)
+	count, err = s.CountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved)
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateReserved, nonce.PurposeClientTransaction)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateReserved, nonce.PurposeInternalServerProcess)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, nonce.PurposeInternalServerProcess)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateUnknown, nonce.PurposeClientTransaction)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 
-	count, err = s.CountByStateAndPurpose(ctx, nonce.StateUnknown, nonce.PurposeInternalServerProcess)
+	count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeInternalServerProcess)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, count)
 }
@@ -249,7 +264,7 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 	t.Run("testGetRandomAvailableByPurpose", func(t *testing.T) {
 		ctx := context.Background()
 
-		_, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeClientTransaction)
+		_, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 		assert.Equal(t, nonce.ErrNonceNotFound, err)
 
 		for _, purpose := range []nonce.Purpose{
@@ -263,12 +278,14 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 			} {
 				for i := 0; i < 500; i++ {
 					record := &nonce.Record{
-						Address:   fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
-						Authority: "authority",
-						Blockhash: "bh",
-						Purpose:   purpose,
-						State:     state,
-						Signature: "",
+						Address:             fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
+						Authority:           "authority",
+						Blockhash:           "bh",
+						Environment:         nonce.EnvironmentSolana,
+						EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+						Purpose:             purpose,
+						State:               state,
+						Signature:           "",
 					}
 					require.NoError(t, s.Save(ctx, record))
 				}
@@ -277,7 +294,7 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 
 		selectedByAddress := make(map[string]struct{})
 		for i := 0; i < 100; i++ {
-			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeClientTransaction)
+			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 			require.NoError(t, err)
 			assert.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
 			assert.Equal(t, nonce.StateAvailable, actual.State)
@@ -287,7 +304,7 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 
 		selectedByAddress = make(map[string]struct{})
 		for i := 0; i < 100; i++ {
-			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeInternalServerProcess)
+			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 			require.NoError(t, err)
 			assert.Equal(t, nonce.PurposeInternalServerProcess, actual.Purpose)
 			assert.Equal(t, nonce.StateAvailable, actual.State)

@@ -175,11 +175,11 @@ type DatabaseData interface {
 	// Nonce
 	// --------------------------------------------------------------------------------
 	GetNonce(ctx context.Context, address string) (*nonce.Record, error)
-	GetNonceCount(ctx context.Context) (uint64, error)
-	GetNonceCountByState(ctx context.Context, state nonce.State) (uint64, error)
-	GetNonceCountByStateAndPurpose(ctx context.Context, state nonce.State, purpose nonce.Purpose) (uint64, error)
-	GetAllNonceByState(ctx context.Context, state nonce.State, opts ...query.Option) ([]*nonce.Record, error)
-	GetRandomAvailableNonceByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error)
+	GetNonceCount(ctx context.Context, env nonce.Environment, instance string) (uint64, error)
+	GetNonceCountByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State) (uint64, error)
+	GetNonceCountByStateAndPurpose(ctx context.Context, env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) (uint64, error)
+	GetAllNonceByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State, opts ...query.Option) ([]*nonce.Record, error)
+	GetRandomAvailableNonceByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error)
 	SaveNonce(ctx context.Context, record *nonce.Record) error
 
 	// Fulfillment
@@ -723,25 +723,25 @@ func (dp *DatabaseProvider) SaveKey(ctx context.Context, record *vault.Record) e
 func (dp *DatabaseProvider) GetNonce(ctx context.Context, address string) (*nonce.Record, error) {
 	return dp.nonces.Get(ctx, address)
 }
-func (dp *DatabaseProvider) GetNonceCount(ctx context.Context) (uint64, error) {
-	return dp.nonces.Count(ctx)
+func (dp *DatabaseProvider) GetNonceCount(ctx context.Context, env nonce.Environment, instance string) (uint64, error) {
+	return dp.nonces.Count(ctx, env, instance)
 }
-func (dp *DatabaseProvider) GetNonceCountByState(ctx context.Context, state nonce.State) (uint64, error) {
-	return dp.nonces.CountByState(ctx, state)
+func (dp *DatabaseProvider) GetNonceCountByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State) (uint64, error) {
+	return dp.nonces.CountByState(ctx, env, instance, state)
 }
-func (dp *DatabaseProvider) GetNonceCountByStateAndPurpose(ctx context.Context, state nonce.State, purpose nonce.Purpose) (uint64, error) {
-	return dp.nonces.CountByStateAndPurpose(ctx, state, purpose)
+func (dp *DatabaseProvider) GetNonceCountByStateAndPurpose(ctx context.Context, env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) (uint64, error) {
+	return dp.nonces.CountByStateAndPurpose(ctx, env, instance, state, purpose)
 }
-func (dp *DatabaseProvider) GetAllNonceByState(ctx context.Context, state nonce.State, opts ...query.Option) ([]*nonce.Record, error) {
+func (dp *DatabaseProvider) GetAllNonceByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State, opts ...query.Option) ([]*nonce.Record, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return dp.nonces.GetAllByState(ctx, state, req.Cursor, req.Limit, req.SortBy)
+	return dp.nonces.GetAllByState(ctx, env, instance, state, req.Cursor, req.Limit, req.SortBy)
 }
-func (dp *DatabaseProvider) GetRandomAvailableNonceByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error) {
-	return dp.nonces.GetRandomAvailableByPurpose(ctx, purpose)
+func (dp *DatabaseProvider) GetRandomAvailableNonceByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error) {
+	return dp.nonces.GetRandomAvailableByPurpose(ctx, env, instance, purpose)
 }
 func (dp *DatabaseProvider) SaveNonce(ctx context.Context, record *nonce.Record) error {
 	return dp.nonces.Save(ctx, record)

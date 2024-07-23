@@ -501,11 +501,13 @@ func (e *testEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 		CreatedAt:  time.Now(),
 	}
 	nonceRecord := &nonce.Record{
-		Address:   nonceAccount.PublicKey().ToBase58(),
-		Authority: e.subsidizer.PublicKey().ToBase58(),
-		Blockhash: base58.Encode(bh[:]),
-		Purpose:   nonce.PurposeInternalServerProcess,
-		State:     nonce.StateAvailable,
+		Address:             nonceAccount.PublicKey().ToBase58(),
+		Authority:           e.subsidizer.PublicKey().ToBase58(),
+		Blockhash:           base58.Encode(bh[:]),
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeInternalServerProcess,
+		State:               nonce.StateAvailable,
 	}
 	require.NoError(t, e.data.SaveKey(e.ctx, nonceKey))
 	require.NoError(t, e.data.SaveNonce(e.ctx, nonceRecord))

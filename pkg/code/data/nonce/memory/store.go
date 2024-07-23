@@ -6,8 +6,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -57,9 +57,9 @@ func (s *store) findAddress(address string) *nonce.Record {
 	return nil
 }
 
-func (s *store) findByState(state nonce.State) []*nonce.Record {
+func (s *store) findByState(env nonce.Environment, instance string, state nonce.State) []*nonce.Record {
 	res := make([]*nonce.Record, 0)
-	for _, item := range s.records {
+	for _, item := range s.findByEnvironmentInstance(env, instance) {
 		if item.State == state {
 			res = append(res, item)
 		}
@@ -67,14 +67,30 @@ func (s *store) findByState(state nonce.State) []*nonce.Record {
 	return res
 }
 
-func (s *store) findByStateAndPurpose(state nonce.State, purpose nonce.Purpose) []*nonce.Record {
+func (s *store) findByStateAndPurpose(env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) []*nonce.Record {
 	res := make([]*nonce.Record, 0)
-	for _, item := range s.records {
+	for _, item := range s.findByEnvironmentInstance(env, instance) {
 		if item.State != state {
 			continue
 		}
 
 		if item.Purpose != purpose {
+			continue
+		}
+
+		res = append(res, item)
+	}
+	return res
+}
+
+func (s *store) findByEnvironmentInstance(env nonce.Environment, instance string) []*nonce.Record {
+	res := make([]*nonce.Record, 0)
+	for _, item := range s.records {
+		if item.Environment != env {
+			continue
+		}
+
+		if item.EnvironmentInstance != instance {
 			continue
 		}
 
@@ -115,26 +131,27 @@ func (s *store) filter(items []*nonce.Record, cursor query.Cursor, limit uint64,
 	return res
 }
 
-func (s *store) Count(ctx context.Context) (uint64, error) {
+func (s *store) Count(ctx context.Context, env nonce.Environment, instance string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return uint64(len(s.records)), nil
-}
-
-func (s *store) CountByState(ctx context.Context, state nonce.State) (uint64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	res := s.findByState(state)
+	res := s.findByEnvironmentInstance(env, instance)
 	return uint64(len(res)), nil
 }
 
-func (s *store) CountByStateAndPurpose(ctx context.Context, state nonce.State, purpose nonce.Purpose) (uint64, error) {
+func (s *store) CountByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res := s.findByStateAndPurpose(state, purpose)
+	res := s.findByState(env, instance, state)
+	return uint64(len(res)), nil
+}
+
+func (s *store) CountByStateAndPurpose(ctx context.Context, env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res := s.findByStateAndPurpose(env, instance, state, purpose)
 	return uint64(len(res)), nil
 }
 
@@ -173,11 +190,11 @@ func (s *store) Get(ctx context.Context, address string) (*nonce.Record, error) 
 	return nil, nonce.ErrNonceNotFound
 }
 
-func (s *store) GetAllByState(ctx context.Context, state nonce.State, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*nonce.Record, error) {
+func (s *store) GetAllByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*nonce.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if items := s.findByState(state); len(items) > 0 {
+	if items := s.findByState(env, instance, state); len(items) > 0 {
 		res := s.filter(items, cursor, limit, direction)
 
 		if len(res) == 0 {
@@ -190,11 +207,11 @@ func (s *store) GetAllByState(ctx context.Context, state nonce.State, cursor que
 	return nil, nonce.ErrNonceNotFound
 }
 
-func (s *store) GetRandomAvailableByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error) {
+func (s *store) GetRandomAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findByStateAndPurpose(nonce.StateAvailable, purpose)
+	items := s.findByStateAndPurpose(env, instance, nonce.StateAvailable, purpose)
 	if len(items) == 0 {
 		return nil, nonce.ErrNonceNotFound
 	}

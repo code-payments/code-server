@@ -17,13 +17,15 @@ const (
 )
 
 type nonceModel struct {
-	Id        sql.NullInt64 `db:"id"`
-	Address   string        `db:"address"`
-	Authority string        `db:"authority"`
-	Blockhash string        `db:"blockhash"`
-	Purpose   uint          `db:"purpose"`
-	State     uint          `db:"state"`
-	Signature string        `db:"signature"`
+	Id                  sql.NullInt64 `db:"id"`
+	Address             string        `db:"address"`
+	Authority           string        `db:"authority"`
+	Blockhash           string        `db:"blockhash"`
+	Environment         uint          `db:"environment"`
+	EnvironmentInstance string        `db:"environment_instance"`
+	Purpose             uint          `db:"purpose"`
+	State               uint          `db:"state"`
+	Signature           string        `db:"signature"`
 }
 
 func toNonceModel(obj *nonce.Record) (*nonceModel, error) {
@@ -32,39 +34,43 @@ func toNonceModel(obj *nonce.Record) (*nonceModel, error) {
 	}
 
 	return &nonceModel{
-		Id:        sql.NullInt64{Int64: int64(obj.Id), Valid: true},
-		Address:   obj.Address,
-		Authority: obj.Authority,
-		Blockhash: obj.Blockhash,
-		Purpose:   uint(obj.Purpose),
-		State:     uint(obj.State),
-		Signature: obj.Signature,
+		Id:                  sql.NullInt64{Int64: int64(obj.Id), Valid: true},
+		Address:             obj.Address,
+		Authority:           obj.Authority,
+		Blockhash:           obj.Blockhash,
+		Environment:         uint(obj.Environment),
+		EnvironmentInstance: obj.EnvironmentInstance,
+		Purpose:             uint(obj.Purpose),
+		State:               uint(obj.State),
+		Signature:           obj.Signature,
 	}, nil
 }
 
 func fromNonceModel(obj *nonceModel) *nonce.Record {
 	return &nonce.Record{
-		Id:        uint64(obj.Id.Int64),
-		Address:   obj.Address,
-		Authority: obj.Authority,
-		Blockhash: obj.Blockhash,
-		Purpose:   nonce.Purpose(obj.Purpose),
-		State:     nonce.State(obj.State),
-		Signature: obj.Signature,
+		Id:                  uint64(obj.Id.Int64),
+		Address:             obj.Address,
+		Authority:           obj.Authority,
+		Blockhash:           obj.Blockhash,
+		Environment:         nonce.Environment(obj.Environment),
+		EnvironmentInstance: obj.EnvironmentInstance,
+		Purpose:             nonce.Purpose(obj.Purpose),
+		State:               nonce.State(obj.State),
+		Signature:           obj.Signature,
 	}
 }
 
 func (m *nonceModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + nonceTableName + `
-			(address, authority, blockhash, purpose, state, signature)
-			VALUES ($1,$2,$3,$4,$5,$6)
+			(address, authority, blockhash, environment, environment_instance, purpose, state, signature)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 			ON CONFLICT (address)
 			DO UPDATE
-				SET blockhash = $3, state = $5, signature = $6
+				SET blockhash = $3, state = $7, signature = $8
 				WHERE ` + nonceTableName + `.address = $1 
 			RETURNING
-				id, address, authority, blockhash, purpose, state, signature`
+				id, address, authority, blockhash, environment, environment_instance, purpose, state, signature`
 
 		err := tx.QueryRowxContext(
 			ctx,
@@ -72,6 +78,8 @@ func (m *nonceModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.Address,
 			m.Authority,
 			m.Blockhash,
+			m.Environment,
+			m.EnvironmentInstance,
 			m.Purpose,
 			m.State,
 			m.Signature,
@@ -81,11 +89,11 @@ func (m *nonceModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	})
 }
 
-func dbGetCount(ctx context.Context, db *sqlx.DB) (uint64, error) {
+func dbGetCount(ctx context.Context, db *sqlx.DB, env nonce.Environment, instance string) (uint64, error) {
 	var res uint64
 
-	query := `SELECT COUNT(*) FROM ` + nonceTableName
-	err := db.GetContext(ctx, &res, query)
+	query := `SELECT COUNT(*) FROM ` + nonceTableName + ` WHERE environment = $1 AND environment_instance = $2`
+	err := db.GetContext(ctx, &res, query, env, instance)
 	if err != nil {
 		return 0, err
 	}
@@ -93,11 +101,11 @@ func dbGetCount(ctx context.Context, db *sqlx.DB) (uint64, error) {
 	return res, nil
 }
 
-func dbGetCountByState(ctx context.Context, db *sqlx.DB, state nonce.State) (uint64, error) {
+func dbGetCountByState(ctx context.Context, db *sqlx.DB, env nonce.Environment, instance string, state nonce.State) (uint64, error) {
 	var res uint64
 
-	query := `SELECT COUNT(*) FROM ` + nonceTableName + ` WHERE state = $1`
-	err := db.GetContext(ctx, &res, query, state)
+	query := `SELECT COUNT(*) FROM ` + nonceTableName + ` WHERE environment = $1 AND environment_instance = $2 AND state = $3`
+	err := db.GetContext(ctx, &res, query, env, instance, state)
 	if err != nil {
 		return 0, err
 	}
@@ -105,11 +113,11 @@ func dbGetCountByState(ctx context.Context, db *sqlx.DB, state nonce.State) (uin
 	return res, nil
 }
 
-func dbGetCountByStateAndPurpose(ctx context.Context, db *sqlx.DB, state nonce.State, purpose nonce.Purpose) (uint64, error) {
+func dbGetCountByStateAndPurpose(ctx context.Context, db *sqlx.DB, env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) (uint64, error) {
 	var res uint64
 
-	query := `SELECT COUNT(*) FROM ` + nonceTableName + ` WHERE state = $1 and purpose = $2`
-	err := db.GetContext(ctx, &res, query, state, purpose)
+	query := `SELECT COUNT(*) FROM ` + nonceTableName + ` WHERE environment = $1 AND environment_instance = $2 AND state = $3 and purpose = $4`
+	err := db.GetContext(ctx, &res, query, env, instance, state, purpose)
 	if err != nil {
 		return 0, err
 	}
@@ -121,7 +129,7 @@ func dbGetNonce(ctx context.Context, db *sqlx.DB, address string) (*nonceModel, 
 	res := &nonceModel{}
 
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, environment, environment_instance, purpose, state, signature
 		FROM ` + nonceTableName + `
 		WHERE address = $1
 	`
@@ -133,7 +141,7 @@ func dbGetNonce(ctx context.Context, db *sqlx.DB, address string) (*nonceModel, 
 	return res, nil
 }
 
-func dbGetAllByState(ctx context.Context, db *sqlx.DB, state nonce.State, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*nonceModel, error) {
+func dbGetAllByState(ctx context.Context, db *sqlx.DB, env nonce.Environment, instance string, state nonce.State, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*nonceModel, error) {
 	res := []*nonceModel{}
 
 	// Signature null check is required because some legacy records didn't have this
@@ -142,12 +150,12 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state nonce.State, cursor
 	//
 	// todo: Fix said nonce records
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, environment, environment_instance, purpose, state, signature
 		FROM ` + nonceTableName + `
-		WHERE (state = $1 AND signature IS NOT NULL)
+		WHERE environment = $1 AND environment_instance = $2 AND state = $3 AND signature IS NOT NULL
 	`
 
-	opts := []interface{}{state}
+	opts := []interface{}{env, instance, state}
 	query, opts = q.PaginateQuery(query, opts, cursor, limit, direction)
 
 	err := db.SelectContext(ctx, &res, query, opts...)
@@ -166,7 +174,7 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state nonce.State, cursor
 // sufficiently efficient, as long as our nonce pool is larger than the max offset.
 // todo: We may need to tune the offset based on pool size and environment, but it
 // should be sufficiently good enough for now.
-func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, purpose nonce.Purpose) (*nonceModel, error) {
+func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonceModel, error) {
 	res := &nonceModel{}
 
 	// Signature null check is required because some legacy records didn't have this
@@ -175,20 +183,20 @@ func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, purpose non
 	//
 	// todo: Fix said nonce records
 	query := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, environment, environment_instance, purpose, state, signature
 		FROM ` + nonceTableName + `
-		WHERE state = $1 AND purpose = $2 AND signature IS NOT NULL
+		WHERE environment = $1 AND environment_instance = $2 AND state = $3 AND purpose = $4 AND signature IS NOT NULL
 		OFFSET FLOOR(RANDOM() * 100)
 		LIMIT 1
 	`
 	fallbackQuery := `SELECT
-		id, address, authority, blockhash, purpose, state, signature
+		id, address, authority, blockhash, environment, environment_instance, purpose, state, signature
 		FROM ` + nonceTableName + `
-		WHERE state = $1 AND purpose = $2 AND signature IS NOT NULL
+		WHERE environment = $1 AND environment_instance = $2 AND state = $3 AND purpose = $4 AND signature IS NOT NULL
 		LIMIT 1
 	`
 
-	err := db.GetContext(ctx, res, query, nonce.StateAvailable, purpose)
+	err := db.GetContext(ctx, res, query, env, instance, nonce.StateAvailable, purpose)
 	if err != nil {
 		err = pgutil.CheckNoRows(err, nonce.ErrNonceNotFound)
 
@@ -196,7 +204,7 @@ func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, purpose non
 		// strategy that will guarantee to select something if an available
 		// nonce exists.
 		if err == nonce.ErrNonceNotFound {
-			err := db.GetContext(ctx, res, fallbackQuery, nonce.StateAvailable, purpose)
+			err := db.GetContext(ctx, res, fallbackQuery, env, instance, nonce.StateAvailable, purpose)
 			if err != nil {
 				return nil, pgutil.CheckNoRows(err, nonce.ErrNonceNotFound)
 			}
