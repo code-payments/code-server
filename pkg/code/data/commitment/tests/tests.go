@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 func RunTests(t *testing.T, s commitment.Store, teardown func()) {
@@ -34,21 +33,14 @@ func testRoundTrip(t *testing.T, s commitment.Store) {
 		ctx := context.Background()
 
 		expected := &commitment.Record{
-			DataVersion: splitter_token.DataVersion1,
-
 			Address: "address",
-			Bump:    255,
 
 			Pool:       "pool",
-			PoolBump:   254,
 			RecentRoot: "root",
-			Transcript: "transcript",
 
+			Transcript:  "transcript",
 			Destination: "destination",
 			Amount:      12345,
-
-			Vault:     "vault",
-			VaultBump: 253,
 
 			Intent:   "intent",
 			ActionId: 1,
@@ -63,9 +55,6 @@ func testRoundTrip(t *testing.T, s commitment.Store) {
 		_, err := s.GetByAddress(ctx, expected.Address)
 		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
 
-		_, err = s.GetByVault(ctx, expected.Vault)
-		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
-
 		_, err = s.GetByAction(ctx, expected.Intent, expected.ActionId)
 		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
 
@@ -77,26 +66,18 @@ func testRoundTrip(t *testing.T, s commitment.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, expected, actual)
 
-		actual, err = s.GetByVault(ctx, expected.Vault)
-		require.NoError(t, err)
-		assertEquivalentRecords(t, expected, actual)
-
 		actual, err = s.GetByAction(ctx, expected.Intent, expected.ActionId)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, expected, actual)
 
-		otherCommitmentVault := "other-vault"
+		otherCommitment := "other-commitment"
 		expected.TreasuryRepaid = true
-		expected.RepaymentDivertedTo = &otherCommitmentVault
+		expected.RepaymentDivertedTo = &otherCommitment
 		expected.State = commitment.StateClosed
 		cloned = expected.Clone()
 		require.NoError(t, s.Save(ctx, cloned))
 
 		actual, err = s.GetByAddress(ctx, expected.Address)
-		require.NoError(t, err)
-		assertEquivalentRecords(t, expected, actual)
-
-		actual, err = s.GetByVault(ctx, expected.Vault)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, expected, actual)
 
@@ -110,24 +91,17 @@ func testUpdateConstraints(t *testing.T, s commitment.Store) {
 	t.Run("testUpdateConstraints", func(t *testing.T) {
 		ctx := context.Background()
 
-		otherCommitmentVault1 := "other-vault-1"
-		otherCommitmentVault2 := "other-vault-2"
+		otherCommitmentCommitment1 := "other-commitment-1"
+		otherCommitmentCommitment2 := "other-commitment-2"
 		expected := &commitment.Record{
-			DataVersion: splitter_token.DataVersion1,
-
 			Address: "address",
-			Bump:    255,
 
 			Pool:       "pool",
-			PoolBump:   254,
 			RecentRoot: "root",
 			Transcript: "transcript",
 
 			Destination: "destination",
 			Amount:      12345,
-
-			Vault:     "vault",
-			VaultBump: 253,
 
 			Intent:   "intent",
 			ActionId: 1,
@@ -135,7 +109,7 @@ func testUpdateConstraints(t *testing.T, s commitment.Store) {
 			Owner: "owner",
 
 			TreasuryRepaid:      true,
-			RepaymentDivertedTo: &otherCommitmentVault1,
+			RepaymentDivertedTo: &otherCommitmentCommitment1,
 
 			State: commitment.StateClosed,
 
@@ -156,7 +130,7 @@ func testUpdateConstraints(t *testing.T, s commitment.Store) {
 		assert.Equal(t, commitment.ErrInvalidCommitment, s.Save(ctx, cloned))
 
 		cloned = expected.Clone()
-		cloned.RepaymentDivertedTo = &otherCommitmentVault2
+		cloned.RepaymentDivertedTo = &otherCommitmentCommitment2
 		assert.Equal(t, commitment.ErrInvalidCommitment, s.Save(ctx, cloned))
 
 		cloned = expected.Clone()
@@ -176,11 +150,11 @@ func testGetAllByState(t *testing.T, s commitment.Store) {
 		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
 
 		expected := []*commitment.Record{
-			{DataVersion: splitter_token.DataVersion1, Address: "commitment1", Vault: "vault1", Pool: "pool", RecentRoot: "root", Transcript: "transcript1", Intent: "intent", ActionId: 0, Owner: "owner1", Destination: "destination", Amount: 123, State: commitment.StateOpen},
-			{DataVersion: splitter_token.DataVersion1, Address: "commitment2", Vault: "vault2", Pool: "pool", RecentRoot: "root", Transcript: "transcript2", Intent: "intent", ActionId: 1, Owner: "owner2", Destination: "destination", Amount: 123, State: commitment.StateOpen},
-			{DataVersion: splitter_token.DataVersion1, Address: "commitment3", Vault: "vault3", Pool: "pool", RecentRoot: "root", Transcript: "transcript3", Intent: "intent", ActionId: 2, Owner: "owner3", Destination: "destination", Amount: 123, State: commitment.StateOpen},
-			{DataVersion: splitter_token.DataVersion1, Address: "commitment4", Vault: "vault4", Pool: "pool", RecentRoot: "root", Transcript: "transcript4", Intent: "intent", ActionId: 3, Owner: "owner4", Destination: "destination", Amount: 123, State: commitment.StateClosed},
-			{DataVersion: splitter_token.DataVersion1, Address: "commitment5", Vault: "vault5", Pool: "pool", RecentRoot: "root", Transcript: "transcript5", Intent: "intent", ActionId: 4, Owner: "owner5", Destination: "destination", Amount: 123, State: commitment.StateClosed},
+			{Address: "commitment1", Pool: "pool", RecentRoot: "root", Transcript: "transcript1", Intent: "intent", ActionId: 0, Owner: "owner1", Destination: "destination", Amount: 123, State: commitment.StateOpen},
+			{Address: "commitment2", Pool: "pool", RecentRoot: "root", Transcript: "transcript2", Intent: "intent", ActionId: 1, Owner: "owner2", Destination: "destination", Amount: 123, State: commitment.StateOpen},
+			{Address: "commitment3", Pool: "pool", RecentRoot: "root", Transcript: "transcript3", Intent: "intent", ActionId: 2, Owner: "owner3", Destination: "destination", Amount: 123, State: commitment.StateOpen},
+			{Address: "commitment4", Pool: "pool", RecentRoot: "root", Transcript: "transcript4", Intent: "intent", ActionId: 3, Owner: "owner4", Destination: "destination", Amount: 123, State: commitment.StateClosed},
+			{Address: "commitment5", Pool: "pool", RecentRoot: "root", Transcript: "transcript5", Intent: "intent", ActionId: 4, Owner: "owner5", Destination: "destination", Amount: 123, State: commitment.StateClosed},
 		}
 		for _, record := range expected {
 			require.NoError(t, s.Save(ctx, record))
@@ -250,33 +224,31 @@ func testGetUpgradeableByOwner(t *testing.T, s commitment.Store) {
 		_, err := s.GetUpgradeableByOwner(ctx, "owner", 10)
 		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
 
-		futureVault := "future-vault"
+		futureCommitment := "future-commitment"
 		records := []*commitment.Record{
 			{State: commitment.StateUnknown, Owner: "owner1"},
 			{State: commitment.StatePayingDestination, Owner: "owner1"},
 			{State: commitment.StateReadyToOpen, Owner: "owner1"},
-			{State: commitment.StateReadyToOpen, Owner: "owner1", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateReadyToOpen, Owner: "owner1", RepaymentDivertedTo: &futureCommitment},
 			{State: commitment.StateOpening, Owner: "owner2"},
-			{State: commitment.StateOpening, Owner: "owner2", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateOpening, Owner: "owner2", RepaymentDivertedTo: &futureCommitment},
 			{State: commitment.StateOpen, Owner: "owner2"},
-			{State: commitment.StateOpen, Owner: "owner2", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateOpen, Owner: "owner2", RepaymentDivertedTo: &futureCommitment},
 			{State: commitment.StateClosing, Owner: "owner2"},
-			{State: commitment.StateClosing, Owner: "owner2", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateClosing, Owner: "owner2", RepaymentDivertedTo: &futureCommitment},
 			{State: commitment.StateClosed, Owner: "owner2"},
-			{State: commitment.StateClosed, Owner: "owner2", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateClosed, Owner: "owner2", RepaymentDivertedTo: &futureCommitment},
 			{State: commitment.StateReadyToRemoveFromMerkleTree, Owner: "owner1"},
-			{State: commitment.StateReadyToRemoveFromMerkleTree, Owner: "owner1", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateReadyToRemoveFromMerkleTree, Owner: "owner1", RepaymentDivertedTo: &futureCommitment},
 			{State: commitment.StateRemovedFromMerkleTree, Owner: "owner1"},
-			{State: commitment.StateRemovedFromMerkleTree, Owner: "owner1", RepaymentDivertedTo: &futureVault},
+			{State: commitment.StateRemovedFromMerkleTree, Owner: "owner1", RepaymentDivertedTo: &futureCommitment},
 		}
 
 		for i, record := range records {
 			// Populate data irrelevant to test
-			record.DataVersion = splitter_token.DataVersion1
 			record.Pool = "pool"
 			record.RecentRoot = "root"
 			record.Address = fmt.Sprintf("address%d", i)
-			record.Vault = fmt.Sprintf("vault%d", i)
 			record.RecentRoot = fmt.Sprintf("root%d", i)
 			record.Transcript = fmt.Sprintf("transcript%d", i)
 			record.Destination = fmt.Sprintf("destination%d", i)
@@ -333,9 +305,7 @@ func testGetTreasuryPoolDeficit(t *testing.T, s commitment.Store) {
 			record.Amount = uint64(math.Pow10(i))
 
 			// Populate data irrelevant to test
-			record.DataVersion = splitter_token.DataVersion1
 			record.Address = fmt.Sprintf("address%d", i)
-			record.Vault = fmt.Sprintf("vault%d", i)
 			record.RecentRoot = fmt.Sprintf("root%d", i)
 			record.Transcript = fmt.Sprintf("transcript%d", i)
 			record.Destination = fmt.Sprintf("destination%d", i)
@@ -380,25 +350,23 @@ func testCounts(t *testing.T, s commitment.Store) {
 	t.Run("testCounts", func(t *testing.T) {
 		ctx := context.Background()
 
-		futureVault1 := "future-vault-1"
-		futureVault2 := "future-vault-2"
-		futureVault3 := "future-vault-3"
+		futureCommitment1 := "future-commitment-1"
+		futureCommitment2 := "future-commitment-2"
+		futureCommitment3 := "future-commitment-3"
 		records := []*commitment.Record{
-			{State: commitment.StateReadyToOpen, RecentRoot: "root1", RepaymentDivertedTo: &futureVault1},
-			{State: commitment.StateReadyToOpen, RecentRoot: "root1", RepaymentDivertedTo: &futureVault1},
-			{State: commitment.StateReadyToOpen, RecentRoot: "root2", RepaymentDivertedTo: &futureVault2},
-			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureVault2},
-			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureVault2},
-			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureVault2},
+			{State: commitment.StateReadyToOpen, RecentRoot: "root1", RepaymentDivertedTo: &futureCommitment1},
+			{State: commitment.StateReadyToOpen, RecentRoot: "root1", RepaymentDivertedTo: &futureCommitment1},
+			{State: commitment.StateReadyToOpen, RecentRoot: "root2", RepaymentDivertedTo: &futureCommitment2},
+			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2},
+			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2},
+			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2},
 		}
 
 		for i, record := range records {
 			// Populate data irrelevant to test
 			record.Pool = "pool"
 			record.Amount = 1
-			record.DataVersion = splitter_token.DataVersion1
 			record.Address = fmt.Sprintf("address%d", i)
-			record.Vault = fmt.Sprintf("vault%d", i)
 			record.Transcript = fmt.Sprintf("transcript%d", i)
 			record.Destination = fmt.Sprintf("destination%d", i)
 			record.Intent = fmt.Sprintf("intent%d", i)
@@ -421,32 +389,27 @@ func testCounts(t *testing.T, s commitment.Store) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 3, count)
 
-		count, err = s.CountRepaymentsDivertedToVault(ctx, futureVault1)
+		count, err = s.CountRepaymentsDivertedToCommitment(ctx, futureCommitment1)
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, count)
 
-		count, err = s.CountRepaymentsDivertedToVault(ctx, futureVault2)
+		count, err = s.CountRepaymentsDivertedToCommitment(ctx, futureCommitment2)
 		require.NoError(t, err)
 		assert.EqualValues(t, 4, count)
 
-		count, err = s.CountRepaymentsDivertedToVault(ctx, futureVault3)
+		count, err = s.CountRepaymentsDivertedToCommitment(ctx, futureCommitment3)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, count)
 	})
 }
 
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *commitment.Record) {
-	assert.Equal(t, obj1.DataVersion, obj2.DataVersion)
 	assert.Equal(t, obj1.Address, obj2.Address)
-	assert.Equal(t, obj1.Bump, obj2.Bump)
 	assert.Equal(t, obj1.Pool, obj2.Pool)
-	assert.Equal(t, obj1.PoolBump, obj2.PoolBump)
 	assert.Equal(t, obj1.RecentRoot, obj2.RecentRoot)
 	assert.Equal(t, obj1.Transcript, obj2.Transcript)
 	assert.Equal(t, obj1.Destination, obj2.Destination)
 	assert.Equal(t, obj1.Amount, obj2.Amount)
-	assert.Equal(t, obj1.Vault, obj2.Vault)
-	assert.Equal(t, obj1.VaultBump, obj2.VaultBump)
 	assert.Equal(t, obj1.Intent, obj2.Intent)
 	assert.Equal(t, obj1.ActionId, obj2.ActionId)
 	assert.Equal(t, obj1.Owner, obj2.Owner)

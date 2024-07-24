@@ -317,14 +317,13 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	SaveCommitment(ctx context.Context, record *commitment.Record) error
 	GetCommitmentByAddress(ctx context.Context, address string) (*commitment.Record, error)
-	GetCommitmentByVault(ctx context.Context, vault string) (*commitment.Record, error)
 	GetCommitmentByAction(ctx context.Context, intentId string, actionId uint32) (*commitment.Record, error)
 	GetAllCommitmentsByState(ctx context.Context, state commitment.State, opts ...query.Option) ([]*commitment.Record, error)
 	GetUpgradeableCommitmentsByOwner(ctx context.Context, owner string, limit uint64) ([]*commitment.Record, error)
 	GetUsedTreasuryPoolDeficitFromCommitments(ctx context.Context, treasuryPool string) (uint64, error)
 	GetTotalTreasuryPoolDeficitFromCommitments(ctx context.Context, treasuryPool string) (uint64, error)
 	CountCommitmentsByState(ctx context.Context, state commitment.State) (uint64, error)
-	CountCommitmentRepaymentsDivertedToVault(ctx context.Context, vault string) (uint64, error)
+	CountCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
 
 	// Treasury Pool
 	// --------------------------------------------------------------------------------
@@ -1257,9 +1256,6 @@ func (dp *DatabaseProvider) SaveCommitment(ctx context.Context, record *commitme
 func (dp *DatabaseProvider) GetCommitmentByAddress(ctx context.Context, address string) (*commitment.Record, error) {
 	return dp.commitment.GetByAddress(ctx, address)
 }
-func (dp *DatabaseProvider) GetCommitmentByVault(ctx context.Context, vault string) (*commitment.Record, error) {
-	return dp.commitment.GetByVault(ctx, vault)
-}
 func (dp *DatabaseProvider) GetCommitmentByAction(ctx context.Context, intentId string, actionId uint32) (*commitment.Record, error) {
 	return dp.commitment.GetByAction(ctx, intentId, actionId)
 }
@@ -1283,8 +1279,8 @@ func (dp *DatabaseProvider) GetTotalTreasuryPoolDeficitFromCommitments(ctx conte
 func (dp *DatabaseProvider) CountCommitmentsByState(ctx context.Context, state commitment.State) (uint64, error) {
 	return dp.commitment.CountByState(ctx, state)
 }
-func (dp *DatabaseProvider) CountCommitmentRepaymentsDivertedToVault(ctx context.Context, vault string) (uint64, error) {
-	return dp.commitment.CountRepaymentsDivertedToVault(ctx, vault)
+func (dp *DatabaseProvider) CountCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
+	return dp.commitment.CountRepaymentsDivertedToCommitment(ctx, address)
 }
 
 // Treasury Pool

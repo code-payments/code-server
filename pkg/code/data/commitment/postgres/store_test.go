@@ -22,21 +22,14 @@ const (
 		CREATE TABLE codewallet__core_commitment(
 			id SERIAL NOT NULL PRIMARY KEY,
 
-			data_version INTEGER NOT NULL,
-
 			address TEXT NOT NULL,
-			bump INTEGER NOT NULL,
 
 			pool TEXT NOT NULL,
-			pool_bump INTEGER NOT NULL,
 			recent_root TEXT NOT NULL,
-			transcript TEXT NOT NULL,
 
+			transcript TEXT NOT NULL,
 			destination TEXT NOT NULL,
 			amount BIGINT NOT NULL CHECK (amount >= 0),
-
-			vault TEXT NOT NULL,
-			vault_bump INTEGER NOT NULL,
 
 			intent TEXT NOT NULL,
 			action_id INTEGER NOT NULL,
@@ -52,7 +45,6 @@ const (
 
 			CONSTRAINT codewallet__core_commitment__uniq__address UNIQUE (address),
 			CONSTRAINT codewallet__core_commitment__uniq__transcript UNIQUE (transcript),
-			CONSTRAINT codewallet__core_commitment__uniq__vault UNIQUE (vault),
 			CONSTRAINT codewallet__core_commitment__uniq__intent__and__action_id UNIQUE (intent, action_id)
 		);
 	`
