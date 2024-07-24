@@ -32,9 +32,9 @@ type RelayAccount struct {
 	NumLevels  uint8
 	NumHistory uint8
 
-	Treasury     TokenPool
-	History      MerkleTree
-	RecentHashes RecentHashes
+	Treasury    TokenPool
+	History     MerkleTree
+	RecentRoots RecentRoots
 }
 
 func (obj *RelayAccount) Unmarshal(data []byte) error {
@@ -62,7 +62,7 @@ func (obj *RelayAccount) Unmarshal(data []byte) error {
 
 	getTokenPool(data, &obj.Treasury, &offset)
 	getMerkleTree(data, &obj.History, &offset)
-	getRecentHashes(data, &obj.RecentHashes, &offset)
+	getRecentRoots(data, &obj.RecentRoots, &offset)
 
 	return nil
 }
@@ -77,12 +77,12 @@ func (obj *RelayAccount) String() string {
 		obj.NumHistory,
 		obj.Treasury.String(),
 		obj.History.String(),
-		obj.RecentHashes.String(),
+		obj.RecentRoots.String(),
 	)
 }
 
 func GetRelayAccountSize(numLevels, numHistory int) int {
 	return (minRelayAccountSize +
 		+GetMerkleTreeSize(numLevels) + // history
-		+GetRecentHashesSize(numHistory)) // recent_hashes
+		+GetRecentRootsSize(numHistory)) // recent_roots
 }
