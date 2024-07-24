@@ -177,15 +177,12 @@ func (e *testEnv) simulateCommitments(t *testing.T, count int, recentRoot string
 	var commitmentRecords []*commitment.Record
 	for i := 0; i < count; i++ {
 		commitmentRecord := &commitment.Record{
-			DataVersion: splitter_token.DataVersion1,
-
-			Pool:    e.treasuryPool.Address,
 			Address: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			Vault:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
+			Pool:       e.treasuryPool.Address,
 			RecentRoot: recentRoot,
-			Transcript: "transcript",
 
+			Transcript:  "transcript",
 			Destination: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			Amount:      kin.ToQuarks(1),
 
