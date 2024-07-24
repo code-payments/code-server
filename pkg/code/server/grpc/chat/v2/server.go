@@ -1412,10 +1412,11 @@ func (s *Server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, cha
 func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sender chat.MemberId, message *chatpb.ChatMessage) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":  "sendPushNotifications",
+		"sender":  sender.String(),
 		"chat_id": chatId.String(),
 	})
 
-	// todo: err group
+	// TODO: Callers might already have this loaded.
 	members, err := s.data.GetAllChatMembersV2(context.Background(), chatId)
 	if err != nil {
 		log.WithError(err).Warn("failure getting chat members")
@@ -1438,10 +1439,12 @@ func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sen
 
 		m := m
 		eg.Go(func() error {
+			log.WithField("member", m.MemberId.String()).Info("sending push notification")
 			err = push_util.SendChatMessagePushNotificationV2(
 				context.Background(),
 				s.data,
 				s.push,
+				chatId,
 				chatTitle,
 				owner,
 				message,
