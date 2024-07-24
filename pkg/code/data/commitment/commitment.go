@@ -10,10 +10,10 @@ import (
 type State uint8
 
 const (
-	StateUnknown           State = iota
-	StatePayingDestination       // No longer valid in the CVM
-	StateReadyToOpen             // No longer valid in the CVM
-	StateOpening                 // No longer valid in the CVM
+	StateUnknown State = iota
+	StatePayingDestination
+	StateReadyToOpen // No longer valid in the CVM
+	StateOpening     // No longer valid in the CVM
 	StateOpen
 	StateClosing
 	StateClosed

@@ -288,11 +288,11 @@ func dbCountByState(ctx context.Context, db *sqlx.DB, state commitment.State) (u
 	return res, nil
 }
 
-func dbCountRepaymentsDivertedToCommitment(ctx context.Context, db *sqlx.DB, commitment string) (uint64, error) {
+func dbCountPendingRepaymentsDivertedToCommitment(ctx context.Context, db *sqlx.DB, commitment string) (uint64, error) {
 	var res uint64
 
 	query := `SELECT COUNT(*) FROM ` + tableName + `
-		WHERE repayment_diverted_to = $1
+		WHERE repayment_diverted_to = $1 AND NOT treasury_repaid
 	`
 
 	err := db.GetContext(

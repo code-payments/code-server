@@ -170,12 +170,13 @@ func (s *store) CountByState(_ context.Context, state commitment.State) (uint64,
 	return uint64(len(items)), nil
 }
 
-// CountRepaymentsDivertedToCommitment implements commitment.Store.CountRepaymentsDivertedToCommitment
-func (s *store) CountRepaymentsDivertedToCommitment(_ context.Context, address string) (uint64, error) {
+// CountPendingRepaymentsDivertedToCommitment implements commitment.Store.CountPendingRepaymentsDivertedToCommitment
+func (s *store) CountPendingRepaymentsDivertedToCommitment(_ context.Context, address string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	items := s.findByRepaymentsDivertedToCommitment(address)
+	items = s.filterByRepaymentStatus(items, false)
 	return uint64(len(items)), nil
 }
 

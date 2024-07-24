@@ -6,6 +6,10 @@ const (
 	MinMerkleTreeSize = 1
 )
 
+var (
+	MerkleTreePrefix = []byte("merkletree")
+)
+
 type MerkleTree struct {
 	Root      Hash
 	Levels    uint8

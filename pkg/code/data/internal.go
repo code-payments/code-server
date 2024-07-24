@@ -323,7 +323,7 @@ type DatabaseData interface {
 	GetUsedTreasuryPoolDeficitFromCommitments(ctx context.Context, treasuryPool string) (uint64, error)
 	GetTotalTreasuryPoolDeficitFromCommitments(ctx context.Context, treasuryPool string) (uint64, error)
 	CountCommitmentsByState(ctx context.Context, state commitment.State) (uint64, error)
-	CountCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
+	CountPendingCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
 
 	// Treasury Pool
 	// --------------------------------------------------------------------------------
@@ -1279,8 +1279,8 @@ func (dp *DatabaseProvider) GetTotalTreasuryPoolDeficitFromCommitments(ctx conte
 func (dp *DatabaseProvider) CountCommitmentsByState(ctx context.Context, state commitment.State) (uint64, error) {
 	return dp.commitment.CountByState(ctx, state)
 }
-func (dp *DatabaseProvider) CountCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
-	return dp.commitment.CountRepaymentsDivertedToCommitment(ctx, address)
+func (dp *DatabaseProvider) CountPendingCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
+	return dp.commitment.CountPendingRepaymentsDivertedToCommitment(ctx, address)
 }
 
 // Treasury Pool

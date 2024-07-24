@@ -101,7 +101,7 @@ func (s *store) CountByState(ctx context.Context, state commitment.State) (uint6
 	return dbCountByState(ctx, s.db, state)
 }
 
-// CountRepaymentsDivertedToCommitment implements commitment.Store.CountRepaymentsDivertedToCommitment
-func (s *store) CountRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
-	return dbCountRepaymentsDivertedToCommitment(ctx, s.db, address)
+// CountPendingRepaymentsDivertedToCommitment implements commitment.Store.CountPendingRepaymentsDivertedToCommitment
+func (s *store) CountPendingRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
+	return dbCountPendingRepaymentsDivertedToCommitment(ctx, s.db, address)
 }

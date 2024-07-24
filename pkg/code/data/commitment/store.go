@@ -40,7 +40,7 @@ type Store interface {
 	// CountByState counts the number of commitment records in a given state
 	CountByState(ctx context.Context, state State) (uint64, error)
 
-	// CountRepaymentsDivertedToCommitment counts the number of commitments whose
-	// repayments are diverted to the provided one.
-	CountRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
+	// CountPendingRepaymentsDivertedToCommitment counts the number of commitments whose
+	// pending repayments are diverted to the provided one.
+	CountPendingRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
 }

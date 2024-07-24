@@ -357,7 +357,7 @@ func testCounts(t *testing.T, s commitment.Store) {
 			{State: commitment.StateReadyToOpen, RecentRoot: "root1", RepaymentDivertedTo: &futureCommitment1},
 			{State: commitment.StateReadyToOpen, RecentRoot: "root1", RepaymentDivertedTo: &futureCommitment1},
 			{State: commitment.StateReadyToOpen, RecentRoot: "root2", RepaymentDivertedTo: &futureCommitment2},
-			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2},
+			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2, TreasuryRepaid: true},
 			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2},
 			{State: commitment.StateClosed, RecentRoot: "root3", RepaymentDivertedTo: &futureCommitment2},
 		}
@@ -389,15 +389,15 @@ func testCounts(t *testing.T, s commitment.Store) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 3, count)
 
-		count, err = s.CountRepaymentsDivertedToCommitment(ctx, futureCommitment1)
+		count, err = s.CountPendingRepaymentsDivertedToCommitment(ctx, futureCommitment1)
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, count)
 
-		count, err = s.CountRepaymentsDivertedToCommitment(ctx, futureCommitment2)
+		count, err = s.CountPendingRepaymentsDivertedToCommitment(ctx, futureCommitment2)
 		require.NoError(t, err)
-		assert.EqualValues(t, 4, count)
+		assert.EqualValues(t, 3, count)
 
-		count, err = s.CountRepaymentsDivertedToCommitment(ctx, futureCommitment3)
+		count, err = s.CountPendingRepaymentsDivertedToCommitment(ctx, futureCommitment3)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, count)
 	})
