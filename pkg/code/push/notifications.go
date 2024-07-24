@@ -16,6 +16,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
+	chat_v2 "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -418,6 +419,7 @@ func SendChatMessagePushNotificationV2(
 	ctx context.Context,
 	data code_data.Provider,
 	pusher push_lib.Provider,
+	chatId chat_v2.ChatId,
 	chatTitle string,
 	owner *common.Account,
 	chatMessage *chatv2pb.ChatMessage,
@@ -533,6 +535,7 @@ func SendChatMessagePushNotificationV2(
 
 		kvs := map[string]string{
 			"chat_title":      localizedPushTitle,
+			"chat_id":         chatId.String(),
 			"message_content": base64.StdEncoding.EncodeToString(marshalledContent),
 		}
 
