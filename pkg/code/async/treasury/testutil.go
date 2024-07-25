@@ -52,8 +52,6 @@ func setup(t *testing.T, testOverrides *testOverrides) *testEnv {
 
 	treasuryPoolAddress := testutil.NewRandomAccount(t)
 	treasuryPool := &treasury.Record{
-		DataVersion: splitter_token.DataVersion1,
-
 		Name: "test-pool",
 
 		Address: treasuryPoolAddress.PublicKey().ToBase58(),
