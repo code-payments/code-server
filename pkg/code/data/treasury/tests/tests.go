@@ -8,9 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 func RunTests(t *testing.T, s treasury.Store, teardown func()) {
@@ -31,8 +30,6 @@ func testTreasuryPoolHappyPath(t *testing.T, s treasury.Store) {
 		start := time.Now()
 
 		expected := &treasury.Record{
-			DataVersion: splitter_token.DataVersion1,
-
 			Name: "name",
 
 			Address: "treasury",
@@ -134,11 +131,11 @@ func testGetAllByState(t *testing.T, s treasury.Store) {
 		assert.Equal(t, treasury.ErrTreasuryPoolNotFound, err)
 
 		expected := []*treasury.Record{
-			{DataVersion: splitter_token.DataVersion1, Name: "name1", Address: "treasury1", Vault: "vault1", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root1"}, SolanaBlock: 1, State: treasury.TreasuryPoolStateAvailable},
-			{DataVersion: splitter_token.DataVersion1, Name: "name2", Address: "treasury2", Vault: "vault2", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root2"}, SolanaBlock: 2, State: treasury.TreasuryPoolStateAvailable},
-			{DataVersion: splitter_token.DataVersion1, Name: "name3", Address: "treasury3", Vault: "vault3", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root3"}, SolanaBlock: 3, State: treasury.TreasuryPoolStateAvailable},
-			{DataVersion: splitter_token.DataVersion1, Name: "name4", Address: "treasury4", Vault: "vault4", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root4"}, SolanaBlock: 4, State: treasury.TreasuryPoolStateDeprecated},
-			{DataVersion: splitter_token.DataVersion1, Name: "name5", Address: "treasury5", Vault: "vault5", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root5"}, SolanaBlock: 5, State: treasury.TreasuryPoolStateDeprecated},
+			{Name: "name1", Address: "treasury1", Vault: "vault1", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root1"}, SolanaBlock: 1, State: treasury.TreasuryPoolStateAvailable},
+			{Name: "name2", Address: "treasury2", Vault: "vault2", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root2"}, SolanaBlock: 2, State: treasury.TreasuryPoolStateAvailable},
+			{Name: "name3", Address: "treasury3", Vault: "vault3", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root3"}, SolanaBlock: 3, State: treasury.TreasuryPoolStateAvailable},
+			{Name: "name4", Address: "treasury4", Vault: "vault4", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root4"}, SolanaBlock: 4, State: treasury.TreasuryPoolStateDeprecated},
+			{Name: "name5", Address: "treasury5", Vault: "vault5", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root5"}, SolanaBlock: 5, State: treasury.TreasuryPoolStateDeprecated},
 		}
 		for _, record := range expected {
 			require.NoError(t, s.Save(ctx, record))
@@ -242,8 +239,6 @@ func testFundingHappyPath(t *testing.T, s treasury.Store) {
 }
 
 func assertEquivalentTreasuryPoolRecords(t *testing.T, obj1, obj2 *treasury.Record) {
-	assert.Equal(t, obj1.DataVersion, obj2.DataVersion)
-
 	assert.Equal(t, obj1.Name, obj2.Name)
 
 	assert.Equal(t, obj1.Address, obj2.Address)
