@@ -69,7 +69,7 @@ func (obj *RelayAccount) Unmarshal(data []byte) error {
 
 func (obj *RelayAccount) String() string {
 	return fmt.Sprintf(
-		"RelayAccount{vm=%s,bump=%d,name=%s,num_levels=%d,num_history=%d,treasury=%s,history=%s,recent_hashes=%s}",
+		"RelayAccount{vm=%s,bump=%d,name=%s,num_levels=%d,num_history=%d,treasury=%s,history=%s,recent_roots=%s}",
 		base58.Encode(obj.Vm),
 		obj.Bump,
 		obj.Name,
