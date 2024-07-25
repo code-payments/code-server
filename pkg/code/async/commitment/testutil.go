@@ -23,7 +23,6 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -48,8 +47,6 @@ func setup(t *testing.T) testEnv {
 
 	treasuryPoolAddress := testutil.NewRandomAccount(t)
 	treasuryPool := &treasury.Record{
-		DataVersion: splitter_token.DataVersion1,
-
 		Name: "test-pool",
 
 		Address: treasuryPoolAddress.PublicKey().ToBase58(),
