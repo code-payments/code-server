@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"slices"
 
 	"github.com/sirupsen/logrus"
 
@@ -98,47 +99,43 @@ func sendMutableNotificationToOwner(
 		log.WithError(err).Warn("failure getting push tokens for owner")
 		return err
 	}
-
-	log.WithField("tokens", pushTokenRecords).Info("Found push tokens")
-
-	seenPushTokens := make(map[string]struct{})
-	for _, pushTokenRecord := range pushTokenRecords {
-		// Dedup push tokens, since they may appear more than once per app install
-		if _, ok := seenPushTokens[pushTokenRecord.PushToken]; ok {
-			continue
-		}
-
-		log := log.WithField("push_token", pushTokenRecord.PushToken)
-
-		// Try push
-		var err error
-		switch pushTokenRecord.TokenType {
-		case push_data.TokenTypeFcmApns:
-			log.Info("Sending mutable push")
-			err = pusher.SendMutableAPNSPush(
-				ctx,
-				pushTokenRecord.PushToken,
-				titleKey,
-				string(notificationType),
-				titleKey, // All mutable pushes have a thread ID that's the title
-				kvs,
-			)
-		case push_data.TokenTypeFcmAndroid:
-			// todo: anything special required for Android?
-			log.Info("Sending data push")
-			err = pusher.SendDataPush(
-				ctx,
-				pushTokenRecord.PushToken,
-				kvs,
-			)
-		}
-
-		if err != nil {
-			log.WithError(err).Warn("failure sending push notification")
-			onPushError(ctx, data, pusher, pushTokenRecord)
-		}
-
-		seenPushTokens[pushTokenRecord.PushToken] = struct{}{}
+	if len(pushTokenRecords) == 0 {
+		log.Debug("No push tokens found")
+		return nil
 	}
+
+	log.WithField("tokens", pushTokenRecords).Debug("Found push tokens")
+	slices.SortFunc(pushTokenRecords, func(a, b *push_data.Record) int {
+		return b.CreatedAt.Compare(a.CreatedAt)
+	})
+
+	pushTokenRecord := pushTokenRecords[0]
+	log = log.WithField("push_token", pushTokenRecord.PushToken)
+
+	// Try push
+	switch pushTokenRecord.TokenType {
+	case push_data.TokenTypeFcmApns:
+		err = pusher.SendMutableAPNSPush(
+			ctx,
+			pushTokenRecord.PushToken,
+			titleKey,
+			string(notificationType),
+			titleKey, // All mutable pushes have a thread ID that's the title
+			kvs,
+		)
+	case push_data.TokenTypeFcmAndroid:
+		// todo: anything special required for Android?
+		err = pusher.SendDataPush(
+			ctx,
+			pushTokenRecord.PushToken,
+			kvs,
+		)
+	}
+
+	if err != nil {
+		log.WithError(err).Warn("failure sending push notification")
+		onPushError(ctx, data, pusher, pushTokenRecord)
+	}
+
 	return nil
 }

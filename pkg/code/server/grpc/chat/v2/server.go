@@ -1425,8 +1425,6 @@ func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sen
 		return
 	}
 
-	log.WithField("members", members).Info("Found members for push")
-
 	var eg errgroup.Group
 	eg.SetLimit(min(32, len(members)))
 
@@ -1437,7 +1435,7 @@ func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sen
 				"isSender":       m.MemberId == sender,
 				"isMuted":        m.IsMuted,
 				"isUnsubscribed": m.IsUnsubscribed,
-			}).Info("skipping member")
+			}).Debug("skipping member")
 
 			continue
 		}
@@ -1450,7 +1448,6 @@ func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sen
 
 		m := m
 		eg.Go(func() error {
-			log.WithField("member", m.MemberId.String()).Info("sending push notification")
 			err = push_util.SendChatMessagePushNotificationV2(
 				context.Background(),
 				s.data,
