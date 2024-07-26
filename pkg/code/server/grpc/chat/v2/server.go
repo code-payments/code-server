@@ -791,6 +791,8 @@ func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 	}
 
 	s.onPersistChatMessage(log, chatId, chatMessage)
+
+	log.Info("Sending push notifications from SendMessage()")
 	s.sendPushNotifications(chatId, chatTitle, memberId, chatMessage)
 
 	return &chatpb.SendMessageResponse{
@@ -1423,11 +1425,20 @@ func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sen
 		return
 	}
 
+	log.WithField("members", members).Info("Found members for push")
+
 	var eg errgroup.Group
 	eg.SetLimit(min(32, len(members)))
 
 	for _, m := range members {
+		log := log.WithField("member", m.MemberId.String())
 		if m.MemberId == sender || m.IsMuted || m.IsUnsubscribed {
+			log.WithFields(logrus.Fields{
+				"isSender":       m.MemberId == sender,
+				"isMuted":        m.IsMuted,
+				"isUnsubscribed": m.IsUnsubscribed,
+			}).Info("skipping member")
+
 			continue
 		}
 

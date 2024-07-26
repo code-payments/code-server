@@ -99,6 +99,8 @@ func sendMutableNotificationToOwner(
 		return err
 	}
 
+	log.WithField("tokens", pushTokenRecords).Info("Found push tokens")
+
 	seenPushTokens := make(map[string]struct{})
 	for _, pushTokenRecord := range pushTokenRecords {
 		// Dedup push tokens, since they may appear more than once per app install
@@ -112,6 +114,7 @@ func sendMutableNotificationToOwner(
 		var err error
 		switch pushTokenRecord.TokenType {
 		case push_data.TokenTypeFcmApns:
+			log.Info("Sending mutable push")
 			err = pusher.SendMutableAPNSPush(
 				ctx,
 				pushTokenRecord.PushToken,
@@ -122,6 +125,7 @@ func sendMutableNotificationToOwner(
 			)
 		case push_data.TokenTypeFcmAndroid:
 			// todo: anything special required for Android?
+			log.Info("Sending data push")
 			err = pusher.SendDataPush(
 				ctx,
 				pushTokenRecord.PushToken,
