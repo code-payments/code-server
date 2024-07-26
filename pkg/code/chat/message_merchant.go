@@ -161,7 +161,7 @@ func SendMerchantExchangeMessage(ctx context.Context, data code_data.Provider, i
 			return nil, errors.Wrap(err, "error creating proto chat message")
 		}
 
-		canPush, err := SendChatMessage(
+		canPush, err := SendNotificationChatMessageV1(
 			ctx,
 			data,
 			chatTitle,

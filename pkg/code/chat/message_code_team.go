@@ -16,7 +16,7 @@ import (
 
 // SendCodeTeamMessage sends a message to the Code Team chat.
 func SendCodeTeamMessage(ctx context.Context, data code_data.Provider, receiver *common.Account, chatMessage *chatpb.ChatMessage) (bool, error) {
-	return SendChatMessage(
+	return SendNotificationChatMessageV1(
 		ctx,
 		data,
 		CodeTeamName,

@@ -43,6 +43,7 @@ const (
 	ChatTitleKinPurchases     = "title.chat.kinPurchases"
 	ChatTitlePayments         = "title.chat.payments"
 	ChatTitleTips             = "title.chat.tips"
+	ChatTitleTwoWay           = "title.chat.twoWay"
 
 	// Message Bodies
 

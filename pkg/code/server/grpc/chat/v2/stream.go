@@ -98,7 +98,7 @@ type chatEventNotification struct {
 	ts     time.Time
 }
 
-func (s *server) asyncNotifyAll(chatId chat.ChatId, event *chatpb.ChatStreamEvent) error {
+func (s *Server) asyncNotifyAll(chatId chat.ChatId, event *chatpb.ChatStreamEvent) error {
 	m := proto.Clone(event).(*chatpb.ChatStreamEvent)
 	ok := s.chatEventChans.Send(chatId[:], &chatEventNotification{chatId, m, time.Now()})
 	if !ok {
@@ -107,7 +107,7 @@ func (s *server) asyncNotifyAll(chatId chat.ChatId, event *chatpb.ChatStreamEven
 	return nil
 }
 
-func (s *server) asyncChatEventStreamNotifier(workerId int, channel <-chan interface{}) {
+func (s *Server) asyncChatEventStreamNotifier(workerId int, channel <-chan interface{}) {
 	log := s.log.WithFields(logrus.Fields{
 		"method": "asyncChatEventStreamNotifier",
 		"worker": workerId,

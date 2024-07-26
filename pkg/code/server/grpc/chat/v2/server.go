@@ -12,6 +12,7 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/language"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,14 +25,17 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
+	chatv2 "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	"github.com/code-payments/code-server/pkg/code/localization"
+	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
+	"github.com/code-payments/code-server/pkg/push"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
@@ -44,11 +48,12 @@ const (
 	flushMessageCount      = 100
 )
 
-type server struct {
+type Server struct {
 	log *logrus.Entry
 
 	data code_data.Provider
 	auth *auth_util.RPCSignatureVerifier
+	push push.Provider
 
 	streamsMu sync.RWMutex
 	streams   map[string]*chatEventStream
@@ -59,12 +64,17 @@ type server struct {
 	chatpb.UnimplementedChatServer
 }
 
-func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier) chatpb.ChatServer {
-	s := &server{
-		log: logrus.StandardLogger().WithField("type", "chat/v2/server"),
+func NewChatServer(
+	data code_data.Provider,
+	auth *auth_util.RPCSignatureVerifier,
+	push push.Provider,
+) *Server {
+	s := &Server{
+		log: logrus.StandardLogger().WithField("type", "chat/v2/Server"),
 
 		data: data,
 		auth: auth,
+		push: push,
 
 		streams: make(map[string]*chatEventStream),
 
@@ -80,7 +90,7 @@ func NewChatServer(data code_data.Provider, auth *auth_util.RPCSignatureVerifier
 }
 
 // todo: This will require a lot of optimizations since we iterate and make several DB calls for each chat membership
-func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
+func (s *Server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*chatpb.GetChatsResponse, error) {
 	log := s.log.WithField("method", "GetChats")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -132,7 +142,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 
 	// todo: Use a better query that returns chat IDs. This will result in duplicate
 	//       chat results if the user is in the chat multiple times across many identities.
-	patformUserMemberRecords, err := s.data.GetPlatformUserChatMembershipV2(
+	platformUserMemberRecords, err := s.data.GetPlatformUserChatMembershipV2(
 		ctx,
 		myIdentities,
 		query.WithCursor(cursor),
@@ -148,8 +158,10 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	log.WithField("chats", len(platformUserMemberRecords)).Info("Retrieved chatlist for user")
+
 	var protoChats []*chatpb.ChatMetadata
-	for _, platformUserMemberRecord := range patformUserMemberRecords {
+	for _, platformUserMemberRecord := range platformUserMemberRecords {
 		log := log.WithField("chat_id", platformUserMemberRecord.ChatId.String())
 
 		chatRecord, err := s.data.GetChatByIdV2(ctx, platformUserMemberRecord.ChatId)
@@ -180,7 +192,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 	}, nil
 }
 
-func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest) (*chatpb.GetMessagesResponse, error) {
+func (s *Server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest) (*chatpb.GetMessagesResponse, error) {
 	log := s.log.WithField("method", "GetMessages")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -283,7 +295,7 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}, nil
 }
 
-func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
+func (s *Server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
 	ctx := streamer.Context()
 
 	log := s.log.WithField("method", "StreamChatEvents")
@@ -358,9 +370,9 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	stream, exists := s.streams[streamKey]
 	if exists {
 		s.streamsMu.Unlock()
-		// There's an existing stream on this server that must be terminated first.
+		// There's an existing stream on this Server that must be terminated first.
 		// Warn to see how often this happens in practice
-		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", stream)
+		log.Warnf("existing stream detected on this Server (stream=%p) ; aborting", stream)
 		return status.Error(codes.Aborted, "stream already exists")
 	}
 
@@ -441,7 +453,7 @@ func (s *server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) e
 	}
 }
 
-func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
+func (s *Server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":        "flushMessages",
 		"chat_id":       chatId.String(),
@@ -476,7 +488,7 @@ func (s *server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *c
 	}
 }
 
-func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *chatEventStream) {
+func (s *Server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *chatEventStream) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":  "flushPointers",
 		"chat_id": chatId.String(),
@@ -519,7 +531,7 @@ func (s *server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *
 	}
 }
 
-func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
+func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
 	log := s.log.WithField("method", "StartChat")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -628,8 +640,9 @@ func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 					ChatId:   chatId,
 					MemberId: chat.GenerateMemberId(),
 
-					Platform:   chat.PlatformTwitter,
-					PlatformId: twitterUsername,
+					Platform:     chat.PlatformTwitter,
+					PlatformId:   twitterUsername,
+					OwnerAccount: owner.PublicKey().ToBase58(),
 
 					JoinedAt: creationTs,
 				},
@@ -694,7 +707,7 @@ func (s *server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 	}
 }
 
-func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
+func (s *Server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest) (*chatpb.SendMessageResponse, error) {
 	log := s.log.WithField("method", "SendMessage")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -745,8 +758,10 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	var chatTitle string
 	switch chatRecord.ChatType {
 	case chat.ChatTypeTwoWay:
+		chatTitle = chatv2.TwoWayChatName
 	default:
 		return &chatpb.SendMessageResponse{
 			Result: chatpb.SendMessageResponse_INVALID_CHAT_TYPE,
@@ -777,14 +792,27 @@ func (s *server) SendMessage(ctx context.Context, req *chatpb.SendMessageRequest
 
 	s.onPersistChatMessage(log, chatId, chatMessage)
 
+	log.Info("Sending push notifications from SendMessage()")
+	s.sendPushNotifications(chatId, chatTitle, memberId, chatMessage)
+
 	return &chatpb.SendMessageResponse{
 		Result:  chatpb.SendMessageResponse_OK,
 		Message: chatMessage,
 	}, nil
 }
 
+// TODO(api): This likely needs an RPC that can be called from any other Server.
+func (s *Server) NotifyMessage(_ context.Context, chatID chat.ChatId, message *chatpb.ChatMessage) {
+	log := s.log.WithFields(logrus.Fields{
+		"chat_id":   chatID.String(),
+		"messge_id": message.MessageId.String(),
+	})
+
+	s.onPersistChatMessage(log, chatID, message)
+}
+
 // todo: This belongs in the common chat utility, which currently only operates on v1 chats
-func (s *server) persistChatMessage(ctx context.Context, chatId chat.ChatId, protoChatMessage *chatpb.ChatMessage) error {
+func (s *Server) persistChatMessage(ctx context.Context, chatId chat.ChatId, protoChatMessage *chatpb.ChatMessage) error {
 	if err := protoChatMessage.Validate(); err != nil {
 		return errors.Wrap(err, "proto chat message failed validation")
 	}
@@ -834,7 +862,7 @@ func (s *server) persistChatMessage(ctx context.Context, chatId chat.ChatId, pro
 	return nil
 }
 
-func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerRequest) (*chatpb.AdvancePointerResponse, error) {
+func (s *Server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerRequest) (*chatpb.AdvancePointerResponse, error) {
 	log := s.log.WithField("method", "AdvancePointer")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -938,7 +966,7 @@ func (s *server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}, nil
 }
 
-func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityRequest) (*chatpb.RevealIdentityResponse, error) {
+func (s *Server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityRequest) (*chatpb.RevealIdentityResponse, error) {
 	log := s.log.WithField("method", "RevealIdentity")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -1092,7 +1120,7 @@ func (s *server) RevealIdentity(ctx context.Context, req *chatpb.RevealIdentityR
 	}
 }
 
-func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateRequest) (*chatpb.SetMuteStateResponse, error) {
+func (s *Server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateRequest) (*chatpb.SetMuteStateResponse, error) {
 	log := s.log.WithField("method", "SetMuteState")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -1157,7 +1185,7 @@ func (s *server) SetMuteState(ctx context.Context, req *chatpb.SetMuteStateReque
 	}, nil
 }
 
-func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscriptionStateRequest) (*chatpb.SetSubscriptionStateResponse, error) {
+func (s *Server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscriptionStateRequest) (*chatpb.SetSubscriptionStateResponse, error) {
 	log := s.log.WithField("method", "SetSubscriptionState")
 	log = client.InjectLoggingMetadata(ctx, log)
 
@@ -1222,7 +1250,7 @@ func (s *server) SetSubscriptionState(ctx context.Context, req *chatpb.SetSubscr
 	}, nil
 }
 
-func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
+func (s *Server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, memberRecords []*chat.MemberRecord, myIdentitiesByPlatform map[chat.Platform]string) (*chatpb.ChatMetadata, error) {
 	protoChat := &chatpb.ChatMetadata{
 		ChatId: chatRecord.ChatId.ToProto(),
 		Type:   chatRecord.ChatType.ToProto(),
@@ -1235,6 +1263,15 @@ func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 
 		protoChat.CanMute = true
 		protoChat.CanUnsubscribe = true
+	case chat.ChatTypeNotification:
+		if chatRecord.ChatTitle == nil {
+			// TODO: we shouldn't fail the whole RPC
+			return nil, fmt.Errorf("invalid notification chat: missing title")
+		}
+
+		// TODO: Localization
+		protoChat.Title = *chatRecord.ChatTitle
+
 	default:
 		return nil, errors.Errorf("unsupported chat type: %s", chatRecord.ChatType.String())
 	}
@@ -1306,7 +1343,7 @@ func (s *server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 	return protoChat, nil
 }
 
-func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
+func (s *Server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.ChatMessage, error) {
 	messageRecords, err := s.data.GetAllChatMessagesV2(
 		ctx,
 		chatId,
@@ -1362,20 +1399,79 @@ func (s *server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, o
 	return res, nil
 }
 
-func (s *server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
+func (s *Server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.ChatMessage) {
 	event := &chatpb.ChatStreamEvent{
 		Type: &chatpb.ChatStreamEvent_Message{
 			Message: chatMessage,
 		},
 	}
+
 	if err := s.asyncNotifyAll(chatId, event); err != nil {
 		log.WithError(err).Warn("failure notifying chat event")
 	}
-
-	// todo: send the push
 }
 
-func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
+func (s *Server) sendPushNotifications(chatId chat.ChatId, chatTitle string, sender chat.MemberId, message *chatpb.ChatMessage) {
+	log := s.log.WithFields(logrus.Fields{
+		"method":  "sendPushNotifications",
+		"sender":  sender.String(),
+		"chat_id": chatId.String(),
+	})
+
+	// TODO: Callers might already have this loaded.
+	members, err := s.data.GetAllChatMembersV2(context.Background(), chatId)
+	if err != nil {
+		log.WithError(err).Warn("failure getting chat members")
+		return
+	}
+
+	var eg errgroup.Group
+	eg.SetLimit(min(32, len(members)))
+
+	for _, m := range members {
+		log := log.WithField("member", m.MemberId.String())
+		if m.MemberId == sender || m.IsMuted || m.IsUnsubscribed {
+			log.WithFields(logrus.Fields{
+				"isSender":       m.MemberId == sender,
+				"isMuted":        m.IsMuted,
+				"isUnsubscribed": m.IsUnsubscribed,
+			}).Debug("skipping member")
+
+			continue
+		}
+
+		owner, err := common.NewAccountFromPublicKeyString(m.GetOwner())
+		if err != nil {
+			log.WithError(err).WithField("member", m.MemberId.String()).Warn("failure getting owner")
+			continue
+		}
+
+		m := m
+		eg.Go(func() error {
+			err = push_util.SendChatMessagePushNotificationV2(
+				context.Background(),
+				s.data,
+				s.push,
+				chatId,
+				chatTitle,
+				owner,
+				message,
+			)
+			if err != nil {
+				log.
+					WithError(err).
+					WithField("member", m.MemberId).
+					Warn("failure sending push notification")
+			}
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait()
+}
+
+func (s *Server) getAllIdentities(ctx context.Context, owner *common.Account) (map[chat.Platform]string, error) {
 	identities := map[chat.Platform]string{
 		chat.PlatformCode: owner.PublicKey().ToBase58(),
 	}
@@ -1391,7 +1487,7 @@ func (s *server) getAllIdentities(ctx context.Context, owner *common.Account) (m
 	return identities, nil
 }
 
-func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
+func (s *Server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, owner *common.Account) (bool, error) {
 	memberRecord, err := s.data.GetChatMemberByIdV2(ctx, chatId, memberId)
 	switch err {
 	case nil:
@@ -1404,7 +1500,7 @@ func (s *server) ownsChatMemberWithoutRecord(ctx context.Context, chatId chat.Ch
 	return s.ownsChatMemberWithRecord(ctx, chatId, memberRecord, owner)
 }
 
-func (s *server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatId, memberRecord *chat.MemberRecord, owner *common.Account) (bool, error) {
+func (s *Server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatId, memberRecord *chat.MemberRecord, owner *common.Account) (bool, error) {
 	switch memberRecord.Platform {
 	case chat.PlatformCode:
 		return memberRecord.PlatformId == owner.PublicKey().ToBase58(), nil
@@ -1416,7 +1512,7 @@ func (s *server) ownsChatMemberWithRecord(ctx context.Context, chatId chat.ChatI
 }
 
 // todo: This logic should live elsewhere in somewhere more common
-func (s *server) ownsTwitterUsername(ctx context.Context, owner *common.Account, username string) (bool, error) {
+func (s *Server) ownsTwitterUsername(ctx context.Context, owner *common.Account, username string) (bool, error) {
 	ownerTipAccount, err := owner.ToTimelockVault(timelock_token.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return false, errors.Wrap(err, "error deriving twitter tip address")
@@ -1435,7 +1531,7 @@ func (s *server) ownsTwitterUsername(ctx context.Context, owner *common.Account,
 }
 
 // todo: This logic should live elsewhere in somewhere more common
-func (s *server) getOwnedTwitterUsername(ctx context.Context, owner *common.Account) (string, bool, error) {
+func (s *Server) getOwnedTwitterUsername(ctx context.Context, owner *common.Account) (string, bool, error) {
 	ownerTipAccount, err := owner.ToTimelockVault(timelock_token.DataVersion1, common.KinMintAccount)
 	if err != nil {
 		return "", false, errors.Wrap(err, "error deriving twitter tip address")

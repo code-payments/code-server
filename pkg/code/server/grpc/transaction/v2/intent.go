@@ -888,7 +888,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				return err
 			}
 
-			tipMessagesToPush, err := chat_util.SendTipsExchangeMessage(ctx, s.data, intentRecord)
+			tipMessagesToPush, err := chat_util.SendTipsExchangeMessage(ctx, s.data, s.notifier, intentRecord)
 			if err != nil {
 				log.WithError(err).Warn("failure updating tips chat")
 				return err
