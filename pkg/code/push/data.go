@@ -104,17 +104,18 @@ func sendMutableNotificationToOwner(
 		return nil
 	}
 
-	log.WithField("tokens", pushTokenRecords).Debug("Found push tokens")
+	log.WithField("tokens", pushTokenRecords).Info("Found push tokens")
 	slices.SortFunc(pushTokenRecords, func(a, b *push_data.Record) int {
-		return b.CreatedAt.Compare(a.CreatedAt)
+		return a.CreatedAt.Compare(b.CreatedAt)
 	})
 
-	pushTokenRecord := pushTokenRecords[0]
+	pushTokenRecord := pushTokenRecords[len(pushTokenRecords)-1]
 	log = log.WithField("push_token", pushTokenRecord.PushToken)
 
 	// Try push
 	switch pushTokenRecord.TokenType {
 	case push_data.TokenTypeFcmApns:
+		log.Info("Sending mutable push")
 		err = pusher.SendMutableAPNSPush(
 			ctx,
 			pushTokenRecord.PushToken,
@@ -125,6 +126,7 @@ func sendMutableNotificationToOwner(
 		)
 	case push_data.TokenTypeFcmAndroid:
 		// todo: anything special required for Android?
+		log.Info("Sending data push")
 		err = pusher.SendDataPush(
 			ctx,
 			pushTokenRecord.PushToken,
