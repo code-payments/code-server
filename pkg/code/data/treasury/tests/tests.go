@@ -30,6 +30,8 @@ func testTreasuryPoolHappyPath(t *testing.T, s treasury.Store) {
 		start := time.Now()
 
 		expected := &treasury.Record{
+			Vm: "vm",
+
 			Name: "name",
 
 			Address: "treasury",
@@ -131,11 +133,11 @@ func testGetAllByState(t *testing.T, s treasury.Store) {
 		assert.Equal(t, treasury.ErrTreasuryPoolNotFound, err)
 
 		expected := []*treasury.Record{
-			{Name: "name1", Address: "treasury1", Vault: "vault1", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root1"}, SolanaBlock: 1, State: treasury.TreasuryPoolStateAvailable},
-			{Name: "name2", Address: "treasury2", Vault: "vault2", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root2"}, SolanaBlock: 2, State: treasury.TreasuryPoolStateAvailable},
-			{Name: "name3", Address: "treasury3", Vault: "vault3", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root3"}, SolanaBlock: 3, State: treasury.TreasuryPoolStateAvailable},
-			{Name: "name4", Address: "treasury4", Vault: "vault4", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root4"}, SolanaBlock: 4, State: treasury.TreasuryPoolStateDeprecated},
-			{Name: "name5", Address: "treasury5", Vault: "vault5", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root5"}, SolanaBlock: 5, State: treasury.TreasuryPoolStateDeprecated},
+			{Vm: "vm", Name: "name1", Address: "treasury1", Vault: "vault1", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root1"}, SolanaBlock: 1, State: treasury.TreasuryPoolStateAvailable},
+			{Vm: "vm", Name: "name2", Address: "treasury2", Vault: "vault2", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root2"}, SolanaBlock: 2, State: treasury.TreasuryPoolStateAvailable},
+			{Vm: "vm", Name: "name3", Address: "treasury3", Vault: "vault3", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root3"}, SolanaBlock: 3, State: treasury.TreasuryPoolStateAvailable},
+			{Vm: "vm", Name: "name4", Address: "treasury4", Vault: "vault4", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root4"}, SolanaBlock: 4, State: treasury.TreasuryPoolStateDeprecated},
+			{Vm: "vm", Name: "name5", Address: "treasury5", Vault: "vault5", Authority: "code", MerkleTreeLevels: 32, CurrentIndex: 0, HistoryListSize: 1, HistoryList: []string{"root5"}, SolanaBlock: 5, State: treasury.TreasuryPoolStateDeprecated},
 		}
 		for _, record := range expected {
 			require.NoError(t, s.Save(ctx, record))

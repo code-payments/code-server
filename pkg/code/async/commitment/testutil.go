@@ -47,6 +47,8 @@ func setup(t *testing.T) testEnv {
 
 	treasuryPoolAddress := testutil.NewRandomAccount(t)
 	treasuryPool := &treasury.Record{
+		Vm: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+
 		Name: "test-pool",
 
 		Address: treasuryPoolAddress.PublicKey().ToBase58(),
