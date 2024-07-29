@@ -186,6 +186,7 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	GetFulfillmentById(ctx context.Context, id uint64) (*fulfillment.Record, error)
 	GetFulfillmentBySignature(ctx context.Context, signature string) (*fulfillment.Record, error)
+	GetFulfillmentByVirtualSignature(ctx context.Context, signature string) (*fulfillment.Record, error)
 	GetFulfillmentCount(ctx context.Context) (uint64, error)
 	GetFulfillmentCountByState(ctx context.Context, state fulfillment.State) (uint64, error)
 	GetFulfillmentCountByStateGroupedByType(ctx context.Context, state fulfillment.State) (map[fulfillment.Type]uint64, error)
@@ -753,6 +754,9 @@ func (dp *DatabaseProvider) GetFulfillmentById(ctx context.Context, id uint64) (
 }
 func (dp *DatabaseProvider) GetFulfillmentBySignature(ctx context.Context, signature string) (*fulfillment.Record, error) {
 	return dp.fulfillments.GetBySignature(ctx, signature)
+}
+func (dp *DatabaseProvider) GetFulfillmentByVirtualSignature(ctx context.Context, signature string) (*fulfillment.Record, error) {
+	return dp.fulfillments.GetByVirtualSignature(ctx, signature)
 }
 func (dp *DatabaseProvider) GetFulfillmentCount(ctx context.Context) (uint64, error) {
 	return dp.fulfillments.Count(ctx)
