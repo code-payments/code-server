@@ -29,6 +29,8 @@ const (
 type Record struct {
 	Id uint64
 
+	Vm string
+
 	Name string
 
 	Address string
@@ -144,6 +146,10 @@ func (r *Record) Update(data *cvm.RelayAccount, solanaBlock uint64) error {
 }
 
 func (r *Record) Validate() error {
+	if len(r.Vm) == 0 {
+		return errors.New("vm is required")
+	}
+
 	if len(r.Name) == 0 {
 		return errors.New("name is required")
 	}
@@ -192,6 +198,8 @@ func (r *Record) Clone() *Record {
 	return &Record{
 		Id: r.Id,
 
+		Vm: r.Vm,
+
 		Name: r.Name,
 
 		Address: r.Address,
@@ -218,6 +226,8 @@ func (r *Record) Clone() *Record {
 
 func (r *Record) CopyTo(dst *Record) {
 	dst.Id = r.Id
+
+	dst.Vm = r.Vm
 
 	dst.Name = r.Name
 
