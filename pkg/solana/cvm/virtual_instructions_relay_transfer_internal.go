@@ -5,14 +5,14 @@ import (
 )
 
 const (
-	RelayTransferInternalVirtrualInstructionDataSize = (8 + // amount
+	RelayTransferInternalVirtrualInstructionDataSize = (4 + // amount
 		HashSize + // transcript
 		HashSize + // recent_root
 		HashSize) // commitment
 )
 
 type RelayTransferInternalVirtualInstructionArgs struct {
-	Amount     uint64
+	Amount     uint32
 	Transcript Hash
 	RecentRoot Hash
 	Commitment Hash
@@ -29,7 +29,7 @@ func NewRelayTransferInternalVirtualInstructionCtor(
 		var offset int
 		data := make([]byte, RelayTransferInternalVirtrualInstructionDataSize)
 
-		putUint64(data, args.Amount, &offset)
+		putUint32(data, args.Amount, &offset)
 		putHash(data, args.Transcript, &offset)
 		putHash(data, args.RecentRoot, &offset)
 		putHash(data, args.Commitment, &offset)

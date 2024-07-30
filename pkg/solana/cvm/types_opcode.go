@@ -9,6 +9,8 @@ const (
 
 	OpcodeTransferWithCommitmentInternal Opcode = 52
 	OpcodeTransferWithCommitmentExternal Opcode = 53
+
+	OpcodeCompoundCloseEmptyAccount Opcode = 60
 )
 
 func putOpcode(dst []byte, v Opcode, offset *int) {
