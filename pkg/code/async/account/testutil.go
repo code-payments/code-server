@@ -22,7 +22,6 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
 	memory_push "github.com/code-payments/code-server/pkg/push/memory"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -63,7 +62,7 @@ func setup(t *testing.T) *testEnv {
 func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *testGiftCard {
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := authority.GetTimelockAccounts(common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{

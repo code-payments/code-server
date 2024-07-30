@@ -51,7 +51,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 
 	// Later calls intent to OpenAccounts
 
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, coreMintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(coreMintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -131,7 +131,7 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 	}
 	require.NoError(t, data.SavePhoneVerification(ctx, verificationRecord))
 
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, mintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(mintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -180,7 +180,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		{authority1, commonpb.AccountType_BUCKET_1_KIN},
 		{authority2, commonpb.AccountType_BUCKET_10_KIN},
 	} {
-		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, coreMintAccount)
+		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(coreMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -203,7 +203,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		{authority3, "app1.com"},
 		{authority4, "app2.com"},
 	} {
-		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(timelock_token_v1.DataVersion1, coreMintAccount)
+		timelockAccounts, err := authorityAndRelationship.account.GetTimelockAccounts(coreMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
