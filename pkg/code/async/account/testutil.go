@@ -60,9 +60,10 @@ func setup(t *testing.T) *testEnv {
 }
 
 func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *testGiftCard {
+	vm := testutil.NewRandomAccount(t)
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(common.KinMintAccount)
+	timelockAccounts, err := authority.GetTimelockAccounts(vm, common.KinMintAccount)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{
