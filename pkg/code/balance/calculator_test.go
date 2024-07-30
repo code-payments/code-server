@@ -30,14 +30,14 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
 	newOwnerAccount := testutil.NewRandomAccount(t)
-	newTokenAccount, err := newOwnerAccount.ToTimelockVault(getTimelockDataVersion(false), common.KinMintAccount)
+	newTokenAccount, err := newOwnerAccount.ToTimelockVault(common.KinMintAccount)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
 		codeUsers: []*common.Account{newOwnerAccount},
 	}
 
-	setupBalanceTestData(t, env, data, balanceTestDataConf{})
+	setupBalanceTestData(t, env, data)
 
 	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, newOwnerAccount)
 	require.NoError(t, err)
@@ -58,290 +58,254 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 }
 
 func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
-	for _, useLegacyDeposits := range []bool{true, false} {
-		env := setupBalanceTestEnv(t)
+	env := setupBalanceTestEnv(t)
 
-		owner := testutil.NewRandomAccount(t)
-		depositAccount, err := owner.ToTimelockVault(getTimelockDataVersion(useLegacyDeposits), common.KinMintAccount)
-		require.NoError(t, err)
+	owner := testutil.NewRandomAccount(t)
+	depositAccount, err := owner.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		externalAccount := testutil.NewRandomAccount(t)
+	externalAccount := testutil.NewRandomAccount(t)
 
-		data := &balanceTestData{
-			codeUsers: []*common.Account{owner},
-			transactions: []balanceTestTransaction{
-				// The following entries are added to the balance
-				{source: externalAccount, destination: depositAccount, quantity: 1, transactionState: transaction.ConfirmationFinalized},
-				{source: externalAccount, destination: depositAccount, quantity: 10, transactionState: transaction.ConfirmationFinalized},
-				// The following entries aren't added to the balance because they aren't finalized
-				{source: externalAccount, destination: depositAccount, quantity: 100, transactionState: transaction.ConfirmationFailed},
-				{source: externalAccount, destination: depositAccount, quantity: 1000, transactionState: transaction.ConfirmationPending},
-				{source: externalAccount, destination: depositAccount, quantity: 10000, transactionState: transaction.ConfirmationUnknown},
-			},
-		}
-		setupBalanceTestData(t, env, data, balanceTestDataConf{
-			useLegacyIntents:  useLegacyDeposits,
-			useLegacyDeposits: useLegacyDeposits,
-		})
-
-		balance, err := CalculateFromCache(env.ctx, env.data, depositAccount)
-		require.NoError(t, err)
-		assert.EqualValues(t, 11, balance)
-
-		if !useLegacyDeposits {
-			accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner)
-			require.NoError(t, err)
-
-			balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 1)
-			assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
-
-			balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, depositAccount)
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 1)
-			assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
-		}
+	data := &balanceTestData{
+		codeUsers: []*common.Account{owner},
+		transactions: []balanceTestTransaction{
+			// The following entries are added to the balance
+			{source: externalAccount, destination: depositAccount, quantity: 1, transactionState: transaction.ConfirmationFinalized},
+			{source: externalAccount, destination: depositAccount, quantity: 10, transactionState: transaction.ConfirmationFinalized},
+			// The following entries aren't added to the balance because they aren't finalized
+			{source: externalAccount, destination: depositAccount, quantity: 100, transactionState: transaction.ConfirmationFailed},
+			{source: externalAccount, destination: depositAccount, quantity: 1000, transactionState: transaction.ConfirmationPending},
+			{source: externalAccount, destination: depositAccount, quantity: 10000, transactionState: transaction.ConfirmationUnknown},
+		},
 	}
+	setupBalanceTestData(t, env, data)
+
+	balance, err := CalculateFromCache(env.ctx, env.data, depositAccount)
+	require.NoError(t, err)
+	assert.EqualValues(t, 11, balance)
+
+	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner)
+	require.NoError(t, err)
+
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 1)
+	assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
+
+	balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, depositAccount)
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 1)
+	assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
 }
 
 func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
-	for _, useLegacyIntents := range []bool{true, false} {
-		env := setupBalanceTestEnv(t)
+	env := setupBalanceTestEnv(t)
 
-		owner1 := testutil.NewRandomAccount(t)
-		a1, err := owner1.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	owner1 := testutil.NewRandomAccount(t)
+	a1, err := owner1.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		owner2 := testutil.NewRandomAccount(t)
-		a2, err := owner2.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	owner2 := testutil.NewRandomAccount(t)
+	a2, err := owner2.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		owner3 := testutil.NewRandomAccount(t)
-		a3, err := owner3.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	owner3 := testutil.NewRandomAccount(t)
+	a3, err := owner3.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		owner4 := testutil.NewRandomAccount(t)
-		a4, err := owner4.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	owner4 := testutil.NewRandomAccount(t)
+	a4, err := owner4.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		externalAccount := testutil.NewRandomAccount(t)
+	externalAccount := testutil.NewRandomAccount(t)
 
-		data := &balanceTestData{
-			codeUsers: []*common.Account{owner1, owner2, owner3, owner4},
-			transactions: []balanceTestTransaction{
-				// Fund account a1 through a4 with an external deposit
-				{source: externalAccount, destination: a1, quantity: 1, transactionState: transaction.ConfirmationFinalized},
-				{source: externalAccount, destination: a2, quantity: 10, transactionState: transaction.ConfirmationFinalized},
-				{source: externalAccount, destination: a3, quantity: 100, transactionState: transaction.ConfirmationFinalized},
-				{source: externalAccount, destination: a4, quantity: 1000, transactionState: transaction.ConfirmationFinalized},
-				// Confirmed intents are incorporated into balance calculations
-				{source: a4, destination: a1, quantity: 1, intentID: "i1", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
-				{source: a4, destination: a1, quantity: 2, intentID: "i2", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
-				// Pending intents are incorporated into balance calculations
-				{source: a4, destination: a2, quantity: 3, intentID: "i3", intentState: intent.StatePending, actionState: action.StatePending},
-				{source: a4, destination: a2, quantity: 4, intentID: "i4", intentState: intent.StatePending, actionState: action.StatePending},
-				// Failed intents are incorporated into balance calculations. We'll
-				// always make the user whole.
-				{source: a4, destination: a3, quantity: 5, intentID: "i5", intentState: intent.StateFailed, actionState: action.StateFailed},
-				{source: a4, destination: a3, quantity: 6, intentID: "i6", intentState: intent.StateFailed, actionState: action.StateFailed},
-				// Intents in the unknown state are incorporated differently depending
-				// on the intent type, since it infers which intent system it came from.
-				// Legacy intents are not incorporated, as the intent is not committed by
-				// the client. Intents could theoretically by in the unknown state under
-				// the new system, but we should limit this as much as possible.
-				{source: a4, destination: a1, quantity: 7, intentID: "i7", intentState: intent.StateUnknown, actionState: action.StateUnknown},
-				// Revoked intents are not incorporated into balance calculations.
-				{source: a4, destination: a2, quantity: 8, intentID: "i8", intentState: intent.StateRevoked, actionState: action.StateRevoked},
-			},
-		}
-
-		setupBalanceTestData(t, env, data, balanceTestDataConf{
-			useLegacyIntents:  useLegacyIntents,
-			useLegacyDeposits: useLegacyIntents,
-		})
-
-		balance, err := CalculateFromCache(env.ctx, env.data, a1)
-		require.NoError(t, err)
-		if useLegacyIntents {
-			assert.EqualValues(t, 4, balance)
-		} else {
-			assert.EqualValues(t, 11, balance)
-		}
-
-		balance, err = CalculateFromCache(env.ctx, env.data, a2)
-		require.NoError(t, err)
-		assert.EqualValues(t, 17, balance)
-
-		balance, err = CalculateFromCache(env.ctx, env.data, a3)
-		require.NoError(t, err)
-		assert.EqualValues(t, 111, balance)
-
-		balance, err = CalculateFromCache(env.ctx, env.data, a4)
-		require.NoError(t, err)
-		if useLegacyIntents {
-			assert.EqualValues(t, 979, balance)
-		} else {
-			assert.EqualValues(t, 972, balance)
-		}
-
-		if !useLegacyIntents {
-			accountRecords1, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner1)
-			require.NoError(t, err)
-
-			accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
-			require.NoError(t, err)
-
-			accountRecords3, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner3)
-			require.NoError(t, err)
-
-			accountRecords4, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner4)
-			require.NoError(t, err)
-
-			balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0], accountRecords3[commonpb.AccountType_PRIMARY][0], accountRecords4[commonpb.AccountType_PRIMARY][0])
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 4)
-			assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
-			assert.EqualValues(t, 17, balanceByAccount[a2.PublicKey().ToBase58()])
-			assert.EqualValues(t, 111, balanceByAccount[a3.PublicKey().ToBase58()])
-			assert.EqualValues(t, 972, balanceByAccount[a4.PublicKey().ToBase58()])
-
-			balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, a1, a2, a3, a4)
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 4)
-			assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
-			assert.EqualValues(t, 17, balanceByAccount[a2.PublicKey().ToBase58()])
-			assert.EqualValues(t, 111, balanceByAccount[a3.PublicKey().ToBase58()])
-			assert.EqualValues(t, 972, balanceByAccount[a4.PublicKey().ToBase58()])
-		}
+	data := &balanceTestData{
+		codeUsers: []*common.Account{owner1, owner2, owner3, owner4},
+		transactions: []balanceTestTransaction{
+			// Fund account a1 through a4 with an external deposit
+			{source: externalAccount, destination: a1, quantity: 1, transactionState: transaction.ConfirmationFinalized},
+			{source: externalAccount, destination: a2, quantity: 10, transactionState: transaction.ConfirmationFinalized},
+			{source: externalAccount, destination: a3, quantity: 100, transactionState: transaction.ConfirmationFinalized},
+			{source: externalAccount, destination: a4, quantity: 1000, transactionState: transaction.ConfirmationFinalized},
+			// Confirmed intents are incorporated into balance calculations
+			{source: a4, destination: a1, quantity: 1, intentID: "i1", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
+			{source: a4, destination: a1, quantity: 2, intentID: "i2", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
+			// Pending intents are incorporated into balance calculations
+			{source: a4, destination: a2, quantity: 3, intentID: "i3", intentState: intent.StatePending, actionState: action.StatePending},
+			{source: a4, destination: a2, quantity: 4, intentID: "i4", intentState: intent.StatePending, actionState: action.StatePending},
+			// Failed intents are incorporated into balance calculations. We'll
+			// always make the user whole.
+			{source: a4, destination: a3, quantity: 5, intentID: "i5", intentState: intent.StateFailed, actionState: action.StateFailed},
+			{source: a4, destination: a3, quantity: 6, intentID: "i6", intentState: intent.StateFailed, actionState: action.StateFailed},
+			// Intents in the unknown state are incorporated differently depending
+			// on the intent type, since it infers which intent system it came from.
+			// Legacy intents are not incorporated, as the intent is not committed by
+			// the client. Intents could theoretically by in the unknown state under
+			// the new system, but we should limit this as much as possible.
+			{source: a4, destination: a1, quantity: 7, intentID: "i7", intentState: intent.StateUnknown, actionState: action.StateUnknown},
+			// Revoked intents are not incorporated into balance calculations.
+			{source: a4, destination: a2, quantity: 8, intentID: "i8", intentState: intent.StateRevoked, actionState: action.StateRevoked},
+		},
 	}
+
+	setupBalanceTestData(t, env, data)
+
+	balance, err := CalculateFromCache(env.ctx, env.data, a1)
+	require.NoError(t, err)
+	assert.EqualValues(t, 11, balance)
+
+	balance, err = CalculateFromCache(env.ctx, env.data, a2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 17, balance)
+
+	balance, err = CalculateFromCache(env.ctx, env.data, a3)
+	require.NoError(t, err)
+	assert.EqualValues(t, 111, balance)
+
+	balance, err = CalculateFromCache(env.ctx, env.data, a4)
+	require.NoError(t, err)
+	assert.EqualValues(t, 972, balance)
+
+	accountRecords1, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner1)
+	require.NoError(t, err)
+
+	accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
+	require.NoError(t, err)
+
+	accountRecords3, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner3)
+	require.NoError(t, err)
+
+	accountRecords4, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner4)
+	require.NoError(t, err)
+
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0], accountRecords3[commonpb.AccountType_PRIMARY][0], accountRecords4[commonpb.AccountType_PRIMARY][0])
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 4)
+	assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
+	assert.EqualValues(t, 17, balanceByAccount[a2.PublicKey().ToBase58()])
+	assert.EqualValues(t, 111, balanceByAccount[a3.PublicKey().ToBase58()])
+	assert.EqualValues(t, 972, balanceByAccount[a4.PublicKey().ToBase58()])
+
+	balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, a1, a2, a3, a4)
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 4)
+	assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
+	assert.EqualValues(t, 17, balanceByAccount[a2.PublicKey().ToBase58()])
+	assert.EqualValues(t, 111, balanceByAccount[a3.PublicKey().ToBase58()])
+	assert.EqualValues(t, 972, balanceByAccount[a4.PublicKey().ToBase58()])
 }
 
 func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
-	for _, useLegacyIntents := range []bool{true, false} {
-		env := setupBalanceTestEnv(t)
+	env := setupBalanceTestEnv(t)
 
-		owner1 := testutil.NewRandomAccount(t)
-		a1, err := owner1.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	owner1 := testutil.NewRandomAccount(t)
+	a1, err := owner1.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		owner2 := testutil.NewRandomAccount(t)
-		a2, err := owner2.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	owner2 := testutil.NewRandomAccount(t)
+	a2, err := owner2.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		externalAccount := testutil.NewRandomAccount(t)
+	externalAccount := testutil.NewRandomAccount(t)
 
-		data := &balanceTestData{
-			codeUsers: []*common.Account{owner1, owner2},
-			transactions: []balanceTestTransaction{
-				// Fund account a1 through an external deposit
-				{source: externalAccount, destination: a1, quantity: 1, transactionState: transaction.ConfirmationFinalized},
-				// Setup a set of intents that result in back and forth movement of the Kin
-				{source: a1, destination: a2, quantity: 1, intentID: "i1", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
-				{source: a2, destination: a1, quantity: 1, intentID: "i2", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
-				{source: a1, destination: a2, quantity: 1, intentID: "i3", intentState: intent.StatePending, actionState: action.StatePending},
-				{source: a2, destination: a1, quantity: 1, intentID: "i4", intentState: intent.StatePending, actionState: action.StatePending},
-				{source: a1, destination: a2, quantity: 1, intentID: "i5", intentState: intent.StatePending, actionState: action.StatePending},
-			},
-		}
-
-		setupBalanceTestData(t, env, data, balanceTestDataConf{
-			useLegacyIntents:  useLegacyIntents,
-			useLegacyDeposits: useLegacyIntents,
-		})
-
-		balance, err := CalculateFromCache(env.ctx, env.data, a1)
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, balance)
-
-		balance, err = CalculateFromCache(env.ctx, env.data, a2)
-		require.NoError(t, err)
-		assert.EqualValues(t, 1, balance)
-
-		if !useLegacyIntents {
-			accountRecords1, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner1)
-			require.NoError(t, err)
-
-			accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
-			require.NoError(t, err)
-
-			balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0])
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 2)
-			assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
-			assert.EqualValues(t, 1, balanceByAccount[a2.PublicKey().ToBase58()])
-
-			balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, a1, a2)
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 2)
-			assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
-			assert.EqualValues(t, 1, balanceByAccount[a2.PublicKey().ToBase58()])
-		}
+	data := &balanceTestData{
+		codeUsers: []*common.Account{owner1, owner2},
+		transactions: []balanceTestTransaction{
+			// Fund account a1 through an external deposit
+			{source: externalAccount, destination: a1, quantity: 1, transactionState: transaction.ConfirmationFinalized},
+			// Setup a set of intents that result in back and forth movement of the Kin
+			{source: a1, destination: a2, quantity: 1, intentID: "i1", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
+			{source: a2, destination: a1, quantity: 1, intentID: "i2", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
+			{source: a1, destination: a2, quantity: 1, intentID: "i3", intentState: intent.StatePending, actionState: action.StatePending},
+			{source: a2, destination: a1, quantity: 1, intentID: "i4", intentState: intent.StatePending, actionState: action.StatePending},
+			{source: a1, destination: a2, quantity: 1, intentID: "i5", intentState: intent.StatePending, actionState: action.StatePending},
+		},
 	}
+
+	setupBalanceTestData(t, env, data)
+
+	balance, err := CalculateFromCache(env.ctx, env.data, a1)
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, balance)
+
+	balance, err = CalculateFromCache(env.ctx, env.data, a2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, balance)
+
+	accountRecords1, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner1)
+	require.NoError(t, err)
+
+	accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
+	require.NoError(t, err)
+
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0])
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 2)
+	assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
+	assert.EqualValues(t, 1, balanceByAccount[a2.PublicKey().ToBase58()])
+
+	balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, a1, a2)
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 2)
+	assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
+	assert.EqualValues(t, 1, balanceByAccount[a2.PublicKey().ToBase58()])
 }
 
 func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
-	for _, useLegacyIntents := range []bool{true, false} {
-		env := setupBalanceTestEnv(t)
+	env := setupBalanceTestEnv(t)
 
-		ownerAccount := testutil.NewRandomAccount(t)
-		tokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(useLegacyIntents), common.KinMintAccount)
-		require.NoError(t, err)
+	ownerAccount := testutil.NewRandomAccount(t)
+	tokenAccount, err := ownerAccount.ToTimelockVault(common.KinMintAccount)
+	require.NoError(t, err)
 
-		externalAccount := testutil.NewRandomAccount(t)
+	externalAccount := testutil.NewRandomAccount(t)
 
-		data := &balanceTestData{
-			codeUsers: []*common.Account{ownerAccount},
-			transactions: []balanceTestTransaction{
-				// Fund account the token account through an external deposit
-				{source: externalAccount, destination: tokenAccount, quantity: 1, transactionState: transaction.ConfirmationFinalized},
-				// Setup a set of intents that result in self-payments and no-ops to
-				// the balance calculation
-				{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i1", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
-				{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i2", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
-				{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i3", intentState: intent.StatePending, actionState: action.StatePending},
-				{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i4", intentState: intent.StatePending, actionState: action.StatePending},
-			},
-		}
-
-		setupBalanceTestData(t, env, data, balanceTestDataConf{
-			useLegacyIntents:  useLegacyIntents,
-			useLegacyDeposits: useLegacyIntents,
-		})
-
-		balance, err := CalculateFromCache(env.ctx, env.data, tokenAccount)
-		require.NoError(t, err)
-		assert.EqualValues(t, 1, balance)
-
-		if !useLegacyIntents {
-			accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, ownerAccount)
-			require.NoError(t, err)
-
-			balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 1)
-			assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
-
-			balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, tokenAccount)
-			require.NoError(t, err)
-			require.Len(t, balanceByAccount, 1)
-			assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
-		}
+	data := &balanceTestData{
+		codeUsers: []*common.Account{ownerAccount},
+		transactions: []balanceTestTransaction{
+			// Fund account the token account through an external deposit
+			{source: externalAccount, destination: tokenAccount, quantity: 1, transactionState: transaction.ConfirmationFinalized},
+			// Setup a set of intents that result in self-payments and no-ops to
+			// the balance calculation
+			{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i1", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
+			{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i2", intentState: intent.StateConfirmed, actionState: action.StateConfirmed, transactionState: transaction.ConfirmationFinalized},
+			{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i3", intentState: intent.StatePending, actionState: action.StatePending},
+			{source: tokenAccount, destination: tokenAccount, quantity: 1, intentID: "i4", intentState: intent.StatePending, actionState: action.StatePending},
+		},
 	}
+
+	setupBalanceTestData(t, env, data)
+
+	balance, err := CalculateFromCache(env.ctx, env.data, tokenAccount)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, balance)
+
+	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, ownerAccount)
+	require.NoError(t, err)
+
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 1)
+	assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
+
+	balanceByAccount, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, tokenAccount)
+	require.NoError(t, err)
+	require.Len(t, balanceByAccount, 1)
+	assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
 }
 
 func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
 	ownerAccount := testutil.NewRandomAccount(t)
-	tokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(false), common.KinMintAccount)
+	tokenAccount, err := ownerAccount.ToTimelockVault(common.KinMintAccount)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
 		codeUsers: []*common.Account{ownerAccount},
 	}
 
-	setupBalanceTestData(t, env, data, balanceTestDataConf{})
+	setupBalanceTestData(t, env, data)
 
 	timelockRecord, err := env.data.GetTimelockByVault(env.ctx, tokenAccount.PublicKey().ToBase58())
 	require.NoError(t, err)
@@ -360,31 +324,6 @@ func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 
 	_, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, tokenAccount)
 	assert.Equal(t, ErrNotManagedByCode, err)
-}
-
-func TestDefaultBatchCalculation_PrePrivacyAccounts(t *testing.T) {
-	env := setupBalanceTestEnv(t)
-
-	ownerAccount := testutil.NewRandomAccount(t)
-	legacyTokenAccount, err := ownerAccount.ToTimelockVault(getTimelockDataVersion(true), common.KinMintAccount)
-	require.NoError(t, err)
-
-	data := &balanceTestData{
-		codeUsers: []*common.Account{ownerAccount},
-	}
-
-	setupBalanceTestData(t, env, data, balanceTestDataConf{
-		useLegacyIntents: true,
-	})
-
-	timelockRecord, err := env.data.GetTimelockByVault(env.ctx, legacyTokenAccount.PublicKey().ToBase58())
-	require.NoError(t, err)
-
-	_, err = BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, &common.AccountRecords{Timelock: timelockRecord})
-	assert.Equal(t, ErrUnhandledAccount, err)
-
-	_, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, legacyTokenAccount)
-	assert.Equal(t, ErrUnhandledAccount, err)
 }
 
 func TestDefaultCalculation_ExternalAccount(t *testing.T) {
@@ -421,7 +360,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 			expectedPrivateBalance += balance
 		}
 
-		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+		timelockAccounts, err := authority.GetTimelockAccounts(common.KinMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -431,7 +370,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: authority.PublicKey().ToBase58(),
 			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      timelockRecord.Mint,
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
 			AccountType:      accountType,
 		}
 		if accountType == commonpb.AccountType_RELATIONSHIP {
@@ -483,88 +422,61 @@ func setupBalanceTestEnv(t *testing.T) (env balanceTestEnv) {
 	return env
 }
 
-type balanceTestDataConf struct {
-	useLegacyIntents  bool
-	useLegacyDeposits bool
-}
-
-func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestData, conf balanceTestDataConf) {
+func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestData) {
 	for _, owner := range data.codeUsers {
-		timelockAccounts, err := owner.GetTimelockAccounts(getTimelockDataVersion(conf.useLegacyIntents), common.KinMintAccount)
+		timelockAccounts, err := owner.GetTimelockAccounts(common.KinMintAccount)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.VaultState = timelock_token_v1.StateLocked
 		timelockRecord.Block += 1
 		require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
 
-		if !conf.useLegacyIntents {
-			accountInfoRecord := &account.Record{
-				OwnerAccount:     owner.PublicKey().ToBase58(),
-				AuthorityAccount: owner.PublicKey().ToBase58(),
-				TokenAccount:     timelockRecord.VaultAddress,
-				MintAccount:      timelockRecord.Mint,
-				AccountType:      commonpb.AccountType_PRIMARY,
-			}
-			require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
+		accountInfoRecord := &account.Record{
+			OwnerAccount:     owner.PublicKey().ToBase58(),
+			AuthorityAccount: owner.PublicKey().ToBase58(),
+			TokenAccount:     timelockRecord.VaultAddress,
+			MintAccount:      common.KinMintAccount.PublicKey().ToBase58(),
+			AccountType:      commonpb.AccountType_PRIMARY,
 		}
+		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
 	}
 
 	for i, txn := range data.transactions {
 		// Setup the intent record with an equivalent action record
 		if len(txn.intentID) > 0 {
-			if conf.useLegacyIntents {
-				intentRecord := &intent.Record{
-					IntentId:              txn.intentID,
-					IntentType:            intent.LegacyPayment,
-					InitiatorOwnerAccount: "owner",
-					MoneyTransferMetadata: &intent.MoneyTransferMetadata{
-						Source:      txn.source.PublicKey().ToBase58(),
-						Destination: txn.destination.PublicKey().ToBase58(),
-						Quantity:    txn.quantity,
+			intentRecord := &intent.Record{
+				IntentId:              txn.intentID,
+				IntentType:            intent.SendPrivatePayment,
+				InitiatorOwnerAccount: "owner",
+				SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+					DestinationOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+					DestinationTokenAccount: txn.destination.PublicKey().ToBase58(),
+					Quantity:                txn.quantity,
 
-						ExchangeCurrency: currency.KIN,
-						ExchangeRate:     1.0,
-						UsdMarketValue:   1.0,
-					},
-					State:     txn.intentState,
-					CreatedAt: time.Now(),
-				}
-				require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
-			} else {
-				intentRecord := &intent.Record{
-					IntentId:              txn.intentID,
-					IntentType:            intent.SendPrivatePayment,
-					InitiatorOwnerAccount: "owner",
-					SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
-						DestinationOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-						DestinationTokenAccount: txn.destination.PublicKey().ToBase58(),
-						Quantity:                txn.quantity,
-
-						ExchangeCurrency: currency.KIN,
-						ExchangeRate:     1.0,
-						NativeAmount:     1.0,
-						UsdMarketValue:   1.0,
-					},
-					State:     txn.intentState,
-					CreatedAt: time.Now(),
-				}
-				require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
-
-				actionRecord := &action.Record{
-					Intent:     txn.intentID,
-					IntentType: intent.SendPrivatePayment,
-
-					ActionId:   0,
-					ActionType: action.PrivateTransfer,
-
-					Source:      txn.source.PublicKey().ToBase58(),
-					Destination: &intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount,
-					Quantity:    &intentRecord.SendPrivatePaymentMetadata.Quantity,
-
-					State: txn.actionState,
-				}
-				require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
+					ExchangeCurrency: currency.KIN,
+					ExchangeRate:     1.0,
+					NativeAmount:     1.0,
+					UsdMarketValue:   1.0,
+				},
+				State:     txn.intentState,
+				CreatedAt: time.Now(),
 			}
+			require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
+
+			actionRecord := &action.Record{
+				Intent:     txn.intentID,
+				IntentType: intent.SendPrivatePayment,
+
+				ActionId:   0,
+				ActionType: action.PrivateTransfer,
+
+				Source:      txn.source.PublicKey().ToBase58(),
+				Destination: &intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount,
+				Quantity:    &intentRecord.SendPrivatePaymentMetadata.Quantity,
+
+				State: txn.actionState,
+			}
+			require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
 		}
 
 		// We have an intent, and it's confirmed, so a payment record exists
@@ -593,57 +505,20 @@ func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestDat
 			require.NoError(t, env.data.CreatePayment(env.ctx, paymentRecord))
 		}
 
-		// There's no intent, so we have an external deposit. Depending on legacy
-		// status, we either have a legacy payment record or a new deposit record.
-		//
-		// todo: configuration for legacy deposits
-		if len(txn.intentID) == 0 {
-			if conf.useLegacyDeposits {
-				paymentRecord := &payment.Record{
-					Source:      txn.source.PublicKey().ToBase58(),
-					Destination: txn.destination.PublicKey().ToBase58(),
-					Quantity:    txn.quantity,
+		// There's no intent, so we have an external deposit
+		if len(txn.intentID) == 0 && txn.transactionState != transaction.ConfirmationUnknown {
+			depositRecord := &deposit.Record{
+				Signature:      fmt.Sprintf("txn%d", i),
+				Destination:    txn.destination.PublicKey().ToBase58(),
+				Amount:         txn.quantity,
+				UsdMarketValue: 1.0,
 
-					Rendezvous: "",
-					IsExternal: true,
+				Slot:              12345,
+				ConfirmationState: txn.transactionState,
 
-					TransactionId: fmt.Sprintf("txn%d", i),
-
-					ConfirmationState: txn.transactionState,
-
-					// Below fields are irrelevant and can be set to whatever
-					ExchangeCurrency: string(currency.KIN),
-					ExchangeRate:     1.0,
-					UsdMarketValue:   1.0,
-
-					BlockId: 12345,
-
-					CreatedAt: time.Now(),
-				}
-				require.NoError(t, env.data.CreatePayment(env.ctx, paymentRecord))
+				CreatedAt: time.Now(),
 			}
-
-			if !conf.useLegacyDeposits && txn.transactionState != transaction.ConfirmationUnknown {
-				depositRecord := &deposit.Record{
-					Signature:      fmt.Sprintf("txn%d", i),
-					Destination:    txn.destination.PublicKey().ToBase58(),
-					Amount:         txn.quantity,
-					UsdMarketValue: 1.0,
-
-					Slot:              12345,
-					ConfirmationState: txn.transactionState,
-
-					CreatedAt: time.Now(),
-				}
-				require.NoError(t, env.data.SaveExternalDeposit(env.ctx, depositRecord))
-			}
+			require.NoError(t, env.data.SaveExternalDeposit(env.ctx, depositRecord))
 		}
 	}
-}
-
-func getTimelockDataVersion(useLegacyIntents bool) timelock_token_v1.TimelockDataVersion {
-	if useLegacyIntents {
-		return timelock_token_v1.DataVersionLegacy
-	}
-	return timelock_token_v1.DataVersion1
 }
