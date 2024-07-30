@@ -8,12 +8,14 @@ import (
 )
 
 const (
-	TimelockTransferRelayVirtrualInstructionDataSize = 8 // amount
+	TimelockTransferRelayVirtrualInstructionDataSize = (SignatureSize + // signature
+		4) // amount
 )
 
 type TimelockTransferRelayVirtualInstructionArgs struct {
 	TimelockBump uint8
-	Amount       uint64
+	Amount       uint32
+	Signature    Signature
 }
 
 type TimelockTransferRelayVirtualInstructionAccounts struct {
@@ -31,7 +33,8 @@ func NewTimelockTransferRelayVirtualInstructionCtor(
 	return func() (Opcode, []solana.Instruction, []byte) {
 		var offset int
 		data := make([]byte, TimelockTransferRelayVirtrualInstructionDataSize)
-		putUint64(data, args.Amount, &offset)
+		putSignature(data, args.Signature, &offset)
+		putUint32(data, args.Amount, &offset)
 
 		ixns := []solana.Instruction{
 			newKreMemoIxn(),
@@ -46,7 +49,7 @@ func NewTimelockTransferRelayVirtualInstructionCtor(
 				},
 				&timelock_token.TransferWithAuthorityInstructionArgs{
 					TimelockBump: args.TimelockBump,
-					Amount:       args.Amount,
+					Amount:       uint64(args.Amount),
 				},
 			).ToLegacyInstruction(),
 		}
