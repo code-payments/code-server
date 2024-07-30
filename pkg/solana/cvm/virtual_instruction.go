@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 
 	"github.com/code-payments/code-server/pkg/solana"
-	solana_ed25519 "github.com/code-payments/code-server/pkg/solana/ed25519"
 	"github.com/code-payments/code-server/pkg/solana/memo"
 	"github.com/code-payments/code-server/pkg/solana/system"
 )
@@ -44,10 +43,6 @@ func NewVirtualInstruction(
 		Data:   data,
 		Hash:   hash,
 	}
-}
-
-func (i VirtualInstruction) GetEd25519Instruction(user ed25519.PrivateKey) solana.Instruction {
-	return solana_ed25519.Instruction(user, i.Hash[:])
 }
 
 func getTxnMessageHash(txn solana.Transaction) Hash {
