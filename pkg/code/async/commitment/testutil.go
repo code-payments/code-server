@@ -122,7 +122,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 	require.NoError(t, e.data.SaveCommitment(e.ctx, commitmentRecord))
 
 	owner := testutil.NewRandomAccount(t)
-	timelockAccounts, err := owner.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(common.KinMintAccount)
 	require.NoError(t, err)
 
 	intentRecord := &intent.Record{
