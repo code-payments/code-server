@@ -695,6 +695,10 @@ func (h *TransferWithCommitmentFulfillmentHandler) SupportsOnDemandTransactions(
 }
 
 func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+	var vm *common.Account            // todo: configure vm account
+	var accountMemory *common.Account // todo: configure memory account
+	var relayMemory *common.Account   // todo: configure memory account
+
 	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
@@ -738,11 +742,16 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
+		vm,
+		accountMemory,
+		0, // todo: use indexer to find index
+		relayMemory,
+		0, // todo: use indexer to find index
+
 		treasuryPool,
 		treasuryPoolVault,
 		destination,
 		commitment,
-		commitmentRecord.PoolBump,
 		commitmentRecord.Amount,
 		transcript,
 		recentRoot,

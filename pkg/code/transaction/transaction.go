@@ -1,11 +1,13 @@
 package transaction
 
 import (
+	"crypto/ed25519"
 	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/memo"
 )
 
@@ -162,11 +164,16 @@ func MakeTreasuryAdvanceTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
 
+	vm *common.Account,
+	accountMemory *common.Account,
+	accountIndex uint16,
+	relayMemory *common.Account,
+	relayIndex uint16,
+
 	treasuryPool *common.Account,
 	treasuryPoolVault *common.Account,
 	destination *common.Account,
 	commitment *common.Account,
-	treasuryPoolBump uint8,
 	kinAmountInQuarks uint64,
 	transcript []byte,
 	recentRoot []byte,
@@ -176,23 +183,46 @@ func MakeTreasuryAdvanceTransaction(
 		return solana.Transaction{}, err
 	}
 
-	transferWithAuthorityInstruction, err := makeTransferWithCommitmentInstruction(
-		treasuryPool,
-		treasuryPoolVault,
-		destination,
-		commitment,
-		treasuryPoolBump,
-		kinAmountInQuarks,
-		transcript,
-		recentRoot,
+	relayPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
+	relayVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
+	memoryAPublicKeyBytes := ed25519.PublicKey(accountMemory.PublicKey().ToBytes())
+	memoryBPublicKeyBytes := ed25519.PublicKey(relayMemory.PublicKey().ToBytes())
+
+	relayTransferInternalVirtualInstruction := cvm.NewVirtualInstruction(
+		common.GetSubsidizer().PublicKey().ToBytes(),
+		nil,
+		cvm.NewRelayTransferInternalVirtualInstructionCtor(
+			&cvm.RelayTransferInternalVirtualInstructionAccounts{},
+			&cvm.RelayTransferInternalVirtualInstructionArgs{
+				Transcript: cvm.Hash(transcript),
+				RecentRoot: cvm.Hash(recentRoot),
+				Commitment: cvm.Hash(commitment.PublicKey().ToBytes()),
+				Amount:     kinAmountInQuarks,
+			},
+		),
 	)
-	if err != nil {
-		return solana.Transaction{}, err
-	}
+
+	execInstruction := cvm.NewVmExecInstruction(
+		&cvm.VmExecInstructionAccounts{
+			VmAuthority:  common.GetSubsidizer().PublicKey().ToBytes(),
+			Vm:           vm.PublicKey().ToBytes(),
+			VmMemA:       &memoryAPublicKeyBytes,
+			VmOmnibus:    &memoryBPublicKeyBytes,
+			VmRelay:      &relayPublicKeyBytes,
+			VmRelayVault: &relayVaultPublicKeyBytes,
+		},
+		&cvm.VmExecInstructionArgs{
+			Opcode:         relayTransferInternalVirtualInstruction.Opcode,
+			MemIndices:     []uint16{accountIndex, relayIndex},
+			MemBanks:       []uint8{0, 1},
+			SignatureIndex: 0,
+			Data:           relayTransferInternalVirtualInstruction.Data,
+		},
+	)
 
 	instructions := []solana.Instruction{
 		memoInstruction,
-		transferWithAuthorityInstruction,
+		execInstruction,
 	}
 	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
