@@ -38,9 +38,12 @@ func MakeOpenAccountTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
 
+	memory *common.Account,
+	accountIndex int,
+
 	timelockAccounts *common.TimelockAccounts,
 ) (solana.Transaction, error) {
-	initializeInstruction, err := timelockAccounts.GetInitializeInstruction()
+	initializeInstruction, err := timelockAccounts.GetInitializeInstruction(memory, uint16(accountIndex))
 	if err != nil {
 		return solana.Transaction{}, err
 	}

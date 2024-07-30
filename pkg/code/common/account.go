@@ -14,6 +14,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
@@ -28,11 +29,16 @@ type Account struct {
 }
 
 type TimelockAccounts struct {
+	Vm *Account
+
 	State     *Account
 	StateBump uint8
 
 	Vault     *Account
 	VaultBump uint8
+
+	Unlock     *Account
+	UnlockBump uint8
 
 	VaultOwner *Account
 
@@ -155,12 +161,12 @@ func (a *Account) Sign(message []byte) ([]byte, error) {
 	return signature, nil
 }
 
-func (a *Account) ToTimelockVault(mint *Account) (*Account, error) {
+func (a *Account) ToTimelockVault(vm, mint *Account) (*Account, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	timelockAccounts, err := a.GetTimelockAccounts(mint)
+	timelockAccounts, err := a.GetTimelockAccounts(vm, mint)
 	if err != nil {
 		return nil, err
 	}
@@ -180,27 +186,35 @@ func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
 	return NewAccountFromPublicKeyBytes(ata)
 }
 
-func (a *Account) GetTimelockAccounts(mint *Account) (*TimelockAccounts, error) {
+func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	stateAddress, stateBump, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-		Mint:          mint.publicKey.ToBytes(),
-		TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
-		VaultOwner:    a.publicKey.ToBytes(),
-		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
+	stateAddress, stateBump, err := cvm.GetVirtualTimelockAccountAddress(&cvm.GetVirtualTimelockAccountAddressArgs{
+		Mint:         mint.publicKey.ToBytes(),
+		VmAuthority:  GetSubsidizer().publicKey.ToBytes(),
+		Owner:        a.publicKey.ToBytes(),
+		LockDuration: timelock_token_v1.DefaultNumDaysLocked,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting timelock state address")
 	}
 
-	vaultAddress, vaultBump, err := timelock_token_v1.GetVaultAddress(&timelock_token_v1.GetVaultAddressArgs{
-		State:       stateAddress,
-		DataVersion: timelock_token_v1.DataVersion1,
+	vaultAddress, vaultBump, err := cvm.GetVirtualTimelockVaultAddress(&cvm.GetVirtualTimelockVaultAddressArgs{
+		VirtualTimelock: stateAddress,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting vault address")
+	}
+
+	unlockAddress, unlockBump, err := cvm.GetVmUnlockStateAccountAddress(&cvm.GetVmUnlockStateAccountAddressArgs{
+		Owner:           a.publicKey.ToBytes(),
+		VirtualTimelock: stateAddress,
+		Vm:              vm.publicKey.ToBytes(),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting unlock address")
 	}
 
 	stateAccount, err := NewAccountFromPublicKeyBytes(stateAddress)
@@ -213,7 +227,14 @@ func (a *Account) GetTimelockAccounts(mint *Account) (*TimelockAccounts, error) 
 		return nil, errors.Wrap(err, "invalid vault address")
 	}
 
+	unlockAccount, err := NewAccountFromPublicKeyBytes(unlockAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid unlock address")
+	}
+
 	return &TimelockAccounts{
+		Vm: vm,
+
 		VaultOwner: a,
 
 		State:     stateAccount,
@@ -221,6 +242,9 @@ func (a *Account) GetTimelockAccounts(mint *Account) (*TimelockAccounts, error) 
 
 		Vault:     vaultAccount,
 		VaultBump: vaultBump,
+
+		Unlock:     unlockAccount,
+		UnlockBump: unlockBump,
 
 		Mint: mint,
 	}, nil
@@ -316,6 +340,24 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 // the DB
 func (a *TimelockAccounts) GetDBRecord(ctx context.Context, data code_data.Provider) (*timelock.Record, error) {
 	return data.GetTimelockByVault(ctx, a.Vault.publicKey.ToBase58())
+}
+
+// GetInitializeInstruction gets a SystemTimelockInitInstruction instruction for a timelock account
+func (a *TimelockAccounts) GetInitializeInstruction(memory *Account, accountIndex uint16) (solana.Instruction, error) {
+	return cvm.NewSystemTimelockInitInstruction(
+		&cvm.SystemTimelockInitInstructionAccounts{
+			VmAuthority:         GetSubsidizer().publicKey.ToBytes(),
+			Vm:                  a.Vm.PublicKey().ToBytes(),
+			VmMemory:            memory.PublicKey().ToBytes(),
+			VirtualAccountOwner: a.VaultOwner.PublicKey().ToBytes(),
+		},
+		&cvm.SystemTimelockInitInstructionArgs{
+			AccountIndex:        accountIndex,
+			VirtualTimelockBump: a.StateBump,
+			VirtualVaultBump:    a.VaultBump,
+			VmUnlockPdaBump:     a.UnlockBump,
+		},
+	), nil
 }
 
 // GetTransferWithAuthorityInstruction gets a TransferWithAuthority instruction for a timelock account

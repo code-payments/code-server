@@ -14,6 +14,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
@@ -104,54 +105,64 @@ func TestInvalidAccount(t *testing.T) {
 }
 
 func TestConvertToTimelockVault(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	stateAddress, _, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-		Mint:          mintAccount.PublicKey().ToBytes(),
-		TimeAuthority: subsidizerAccount.PublicKey().ToBytes(),
-		VaultOwner:    ownerAccount.PublicKey().ToBytes(),
-		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
+	stateAddress, _, err := cvm.GetVirtualTimelockAccountAddress(&cvm.GetVirtualTimelockAccountAddressArgs{
+		Mint:         mintAccount.PublicKey().ToBytes(),
+		VmAuthority:  subsidizerAccount.PublicKey().ToBytes(),
+		Owner:        ownerAccount.PublicKey().ToBytes(),
+		LockDuration: timelock_token_v1.DefaultNumDaysLocked,
 	})
 	require.NoError(t, err)
 
-	expectedVaultAddress, _, err := timelock_token_v1.GetVaultAddress(&timelock_token_v1.GetVaultAddressArgs{
-		State:       stateAddress,
-		DataVersion: timelock_token_v1.DataVersion1,
+	expectedVaultAddress, _, err := cvm.GetVirtualTimelockVaultAddress(&cvm.GetVirtualTimelockVaultAddressArgs{
+		VirtualTimelock: stateAddress,
 	})
 	require.NoError(t, err)
 
-	tokenAccount, err := ownerAccount.ToTimelockVault(mintAccount)
+	tokenAccount, err := ownerAccount.ToTimelockVault(vmAccount, mintAccount)
 	require.NoError(t, err)
 	assert.EqualValues(t, expectedVaultAddress, tokenAccount.PublicKey().ToBytes())
 }
 
 func TestGetTimelockAccounts(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	expectedStateAddress, expectedStateBump, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-		Mint:          mintAccount.PublicKey().ToBytes(),
-		TimeAuthority: subsidizerAccount.PublicKey().ToBytes(),
-		VaultOwner:    ownerAccount.PublicKey().ToBytes(),
-		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
+	expectedStateAddress, expectedStateBump, err := cvm.GetVirtualTimelockAccountAddress(&cvm.GetVirtualTimelockAccountAddressArgs{
+		Mint:         mintAccount.PublicKey().ToBytes(),
+		VmAuthority:  subsidizerAccount.PublicKey().ToBytes(),
+		Owner:        ownerAccount.PublicKey().ToBytes(),
+		LockDuration: timelock_token_v1.DefaultNumDaysLocked,
 	})
 	require.NoError(t, err)
 
-	expectedVaultAddress, expectedVaultBump, err := timelock_token_v1.GetVaultAddress(&timelock_token_v1.GetVaultAddressArgs{
-		State:       expectedStateAddress,
-		DataVersion: timelock_token_v1.DataVersion1,
+	expectedVaultAddress, expectedVaultBump, err := cvm.GetVirtualTimelockVaultAddress(&cvm.GetVirtualTimelockVaultAddressArgs{
+		VirtualTimelock: expectedStateAddress,
 	})
 	require.NoError(t, err)
 
-	actual, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	expectedUnlockAddress, expectedUnlockBump, err := cvm.GetVmUnlockStateAccountAddress(&cvm.GetVmUnlockStateAccountAddressArgs{
+		Owner:           ownerAccount.PublicKey().ToBytes(),
+		VirtualTimelock: expectedStateAddress,
+		Vm:              vmAccount.PublicKey().ToBytes(),
+	})
 	require.NoError(t, err)
+
+	actual, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
+	require.NoError(t, err)
+	assert.EqualValues(t, vmAccount.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
 	assert.EqualValues(t, expectedStateAddress, actual.State.PublicKey().ToBytes())
 	assert.Equal(t, expectedStateBump, actual.StateBump)
 	assert.EqualValues(t, expectedVaultAddress, actual.Vault.PublicKey().ToBytes())
 	assert.Equal(t, expectedVaultBump, actual.VaultBump)
+	assert.EqualValues(t, expectedUnlockAddress, actual.Unlock.PublicKey().ToBytes())
+	assert.Equal(t, expectedUnlockBump, actual.UnlockBump)
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
 	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
@@ -160,10 +171,11 @@ func TestIsAccountManagedByCode_TimelockState(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
+	vmAccount := newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	// No record of the account anywhere
@@ -210,10 +222,11 @@ func TestIsAccountManagedByCode_OtherAccounts(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
+	vmAccount := newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 	require.NoError(t, data.SaveTimelock(ctx, timelockAccounts.ToDBRecord()))
 
@@ -230,12 +243,17 @@ func TestIsAccountManagedByCode_OtherAccounts(t *testing.T) {
 	assert.False(t, result)
 }
 
+func TestGetInitializeInstruction(t *testing.T) {
+	// todo: implement me
+}
+
 func TestGetTransferWithAuthorityInstruction(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	source, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	source, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	destination := newRandomTestAccount(t)
@@ -261,11 +279,12 @@ func TestGetTransferWithAuthorityInstruction(t *testing.T) {
 }
 
 func TestGetWithdrawInstruction(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	source, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	source, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	destination := newRandomTestAccount(t)
@@ -288,11 +307,12 @@ func TestGetWithdrawInstruction(t *testing.T) {
 }
 
 func TestGetBurnDustWithAuthorityInstruction(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	maxAmount := kin.ToQuarks(1)
@@ -317,11 +337,12 @@ func TestGetBurnDustWithAuthorityInstruction(t *testing.T) {
 }
 
 func TestGetRevokeLockWithAuthorityInstruction(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetRevokeLockWithAuthorityInstruction()
@@ -341,11 +362,12 @@ func TestGetRevokeLockWithAuthorityInstruction(t *testing.T) {
 }
 
 func TestGetDeactivateInstruction(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetDeactivateInstruction()
@@ -364,11 +386,12 @@ func TestGetDeactivateInstruction(t *testing.T) {
 }
 
 func TestGetCloseAccountsInstruction(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	ownerAccount := newRandomTestAccount(t)
 	mintAccount := newRandomTestAccount(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(mintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 
 	ixn, err := timelockAccounts.GetCloseAccountsInstruction()

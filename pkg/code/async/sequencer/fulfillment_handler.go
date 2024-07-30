@@ -20,7 +20,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -129,6 +128,9 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) SupportsOnDemandTran
 }
 
 func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+	var vm *common.Account     // todo: configure vm account
+	var memory *common.Account // todo: configure memory account
+
 	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
 	}
@@ -143,13 +145,20 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 		return nil, err
 	}
 
-	// todo: a single function utility in the common package to do exactly how we're getting timelockAccounts
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vm, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
 
-	txn, err := transaction_util.MakeOpenAccountTransaction(selectedNonce.Account, selectedNonce.Blockhash, timelockAccounts)
+	txn, err := transaction_util.MakeOpenAccountTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		memory,
+		0, // todo: reserve free space in the memory account
+
+		timelockAccounts,
+	)
 	if err != nil {
 		return nil, err
 	}
