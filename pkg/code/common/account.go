@@ -7,44 +7,20 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
-	timelock_token_legacy "github.com/code-payments/code-server/pkg/solana/timelock/legacy_2022"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
-)
-
-const (
-	dangerousTimelockAccessCountMetricName = "Account/dangerous_timelock_access_count"
-)
-
-var (
-	// defaultTimelockNonceAccount is the default nonce account used to derive
-	// legacy 2022 timelock PDAs.
-	//
-	// Important Note: Be very careful changing this value, as it will completely
-	// change timelock PDAs.
-	defaultTimelockNonceAccount *Account
 )
 
 var (
 	ErrNoPrivacyMigration2022 = errors.New("no privacy migration 2022 for owner")
 )
-
-func init() {
-	var err error
-	defaultTimelockNonceAccount, err = NewAccountFromPublicKeyBytes(make([]byte, ed25519.PublicKeySize))
-	if err != nil {
-		panic(err)
-	}
-}
 
 type Account struct {
 	publicKey  *Key
@@ -52,8 +28,6 @@ type Account struct {
 }
 
 type TimelockAccounts struct {
-	DataVersion timelock_token_v1.TimelockDataVersion
-
 	State     *Account
 	StateBump uint8
 
@@ -61,9 +35,6 @@ type TimelockAccounts struct {
 	VaultBump uint8
 
 	VaultOwner *Account
-
-	TimeAuthority  *Account
-	CloseAuthority *Account
 
 	Mint *Account
 }
@@ -184,12 +155,12 @@ func (a *Account) Sign(message []byte) ([]byte, error) {
 	return signature, nil
 }
 
-func (a *Account) ToTimelockVault(dataVersion timelock_token_v1.TimelockDataVersion, mint *Account) (*Account, error) {
+func (a *Account) ToTimelockVault(mint *Account) (*Account, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	timelockAccounts, err := a.GetTimelockAccounts(dataVersion, mint)
+	timelockAccounts, err := a.GetTimelockAccounts(mint)
 	if err != nil {
 		return nil, err
 	}
@@ -209,98 +180,50 @@ func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
 	return NewAccountFromPublicKeyBytes(ata)
 }
 
-func (a *Account) GetTimelockAccounts(dataVersion timelock_token_v1.TimelockDataVersion, mint *Account) (*TimelockAccounts, error) {
+func (a *Account) GetTimelockAccounts(mint *Account) (*TimelockAccounts, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	var timelockAccounts *TimelockAccounts
-	switch dataVersion {
-	case timelock_token_v1.DataVersion1:
-		stateAddress, stateBump, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
-			Mint:          mint.publicKey.ToBytes(),
-			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
-			VaultOwner:    a.publicKey.ToBytes(),
-			NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "error getting timelock state address")
-		}
-
-		vaultAddress, vaultBump, err := timelock_token_v1.GetVaultAddress(&timelock_token_v1.GetVaultAddressArgs{
-			State:       stateAddress,
-			DataVersion: timelock_token_v1.DataVersion1,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "error getting vault address")
-		}
-
-		stateAccount, err := NewAccountFromPublicKeyBytes(stateAddress)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid state address")
-		}
-
-		vaultAccount, err := NewAccountFromPublicKeyBytes(vaultAddress)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid vault address")
-		}
-
-		timelockAccounts = &TimelockAccounts{
-			State:     stateAccount,
-			StateBump: stateBump,
-
-			Vault:     vaultAccount,
-			VaultBump: vaultBump,
-
-			Mint: mint,
-		}
-	case timelock_token_v1.DataVersionLegacy:
-		stateAddress, stateBump, err := timelock_token_legacy.GetStateAddress(&timelock_token_legacy.GetStateAddressArgs{
-			Mint:           mint.publicKey.ToBytes(),
-			TimeAuthority:  GetSubsidizer().publicKey.ToBytes(),
-			Nonce:          defaultTimelockNonceAccount.publicKey.ToBytes(),
-			VaultOwner:     a.publicKey.ToBytes(),
-			UnlockDuration: timelock_token_legacy.DefaultUnlockDuration,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "error getting timelock state address")
-		}
-
-		vaultAddress, vaultBump, err := timelock_token_legacy.GetVaultAddress(&timelock_token_legacy.GetVaultAddressArgs{
-			State: stateAddress,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "error getting vault address")
-		}
-
-		stateAccount, err := NewAccountFromPublicKeyBytes(stateAddress)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid state address")
-		}
-
-		vaultAccount, err := NewAccountFromPublicKeyBytes(vaultAddress)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid vault address")
-		}
-
-		timelockAccounts = &TimelockAccounts{
-			State:     stateAccount,
-			StateBump: stateBump,
-
-			Vault:     vaultAccount,
-			VaultBump: vaultBump,
-
-			Mint: mint,
-		}
-	default:
-		return nil, errors.New("unsupported data version")
+	stateAddress, stateBump, err := timelock_token_v1.GetStateAddress(&timelock_token_v1.GetStateAddressArgs{
+		Mint:          mint.publicKey.ToBytes(),
+		TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
+		VaultOwner:    a.publicKey.ToBytes(),
+		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting timelock state address")
 	}
 
-	timelockAccounts.DataVersion = dataVersion
-	timelockAccounts.VaultOwner = a
-	timelockAccounts.TimeAuthority = GetSubsidizer()
-	timelockAccounts.CloseAuthority = GetSubsidizer()
-	return timelockAccounts, nil
+	vaultAddress, vaultBump, err := timelock_token_v1.GetVaultAddress(&timelock_token_v1.GetVaultAddressArgs{
+		State:       stateAddress,
+		DataVersion: timelock_token_v1.DataVersion1,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting vault address")
+	}
+
+	stateAccount, err := NewAccountFromPublicKeyBytes(stateAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid state address")
+	}
+
+	vaultAccount, err := NewAccountFromPublicKeyBytes(vaultAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid vault address")
+	}
+
+	return &TimelockAccounts{
+		VaultOwner: a,
+
+		State:     stateAccount,
+		StateBump: stateBump,
+
+		Vault:     vaultAccount,
+		VaultBump: vaultBump,
+
+		Mint: mint,
+	}, nil
 }
 
 func (a *Account) IsManagedByCode(ctx context.Context, data code_data.Provider) (bool, error) {
@@ -364,32 +287,7 @@ func (r *AccountRecords) IsTimelock() bool {
 }
 
 func IsManagedByCode(ctx context.Context, timelockRecord *timelock.Record) bool {
-	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"type":   "common/account",
-		"method": "IsManagedByCode",
-		"vault":  timelockRecord.VaultAddress,
-	})
-
-	// This should never happen, but is a precautionary check.
-	if timelockRecord.DataVersion == timelock_token_v1.DataVersionClosed {
-		metrics.RecordCount(ctx, dangerousTimelockAccessCountMetricName, 1)
-		log.Warn("detected a dangerous timelock account with a closed data version")
-		return false
-	}
-
-	// This should never happen, but is a precautionary check.
-	if timelockRecord.TimeAuthority != GetSubsidizer().publicKey.ToBase58() {
-		metrics.RecordCount(ctx, dangerousTimelockAccessCountMetricName, 1)
-		log.Warn("detected a dangerous timelock account with a time authority that's not Code")
-		return false
-	}
-
-	// This should never happen, but is a precautionary check.
-	if timelockRecord.CloseAuthority != GetSubsidizer().publicKey.ToBase58() {
-		metrics.RecordCount(ctx, dangerousTimelockAccessCountMetricName, 1)
-		log.Warn("detected a dangerous timelock account with a close authority that's not Code")
-		return false
-	}
+	// todo: check if the VM is managed by Code
 
 	// todo: We don't support unlocking timelock accounts and leaving the open,
 	//       but we may need to scan the intents system for a RevokeWithAuthority
@@ -400,8 +298,6 @@ func IsManagedByCode(ctx context.Context, timelockRecord *timelock.Record) bool 
 // ToDBRecord transforms the TimelockAccounts struct to a default timelock.Record
 func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 	return &timelock.Record{
-		DataVersion: a.DataVersion,
-
 		Address: a.State.publicKey.ToBase58(),
 		Bump:    a.StateBump,
 
@@ -410,13 +306,7 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 		VaultOwner:   a.VaultOwner.publicKey.ToBase58(),
 		VaultState:   timelock_token_v1.StateUnknown,
 
-		TimeAuthority:  a.TimeAuthority.publicKey.ToBase58(),
-		CloseAuthority: a.CloseAuthority.publicKey.ToBase58(),
-
-		Mint: a.Mint.publicKey.ToBase58(),
-
-		NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
-		UnlockAt:      nil,
+		UnlockAt: nil,
 
 		Block: 0,
 	}
@@ -426,28 +316,6 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 // the DB
 func (a *TimelockAccounts) GetDBRecord(ctx context.Context, data code_data.Provider) (*timelock.Record, error) {
 	return data.GetTimelockByVault(ctx, a.Vault.publicKey.ToBase58())
-}
-
-// GetInitializeInstruction gets an Initialize instruction for a timelock account
-func (a *TimelockAccounts) GetInitializeInstruction() (solana.Instruction, error) {
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewInitializeInstruction(
-			&timelock_token_v1.InitializeInstructionAccounts{
-				Timelock:      a.State.publicKey.ToBytes(),
-				Vault:         a.Vault.publicKey.ToBytes(),
-				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-				Mint:          a.Mint.publicKey.ToBytes(),
-				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Payer:         a.CloseAuthority.publicKey.ToBytes(),
-			},
-			&timelock_token_v1.InitializeInstructionArgs{
-				NumDaysLocked: timelock_token_v1.DefaultNumDaysLocked,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
 }
 
 // GetTransferWithAuthorityInstruction gets a TransferWithAuthority instruction for a timelock account
@@ -460,25 +328,20 @@ func (a *TimelockAccounts) GetTransferWithAuthorityInstruction(destination *Acco
 		return solana.Instruction{}, errors.New("quarks must be positive")
 	}
 
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewTransferWithAuthorityInstruction(
-			&timelock_token_v1.TransferWithAuthorityInstructionAccounts{
-				Timelock:      a.State.publicKey.ToBytes(),
-				Vault:         a.Vault.publicKey.ToBytes(),
-				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Destination:   destination.publicKey.ToBytes(),
-				Payer:         GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_v1.TransferWithAuthorityInstructionArgs{
-				TimelockBump: a.StateBump,
-				Amount:       quarks,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
+	return timelock_token_v1.NewTransferWithAuthorityInstruction(
+		&timelock_token_v1.TransferWithAuthorityInstructionAccounts{
+			Timelock:      a.State.publicKey.ToBytes(),
+			Vault:         a.Vault.publicKey.ToBytes(),
+			VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
+			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
+			Destination:   destination.publicKey.ToBytes(),
+			Payer:         GetSubsidizer().publicKey.ToBytes(),
+		},
+		&timelock_token_v1.TransferWithAuthorityInstructionArgs{
+			TimelockBump: a.StateBump,
+			Amount:       quarks,
+		},
+	).ToLegacyInstruction(), nil
 }
 
 // GetWithdrawInstruction gets a Withdraw instruction for a timelock account
@@ -487,36 +350,18 @@ func (a *TimelockAccounts) GetWithdrawInstruction(destination *Account) (solana.
 		return solana.Instruction{}, err
 	}
 
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewWithdrawInstruction(
-			&timelock_token_v1.WithdrawInstructionAccounts{
-				Timelock:    a.State.publicKey.ToBytes(),
-				Vault:       a.Vault.publicKey.ToBytes(),
-				VaultOwner:  a.VaultOwner.publicKey.ToBytes(),
-				Destination: destination.publicKey.ToBytes(),
-				Payer:       GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_v1.WithdrawInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	case timelock_token_v1.DataVersionLegacy:
-		return timelock_token_legacy.NewWithdrawInstruction(
-			&timelock_token_legacy.WithdrawInstructionAccounts{
-				Timelock:    a.State.publicKey.ToBytes(),
-				Vault:       a.Vault.publicKey.ToBytes(),
-				VaultOwner:  a.VaultOwner.publicKey.ToBytes(),
-				Destination: destination.publicKey.ToBytes(),
-				Payer:       GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_legacy.WithdrawInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
+	return timelock_token_v1.NewWithdrawInstruction(
+		&timelock_token_v1.WithdrawInstructionAccounts{
+			Timelock:    a.State.publicKey.ToBytes(),
+			Vault:       a.Vault.publicKey.ToBytes(),
+			VaultOwner:  a.VaultOwner.publicKey.ToBytes(),
+			Destination: destination.publicKey.ToBytes(),
+			Payer:       GetSubsidizer().publicKey.ToBytes(),
+		},
+		&timelock_token_v1.WithdrawInstructionArgs{
+			TimelockBump: a.StateBump,
+		},
+	).ToLegacyInstruction(), nil
 }
 
 // GetBurnDustWithAuthorityInstruction gets a BurnDustWithAuthority instruction for a timelock account
@@ -525,134 +370,64 @@ func (a *TimelockAccounts) GetBurnDustWithAuthorityInstruction(maxQuarks uint64)
 		return solana.Instruction{}, errors.New("max quarks must be positive")
 	}
 
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewBurnDustWithAuthorityInstruction(
-			&timelock_token_v1.BurnDustWithAuthorityInstructionAccounts{
-				Timelock:      a.State.publicKey.ToBytes(),
-				Vault:         a.Vault.publicKey.ToBytes(),
-				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Mint:          a.Mint.publicKey.ToBytes(),
-				Payer:         GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_v1.BurnDustWithAuthorityInstructionArgs{
-				TimelockBump: a.StateBump,
-				MaxAmount:    maxQuarks,
-			},
-		).ToLegacyInstruction(), nil
-	case timelock_token_v1.DataVersionLegacy:
-		return timelock_token_legacy.NewBurnDustWithAuthorityInstruction(
-			&timelock_token_legacy.BurnDustWithAuthorityInstructionAccounts{
-				Timelock:      a.State.publicKey.ToBytes(),
-				Vault:         a.Vault.publicKey.ToBytes(),
-				VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Mint:          a.Mint.publicKey.ToBytes(),
-				Payer:         GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_legacy.BurnDustWithAuthorityInstructionArgs{
-				TimelockBump: a.StateBump,
-				MaxAmount:    maxQuarks,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
+	return timelock_token_v1.NewBurnDustWithAuthorityInstruction(
+		&timelock_token_v1.BurnDustWithAuthorityInstructionAccounts{
+			Timelock:      a.State.publicKey.ToBytes(),
+			Vault:         a.Vault.publicKey.ToBytes(),
+			VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
+			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
+			Mint:          a.Mint.publicKey.ToBytes(),
+			Payer:         GetSubsidizer().publicKey.ToBytes(),
+		},
+		&timelock_token_v1.BurnDustWithAuthorityInstructionArgs{
+			TimelockBump: a.StateBump,
+			MaxAmount:    maxQuarks,
+		},
+	).ToLegacyInstruction(), nil
 }
 
 // GetRevokeLockWithAuthorityInstruction gets a RevokeLockWithAuthority instruction for a timelock account
 func (a *TimelockAccounts) GetRevokeLockWithAuthorityInstruction() (solana.Instruction, error) {
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewRevokeLockWithAuthorityInstruction(
-			&timelock_token_v1.RevokeLockWithAuthorityInstructionAccounts{
-				Timelock:      a.State.publicKey.ToBytes(),
-				Vault:         a.Vault.publicKey.ToBytes(),
-				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Payer:         GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_v1.RevokeLockWithAuthorityInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	case timelock_token_v1.DataVersionLegacy:
-		return timelock_token_legacy.NewRevokeLockWithAuthorityInstruction(
-			&timelock_token_legacy.RevokeLockWithAuthorityInstructionAccounts{
-				Timelock:      a.State.publicKey.ToBytes(),
-				Vault:         a.Vault.publicKey.ToBytes(),
-				TimeAuthority: a.TimeAuthority.publicKey.ToBytes(),
-				Payer:         GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_legacy.RevokeLockWithAuthorityInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
+	return timelock_token_v1.NewRevokeLockWithAuthorityInstruction(
+		&timelock_token_v1.RevokeLockWithAuthorityInstructionAccounts{
+			Timelock:      a.State.publicKey.ToBytes(),
+			Vault:         a.Vault.publicKey.ToBytes(),
+			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
+			Payer:         GetSubsidizer().publicKey.ToBytes(),
+		},
+		&timelock_token_v1.RevokeLockWithAuthorityInstructionArgs{
+			TimelockBump: a.StateBump,
+		},
+	).ToLegacyInstruction(), nil
 }
 
 // GetDeactivateInstruction gets a Deactivate instruction for a timelock account
 func (a *TimelockAccounts) GetDeactivateInstruction() (solana.Instruction, error) {
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewDeactivateInstruction(
-			&timelock_token_v1.DeactivateInstructionAccounts{
-				Timelock:   a.State.publicKey.ToBytes(),
-				VaultOwner: a.VaultOwner.publicKey.ToBytes(),
-				Payer:      GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_v1.DeactivateInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	case timelock_token_v1.DataVersionLegacy:
-		return timelock_token_legacy.NewDeactivateInstruction(
-			&timelock_token_legacy.DeactivateInstructionAccounts{
-				Timelock:   a.State.publicKey.ToBytes(),
-				VaultOwner: a.VaultOwner.publicKey.ToBytes(),
-				Payer:      GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_legacy.DeactivateInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
+	return timelock_token_v1.NewDeactivateInstruction(
+		&timelock_token_v1.DeactivateInstructionAccounts{
+			Timelock:   a.State.publicKey.ToBytes(),
+			VaultOwner: a.VaultOwner.publicKey.ToBytes(),
+			Payer:      GetSubsidizer().publicKey.ToBytes(),
+		},
+		&timelock_token_v1.DeactivateInstructionArgs{
+			TimelockBump: a.StateBump,
+		},
+	).ToLegacyInstruction(), nil
 }
 
 // GetCloseAccountsInstruction gets a CloseAccounts instruction for a timelock account
 func (a *TimelockAccounts) GetCloseAccountsInstruction() (solana.Instruction, error) {
-	switch a.DataVersion {
-	case timelock_token_v1.DataVersion1:
-		return timelock_token_v1.NewCloseAccountsInstruction(
-			&timelock_token_v1.CloseAccountsInstructionAccounts{
-				Timelock:       a.State.publicKey.ToBytes(),
-				Vault:          a.Vault.publicKey.ToBytes(),
-				CloseAuthority: a.CloseAuthority.publicKey.ToBytes(),
-				Payer:          GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_v1.CloseAccountsInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	case timelock_token_v1.DataVersionLegacy:
-		return timelock_token_legacy.NewCloseAccountsInstruction(
-			&timelock_token_legacy.CloseAccountsInstructionAccounts{
-				Timelock:       a.State.publicKey.ToBytes(),
-				Vault:          a.Vault.publicKey.ToBytes(),
-				CloseAuthority: a.CloseAuthority.publicKey.ToBytes(),
-				Payer:          GetSubsidizer().publicKey.ToBytes(),
-			},
-			&timelock_token_legacy.CloseAccountsInstructionArgs{
-				TimelockBump: a.StateBump,
-			},
-		).ToLegacyInstruction(), nil
-	default:
-		return solana.Instruction{}, errors.New("unsupported data version")
-	}
+	return timelock_token_v1.NewCloseAccountsInstruction(
+		&timelock_token_v1.CloseAccountsInstructionAccounts{
+			Timelock:       a.State.publicKey.ToBytes(),
+			Vault:          a.Vault.publicKey.ToBytes(),
+			CloseAuthority: GetSubsidizer().publicKey.ToBytes(),
+			Payer:          GetSubsidizer().publicKey.ToBytes(),
+		},
+		&timelock_token_v1.CloseAccountsInstructionArgs{
+			TimelockBump: a.StateBump,
+		},
+	).ToLegacyInstruction(), nil
 }
 
 // ValidateExternalKinTokenAccount validates an address is an external Kin token account
