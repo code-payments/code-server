@@ -174,7 +174,7 @@ func MakeTreasuryAdvanceTransaction(
 	treasuryPoolVault *common.Account,
 	destination *common.Account,
 	commitment *common.Account,
-	kinAmountInQuarks uint64,
+	kinAmountInQuarks uint32,
 	transcript []byte,
 	recentRoot []byte,
 ) (solana.Transaction, error) {
