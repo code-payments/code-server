@@ -30,10 +30,10 @@ const (
 	CloseEmptyTimelockAccount
 	CloseDormantTimelockAccount
 	SaveRecentRoot
-	InitializeCommitmentProof
-	UploadCommitmentProof
-	VerifyCommitmentProof // Deprecated, since we bundle verification with OpenCommitmentVault
-	OpenCommitmentVault
+	InitializeCommitmentProof // Deprecated with new VM flows
+	UploadCommitmentProof     // Deprecated with new VM flows
+	VerifyCommitmentProof     // Deprecated with new VM flows
+	OpenCommitmentVault       // Deprecated with new VM flows
 	CloseCommitmentVault
 )
 
