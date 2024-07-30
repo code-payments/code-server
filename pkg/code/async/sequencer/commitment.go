@@ -30,26 +30,6 @@ func markCommitmentPayingDestination(ctx context.Context, data code_data.Provide
 	return data.SaveCommitment(ctx, commitmentRecord)
 }
 
-func markCommitmentReadyToOpen(ctx context.Context, data code_data.Provider, intentId string, actionId uint32) error {
-	commitmentRecord, err := data.GetCommitmentByAction(ctx, intentId, actionId)
-	if err != nil {
-		return err
-	}
-
-	if commitmentRecord.State == commitment.StateReadyToOpen {
-		return nil
-	}
-
-	if commitmentRecord.State != commitment.StatePayingDestination {
-		return errors.New("commitment in invalid state")
-	}
-
-	commitmentRecord.State = commitment.StateReadyToOpen
-	return data.SaveCommitment(ctx, commitmentRecord)
-}
-
-// Opening is something managed externally
-
 func markCommitmentOpen(ctx context.Context, data code_data.Provider, intentId string, actionId uint32) error {
 	commitmentRecord, err := data.GetCommitmentByAction(ctx, intentId, actionId)
 	if err != nil {
@@ -60,10 +40,13 @@ func markCommitmentOpen(ctx context.Context, data code_data.Provider, intentId s
 		return nil
 	}
 
-	if commitmentRecord.State != commitment.StateOpening {
+	if commitmentRecord.State != commitment.StatePayingDestination {
 		return errors.New("commitment in invalid state")
 	}
 
+	// todo: We lose out on some scheduling optimizations now that commitments
+	//       are opened immediately. There's now active polling during the entire
+	//       temporary privacy deadline window.
 	fulfillmentRecords, err := data.GetAllFulfillmentsByTypeAndAction(ctx, fulfillment.TemporaryPrivacyTransferWithAuthority, intentId, actionId)
 	if err != nil {
 		return err
@@ -76,8 +59,6 @@ func markCommitmentOpen(ctx context.Context, data code_data.Provider, intentId s
 	commitmentRecord.State = commitment.StateOpen
 	return data.SaveCommitment(ctx, commitmentRecord)
 }
-
-// Closing is likely something managed externally
 
 func markCommitmentClosed(ctx context.Context, data code_data.Provider, intentId string, actionId uint32) error {
 	commitmentRecord, err := data.GetCommitmentByAction(ctx, intentId, actionId)

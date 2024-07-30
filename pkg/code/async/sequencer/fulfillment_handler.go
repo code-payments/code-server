@@ -760,7 +760,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) OnSuccess(ctx context.Context
 		return err
 	}
 
-	return markCommitmentReadyToOpen(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	return markCommitmentOpen(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 }
 
 func (h *TransferWithCommitmentFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
