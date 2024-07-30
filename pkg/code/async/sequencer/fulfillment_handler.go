@@ -403,14 +403,14 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 		return false, nil
 	}
 
-	// The commitment vault must be opened before we can send funds to it
+	// The commitment must be opened before we can send funds to it
 	if commitmentRecord.State != commitment.StateOpen {
 		return false, nil
 	}
 
 	// Check the privacy upgrade deadline, which is one of many factors as to
-	// why we may have opened the commitment vault. We need to ensure the
-	// deadline is hit before proceeding.
+	// why we may have opened the commitment. We need to ensure the deadline
+	// is hit before proceeding.
 	privacyUpgradeDeadline, err := commitment_worker.GetDeadlineToUpgradePrivacy(ctx, h.data, commitmentRecord)
 	if err == commitment_worker.ErrNoPrivacyUpgradeDeadline {
 		return false, nil
@@ -532,12 +532,12 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 	}
 
 	// The old commitment record must be marked as diverting funds to the new
-	// intended commitment vault before proceeding.
-	if oldCommitmentRecord.RepaymentDivertedTo == nil || *oldCommitmentRecord.RepaymentDivertedTo != *fulfillmentRecord.Destination {
+	// intended commitment before proceeding.
+	if oldCommitmentRecord.RepaymentDivertedTo == nil {
 		return false, nil
 	}
 
-	newCommitmentRecord, err := h.data.GetCommitmentByVault(ctx, *fulfillmentRecord.Destination)
+	newCommitmentRecord, err := h.data.GetCommitmentByAddress(ctx, *oldCommitmentRecord.RepaymentDivertedTo)
 	if err != nil {
 		return false, err
 	}
