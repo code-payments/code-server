@@ -178,11 +178,6 @@ func MakeTreasuryAdvanceTransaction(
 	transcript []byte,
 	recentRoot []byte,
 ) (solana.Transaction, error) {
-	memoInstruction, err := MakeKreMemoInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
-
 	relayPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
 	relayVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
 	memoryAPublicKeyBytes := ed25519.PublicKey(accountMemory.PublicKey().ToBytes())
@@ -221,7 +216,6 @@ func MakeTreasuryAdvanceTransaction(
 	)
 
 	instructions := []solana.Instruction{
-		memoInstruction,
 		execInstruction,
 	}
 	return MakeNoncedTransaction(nonce, bh, instructions...)
