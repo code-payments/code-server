@@ -34,6 +34,6 @@ func NewRelayTransferExternalVirtualInstructionCtor(
 		putHash(data, args.RecentRoot, &offset)
 		putHash(data, args.Commitment, &offset)
 
-		return OpcodeTransferWithCommitmentExternal, nil, data
+		return OpcodeSplitterTransferToExternal, nil, data
 	}
 }

@@ -34,6 +34,6 @@ func NewRelayTransferInternalVirtualInstructionCtor(
 		putHash(data, args.RecentRoot, &offset)
 		putHash(data, args.Commitment, &offset)
 
-		return OpcodeTransferWithCommitmentInternal, nil, data
+		return OpcodeSplitterTransferToInternal, nil, data
 	}
 }

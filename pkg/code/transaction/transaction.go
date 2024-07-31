@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/memo"
@@ -16,11 +15,6 @@ import (
 //       many virtual instructions into a single Solana transaction.
 
 // todo: Support external variation of transfers
-
-var (
-	// Should be equal to minimum bucket size
-	maxBurnAmount = kin.ToQuarks(1)
-)
 
 // MakeNoncedTransaction makes a transaction that's backed by a nonce. The returned
 // transaction is not signed.
@@ -118,8 +112,8 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 			Address: virtualNonce.PublicKey().ToBytes(),
 			Nonce:   cvm.Hash(virtualBlockhash),
 		},
-		cvm.NewTimelockCloseAccountWithBalanceVirtualInstructionCtor(
-			&cvm.TimelockCloseAccountWithBalanceVirtualInstructionAccounts{
+		cvm.NewTimelockWithdrawInternalVirtualInstructionCtor(
+			&cvm.TimelockWithdrawInternalVirtualInstructionAccounts{
 				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
 				VirtualTimelock:      source.State.PublicKey().ToBytes(),
 				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
@@ -127,7 +121,7 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 				Destination:          destination.PublicKey().ToBytes(),
 				Mint:                 source.Mint.PublicKey().ToBytes(),
 			},
-			&cvm.TimelockCloseAccountWithBalanceVirtualInstructionArgs{
+			&cvm.TimelockWithdrawInternalVirtualInstructionArgs{
 				TimelockBump: source.StateBump,
 				Signature:    cvm.Signature(virtualSignature),
 			},

@@ -54,6 +54,6 @@ func NewTimelockTransferRelayVirtualInstructionCtor(
 			).ToLegacyInstruction(),
 		}
 
-		return OpcodeTimelockTransferRelay, ixns, data
+		return OpcodeTimelockTransferToRelay, ixns, data
 	}
 }

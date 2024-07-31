@@ -8,15 +8,15 @@ import (
 )
 
 const (
-	TimelockCloseAccountWithBalanceVirtrualInstructionDataSize = SignatureSize // signature
+	TimelockWithdrawEnternalVirtrualInstructionDataSize = SignatureSize // signature
 )
 
-type TimelockCloseAccountWithBalanceVirtualInstructionArgs struct {
+type TimelockWithdrawEnternalVirtualInstructionArgs struct {
 	TimelockBump uint8
 	Signature    Signature
 }
 
-type TimelockCloseAccountWithBalanceVirtualInstructionAccounts struct {
+type TimelockWithdrawEnternalVirtualInstructionAccounts struct {
 	VmAuthority          ed25519.PublicKey
 	VirtualTimelock      ed25519.PublicKey
 	VirtualTimelockVault ed25519.PublicKey
@@ -25,13 +25,13 @@ type TimelockCloseAccountWithBalanceVirtualInstructionAccounts struct {
 	Mint                 ed25519.PublicKey
 }
 
-func NewTimelockCloseAccountWithBalanceVirtualInstructionCtor(
-	accounts *TimelockCloseAccountWithBalanceVirtualInstructionAccounts,
-	args *TimelockCloseAccountWithBalanceVirtualInstructionArgs,
+func NewTimelockWithdrawEnternalVirtualInstructionCtor(
+	accounts *TimelockWithdrawEnternalVirtualInstructionAccounts,
+	args *TimelockWithdrawEnternalVirtualInstructionArgs,
 ) VirtualInstructionCtor {
 	return func() (Opcode, []solana.Instruction, []byte) {
 		var offset int
-		data := make([]byte, TimelockCloseAccountWithBalanceVirtrualInstructionDataSize)
+		data := make([]byte, TimelockWithdrawEnternalVirtrualInstructionDataSize)
 		putSignature(data, args.Signature, &offset)
 
 		ixns := []solana.Instruction{
@@ -82,6 +82,6 @@ func NewTimelockCloseAccountWithBalanceVirtualInstructionCtor(
 			).ToLegacyInstruction(),
 		}
 
-		return OpcodeCompoundCloseAccountWithBalance, ixns, data
+		return OpcodeTimelockWithdrawToExternal, ixns, data
 	}
 }

@@ -54,6 +54,6 @@ func NewTimelockTransferExternalVirtualInstructionCtor(
 			).ToLegacyInstruction(),
 		}
 
-		return OpcodeTimelockTransferExternal, ixns, data
+		return OpcodeTimelockTransferToExternal, ixns, data
 	}
 }
