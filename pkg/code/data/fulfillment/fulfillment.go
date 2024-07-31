@@ -27,8 +27,8 @@ const (
 	TemporaryPrivacyTransferWithAuthority
 	PermanentPrivacyTransferWithAuthority
 	TransferWithCommitment
-	CloseEmptyTimelockAccount
-	CloseDormantTimelockAccount
+	CloseEmptyTimelockAccount   // Technically a compression with the new VM flows
+	CloseDormantTimelockAccount // Deprecated by the VM
 	SaveRecentRoot
 	InitializeCommitmentProof // Deprecated with new VM flows
 	UploadCommitmentProof     // Deprecated with new VM flows

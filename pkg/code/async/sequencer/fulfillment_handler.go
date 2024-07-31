@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"math"
 	"sync"
 	"time"
 
@@ -113,7 +112,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 		}
 
 		return true, nil
-	case fulfillment.CloseDormantTimelockAccount, fulfillment.CloseEmptyTimelockAccount:
+	case fulfillment.CloseEmptyTimelockAccount:
 		// Technically valid, but we won't open for these cases
 		return false, nil
 	default:
@@ -356,7 +355,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, ful
 		return err
 	}
 
-	return onTokenAccountClosed(ctx, h.data, fulfillmentRecord, txnRecord)
+	return nil
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -854,7 +853,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Cont
 		return errors.New("invalid fulfillment type")
 	}
 
-	return onTokenAccountClosed(ctx, h.data, fulfillmentRecord, txnRecord)
+	return nil
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -874,127 +873,6 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Cont
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
 		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	return false, false, nil
-}
-
-type CloseDormantTimelockAccountFulfillmentHandler struct {
-	data code_data.Provider
-}
-
-func NewCloseDormantTimelockAccountFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &CloseDormantTimelockAccountFulfillmentHandler{
-		data: data,
-	}
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// For now, we only ever save fulfillment records for gift cards, so the below
-	// check isn't necessary yet. However, if this is no longer the case, the code
-	// below should be uncommented, unless other flows warrant it.
-	/*
-		accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, fulfillmentRecord.Source)
-		if err != nil {
-			return false, err
-		}
-
-		// Sanity check that could avoid a distastrous scenario if we accidentally
-		// schedule something that's not a gift card
-		if accountInfoRecord.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
-			return false, errors.New("source must be a remote send gift card")
-		}
-	*/
-
-	// The source account is a Code account, so we must validate it exists on
-	// the blockchain prior to sending funds from it.
-	isSourceAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, fulfillmentRecord.Source)
-	if err != nil {
-		return false, err
-	} else if !isSourceAccountCreated {
-		return false, nil
-	}
-
-	// The destination account might is a Code account, so we must validate it
-	// exists on the blockchain prior to send funds to it.
-	isDestinationAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, *fulfillmentRecord.Destination)
-	if err != nil {
-		return false, err
-	} else if !isDestinationAccountCreated {
-		return false, nil
-	}
-
-	// todo: We can have single "AsSourceOrDestination" query
-
-	// The source account is a user account, so check that there are no other
-	// fulfillments where it's used as a source account before closing it.
-	earliestFulfillment, err := h.data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillment != nil && earliestFulfillment.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	// The source account is a user account, so check that there are no other
-	// fulfillments where it's used as a destination before closing it.
-	earliestFulfillment, err = h.data.GetFirstSchedulableFulfillmentByAddressAsDestination(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillment != nil && earliestFulfillment.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return errors.New("invalid fulfillment type")
-	}
-
-	return onTokenAccountClosed(ctx, h.data, fulfillmentRecord, txnRecord)
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	return false, nil
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	// Replace above logic with commented code if we decide to use CloseDormantAccount actions
-	timelockRecord, err := h.data.GetTimelockByVault(ctx, fulfillmentRecord.Source)
-	if err != nil {
-		return false, false, err
-	}
-
-	if timelockRecord.IsClosed() {
-		err = markActionRevoked(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
-		if err != nil {
-			return false, false, err
-		}
-
-		return true, false, nil
 	}
 
 	return false, false, nil
@@ -1162,30 +1040,6 @@ func isTokenAccountOnBlockchain(ctx context.Context, data code_data.Provider, ad
 	return existsOnBlockchain, nil
 }
 
-func onTokenAccountClosed(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	var closedAccount string
-	switch fulfillmentRecord.FulfillmentType {
-	case fulfillment.CloseEmptyTimelockAccount, fulfillment.NoPrivacyWithdraw, fulfillment.CloseDormantTimelockAccount:
-		closedAccount = fulfillmentRecord.Source
-	default:
-		return errors.New("unhanlded fulfillment type")
-	}
-
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		closeDormantFulfillmentRecord, err := data.GetNextSchedulableFulfillmentByAddress(ctx, closedAccount, uint64(math.MaxInt64)-1, 0, 0)
-		if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-			return err
-		} else if err == nil {
-			err = markFulfillmentAsActivelyScheduled(ctx, data, closeDormantFulfillmentRecord)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return markTimelockClosed(ctx, data, closedAccount, txnRecord.Slot)
-}
-
 func estimateTreasuryPoolFundingLevels(ctx context.Context, data code_data.Provider, record *treasury.Record) (total uint64, used uint64, err error) {
 	total, err = data.GetTotalAvailableTreasuryPoolFunds(ctx, record.Vault)
 	if err != nil {
@@ -1209,7 +1063,6 @@ func getFulfillmentHandlers(data code_data.Provider, configProvider ConfigProvid
 	handlersByType[fulfillment.PermanentPrivacyTransferWithAuthority] = NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
 	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data)
 	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseDormantTimelockAccount] = NewCloseDormantTimelockAccountFulfillmentHandler(data)
 	handlersByType[fulfillment.SaveRecentRoot] = NewSaveRecentRootFulfillmentHandler(data)
 	handlersByType[fulfillment.CloseCommitmentVault] = NewCloseCommitmentVaultFulfillmentHandler(data)
 	return handlersByType

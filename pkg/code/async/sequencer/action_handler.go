@@ -71,32 +71,6 @@ func (h *CloseEmptyAccountActionHandler) OnFulfillmentStateChange(ctx context.Co
 	return nil
 }
 
-type CloseDormantAccountActionHandler struct {
-	data code_data.Provider
-}
-
-func NewCloseDormantAccountActionHandler(data code_data.Provider) ActionHandler {
-	return &CloseDormantAccountActionHandler{
-		data: data,
-	}
-}
-
-func (h *CloseDormantAccountActionHandler) OnFulfillmentStateChange(ctx context.Context, fulfillmentRecord *fulfillment.Record, newState fulfillment.State) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return errors.New("unexpected fulfillment type")
-	}
-
-	if newState == fulfillment.StateConfirmed {
-		return markActionConfirmed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
-	}
-
-	if newState == fulfillment.StateFailed {
-		return markActionFailed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
-	}
-
-	return nil
-}
-
 type NoPrivacyTransferActionHandler struct {
 	data code_data.Provider
 }
@@ -283,7 +257,6 @@ func getActionHandlers(data code_data.Provider) map[action.Type]ActionHandler {
 	handlersByType := make(map[action.Type]ActionHandler)
 	handlersByType[action.OpenAccount] = NewOpenAccountActionHandler(data)
 	handlersByType[action.CloseEmptyAccount] = NewCloseEmptyAccountActionHandler(data)
-	handlersByType[action.CloseDormantAccount] = NewCloseDormantAccountActionHandler(data)
 	handlersByType[action.NoPrivacyTransfer] = NewNoPrivacyTransferActionHandler(data)
 	handlersByType[action.NoPrivacyWithdraw] = NewNoPrivacyWithdrawActionHandler(data)
 	handlersByType[action.PrivateTransfer] = NewPrivateTransferActionHandler(data)
