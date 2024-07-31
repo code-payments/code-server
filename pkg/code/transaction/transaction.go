@@ -8,6 +8,7 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
+	"github.com/code-payments/code-server/pkg/solana/memo"
 )
 
 // todo: The argument sizes are blowing out of proportion, though there's likely
@@ -187,7 +188,13 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, execInstruction)
+	var instructions []solana.Instruction
+	if additionalMemo != nil {
+		instructions = append(instructions, memo.Instruction(*additionalMemo))
+	}
+	instructions = append(instructions, execInstruction)
+
+	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
 func MakeInternalTransferWithAuthorityTransaction(
