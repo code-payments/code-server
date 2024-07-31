@@ -62,65 +62,28 @@ func MakeOpenAccountTransaction(
 	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
-func MakeCloseEmptyAccountTransaction(
+func MakeCompressAccountTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
 
-	virtualSignature solana.Signature,
-	virtualNonce *common.Account,
-	virtualBlockhash solana.Blockhash,
-
 	vm *common.Account,
-	nonceMemory *common.Account,
-	nonceIndex uint16,
-	accountMemory *common.Account,
+	memory *common.Account,
 	accountIndex uint16,
-
-	timelockAccounts *common.TimelockAccounts,
+	storage *common.Account,
 ) (solana.Transaction, error) {
-	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(accountMemory.PublicKey().ToBytes())
-	unlockPdaBytes := ed25519.PublicKey(timelockAccounts.Unlock.PublicKey().ToBytes())
-
-	closeEmptyAccountVirtualIxn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		&cvm.VirtualDurableNonce{
-			Address: virtualNonce.PublicKey().ToBytes(),
-			Nonce:   cvm.Hash(virtualBlockhash),
-		},
-		cvm.NewTimelockCloseEmptyVirtualInstructionCtor(
-			&cvm.TimelockCloseEmptyVirtualInstructionAccounts{
-				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
-				VirtualTimelock:      timelockAccounts.State.PublicKey().ToBytes(),
-				VirtualTimelockVault: timelockAccounts.Vault.PublicKey().ToBytes(),
-				Owner:                timelockAccounts.VaultOwner.PublicKey().ToBytes(),
-				Mint:                 timelockAccounts.Mint.PublicKey().ToBytes(),
-			},
-			&cvm.TimelockCloseEmptyVirtualInstructionArgs{
-				TimelockBump: timelockAccounts.StateBump,
-				MaxAmount:    uint32(maxBurnAmount),
-				Signature:    cvm.Signature(virtualSignature),
-			},
-		),
-	)
-
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	compressInstruction := cvm.NewSystemAccountCompressInstruction(
+		&cvm.SystemAccountCompressInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:          vm.PublicKey().ToBytes(),
-			VmMemA:      &memoryAPublicKeyBytes,
-			VmMemB:      &memoryBPublicKeyBytes,
-			VmUnlockPda: &unlockPdaBytes,
+			VmMemory:    memory.PublicKey().ToBytes(),
+			VmStorage:   storage.PublicKey().ToBytes(),
 		},
-		&cvm.VmExecInstructionArgs{
-			Opcode:     closeEmptyAccountVirtualIxn.Opcode,
-			MemIndices: []uint16{nonceIndex, accountIndex},
-			MemBanks:   []uint8{0, 1},
-			Data:       closeEmptyAccountVirtualIxn.Data,
+		&cvm.SystemAccountCompressInstructionArgs{
+			AccountIndex: accountIndex,
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, execInstruction)
+	return MakeNoncedTransaction(nonce, bh, compressInstruction)
 }
 
 func MakeInternalCloseAccountWithBalanceTransaction(

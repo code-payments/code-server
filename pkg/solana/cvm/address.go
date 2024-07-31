@@ -23,6 +23,7 @@ var (
 	VmProofAccountPrefix           = []byte("vm_proof_account")
 	VmRelayAccountPrefix           = []byte("vm_relay_account")
 	VmRelayVaultPrefix             = []byte("vm_relay_vault")
+	VmStorageAccountPrefix         = []byte("vm_storage_account")
 	VmUnlockPdaAccountPrefix       = []byte("vm_unlock_pda_account")
 	VmWithdrawReceiptAccountPrefix = []byte("vm_withdraw_receipt_account")
 )
@@ -71,6 +72,21 @@ func GetMemoryAccountAddress(args *GetMemoryAccountAddressArgs) (ed25519.PublicK
 		CodeVmPrefix,
 		VmMemoryAccountPrefix,
 		[]byte(toFixedString(args.Name, MaxMemoryAccountNameLength)),
+		args.Vm,
+	)
+}
+
+type GetStorageAccountAddressArgs struct {
+	Name string
+	Vm   ed25519.PublicKey
+}
+
+func GetStorageAccountAddress(args *GetMemoryAccountAddressArgs) (ed25519.PublicKey, uint8, error) {
+	return solana.FindProgramAddressAndBump(
+		PROGRAM_ID,
+		CodeVmPrefix,
+		VmStorageAccountPrefix,
+		[]byte(args.Name),
 		args.Vm,
 	)
 }
