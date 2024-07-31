@@ -738,7 +738,8 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
-	txn, err := transaction_util.MakeTreasuryAdvanceTransaction(
+	// todo: support external transfers
+	txn, err := transaction_util.MakeInternalTreasuryAdvanceTransaction(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 

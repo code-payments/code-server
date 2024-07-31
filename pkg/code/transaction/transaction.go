@@ -8,8 +8,13 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
-	"github.com/code-payments/code-server/pkg/solana/memo"
 )
+
+// todo: The argument sizes are blowing out of proportion, though there's likely
+//       a larger refactor going to happen anyways when we support batching of
+//       many virtual instructions into a single Solana transaction.
+
+// todo: Support external variation of transfers
 
 var (
 	// Should be equal to minimum bucket size
@@ -59,108 +64,200 @@ func MakeOpenAccountTransaction(
 func MakeCloseEmptyAccountTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
+
+	virtualSignature solana.Signature,
+	virtualNonce *common.Account,
+	virtualBlockhash solana.Blockhash,
+
+	vm *common.Account,
+	nonceMemory *common.Account,
+	nonceIndex uint16,
+	accountMemory *common.Account,
+	accountIndex uint16,
+
 	timelockAccounts *common.TimelockAccounts,
 ) (solana.Transaction, error) {
-	burnDustInstruction, err := timelockAccounts.GetBurnDustWithAuthorityInstruction(maxBurnAmount)
-	if err != nil {
-		return solana.Transaction{}, err
-	}
+	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
+	memoryBPublicKeyBytes := ed25519.PublicKey(accountMemory.PublicKey().ToBytes())
+	unlockPdaBytes := ed25519.PublicKey(timelockAccounts.Unlock.PublicKey().ToBytes())
 
-	closeInstruction, err := timelockAccounts.GetCloseAccountsInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
+	closeEmptyAccountVirtualIxn := cvm.NewVirtualInstruction(
+		common.GetSubsidizer().PublicKey().ToBytes(),
+		&cvm.VirtualDurableNonce{
+			Address: virtualNonce.PublicKey().ToBytes(),
+			Nonce:   cvm.Hash(virtualBlockhash),
+		},
+		cvm.NewTimelockCloseEmptyVirtualInstructionCtor(
+			&cvm.TimelockCloseEmptyVirtualInstructionAccounts{
+				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
+				VirtualTimelock:      timelockAccounts.State.PublicKey().ToBytes(),
+				VirtualTimelockVault: timelockAccounts.Vault.PublicKey().ToBytes(),
+				Owner:                timelockAccounts.VaultOwner.PublicKey().ToBytes(),
+				Mint:                 timelockAccounts.Mint.PublicKey().ToBytes(),
+			},
+			&cvm.TimelockCloseEmptyVirtualInstructionArgs{
+				TimelockBump: timelockAccounts.StateBump,
+				MaxAmount:    uint32(maxBurnAmount),
+				Signature:    cvm.Signature(virtualSignature),
+			},
+		),
+	)
 
-	instructions := []solana.Instruction{
-		burnDustInstruction,
-		closeInstruction,
-	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	execInstruction := cvm.NewVmExecInstruction(
+		&cvm.VmExecInstructionAccounts{
+			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
+			Vm:          vm.PublicKey().ToBytes(),
+			VmMemA:      &memoryAPublicKeyBytes,
+			VmMemB:      &memoryBPublicKeyBytes,
+			VmUnlockPda: &unlockPdaBytes,
+		},
+		&cvm.VmExecInstructionArgs{
+			Opcode:     closeEmptyAccountVirtualIxn.Opcode,
+			MemIndices: []uint16{nonceIndex, accountIndex},
+			MemBanks:   []uint8{0, 1},
+			Data:       closeEmptyAccountVirtualIxn.Data,
+		},
+	)
+
+	return MakeNoncedTransaction(nonce, bh, execInstruction)
 }
 
-func MakeCloseAccountWithBalanceTransaction(
+func MakeInternalCloseAccountWithBalanceTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
+
+	virtualSignature solana.Signature,
+	virtualNonce *common.Account,
+	virtualBlockhash solana.Blockhash,
+
+	vm *common.Account,
+	nonceMemory *common.Account,
+	nonceIndex uint16,
+	sourceMemory *common.Account,
+	sourceIndex uint16,
+	destinationMemory *common.Account,
+	destinationIndex uint16,
 
 	source *common.TimelockAccounts,
 	destination *common.Account,
 
 	additionalMemo *string,
 ) (solana.Transaction, error) {
-	originalMemoInstruction, err := MakeKreMemoInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
+	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
+	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
+	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
+	unlockPdaBytes := ed25519.PublicKey(source.Unlock.PublicKey().ToBytes())
 
-	memoInstructions := []solana.Instruction{
-		originalMemoInstruction,
-	}
-
-	if additionalMemo != nil {
-		if len(*additionalMemo) == 0 {
-			return solana.Transaction{}, errors.New("additional memo is empty")
-		}
-
-		additionalMemoInstruction := memo.Instruction(*additionalMemo)
-		memoInstructions = append(memoInstructions, additionalMemoInstruction)
-	}
-
-	revokeLockInstruction, err := source.GetRevokeLockWithAuthorityInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
-
-	deactivateLockInstruction, err := source.GetDeactivateInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
-
-	withdrawInstruction, err := source.GetWithdrawInstruction(destination)
-	if err != nil {
-		return solana.Transaction{}, err
-	}
-
-	closeInstruction, err := source.GetCloseAccountsInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
-
-	instructions := append(
-		memoInstructions,
-		revokeLockInstruction,
-		deactivateLockInstruction,
-		withdrawInstruction,
-		closeInstruction,
+	transferVirtualIxn := cvm.NewVirtualInstruction(
+		common.GetSubsidizer().PublicKey().ToBytes(),
+		&cvm.VirtualDurableNonce{
+			Address: virtualNonce.PublicKey().ToBytes(),
+			Nonce:   cvm.Hash(virtualBlockhash),
+		},
+		cvm.NewTimelockCloseAccountWithBalanceVirtualInstructionCtor(
+			&cvm.TimelockCloseAccountWithBalanceVirtualInstructionAccounts{
+				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
+				VirtualTimelock:      source.State.PublicKey().ToBytes(),
+				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
+				Owner:                source.VaultOwner.PublicKey().ToBytes(),
+				Destination:          destination.PublicKey().ToBytes(),
+				Mint:                 source.Mint.PublicKey().ToBytes(),
+			},
+			&cvm.TimelockCloseAccountWithBalanceVirtualInstructionArgs{
+				TimelockBump: source.StateBump,
+				Signature:    cvm.Signature(virtualSignature),
+			},
+		),
 	)
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+
+	execInstruction := cvm.NewVmExecInstruction(
+		&cvm.VmExecInstructionAccounts{
+			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
+			Vm:          vm.PublicKey().ToBytes(),
+			VmMemA:      &memoryAPublicKeyBytes,
+			VmMemB:      &memoryBPublicKeyBytes,
+			VmMemC:      &memoryCPublicKeyBytes,
+			VmUnlockPda: &unlockPdaBytes,
+		},
+		&cvm.VmExecInstructionArgs{
+			Opcode:     transferVirtualIxn.Opcode,
+			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
+			MemBanks:   []uint8{0, 1, 2},
+			Data:       transferVirtualIxn.Data,
+		},
+	)
+
+	return MakeNoncedTransaction(nonce, bh, execInstruction)
 }
 
-func MakeTransferWithAuthorityTransaction(
+func MakeInternalTransferWithAuthorityTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
 
+	virtualSignature solana.Signature,
+	virtualNonce *common.Account,
+	virtualBlockhash solana.Blockhash,
+
+	vm *common.Account,
+	nonceMemory *common.Account,
+	nonceIndex uint16,
+	sourceMemory *common.Account,
+	sourceIndex uint16,
+	destinationMemory *common.Account,
+	destinationIndex uint16,
+
 	source *common.TimelockAccounts,
 	destination *common.Account,
-	kinAmountInQuarks uint64,
+	kinAmountInQuarks uint32,
 ) (solana.Transaction, error) {
-	memoInstruction, err := MakeKreMemoInstruction()
-	if err != nil {
-		return solana.Transaction{}, err
-	}
+	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
+	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
+	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
+	unlockPdaBytes := ed25519.PublicKey(source.Unlock.PublicKey().ToBytes())
 
-	transferWithAuthorityInstruction, err := source.GetTransferWithAuthorityInstruction(destination, kinAmountInQuarks)
-	if err != nil {
-		return solana.Transaction{}, err
-	}
+	transferVirtualIxn := cvm.NewVirtualInstruction(
+		common.GetSubsidizer().PublicKey().ToBytes(),
+		&cvm.VirtualDurableNonce{
+			Address: virtualNonce.PublicKey().ToBytes(),
+			Nonce:   cvm.Hash(virtualBlockhash),
+		},
+		cvm.NewTimelockTransferInternalVirtualInstructionCtor(
+			&cvm.TimelockTransferInternalVirtualInstructionAccounts{
+				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
+				VirtualTimelock:      source.State.PublicKey().ToBytes(),
+				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
+				Owner:                source.VaultOwner.PublicKey().ToBytes(),
+				Destination:          destination.PublicKey().ToBytes(),
+			},
+			&cvm.TimelockTransferInternalVirtualInstructionArgs{
+				TimelockBump: source.StateBump,
+				Amount:       kinAmountInQuarks,
+				Signature:    cvm.Signature(virtualSignature),
+			},
+		),
+	)
 
-	instructions := []solana.Instruction{
-		memoInstruction,
-		transferWithAuthorityInstruction,
-	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	execInstruction := cvm.NewVmExecInstruction(
+		&cvm.VmExecInstructionAccounts{
+			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
+			Vm:          vm.PublicKey().ToBytes(),
+			VmMemA:      &memoryAPublicKeyBytes,
+			VmMemB:      &memoryBPublicKeyBytes,
+			VmMemC:      &memoryCPublicKeyBytes,
+			VmUnlockPda: &unlockPdaBytes,
+		},
+		&cvm.VmExecInstructionArgs{
+			Opcode:     transferVirtualIxn.Opcode,
+			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
+			MemBanks:   []uint8{0, 1, 2},
+			Data:       transferVirtualIxn.Data,
+		},
+	)
+
+	return MakeNoncedTransaction(nonce, bh, execInstruction)
 }
 
-func MakeTreasuryAdvanceTransaction(
+func MakeInternalTreasuryAdvanceTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
 
@@ -207,16 +304,12 @@ func MakeTreasuryAdvanceTransaction(
 			VmRelayVault: &relayVaultPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
-			Opcode:         relayTransferInternalVirtualInstruction.Opcode,
-			MemIndices:     []uint16{accountIndex, relayIndex},
-			MemBanks:       []uint8{0, 1},
-			SignatureIndex: 0,
-			Data:           relayTransferInternalVirtualInstruction.Data,
+			Opcode:     relayTransferInternalVirtualInstruction.Opcode,
+			MemIndices: []uint16{accountIndex, relayIndex},
+			MemBanks:   []uint8{0, 1},
+			Data:       relayTransferInternalVirtualInstruction.Data,
 		},
 	)
 
-	instructions := []solana.Instruction{
-		execInstruction,
-	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, bh, execInstruction)
 }

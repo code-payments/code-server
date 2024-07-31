@@ -16,11 +16,10 @@ type VmExecArgsAndAccounts struct {
 }
 
 type VmExecInstructionArgs struct {
-	Opcode         Opcode
-	MemIndices     []uint16
-	MemBanks       []uint8
-	SignatureIndex uint8
-	Data           []uint8
+	Opcode     Opcode
+	MemIndices []uint16
+	MemBanks   []uint8
+	Data       []uint8
 }
 
 type VmExecInstructionAccounts struct {
@@ -52,7 +51,6 @@ func NewVmExecInstruction(
 	putOpcode(data, args.Opcode, &offset)
 	putUint16Array(data, args.MemIndices, &offset)
 	putUint8Array(data, args.MemBanks, &offset)
-	putUint8(data, args.SignatureIndex, &offset)
 	putUint8Array(data, args.Data, &offset)
 
 	var tokenProgram *ed25519.PublicKey
@@ -141,6 +139,5 @@ func getVmExecInstructionArgSize(args *VmExecInstructionArgs) int {
 	return (1 + // opcode
 		4 + 2*len(args.MemIndices) + // mem_indices
 		4 + len(args.MemBanks) + // mem_banks
-		1 + // signature_index
 		4 + len(args.Data)) // data
 }
