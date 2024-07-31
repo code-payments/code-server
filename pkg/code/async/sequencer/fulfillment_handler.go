@@ -841,11 +841,37 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) CanSubmitToBlockchain(ctx 
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+	return true
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+	var vm *common.Account      // todo: configure vm account
+	var memory *common.Account  // todo: configure memory account
+	var storage *common.Account // todo: configure storage account
+
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
+		return nil, errors.New("invalid fulfillment type")
+	}
+
+	txn, err := transaction_util.MakeCompressAccountTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		vm,
+		memory,
+		0, // todo: get account index
+		storage,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	if err != nil {
+		return nil, err
+	}
+
+	return &txn, nil
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
