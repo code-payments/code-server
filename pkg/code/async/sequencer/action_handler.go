@@ -151,7 +151,7 @@ func (h *PrivateTransferActionHandler) OnFulfillmentStateChange(ctx context.Cont
 		if newState == fulfillment.StateFailed {
 			return markActionFailed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 		}
-	case fulfillment.InitializeCommitmentProof, fulfillment.UploadCommitmentProof, fulfillment.VerifyCommitmentProof, fulfillment.OpenCommitmentVault, fulfillment.CloseCommitmentVault:
+	case fulfillment.CloseCommitment:
 		// Don't care about commitment states. These are managed elsewhere.
 		return nil
 	default:

@@ -34,7 +34,7 @@ const (
 	UploadCommitmentProof     // Deprecated with new VM flows
 	VerifyCommitmentProof     // Deprecated with new VM flows
 	OpenCommitmentVault       // Deprecated with new VM flows
-	CloseCommitmentVault
+	CloseCommitment
 )
 
 type State uint8
@@ -317,8 +317,8 @@ func (s Type) String() string {
 		return "verify_commitment_proof"
 	case OpenCommitmentVault:
 		return "open_commitment_vault"
-	case CloseCommitmentVault:
-		return "close_commitment_vault"
+	case CloseCommitment:
+		return "close_commitment"
 	}
 
 	return "unknown"

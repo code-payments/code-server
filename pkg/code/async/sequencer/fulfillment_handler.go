@@ -973,39 +973,71 @@ func (h *SaveRecentRootFulfillmentHandler) IsRevoked(ctx context.Context, fulfil
 	return false, false, nil
 }
 
-type CloseCommitmentVaultFulfillmentHandler struct {
+type CloseCommitmentFulfillmentHandler struct {
 	data code_data.Provider
 }
 
-func NewCloseCommitmentVaultFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &CloseCommitmentVaultFulfillmentHandler{
+func NewCloseCommitmentFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+	return &CloseCommitmentFulfillmentHandler{
 		data: data,
 	}
 }
 
 // todo: New commitment closing flow not implemented yet
-func (h *CloseCommitmentVaultFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	return false, nil
+func (h *CloseCommitmentFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
+	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return false, err
+	}
+
+	// Commitment worker guarantees all cheques have been cashed
+	return commitmentRecord.State == commitment.StateClosing, nil
 }
 
-func (h *CloseCommitmentVaultFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+func (h *CloseCommitmentFulfillmentHandler) SupportsOnDemandTransactions() bool {
+	return true
 }
 
-func (h *CloseCommitmentVaultFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+	var vm *common.Account      // todo: configure vm account
+	var memory *common.Account  // todo: configure memory account
+	var storage *common.Account // todo: configure storage account
+
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
+		return nil, errors.New("invalid fulfillment type")
+	}
+
+	txn, err := transaction_util.MakeCompressAccountTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		vm,
+		memory,
+		0, // todo: get account index
+		storage,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	if err != nil {
+		return nil, err
+	}
+
+	return &txn, nil
 }
 
-func (h *CloseCommitmentVaultFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
+func (h *CloseCommitmentFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return errors.New("invalid fulfillment type")
 	}
 
 	return markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 }
 
-func (h *CloseCommitmentVaultFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
+func (h *CloseCommitmentFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return false, errors.New("invalid fulfillment type")
 	}
 
@@ -1014,8 +1046,8 @@ func (h *CloseCommitmentVaultFulfillmentHandler) OnFailure(ctx context.Context, 
 	return false, nil
 }
 
-func (h *CloseCommitmentVaultFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
+func (h *CloseCommitmentFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return false, false, errors.New("invalid fulfillment type")
 	}
 
@@ -1090,6 +1122,6 @@ func getFulfillmentHandlers(data code_data.Provider, configProvider ConfigProvid
 	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data)
 	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data)
 	handlersByType[fulfillment.SaveRecentRoot] = NewSaveRecentRootFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseCommitmentVault] = NewCloseCommitmentVaultFulfillmentHandler(data)
+	handlersByType[fulfillment.CloseCommitment] = NewCloseCommitmentFulfillmentHandler(data)
 	return handlersByType
 }
