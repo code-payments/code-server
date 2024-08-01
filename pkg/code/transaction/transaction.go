@@ -104,7 +104,6 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
 	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
 	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
-	unlockPdaBytes := ed25519.PublicKey(source.Unlock.PublicKey().ToBytes())
 
 	transferVirtualIxn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -135,7 +134,6 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 			VmMemA:      &memoryAPublicKeyBytes,
 			VmMemB:      &memoryBPublicKeyBytes,
 			VmMemC:      &memoryCPublicKeyBytes,
-			VmUnlockPda: &unlockPdaBytes,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     transferVirtualIxn.Opcode,
@@ -177,7 +175,6 @@ func MakeInternalTransferWithAuthorityTransaction(
 	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
 	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
 	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
-	unlockPdaBytes := ed25519.PublicKey(source.Unlock.PublicKey().ToBytes())
 
 	transferVirtualIxn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -208,7 +205,6 @@ func MakeInternalTransferWithAuthorityTransaction(
 			VmMemA:      &memoryAPublicKeyBytes,
 			VmMemB:      &memoryBPublicKeyBytes,
 			VmMemC:      &memoryCPublicKeyBytes,
-			VmUnlockPda: &unlockPdaBytes,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     transferVirtualIxn.Opcode,

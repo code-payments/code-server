@@ -29,7 +29,6 @@ type VmExecInstructionAccounts struct {
 	VmMemB          *ed25519.PublicKey
 	VmMemC          *ed25519.PublicKey
 	VmMemD          *ed25519.PublicKey
-	VmUnlockPda     *ed25519.PublicKey
 	VmOmnibus       *ed25519.PublicKey
 	VmRelay         *ed25519.PublicKey
 	VmRelayVault    *ed25519.PublicKey
@@ -94,11 +93,6 @@ func NewVmExecInstruction(
 			{
 				PublicKey:  getOptionalAccountMetaAddress(accounts.VmMemD),
 				IsWritable: true,
-				IsSigner:   false,
-			},
-			{
-				PublicKey:  getOptionalAccountMetaAddress(accounts.VmUnlockPda),
-				IsWritable: false,
 				IsSigner:   false,
 			},
 			{
