@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s fulfillment.Store, teardown func()) {
@@ -45,6 +45,11 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, err)
 		assert.Nil(t, actual)
 
+		actual, err = s.GetByVirtualSignature(ctx, "test_virtual_signature")
+		require.Error(t, err)
+		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, err)
+		assert.Nil(t, actual)
+
 		expected := fulfillment.Record{
 			Signature:                pointer.String("test_signature"),
 			Intent:                   "test_intent1",
@@ -55,6 +60,9 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 			Data:                     []byte("test_data"),
 			Nonce:                    pointer.String("test_nonce"),
 			Blockhash:                pointer.String("test_blockhash"),
+			VirtualSignature:         pointer.String("test_virtual_signature"),
+			VirtualNonce:             pointer.String("test_virtual_nonce"),
+			VirtualBlockhash:         pointer.String("test_virtual_blockhash"),
 			Source:                   "test_source",
 			Destination:              pointer.String("test_destination"),
 			IntentOrderingIndex:      1,
@@ -75,11 +83,20 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 		assert.EqualValues(t, 1, actual.Id)
 		assertEquivalentRecords(t, actual, &cloned)
 
+		actual, err = s.GetByVirtualSignature(ctx, "test_virtual_signature")
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assertEquivalentRecords(t, actual, &cloned)
+
 		actual, err = s.GetById(ctx, 2)
 		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, err)
 		assert.Nil(t, actual)
 
 		actual, err = s.GetBySignature(ctx, "test_signature_2")
+		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, err)
+		assert.Nil(t, actual)
+
+		actual, err = s.GetByVirtualSignature(ctx, "test_virtual_signature_2")
 		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, err)
 		assert.Nil(t, actual)
 
@@ -1055,6 +1072,9 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *fulfillment.Record) {
 	assert.EqualValues(t, obj1.Signature, obj2.Signature)
 	assert.EqualValues(t, obj1.Nonce, obj2.Nonce)
 	assert.EqualValues(t, obj1.Blockhash, obj2.Blockhash)
+	assert.EqualValues(t, obj1.VirtualSignature, obj2.VirtualSignature)
+	assert.EqualValues(t, obj1.VirtualNonce, obj2.VirtualNonce)
+	assert.EqualValues(t, obj1.VirtualBlockhash, obj2.VirtualBlockhash)
 	assert.Equal(t, obj1.Source, obj2.Source)
 	assert.EqualValues(t, obj1.Destination, obj2.Destination)
 	assert.Equal(t, obj1.IntentOrderingIndex, obj2.IntentOrderingIndex)

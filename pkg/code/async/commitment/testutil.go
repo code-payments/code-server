@@ -102,6 +102,9 @@ func setup(t *testing.T) testEnv {
 }
 
 func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commitment.State) *commitment.Record {
+	vm, err := common.NewAccountFromPublicKeyString(e.treasuryPool.Vm)
+	require.NoError(t, err)
+
 	commitmentRecord := &commitment.Record{
 		Address: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
@@ -122,7 +125,7 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 	require.NoError(t, e.data.SaveCommitment(e.ctx, commitmentRecord))
 
 	owner := testutil.NewRandomAccount(t)
-	timelockAccounts, err := owner.GetTimelockAccounts(common.KinMintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(vm, common.KinMintAccount)
 	require.NoError(t, err)
 
 	intentRecord := &intent.Record{

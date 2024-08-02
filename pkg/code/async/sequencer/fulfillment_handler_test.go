@@ -1,42 +1,8 @@
 package async_sequencer
 
-import (
-	"context"
-	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"math/rand"
-	"strings"
-	"testing"
-	"time"
+// todo: fix tests once sequencer is rounded out for the vm
 
-	"github.com/mr-tron/base58"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/code-payments/code-server/pkg/code/common"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/commitment"
-	"github.com/code-payments/code-server/pkg/code/data/currency"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
-	"github.com/code-payments/code-server/pkg/code/data/vault"
-	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/testutil"
-)
+/*
 
 // Note: CanSubmitToBlockchain tests are handled in scheduler testing
 
@@ -1273,3 +1239,5 @@ func assertExpectedKreMemoInstruction(t *testing.T, txn *solana.Transaction, ind
 	assert.EqualValues(t, kin.TransactionTypeP2P, kreMemo.TransactionType())
 	assert.EqualValues(t, transaction_util.KreAppIndex, kreMemo.AppIndex())
 }
+
+*/

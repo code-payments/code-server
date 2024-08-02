@@ -7,9 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 )
 
 type store struct {
@@ -149,6 +149,16 @@ func (s *store) GetById(ctx context.Context, id uint64) (*fulfillment.Record, er
 // GetBySignature implements fulfillment.Store.GetBySignature
 func (s *store) GetBySignature(ctx context.Context, signature string) (*fulfillment.Record, error) {
 	obj, err := dbGetBySignature(ctx, s.db, signature)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromFulfillmentModel(obj), nil
+}
+
+// GetByVirtualSignature implements fulfillment.Store.GetByVirtualSignature
+func (s *store) GetByVirtualSignature(ctx context.Context, signature string) (*fulfillment.Record, error) {
+	obj, err := dbGetByVirtualSignature(ctx, s.db, signature)
 	if err != nil {
 		return nil, err
 	}

@@ -35,6 +35,10 @@ const (
 			nonce TEXT NULL,
 			blockhash TEXT NULL,
 
+			virtual_signature TEXT NULL,
+			virtual_nonce TEXT NULL,
+			virtual_blockhash TEXT NULL,
+
 			source TEXT NOT NULL,
 			destination TEXT NULL,
 

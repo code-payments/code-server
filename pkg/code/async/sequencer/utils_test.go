@@ -11,6 +11,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 )
 
+// todo: add virtual nonce test variants
+
 func TestMarkNonceAsAvailableDueToRevokedFulfillment_SafetyChecks(t *testing.T) {
 	env := setupWorkerEnv(t)
 

@@ -201,7 +201,15 @@ func (p *service) handleReleased(ctx context.Context, record *nonce.Record) erro
 			return err
 		}
 	case nonce.EnvironmentCvm:
-		return errors.New("todo: implement the process of getting submitted transaction from virtual instruction")
+		fulfillmentRecord, err := p.data.GetFulfillmentByVirtualSignature(ctx, record.Signature)
+		if err != nil {
+			return err
+		}
+
+		txn, err = p.getTransaction(ctx, *fulfillmentRecord.Signature)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Sanity check the Solana transaction is in a finalized or failed state

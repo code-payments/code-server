@@ -31,6 +31,9 @@ type fulfillmentModel struct {
 	Signature                sql.NullString `db:"signature"`
 	Nonce                    sql.NullString `db:"nonce"`
 	Blockhash                sql.NullString `db:"blockhash"`
+	VirtualSignature         sql.NullString `db:"virtual_signature"`
+	VirtualNonce             sql.NullString `db:"virtual_nonce"`
+	VirtualBlockhash         sql.NullString `db:"virtual_blockhash"`
 	Source                   string         `db:"source"`
 	Destination              sql.NullString `db:"destination"`
 	IntentOrderingIndex      uint64         `db:"intent_ordering_index"`
@@ -70,6 +73,24 @@ func toFulfillmentModel(obj *fulfillment.Record) (*fulfillmentModel, error) {
 		blockHashValue.String = *obj.Blockhash
 	}
 
+	var virtualSignatureValue sql.NullString
+	if obj.VirtualSignature != nil {
+		virtualSignatureValue.Valid = true
+		virtualSignatureValue.String = *obj.VirtualSignature
+	}
+
+	var virtualNonceValue sql.NullString
+	if obj.VirtualNonce != nil {
+		virtualNonceValue.Valid = true
+		virtualNonceValue.String = *obj.VirtualNonce
+	}
+
+	var virtualBlockHashValue sql.NullString
+	if obj.VirtualBlockhash != nil {
+		virtualBlockHashValue.Valid = true
+		virtualBlockHashValue.String = *obj.VirtualBlockhash
+	}
+
 	var destinationValue sql.NullString
 	if obj.Destination != nil {
 		destinationValue.Valid = true
@@ -93,6 +114,9 @@ func toFulfillmentModel(obj *fulfillment.Record) (*fulfillmentModel, error) {
 		Signature:                signatureValue,
 		Nonce:                    nonceValue,
 		Blockhash:                blockHashValue,
+		VirtualSignature:         virtualSignatureValue,
+		VirtualNonce:             virtualNonceValue,
+		VirtualBlockhash:         virtualBlockHashValue,
 		Source:                   obj.Source,
 		Destination:              destinationValue,
 		IntentOrderingIndex:      obj.IntentOrderingIndex,
@@ -121,6 +145,21 @@ func fromFulfillmentModel(obj *fulfillmentModel) *fulfillment.Record {
 		blockhash = &obj.Blockhash.String
 	}
 
+	var virtualSig *string
+	if obj.VirtualSignature.Valid {
+		virtualSig = &obj.VirtualSignature.String
+	}
+
+	var virtualNonce *string
+	if obj.VirtualNonce.Valid {
+		virtualNonce = &obj.VirtualNonce.String
+	}
+
+	var virtualBlockhash *string
+	if obj.VirtualBlockhash.Valid {
+		virtualBlockhash = &obj.VirtualBlockhash.String
+	}
+
 	var destination *string
 	if obj.Destination.Valid {
 		destination = &obj.Destination.String
@@ -142,6 +181,9 @@ func fromFulfillmentModel(obj *fulfillmentModel) *fulfillment.Record {
 		Signature:                sig,
 		Nonce:                    nonce,
 		Blockhash:                blockhash,
+		VirtualSignature:         virtualSig,
+		VirtualNonce:             virtualNonce,
+		VirtualBlockhash:         virtualBlockhash,
 		Source:                   obj.Source,
 		Destination:              destination,
 		IntentOrderingIndex:      obj.IntentOrderingIndex,
@@ -341,10 +383,13 @@ func (m *fulfillmentModel) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 			m.Blockhash,
 			m.Data,
 			m.State,
+			m.VirtualSignature,
+			m.VirtualNonce,
+			m.VirtualBlockhash,
 		}
 
 		if m.FulfillmentType == uint(fulfillment.CloseDormantTimelockAccount) {
-			preSortingUpdateStmt = ", intent_ordering_index = $7, action_ordering_index = $8, fulfillment_ordering_index = $9"
+			preSortingUpdateStmt = ", intent_ordering_index = $10, action_ordering_index = $11, fulfillment_ordering_index = $12"
 			params = append(
 				params,
 				m.IntentOrderingIndex,
@@ -354,10 +399,10 @@ func (m *fulfillmentModel) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 		}
 
 		query := fmt.Sprintf(`UPDATE `+fulfillmentTableName+`
-			SET signature = $2, nonce = $3, blockhash = $4, data = $5, state = $6%s
+			SET signature = $2, nonce = $3, blockhash = $4, data = $5, state = $6, virtual_signature = $7, virtual_nonce = $8, virtual_blockhash = $9%s
 			WHERE id = $1
 			RETURNING
-				id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at`,
+				id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at`,
 			preSortingUpdateStmt,
 		)
 
@@ -375,7 +420,7 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*fulfillmentModel) 
 	var res []*fulfillmentModel
 
 	query := `WITH inserted AS (`
-	query += `INSERT INTO ` + fulfillmentTableName + ` (intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at, batch_insertion_id) VALUES `
+	query += `INSERT INTO ` + fulfillmentTableName + ` (intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at, batch_insertion_id) VALUES `
 
 	var parameters []interface{}
 	for i, model := range models {
@@ -389,8 +434,8 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*fulfillmentModel) 
 
 		baseIndex := len(parameters)
 		query += fmt.Sprintf(
-			`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
-			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7, baseIndex+8, baseIndex+9, baseIndex+10, baseIndex+11, baseIndex+12, baseIndex+13, baseIndex+14, baseIndex+15, baseIndex+16, baseIndex+17, baseIndex+18, baseIndex+19,
+			`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
+			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7, baseIndex+8, baseIndex+9, baseIndex+10, baseIndex+11, baseIndex+12, baseIndex+13, baseIndex+14, baseIndex+15, baseIndex+16, baseIndex+17, baseIndex+18, baseIndex+19, baseIndex+20, baseIndex+21, baseIndex+22,
 		)
 
 		if i != len(models)-1 {
@@ -410,6 +455,9 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*fulfillmentModel) 
 			model.Signature,
 			model.Nonce,
 			model.Blockhash,
+			model.VirtualSignature,
+			model.VirtualNonce,
+			model.VirtualBlockhash,
 			model.Source,
 			model.Destination,
 			model.IntentOrderingIndex,
@@ -423,7 +471,7 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*fulfillmentModel) 
 		)
 	}
 
-	query += ` RETURNING id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at, batch_insertion_id) `
+	query += ` RETURNING id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at, batch_insertion_id) `
 
 	// Kind of hacky, but we don't really have a great PK for on demand transactions
 	// that allows us to update the corresponding record that was passed in (for example,
@@ -502,7 +550,7 @@ func dbGetById(ctx context.Context, db *sqlx.DB, id uint64) (*fulfillmentModel, 
 
 	res := &fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE id = $1
 		LIMIT 1`
@@ -521,9 +569,28 @@ func dbGetBySignature(ctx context.Context, db *sqlx.DB, signature string) (*fulf
 
 	res := &fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE signature = $1
+		LIMIT 1`
+
+	err := db.GetContext(ctx, res, query, signature)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, fulfillment.ErrFulfillmentNotFound)
+	}
+	return res, nil
+}
+
+func dbGetByVirtualSignature(ctx context.Context, db *sqlx.DB, signature string) (*fulfillmentModel, error) {
+	if len(signature) == 0 {
+		return nil, fulfillment.ErrFulfillmentNotFound
+	}
+
+	res := &fulfillmentModel{}
+
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+		FROM ` + fulfillmentTableName + `
+		WHERE virtual_signature = $1
 		LIMIT 1`
 
 	err := db.GetContext(ctx, res, query, signature)
@@ -536,7 +603,7 @@ func dbGetBySignature(ctx context.Context, db *sqlx.DB, signature string) (*fulf
 func dbGetAllByState(ctx context.Context, db *sqlx.DB, state fulfillment.State, includeDisabledActiveScheduling bool, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*fulfillmentModel, error) {
 	res := []*fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE (state = $1 AND %s)
 	`
@@ -565,7 +632,7 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state fulfillment.State, 
 func dbGetAllByIntent(ctx context.Context, db *sqlx.DB, intent string, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*fulfillmentModel, error) {
 	res := []*fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE (intent = $1)
 	`
@@ -588,7 +655,7 @@ func dbGetAllByIntent(ctx context.Context, db *sqlx.DB, intent string, cursor q.
 func dbGetAllByAction(ctx context.Context, db *sqlx.DB, intentId string, actionId uint32) ([]*fulfillmentModel, error) {
 	res := []*fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE (intent = $1 and action_id = $2)
 	`
@@ -608,7 +675,7 @@ func dbGetAllByAction(ctx context.Context, db *sqlx.DB, intentId string, actionI
 func dbGetAllByTypeAndAction(ctx context.Context, db *sqlx.DB, fulfillmentType fulfillment.Type, intentId string, actionId uint32) ([]*fulfillmentModel, error) {
 	res := []*fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE intent = $1 AND action_id = $2 AND fulfillment_type = $3
 	`
@@ -628,7 +695,7 @@ func dbGetAllByTypeAndAction(ctx context.Context, db *sqlx.DB, fulfillmentType f
 func dbGetFirstSchedulableByAddressAsSource(ctx context.Context, db *sqlx.DB, address string) (*fulfillmentModel, error) {
 	res := &fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE (source = $1 AND (state = $2 OR state = $3))
 		ORDER BY intent_ordering_index ASC, action_ordering_index ASC, fulfillment_ordering_index ASC
@@ -644,7 +711,7 @@ func dbGetFirstSchedulableByAddressAsSource(ctx context.Context, db *sqlx.DB, ad
 func dbGetFirstSchedulableByAddressAsDestination(ctx context.Context, db *sqlx.DB, address string) (*fulfillmentModel, error) {
 	res := &fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE (destination = $1 AND (state = $2 OR state = $3))
 		ORDER BY intent_ordering_index ASC, action_ordering_index ASC, fulfillment_ordering_index ASC
@@ -660,7 +727,7 @@ func dbGetFirstSchedulableByAddressAsDestination(ctx context.Context, db *sqlx.D
 func dbGetFirstSchedulableByType(ctx context.Context, db *sqlx.DB, fulfillmentType fulfillment.Type) (*fulfillmentModel, error) {
 	res := &fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE (fulfillment_type = $1 AND (state = $2 OR state = $3))
 		ORDER BY intent_ordering_index ASC, action_ordering_index ASC, fulfillment_ordering_index ASC
@@ -676,7 +743,7 @@ func dbGetFirstSchedulableByType(ctx context.Context, db *sqlx.DB, fulfillmentTy
 func dbGetNextSchedulableByAddress(ctx context.Context, db *sqlx.DB, address string, intentOrderingIndex uint64, actionOrderingIndex, fulfillmentOrderingIndex uint32) (*fulfillmentModel, error) {
 	res := &fulfillmentModel{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, fulfillment_type, data, signature, nonce, blockhash, virtual_signature, virtual_nonce, virtual_blockhash, source, destination, intent_ordering_index, action_ordering_index, fulfillment_ordering_index, disable_active_scheduling, phone_number, state, created_at
 		FROM ` + fulfillmentTableName + `
 		WHERE ((source = $1 OR destination = $1) AND (state = $2 OR state = $3) AND (intent_ordering_index > $4 OR (intent_ordering_index = $4 AND action_ordering_index > $5) OR (intent_ordering_index = $4 AND action_ordering_index = $5 AND fulfillment_ordering_index > $6)))
 		ORDER BY intent_ordering_index ASC, action_ordering_index ASC, fulfillment_ordering_index ASC

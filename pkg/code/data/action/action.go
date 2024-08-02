@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type Type uint8
@@ -14,7 +14,7 @@ const (
 	UnknownType Type = iota
 	OpenAccount
 	CloseEmptyAccount
-	CloseDormantAccount
+	CloseDormantAccount // Deprecated by the VM
 	NoPrivacyTransfer
 	NoPrivacyWithdraw
 	PrivateTransfer // Incorprorates all client-side private movement of funds. Backend processes don't care about the distinction, yet.

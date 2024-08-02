@@ -26,6 +26,8 @@ import (
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
+// todo: include new virtual nonce account handling tests
+
 func TestFulfillmentWorker_StateUnknown_RemainInStateUnknown(t *testing.T) {
 	env := setupWorkerEnv(t)
 

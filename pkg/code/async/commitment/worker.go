@@ -122,6 +122,11 @@ func (p *service) handleOpen(ctx context.Context, record *commitment.Record) err
 	}
 
 	if shouldClose {
+		err = p.injectCloseCommitmentFulfillment(ctx, record)
+		if err != nil {
+			return err
+		}
+
 		return markCommitmentAsClosing(ctx, p.data, record.Intent, record.ActionId)
 	}
 
@@ -205,8 +210,7 @@ func (p *service) shouldCloseCommitment(ctx context.Context, commitmentRecord *c
 		return false, nil
 	}
 
-	// todo: There isn't a way to close commitments yet in the VM
-	return false, nil
+	return true, nil
 }
 
 func (p *service) maybeMarkCommitmentForGC(ctx context.Context, commitmentRecord *commitment.Record) error {

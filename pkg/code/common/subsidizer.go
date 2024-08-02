@@ -49,7 +49,7 @@ var (
 		fulfillment.UploadCommitmentProof:                 5000,     // 0.000005 SOL (5000 lamports per signature)
 		fulfillment.VerifyCommitmentProof:                 5000,     // 0.000005 SOL (5000 lamports per signature)
 		fulfillment.OpenCommitmentVault:                   2050000,  // 0.00205 SOL
-		fulfillment.CloseCommitmentVault:                  5000,     // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.CloseCommitment:                       5000,     // 0.000005 SOL (5000 lamports per signature)
 	}
 	lamportsPerCreateNonceAccount uint64 = 1450000 // 0.00145 SOL
 )

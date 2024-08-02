@@ -29,6 +29,9 @@ import (
 	"github.com/code-payments/code-server/pkg/retry"
 )
 
+// todo: Is this even relevant anymore with the VM? If so, we need new logic because
+//       closing dormant accounts is no longer a thing with the VM.
+
 const (
 	giftCardAutoReturnIntentPrefix = "auto-return-gc-"
 	giftCardExpiry                 = 24 * time.Hour
