@@ -1,14 +1,23 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/code-payments/code-server/pkg/code/data/vm/ram"
+	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
-type model struct {
+const (
+	accountTableName         = "codewallet__core_vmmemoryaccount"
+	allocatedMemoryTableName = "codewallet__core_vmmemoryallocatedmemory"
+)
+
+type accountModel struct {
 	Id sql.NullInt64 `db:"id"`
 
 	Vm string `db:"vm"`
@@ -25,12 +34,25 @@ type model struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
-func toModel(obj *ram.Record) (*model, error) {
+type allocatedMemoryModel struct {
+	Id sql.NullInt64 `db:"id"`
+
+	Vm string `db:"vm"`
+
+	MemoryAccount     string `db:"memory_account"`
+	Index             uint16 `db:"index"`
+	IsAllocated       bool   `db:"is_allocated"`
+	StoredAccountType int    `db:"stored_account_type"`
+
+	LastUpdatedAt time.Time `db:"last_updated_at"`
+}
+
+func toAccountModel(obj *ram.Record) (*accountModel, error) {
 	if err := obj.Validate(); err != nil {
 		return nil, err
 	}
 
-	return &model{
+	return &accountModel{
 		Vm: obj.Vm,
 
 		Address: obj.Address,
@@ -46,7 +68,7 @@ func toModel(obj *ram.Record) (*model, error) {
 	}, nil
 }
 
-func fromModel(obj *model) *ram.Record {
+func fromAccountModel(obj *accountModel) *ram.Record {
 	return &ram.Record{
 		Id: uint64(obj.Id.Int64),
 
@@ -63,4 +85,108 @@ func fromModel(obj *model) *ram.Record {
 
 		CreatedAt: obj.CreatedAt,
 	}
+}
+
+func (m *accountModel) dbInitialize(ctx context.Context, db *sqlx.DB) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		query1 := `INSERT INTO ` + accountTableName + `
+				(vm, address, capacity, num_sectors, num_pages, page_size, stored_account_type, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				RETURNING
+					id, vm, address, capacity, num_sectors, num_pages, page_size, stored_account_type, created_at`
+
+		if m.CreatedAt.IsZero() {
+			m.CreatedAt = time.Now()
+		}
+
+		err := tx.QueryRowxContext(
+			ctx,
+			query1,
+			m.Vm,
+			m.Address,
+			m.Capacity,
+			m.NumSectors,
+			m.NumPages,
+			m.PageSize,
+			m.StoredAccountType,
+			m.CreatedAt,
+		).StructScan(m)
+
+		if err != nil {
+			return pgutil.CheckUniqueViolation(err, ram.ErrAlreadyInitialized)
+		}
+
+		query2 := `INSERT INTO ` + allocatedMemoryTableName + `
+				(vm, memory_account, index, is_allocated, stored_account_type, last_updated_at)
+				SELECT $1, $2, generate_series(0, $3), $4, $5, $6`
+
+		_, err = tx.ExecContext(
+			ctx,
+			query2,
+			m.Vm,
+			m.Address,
+			ram.GetActualCapcity(fromAccountModel(m))-1,
+			false,
+			m.StoredAccountType,
+			m.CreatedAt,
+		)
+		return err
+	})
+}
+
+func dbFreeMemory(ctx context.Context, db *sqlx.DB, memoryAccount string, index uint16) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		var model allocatedMemoryModel
+
+		query := `UPDATE ` + allocatedMemoryTableName + `
+			SET is_allocated = false, last_updated_at = $3
+			WHERE memory_account = $1 and index = $2 AND is_allocated
+			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, last_updated_at`
+
+		err := tx.QueryRowxContext(
+			ctx,
+			query,
+			memoryAccount,
+			index,
+			time.Now(),
+		).StructScan(&model)
+
+		return pgutil.CheckNoRows(err, ram.ErrNotReserved)
+	})
+}
+
+func dbReserveMemory(ctx context.Context, db *sqlx.DB, vm string, accountType cvm.VirtualAccountType) (string, uint16, error) {
+	var address string
+	var index uint16
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		var model allocatedMemoryModel
+
+		query := `UPDATE ` + allocatedMemoryTableName + `
+			SET is_allocated = true, last_updated_at = $3
+			WHERE id IN (
+				SELECT id FROM ` + allocatedMemoryTableName + `
+				WHERE vm = $1 AND stored_account_type = $2 and NOT is_allocated
+				ORDER BY memory_account, index ASC
+				LIMIT 1
+				FOR UPDATE
+			)
+			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, last_updated_at`
+
+		err := tx.QueryRowxContext(
+			ctx,
+			query,
+			vm,
+			accountType,
+			time.Now(),
+		).StructScan(&model)
+		if err != nil {
+			return pgutil.CheckNoRows(err, ram.ErrNoFreeMemory)
+		}
+
+		address = model.MemoryAccount
+		index = model.Index
+
+		return nil
+	})
+	return address, index, err
 }

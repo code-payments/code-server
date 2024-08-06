@@ -6,7 +6,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/vm/ram/tests"
 )
 
-func TestRamMemoryStore(t *testing.T) {
+func TestVmRamMemoryStore(t *testing.T) {
 	testStore := New()
 	teardown := func() {
 		testStore.(*store).reset()

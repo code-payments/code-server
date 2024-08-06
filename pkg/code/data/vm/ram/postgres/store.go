@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 
 	"github.com/jmoiron/sqlx"
 
@@ -24,15 +23,28 @@ func New(db *sql.DB) ram.Store {
 
 // InitializeMemory implements vm.ram.Store.InitializeMemory
 func (s *store) InitializeMemory(ctx context.Context, record *ram.Record) error {
-	return errors.New("not implemented")
+	model, err := toAccountModel(record)
+	if err != nil {
+		return err
+	}
+
+	err = model.dbInitialize(ctx, s.db)
+	if err != nil {
+		return err
+	}
+
+	res := fromAccountModel(model)
+	res.CopyTo(record)
+
+	return nil
 }
 
 // FreeMemory implements vm.ram.Store.FreeMemory
 func (s *store) FreeMemory(ctx context.Context, memoryAccount string, index uint16) error {
-	return errors.New("not implemented")
+	return dbFreeMemory(ctx, s.db, memoryAccount, index)
 }
 
 // ReserveMemory implements vm.ram.Store.ReserveMemory
 func (s *store) ReserveMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType) (string, uint16, error) {
-	return "", 0, errors.New("not implemetned")
+	return dbReserveMemory(ctx, s.db, vm, accountType)
 }
