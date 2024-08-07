@@ -19,6 +19,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -127,8 +128,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) SupportsOnDemandTran
 }
 
 func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account     // todo: configure vm account
-	var memory *common.Account // todo: configure memory account
+	var vm *common.Account // todo: configure vm account
 
 	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
@@ -149,12 +149,17 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 		return nil, err
 	}
 
+	memory, accountIndex, err := reserveVmMemory(ctx, h.data, vm.PublicKey().ToBase58(), cvm.VirtualAccountTypeTimelock, fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
 	txn, err := transaction_util.MakeOpenAccountTransaction(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
 		memory,
-		0, // todo: reserve free space in the memory account
+		accountIndex,
 
 		timelockAccounts,
 	)
@@ -696,7 +701,6 @@ func (h *TransferWithCommitmentFulfillmentHandler) SupportsOnDemandTransactions(
 func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
 	var vm *common.Account            // todo: configure vm account
 	var accountMemory *common.Account // todo: configure memory account
-	var relayMemory *common.Account   // todo: configure memory account
 
 	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
@@ -737,6 +741,11 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
+	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, vm.PublicKey().ToBase58(), cvm.VirtualAccountTypeRelay, commitment.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
 	// todo: support external transfers
 	txn, err := transaction_util.MakeInternalTreasuryAdvanceTransaction(
 		selectedNonce.Account,
@@ -746,7 +755,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		accountMemory,
 		0, // todo: use indexer to find index
 		relayMemory,
-		0, // todo: use indexer to find index
+		relayAccountIndex,
 
 		treasuryPool,
 		treasuryPoolVault,
