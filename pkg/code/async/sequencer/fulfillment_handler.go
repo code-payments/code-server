@@ -752,7 +752,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
-	timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, vm, destinationTimelockOwner)
+	_, timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, vm, destinationTimelockOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -879,7 +879,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 		return nil, errors.New("invalid fulfillment type")
 	}
 
-	memory, index, err := getVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, vm, nil)
+	virtualAccountState, memory, index, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, vm, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -892,6 +892,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 		memory,
 		index,
 		storage,
+		virtualAccountState.Marshal(),
 	)
 	if err != nil {
 		return nil, err
@@ -1044,7 +1045,7 @@ func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.
 		return nil, err
 	}
 
-	memory, index, err := getVirtualRelayAccountLocationInMemory(ctx, h.vmIndexerClient, vm, relay)
+	virtualAccountState, memory, index, err := getVirtualRelayAccountStateInMemory(ctx, h.vmIndexerClient, vm, relay)
 	if err != nil {
 		return nil, err
 	}
@@ -1057,6 +1058,7 @@ func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.
 		memory,
 		index,
 		storage,
+		virtualAccountState.Marshal(),
 	)
 	if err != nil {
 		return nil, err
