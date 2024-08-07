@@ -230,7 +230,8 @@ func setupWorkerEnv(t *testing.T) *workerTestEnv {
 	actionHandler := &mockActionHandler{}
 	intentHandler := &mockIntentHandler{}
 
-	worker := New(db, scheduler, withManualTestOverrides(&testOverrides{})).(*service)
+	// todo: setup a test vm indexer
+	worker := New(db, scheduler, nil, withManualTestOverrides(&testOverrides{})).(*service)
 	for key := range worker.fulfillmentHandlersByType {
 		worker.fulfillmentHandlersByType[key] = fulfillmentHandler
 	}
