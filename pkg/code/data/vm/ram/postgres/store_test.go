@@ -52,10 +52,12 @@ const (
 			index INTEGER NOT NULL,
 			is_allocated BOOL NOT NULL,
 			stored_account_type INTEGER NOT NULL,
+			address TEXT NULL,
 
 			last_updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
-			CONSTRAINT codewallet__core_vmmemoryallocatedmemory__uniq__memory_account__and__index UNIQUE (memory_account, index)
+			CONSTRAINT codewallet__core_vmmemoryallocatedmemory__uniq__memory_account__and__index UNIQUE (memory_account, index),
+			CONSTRAINT codewallet__core_vmmemoryallocatedmemory__uniq__address UNIQUE (address)
 		);
 	`
 

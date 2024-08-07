@@ -442,8 +442,9 @@ type DatabaseData interface {
 	// VM RAM
 	// --------------------------------------------------------------------------------
 	InitializeVmMemory(ctx context.Context, record *vm_ram.Record) error
-	FreeVmMemory(ctx context.Context, memoryAccount string, index uint16) error
-	ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType) (string, uint16, error)
+	FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error
+	FreeVmMemoryByAddress(ctx context.Context, address string) error
+	ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error)
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -1566,9 +1567,12 @@ func (dp *DatabaseProvider) MarkTwitterNonceAsUsed(ctx context.Context, tweetId 
 func (dp *DatabaseProvider) InitializeVmMemory(ctx context.Context, record *vm_ram.Record) error {
 	return dp.vmRam.InitializeMemory(ctx, record)
 }
-func (dp *DatabaseProvider) FreeVmMemory(ctx context.Context, memoryAccount string, index uint16) error {
-	return dp.vmRam.FreeMemory(ctx, memoryAccount, index)
+func (dp *DatabaseProvider) FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error {
+	return dp.vmRam.FreeMemoryByIndex(ctx, memoryAccount, index)
 }
-func (dp *DatabaseProvider) ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType) (string, uint16, error) {
-	return dp.vmRam.ReserveMemory(ctx, vm, accountType)
+func (dp *DatabaseProvider) FreeVmMemoryByAddress(ctx context.Context, address string) error {
+	return dp.vmRam.FreeMemoryByAddress(ctx, address)
+}
+func (dp *DatabaseProvider) ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
+	return dp.vmRam.ReserveMemory(ctx, vm, accountType, address)
 }

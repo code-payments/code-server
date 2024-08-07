@@ -39,12 +39,17 @@ func (s *store) InitializeMemory(ctx context.Context, record *ram.Record) error 
 	return nil
 }
 
-// FreeMemory implements vm.ram.Store.FreeMemory
-func (s *store) FreeMemory(ctx context.Context, memoryAccount string, index uint16) error {
-	return dbFreeMemory(ctx, s.db, memoryAccount, index)
+// FreeMemoryByIndex implements vm.ram.Store.FreeMemoryByIndex
+func (s *store) FreeMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error {
+	return dbFreeMemoryByIndex(ctx, s.db, memoryAccount, index)
+}
+
+// FreeMemoryByAddress implements vm.ram.Store.FreeMemoryByAddress
+func (s *store) FreeMemoryByAddress(ctx context.Context, address string) error {
+	return dbFreeMemoryByAddress(ctx, s.db, address)
 }
 
 // ReserveMemory implements vm.ram.Store.ReserveMemory
-func (s *store) ReserveMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType) (string, uint16, error) {
-	return dbReserveMemory(ctx, s.db, vm, accountType)
+func (s *store) ReserveMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
+	return dbReserveMemory(ctx, s.db, vm, accountType, address)
 }

@@ -39,10 +39,11 @@ type allocatedMemoryModel struct {
 
 	Vm string `db:"vm"`
 
-	MemoryAccount     string `db:"memory_account"`
-	Index             uint16 `db:"index"`
-	IsAllocated       bool   `db:"is_allocated"`
-	StoredAccountType int    `db:"stored_account_type"`
+	MemoryAccount     string         `db:"memory_account"`
+	Index             uint16         `db:"index"`
+	IsAllocated       bool           `db:"is_allocated"`
+	StoredAccountType uint8          `db:"stored_account_type"`
+	Address           sql.NullString `db:"address"`
 
 	LastUpdatedAt time.Time `db:"last_updated_at"`
 }
@@ -134,14 +135,14 @@ func (m *accountModel) dbInitialize(ctx context.Context, db *sqlx.DB) error {
 	})
 }
 
-func dbFreeMemory(ctx context.Context, db *sqlx.DB, memoryAccount string, index uint16) error {
+func dbFreeMemoryByIndex(ctx context.Context, db *sqlx.DB, memoryAccount string, index uint16) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		var model allocatedMemoryModel
 
 		query := `UPDATE ` + allocatedMemoryTableName + `
-			SET is_allocated = false, last_updated_at = $3
+			SET is_allocated = false, address = NULL, last_updated_at = $3
 			WHERE memory_account = $1 and index = $2 AND is_allocated
-			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, last_updated_at`
+			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, address, last_updated_at`
 
 		err := tx.QueryRowxContext(
 			ctx,
@@ -155,37 +156,58 @@ func dbFreeMemory(ctx context.Context, db *sqlx.DB, memoryAccount string, index 
 	})
 }
 
-func dbReserveMemory(ctx context.Context, db *sqlx.DB, vm string, accountType cvm.VirtualAccountType) (string, uint16, error) {
-	var address string
+func dbFreeMemoryByAddress(ctx context.Context, db *sqlx.DB, address string) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		var model allocatedMemoryModel
+
+		query := `UPDATE ` + allocatedMemoryTableName + `
+			SET is_allocated = false, address = NULL, last_updated_at = $2
+			WHERE address = $1 AND is_allocated
+			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, address, last_updated_at`
+
+		err := tx.QueryRowxContext(
+			ctx,
+			query,
+			address,
+			time.Now(),
+		).StructScan(&model)
+
+		return pgutil.CheckNoRows(err, ram.ErrNotReserved)
+	})
+}
+
+func dbReserveMemory(ctx context.Context, db *sqlx.DB, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
+	var memoryAccount string
 	var index uint16
 	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		var model allocatedMemoryModel
 
 		query := `UPDATE ` + allocatedMemoryTableName + `
-			SET is_allocated = true, last_updated_at = $3
+			SET is_allocated = true, address = $3, last_updated_at = $4
 			WHERE id IN (
 				SELECT id FROM ` + allocatedMemoryTableName + `
 				WHERE vm = $1 AND NOT is_allocated AND stored_account_type = $2
 				LIMIT 1
 				FOR UPDATE
 			)
-			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, last_updated_at`
+			RETURNING id, vm, memory_account, index, is_allocated, stored_account_type, address, last_updated_at`
 
 		err := tx.QueryRowxContext(
 			ctx,
 			query,
 			vm,
 			accountType,
+			address,
 			time.Now(),
 		).StructScan(&model)
 		if err != nil {
-			return pgutil.CheckNoRows(err, ram.ErrNoFreeMemory)
+			return pgutil.CheckUniqueViolation(pgutil.CheckNoRows(err, ram.ErrNoFreeMemory), ram.ErrAddressAlreadyReserved)
 		}
 
-		address = model.MemoryAccount
+		memoryAccount = model.MemoryAccount
 		index = model.Index
 
 		return nil
 	})
-	return address, index, err
+	return memoryAccount, index, err
 }

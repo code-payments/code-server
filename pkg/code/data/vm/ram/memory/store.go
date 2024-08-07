@@ -14,13 +14,15 @@ type store struct {
 	mu                     sync.Mutex
 	last                   uint64
 	records                []*ram.Record
-	reservedAccountIndices map[string]struct{}
+	reservedAccountIndices map[string]string
+	storedVirtualAccounts  map[string]string
 }
 
 // New returns a new in memory vm.ram.Store
 func New() ram.Store {
 	return &store{
-		reservedAccountIndices: make(map[string]struct{}),
+		reservedAccountIndices: make(map[string]string),
+		storedVirtualAccounts:  make(map[string]string),
 	}
 }
 
@@ -49,37 +51,60 @@ func (s *store) InitializeMemory(_ context.Context, record *ram.Record) error {
 	return nil
 }
 
-// FreeMemory implements vm.ram.Store.FreeMemory
-func (s *store) FreeMemory(_ context.Context, memoryAccount string, index uint16) error {
+// FreeMemoryByIndex implements vm.ram.Store.FreeMemoryByIndex
+func (s *store) FreeMemoryByIndex(_ context.Context, memoryAccount string, index uint16) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := getAccountIndexKey(memoryAccount, index)
-	if _, ok := s.reservedAccountIndices[key]; !ok {
+	reservationKey := getAccountIndexKey(memoryAccount, index)
+	address, ok := s.reservedAccountIndices[reservationKey]
+	if !ok {
 		return ram.ErrNotReserved
 	}
 
-	delete(s.reservedAccountIndices, key)
+	delete(s.reservedAccountIndices, reservationKey)
+	delete(s.storedVirtualAccounts, address)
+
+	return nil
+}
+
+// FreeMemoryByAddress implements vm.ram.Store.FreeMemoryByAddress
+func (s *store) FreeMemoryByAddress(_ context.Context, address string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	reservationKey, ok := s.storedVirtualAccounts[address]
+	if !ok {
+		return ram.ErrNotReserved
+	}
+
+	delete(s.reservedAccountIndices, reservationKey)
+	delete(s.storedVirtualAccounts, address)
 
 	return nil
 }
 
 // ReserveMemory implements vm.ram.Store.ReserveMemory
-func (s *store) ReserveMemory(_ context.Context, vm string, accountType cvm.VirtualAccountType) (string, uint16, error) {
+func (s *store) ReserveMemory(_ context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if _, ok := s.storedVirtualAccounts[address]; ok {
+		return "", 0, ram.ErrAddressAlreadyReserved
+	}
 
 	items := s.findByVmAndAccountType(vm, accountType)
 	for _, item := range items {
 		actualCapacity := ram.GetActualCapcity(item)
 		for i := 0; i < int(actualCapacity); i++ {
-			key := getAccountIndexKey(item.Address, uint16(i))
+			reservationKey := getAccountIndexKey(item.Address, uint16(i))
 
-			if _, ok := s.reservedAccountIndices[key]; ok {
+			if _, ok := s.reservedAccountIndices[reservationKey]; ok {
 				continue
 			}
 
-			s.reservedAccountIndices[key] = struct{}{}
+			s.reservedAccountIndices[reservationKey] = address
+			s.storedVirtualAccounts[address] = reservationKey
 			return item.Address, uint16(i), nil
 		}
 	}
@@ -122,7 +147,8 @@ func (s *store) reset() {
 	defer s.mu.Unlock()
 	s.last = 0
 	s.records = nil
-	s.reservedAccountIndices = make(map[string]struct{})
+	s.reservedAccountIndices = make(map[string]string)
+	s.storedVirtualAccounts = make(map[string]string)
 }
 
 func getAccountIndexKey(memoryAccount string, index uint16) string {

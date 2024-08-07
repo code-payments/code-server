@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	ErrAlreadyInitialized = errors.New("memory account already initalized")
-	ErrNoFreeMemory       = errors.New("no available free memory")
-	ErrNotReserved        = errors.New("account index is not reserved")
+	ErrAlreadyInitialized     = errors.New("memory account already initalized")
+	ErrNoFreeMemory           = errors.New("no available free memory")
+	ErrNotReserved            = errors.New("memory is not reserved")
+	ErrAddressAlreadyReserved = errors.New("virtual account address already in memory")
 )
 
 // Store implements a basic construct for managing RAM memory. For simplicity,
@@ -23,9 +24,12 @@ type Store interface {
 	// Initializes a memory account for management
 	InitializeMemory(ctx context.Context, record *Record) error
 
-	// FreeMemory frees a piece of memory from a memory account at a particual index
-	FreeMemory(ctx context.Context, memoryAccount string, index uint16) error
+	// FreeMemoryByIndex frees a piece of memory from a memory account at a particual index
+	FreeMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error
 
-	// ReserveMemory reserves a piece of memory in a VM for the given account type
-	ReserveMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType) (string, uint16, error)
+	// FreeMemoryByAddress frees a piece of memory assigned to the virtual account address
+	FreeMemoryByAddress(ctx context.Context, address string) error
+
+	// ReserveMemory reserves a piece of memory in a VM for the virtual account address
+	ReserveMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error)
 }
