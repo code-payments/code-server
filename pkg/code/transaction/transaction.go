@@ -64,7 +64,10 @@ func MakeCompressAccountTransaction(
 	memory *common.Account,
 	accountIndex uint16,
 	storage *common.Account,
+	virtualAccountState []byte,
 ) (solana.Transaction, error) {
+	signature := ed25519.Sign(common.GetSubsidizer().PrivateKey().ToBytes(), virtualAccountState)
+
 	compressInstruction := cvm.NewSystemAccountCompressInstruction(
 		&cvm.SystemAccountCompressInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
@@ -74,6 +77,7 @@ func MakeCompressAccountTransaction(
 		},
 		&cvm.SystemAccountCompressInstructionArgs{
 			AccountIndex: accountIndex,
+			Signature:    cvm.Signature(signature),
 		},
 	)
 

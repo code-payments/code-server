@@ -11,11 +11,13 @@ var SystemAccountCompressInstructionDiscriminator = []byte{
 }
 
 const (
-	SystemAccountCompressInstructionArgsSize = 2 // account_index
+	SystemAccountCompressInstructionArgsSize = (2 + // account_index
+		SignatureSize) // signature
 )
 
 type SystemAccountCompressInstructionArgs struct {
 	AccountIndex uint16
+	Signature    Signature
 }
 
 type SystemAccountCompressInstructionAccounts struct {
@@ -38,6 +40,7 @@ func NewSystemAccountCompressInstruction(
 
 	putDiscriminator(data, SystemAccountCompressInstructionDiscriminator, &offset)
 	putUint16(data, args.AccountIndex, &offset)
+	putSignature(data, args.Signature, &offset)
 
 	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
