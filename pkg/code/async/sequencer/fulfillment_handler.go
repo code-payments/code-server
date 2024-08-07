@@ -1170,6 +1170,6 @@ func getFulfillmentHandlers(data code_data.Provider, vmIndexerClient indexerpb.I
 	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data, vmIndexerClient)
 	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data, vmIndexerClient)
 	handlersByType[fulfillment.SaveRecentRoot] = NewSaveRecentRootFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseCommitment] = NewCloseCommitmentFulfillmentHandler(data)
+	handlersByType[fulfillment.CloseCommitment] = NewCloseCommitmentFulfillmentHandler(data, vmIndexerClient)
 	return handlersByType
 }
