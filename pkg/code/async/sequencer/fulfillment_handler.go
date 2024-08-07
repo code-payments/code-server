@@ -355,7 +355,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, ful
 		return err
 	}
 
-	return nil
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -879,7 +879,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Cont
 		return errors.New("invalid fulfillment type")
 	}
 
-	return nil
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -1033,7 +1033,12 @@ func (h *CloseCommitmentFulfillmentHandler) OnSuccess(ctx context.Context, fulfi
 		return errors.New("invalid fulfillment type")
 	}
 
-	return markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	err := markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return err
+	}
+
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *CloseCommitmentFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
