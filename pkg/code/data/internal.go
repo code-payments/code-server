@@ -16,6 +16,7 @@ import (
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	pg "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -52,6 +53,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	vm_ram "github.com/code-payments/code-server/pkg/code/data/vm/ram"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 
 	account_memory_client "github.com/code-payments/code-server/pkg/code/data/account/memory"
@@ -87,6 +89,7 @@ import (
 	user_identity_memory_client "github.com/code-payments/code-server/pkg/code/data/user/identity/memory"
 	user_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/user/storage/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
+	vm_ram_memory_client "github.com/code-payments/code-server/pkg/code/data/vm/ram/memory"
 	webhook_memory_client "github.com/code-payments/code-server/pkg/code/data/webhook/memory"
 
 	account_postgres_client "github.com/code-payments/code-server/pkg/code/data/account/postgres"
@@ -121,6 +124,7 @@ import (
 	user_identity_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/identity/postgres"
 	user_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/storage/postgres"
 	vault_postgres_client "github.com/code-payments/code-server/pkg/code/data/vault/postgres"
+	vm_ram_postgres_client "github.com/code-payments/code-server/pkg/code/data/vm/ram/postgres"
 	webhook_postgres_client "github.com/code-payments/code-server/pkg/code/data/webhook/postgres"
 )
 
@@ -435,6 +439,13 @@ type DatabaseData interface {
 	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
 	MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error
 
+	// VM RAM
+	// --------------------------------------------------------------------------------
+	InitializeVmMemory(ctx context.Context, record *vm_ram.Record) error
+	FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error
+	FreeVmMemoryByAddress(ctx context.Context, address string) error
+	ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -478,6 +489,7 @@ type DatabaseProvider struct {
 	preferences    preferences.Store
 	airdrop        airdrop.Store
 	twitter        twitter.Store
+	vmRam          vm_ram.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -540,6 +552,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		preferences:    preferences_postgres_client.New(db),
 		airdrop:        airdrop_postgres_client.New(db),
 		twitter:        twitter_postgres_client.New(db),
+		vmRam:          vm_ram_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -583,6 +596,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		preferences:    preferences_memory_client.New(),
 		airdrop:        airdrop_memory_client.New(),
 		twitter:        twitter_memory_client.New(),
+		vmRam:          vm_ram_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1546,4 +1560,19 @@ func (dp *DatabaseProvider) IsTweetProcessed(ctx context.Context, tweetId string
 }
 func (dp *DatabaseProvider) MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error {
 	return dp.twitter.MarkNonceAsUsed(ctx, tweetId, nonce)
+}
+
+// VM RAM
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) InitializeVmMemory(ctx context.Context, record *vm_ram.Record) error {
+	return dp.vmRam.InitializeMemory(ctx, record)
+}
+func (dp *DatabaseProvider) FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error {
+	return dp.vmRam.FreeMemoryByIndex(ctx, memoryAccount, index)
+}
+func (dp *DatabaseProvider) FreeVmMemoryByAddress(ctx context.Context, address string) error {
+	return dp.vmRam.FreeMemoryByAddress(ctx, address)
+}
+func (dp *DatabaseProvider) ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
+	return dp.vmRam.ReserveMemory(ctx, vm, accountType, address)
 }

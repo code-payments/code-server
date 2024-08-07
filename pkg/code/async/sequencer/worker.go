@@ -233,18 +233,18 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 			selectedNonce.Unlock()
 		}()
 
-		txn, err := fulfillmentHandler.MakeOnDemandTransaction(ctx, record, selectedNonce)
-		if err != nil {
-			return err
-		}
-
-		record.Signature = pointer.String(base58.Encode(txn.Signature()))
-		record.Nonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
-		record.Blockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
-		record.Data = txn.Marshal()
-
 		err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
-			err := selectedNonce.MarkReservedWithSignature(ctx, *record.Signature)
+			txn, err := fulfillmentHandler.MakeOnDemandTransaction(ctx, record, selectedNonce)
+			if err != nil {
+				return err
+			}
+
+			record.Signature = pointer.String(base58.Encode(txn.Signature()))
+			record.Nonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
+			record.Blockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
+			record.Data = txn.Marshal()
+
+			err = selectedNonce.MarkReservedWithSignature(ctx, *record.Signature)
 			if err != nil {
 				return err
 			}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	commitment_worker "github.com/code-payments/code-server/pkg/code/async/commitment"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -19,6 +20,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -127,8 +129,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) SupportsOnDemandTran
 }
 
 func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account     // todo: configure vm account
-	var memory *common.Account // todo: configure memory account
+	var vm *common.Account // todo: configure vm account
 
 	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
@@ -149,12 +150,17 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 		return nil, err
 	}
 
+	memory, accountIndex, err := reserveVmMemory(ctx, h.data, vm.PublicKey().ToBase58(), cvm.VirtualAccountTypeTimelock, fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
 	txn, err := transaction_util.MakeOpenAccountTransaction(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
 		memory,
-		0, // todo: reserve free space in the memory account
+		accountIndex,
 
 		timelockAccounts,
 	)
@@ -355,7 +361,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, ful
 		return err
 	}
 
-	return nil
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -615,12 +621,14 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) IsRevoked(ctx 
 }
 
 type TransferWithCommitmentFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewTransferWithCommitmentFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewTransferWithCommitmentFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &TransferWithCommitmentFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -694,9 +702,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) SupportsOnDemandTransactions(
 }
 
 func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account            // todo: configure vm account
-	var accountMemory *common.Account // todo: configure memory account
-	var relayMemory *common.Account   // todo: configure memory account
+	var vm *common.Account // todo: configure vm account
 
 	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
@@ -705,6 +711,15 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 
 	if commitmentRecord.State != commitment.StatePayingDestination {
 		return nil, errors.New("commitment in unexpected state")
+	}
+
+	timelockRecord, err := h.data.GetTimelockByVault(ctx, commitmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+	destinationTimelockOwner, err := common.NewAccountFromPrivateKeyString(timelockRecord.VaultOwner)
+	if err != nil {
+		return nil, err
 	}
 
 	treasuryPool, err := common.NewAccountFromPublicKeyString(commitmentRecord.Pool)
@@ -737,16 +752,26 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
+	timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, vm, destinationTimelockOwner)
+	if err != nil {
+		return nil, err
+	}
+
+	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, vm.PublicKey().ToBase58(), cvm.VirtualAccountTypeRelay, commitment.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
 	// todo: support external transfers
 	txn, err := transaction_util.MakeInternalTreasuryAdvanceTransaction(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
 		vm,
-		accountMemory,
-		0, // todo: use indexer to find index
+		timelockAccountMemory,
+		timelockAccountIndex,
 		relayMemory,
-		0, // todo: use indexer to find index
+		relayAccountIndex,
 
 		treasuryPool,
 		treasuryPoolVault,
@@ -801,12 +826,14 @@ func (h *TransferWithCommitmentFulfillmentHandler) IsRevoked(ctx context.Context
 }
 
 type CloseEmptyTimelockAccountFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewCloseEmptyTimelockAccountFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewCloseEmptyTimelockAccountFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &CloseEmptyTimelockAccountFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -846,11 +873,15 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) SupportsOnDemandTransactio
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
 	var vm *common.Account      // todo: configure vm account
-	var memory *common.Account  // todo: configure memory account
 	var storage *common.Account // todo: configure storage account
 
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
+	}
+
+	memory, index, err := getVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, vm, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	txn, err := transaction_util.MakeCompressAccountTransaction(
@@ -859,7 +890,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 
 		vm,
 		memory,
-		0, // todo: get account index
+		index,
 		storage,
 	)
 	if err != nil {
@@ -879,7 +910,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Cont
 		return errors.New("invalid fulfillment type")
 	}
 
-	return nil
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -974,12 +1005,14 @@ func (h *SaveRecentRootFulfillmentHandler) IsRevoked(ctx context.Context, fulfil
 }
 
 type CloseCommitmentFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewCloseCommitmentFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewCloseCommitmentFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &CloseCommitmentFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -1000,11 +1033,20 @@ func (h *CloseCommitmentFulfillmentHandler) SupportsOnDemandTransactions() bool 
 
 func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
 	var vm *common.Account      // todo: configure vm account
-	var memory *common.Account  // todo: configure memory account
 	var storage *common.Account // todo: configure storage account
 
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return nil, errors.New("invalid fulfillment type")
+	}
+
+	relay, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	memory, index, err := getVirtualRelayAccountLocationInMemory(ctx, h.vmIndexerClient, vm, relay)
+	if err != nil {
+		return nil, err
 	}
 
 	txn, err := transaction_util.MakeCompressAccountTransaction(
@@ -1013,7 +1055,7 @@ func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.
 
 		vm,
 		memory,
-		0, // todo: get account index
+		index,
 		storage,
 	)
 	if err != nil {
@@ -1033,7 +1075,12 @@ func (h *CloseCommitmentFulfillmentHandler) OnSuccess(ctx context.Context, fulfi
 		return errors.New("invalid fulfillment type")
 	}
 
-	return markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	err := markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return err
+	}
+
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *CloseCommitmentFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -1112,15 +1159,16 @@ func estimateTreasuryPoolFundingLevels(ctx context.Context, data code_data.Provi
 	return total, used, nil
 }
 
-func getFulfillmentHandlers(data code_data.Provider, configProvider ConfigProvider) map[fulfillment.Type]FulfillmentHandler {
+// todo: simplify initialization of fulfillment handlers across service and contextual scheduler
+func getFulfillmentHandlers(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) map[fulfillment.Type]FulfillmentHandler {
 	handlersByType := make(map[fulfillment.Type]FulfillmentHandler)
 	handlersByType[fulfillment.InitializeLockedTimelockAccount] = NewInitializeLockedTimelockAccountFulfillmentHandler(data)
 	handlersByType[fulfillment.NoPrivacyTransferWithAuthority] = NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data)
 	handlersByType[fulfillment.NoPrivacyWithdraw] = NewNoPrivacyWithdrawFulfillmentHandler(data)
 	handlersByType[fulfillment.TemporaryPrivacyTransferWithAuthority] = NewTemporaryPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
 	handlersByType[fulfillment.PermanentPrivacyTransferWithAuthority] = NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
-	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data)
+	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data, vmIndexerClient)
+	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data, vmIndexerClient)
 	handlersByType[fulfillment.SaveRecentRoot] = NewSaveRecentRootFulfillmentHandler(data)
 	handlersByType[fulfillment.CloseCommitment] = NewCloseCommitmentFulfillmentHandler(data)
 	return handlersByType

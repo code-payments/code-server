@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	indexperpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -24,12 +24,12 @@ type service struct {
 	log             *logrus.Entry
 	conf            *conf
 	data            code_data.Provider
-	vmIndexerClient indexperpb.IndexerClient
+	vmIndexerClient indexerpb.IndexerClient
 
 	rent uint64
 }
 
-func New(data code_data.Provider, vmIndexerClient indexperpb.IndexerClient, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) async.Service {
 	return &service{
 		log:             logrus.StandardLogger().WithField("service", "nonce"),
 		conf:            configProvider(),
