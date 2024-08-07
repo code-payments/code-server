@@ -11,11 +11,13 @@ var VmMemoryInitInstructionDiscriminator = []byte{
 }
 
 const (
-	VmMemoryInitInstructionArgsSize = (4 + MaxMemoryAccountNameLength) // name
+	VmMemoryInitInstructionArgsSize = (4 + MaxMemoryAccountNameLength + // name
+		1) // layout
 )
 
 type VmMemoryInitInstructionArgs struct {
-	Name string
+	Name   string
+	Layout MemoryLayout
 }
 
 type VmMemoryInitInstructionAccounts struct {
@@ -37,6 +39,7 @@ func NewVmMemoryInitInstruction(
 
 	putDiscriminator(data, VmMemoryInitInstructionDiscriminator, &offset)
 	putString(data, args.Name, &offset)
+	putMemoryLayout(data, args.Layout, &offset)
 
 	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,

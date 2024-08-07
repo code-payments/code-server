@@ -13,17 +13,18 @@ const (
 )
 
 type MemoryAccountWithData struct {
-	Vm   ed25519.PublicKey
-	Bump uint8
-	Name string
-	Data PagedMemory
+	Vm     ed25519.PublicKey
+	Bump   uint8
+	Name   string
+	Layout MemoryLayout
+	Data   PagedMemory
 }
 
 const MemoryAccountWithDataSize = (8 + // discriminator
 	32 + // vm
 	1 + // bump
 	MaxMemoryAccountNameLength + // name
-	1 + // padding
+	1 + // layout
 	PagedMemorySize) // data
 
 var MemoryAccountDiscriminator = []byte{0x89, 0x7a, 0xdc, 0x6e, 0xdd, 0xca, 0x3e, 0x7f}
@@ -44,7 +45,7 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 	getKey(data, &obj.Vm, &offset)
 	getUint8(data, &obj.Bump, &offset)
 	getFixedString(data, &obj.Name, MaxMemoryAccountNameLength, &offset)
-	offset += 1 // padding
+	getMemoryLayout(data, &obj.Layout, &offset)
 	getPagedMemory(data, &obj.Data, &offset)
 
 	return nil
