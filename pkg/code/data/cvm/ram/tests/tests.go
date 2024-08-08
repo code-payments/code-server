@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 

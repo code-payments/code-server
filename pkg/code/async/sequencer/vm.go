@@ -10,7 +10,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 

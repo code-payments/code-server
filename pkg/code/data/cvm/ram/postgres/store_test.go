@@ -8,8 +8,8 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram"
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram/tests"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/ram/tests"
 
 	postgrestest "github.com/code-payments/code-server/pkg/database/postgres/test"
 
