@@ -884,6 +884,10 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 		return nil, err
 	}
 
+	if virtualAccountState.Balance != 0 {
+		return nil, errors.New("stale timelock account state")
+	}
+
 	txn, err := transaction_util.MakeCompressAccountTransaction(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
