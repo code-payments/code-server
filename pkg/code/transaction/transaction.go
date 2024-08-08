@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -66,7 +67,11 @@ func MakeCompressAccountTransaction(
 	storage *common.Account,
 	virtualAccountState []byte,
 ) (solana.Transaction, error) {
-	signature := ed25519.Sign(common.GetSubsidizer().PrivateKey().ToBytes(), virtualAccountState)
+	hasher := sha256.New()
+	hasher.Write(virtualAccountState)
+	hashedVirtualAccountState := hasher.Sum(nil)
+
+	signature := ed25519.Sign(common.GetSubsidizer().PrivateKey().ToBytes(), hashedVirtualAccountState)
 
 	compressInstruction := cvm.NewSystemAccountCompressInstruction(
 		&cvm.SystemAccountCompressInstructionAccounts{
