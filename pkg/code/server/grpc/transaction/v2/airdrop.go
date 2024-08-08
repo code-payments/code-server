@@ -438,7 +438,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	//       Instead of constructing and validating everything manually, we could
 	//       have a proper client call SubmitIntent in a worker.
 
-	selectedNonce, err := transaction.SelectAvailableNonce(ctx, s.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return nil, err

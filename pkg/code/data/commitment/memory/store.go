@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type ById []*commitment.Record
@@ -78,18 +78,6 @@ func (s *store) GetByAddress(_ context.Context, address string) (*commitment.Rec
 	defer s.mu.Unlock()
 
 	if item := s.findByAddress(address); item != nil {
-		return item.Clone(), nil
-	}
-
-	return nil, commitment.ErrCommitmentNotFound
-}
-
-// GetByVault implements commitment.Store.GetByVault
-func (s *store) GetByVault(_ context.Context, vault string) (*commitment.Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if item := s.findByVault(vault); item != nil {
 		return item.Clone(), nil
 	}
 
@@ -182,12 +170,13 @@ func (s *store) CountByState(_ context.Context, state commitment.State) (uint64,
 	return uint64(len(items)), nil
 }
 
-// CountRepaymentsDivertedToVault implements commitment.Store.CountRepaymentsDivertedToVault
-func (s *store) CountRepaymentsDivertedToVault(_ context.Context, vault string) (uint64, error) {
+// CountPendingRepaymentsDivertedToCommitment implements commitment.Store.CountPendingRepaymentsDivertedToCommitment
+func (s *store) CountPendingRepaymentsDivertedToCommitment(_ context.Context, address string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findByRepaymentsDivertedToVault(vault)
+	items := s.findByRepaymentsDivertedToCommitment(address)
+	items = s.filterByRepaymentStatus(items, false)
 	return uint64(len(items)), nil
 }
 
@@ -206,15 +195,6 @@ func (s *store) find(data *commitment.Record) *commitment.Record {
 func (s *store) findByAddress(address string) *commitment.Record {
 	for _, item := range s.records {
 		if item.Address == address {
-			return item
-		}
-	}
-	return nil
-}
-
-func (s *store) findByVault(vault string) *commitment.Record {
-	for _, item := range s.records {
-		if item.Vault == vault {
 			return item
 		}
 	}
@@ -240,10 +220,10 @@ func (s *store) findByPool(pool string) []*commitment.Record {
 	return res
 }
 
-func (s *store) findByRepaymentsDivertedToVault(vault string) []*commitment.Record {
+func (s *store) findByRepaymentsDivertedToCommitment(address string) []*commitment.Record {
 	var res []*commitment.Record
 	for _, item := range s.records {
-		if item.RepaymentDivertedTo != nil && *item.RepaymentDivertedTo == vault {
+		if item.RepaymentDivertedTo != nil && *item.RepaymentDivertedTo == address {
 			res = append(res, item)
 		}
 	}

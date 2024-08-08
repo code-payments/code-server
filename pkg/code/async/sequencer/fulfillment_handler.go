@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"math"
 	"sync"
 	"time"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	commitment_worker "github.com/code-payments/code-server/pkg/code/async/commitment"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -20,7 +20,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -114,7 +114,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 		}
 
 		return true, nil
-	case fulfillment.CloseDormantTimelockAccount, fulfillment.CloseEmptyTimelockAccount:
+	case fulfillment.CloseEmptyTimelockAccount:
 		// Technically valid, but we won't open for these cases
 		return false, nil
 	default:
@@ -129,6 +129,8 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) SupportsOnDemandTran
 }
 
 func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+	var vm *common.Account // todo: configure vm account
+
 	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
 	}
@@ -143,13 +145,25 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 		return nil, err
 	}
 
-	// todo: a single function utility in the common package to do exactly how we're getting timelockAccounts
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vm, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
 
-	txn, err := transaction_util.MakeOpenAccountTransaction(selectedNonce.Account, selectedNonce.Blockhash, timelockAccounts)
+	memory, accountIndex, err := reserveVmMemory(ctx, h.data, vm.PublicKey().ToBase58(), cvm.VirtualAccountTypeTimelock, fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	txn, err := transaction_util.MakeOpenAccountTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		memory,
+		accountIndex,
+
+		timelockAccounts,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +361,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, ful
 		return err
 	}
 
-	return onTokenAccountClosed(ctx, h.data, fulfillmentRecord, txnRecord)
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -394,14 +408,14 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 		return false, nil
 	}
 
-	// The commitment vault must be opened before we can send funds to it
+	// The commitment must be opened before we can send funds to it
 	if commitmentRecord.State != commitment.StateOpen {
 		return false, nil
 	}
 
 	// Check the privacy upgrade deadline, which is one of many factors as to
-	// why we may have opened the commitment vault. We need to ensure the
-	// deadline is hit before proceeding.
+	// why we may have opened the commitment. We need to ensure the deadline
+	// is hit before proceeding.
 	privacyUpgradeDeadline, err := commitment_worker.GetDeadlineToUpgradePrivacy(ctx, h.data, commitmentRecord)
 	if err == commitment_worker.ErrNoPrivacyUpgradeDeadline {
 		return false, nil
@@ -523,12 +537,12 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 	}
 
 	// The old commitment record must be marked as diverting funds to the new
-	// intended commitment vault before proceeding.
-	if oldCommitmentRecord.RepaymentDivertedTo == nil || *oldCommitmentRecord.RepaymentDivertedTo != *fulfillmentRecord.Destination {
+	// intended commitment before proceeding.
+	if oldCommitmentRecord.RepaymentDivertedTo == nil {
 		return false, nil
 	}
 
-	newCommitmentRecord, err := h.data.GetCommitmentByVault(ctx, *fulfillmentRecord.Destination)
+	newCommitmentRecord, err := h.data.GetCommitmentByAddress(ctx, *oldCommitmentRecord.RepaymentDivertedTo)
 	if err != nil {
 		return false, err
 	}
@@ -607,12 +621,14 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) IsRevoked(ctx 
 }
 
 type TransferWithCommitmentFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewTransferWithCommitmentFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewTransferWithCommitmentFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &TransferWithCommitmentFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -686,6 +702,8 @@ func (h *TransferWithCommitmentFulfillmentHandler) SupportsOnDemandTransactions(
 }
 
 func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+	var vm *common.Account // todo: configure vm account
+
 	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
@@ -693,6 +711,15 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 
 	if commitmentRecord.State != commitment.StatePayingDestination {
 		return nil, errors.New("commitment in unexpected state")
+	}
+
+	timelockRecord, err := h.data.GetTimelockByVault(ctx, commitmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+	destinationTimelockOwner, err := common.NewAccountFromPrivateKeyString(timelockRecord.VaultOwner)
+	if err != nil {
+		return nil, err
 	}
 
 	treasuryPool, err := common.NewAccountFromPublicKeyString(commitmentRecord.Pool)
@@ -725,16 +752,32 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
-	txn, err := transaction_util.MakeTreasuryAdvanceTransaction(
+	_, timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, vm, destinationTimelockOwner)
+	if err != nil {
+		return nil, err
+	}
+
+	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, vm.PublicKey().ToBase58(), cvm.VirtualAccountTypeRelay, commitment.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	// todo: support external transfers
+	txn, err := transaction_util.MakeInternalTreasuryAdvanceTransaction(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
+
+		vm,
+		timelockAccountMemory,
+		timelockAccountIndex,
+		relayMemory,
+		relayAccountIndex,
 
 		treasuryPool,
 		treasuryPoolVault,
 		destination,
 		commitment,
-		commitmentRecord.PoolBump,
-		commitmentRecord.Amount,
+		uint32(commitmentRecord.Amount), // todo: assumes amount never overflows uint32
 		transcript,
 		recentRoot,
 	)
@@ -760,7 +803,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) OnSuccess(ctx context.Context
 		return err
 	}
 
-	return markCommitmentReadyToOpen(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	return markCommitmentOpen(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 }
 
 func (h *TransferWithCommitmentFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -783,12 +826,14 @@ func (h *TransferWithCommitmentFulfillmentHandler) IsRevoked(ctx context.Context
 }
 
 type CloseEmptyTimelockAccountFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewCloseEmptyTimelockAccountFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewCloseEmptyTimelockAccountFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &CloseEmptyTimelockAccountFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -823,11 +868,46 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) CanSubmitToBlockchain(ctx 
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+	return true
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+	var vm *common.Account      // todo: configure vm account
+	var storage *common.Account // todo: configure storage account
+
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
+		return nil, errors.New("invalid fulfillment type")
+	}
+
+	virtualAccountState, memory, index, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, vm, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if virtualAccountState.Balance != 0 {
+		return nil, errors.New("stale timelock account state")
+	}
+
+	txn, err := transaction_util.MakeCompressAccountTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		vm,
+		memory,
+		index,
+		storage,
+		virtualAccountState.Marshal(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	if err != nil {
+		return nil, err
+	}
+
+	return &txn, nil
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
@@ -835,7 +915,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Cont
 		return errors.New("invalid fulfillment type")
 	}
 
-	return onTokenAccountClosed(ctx, h.data, fulfillmentRecord, txnRecord)
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -855,127 +935,6 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Cont
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
 		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	return false, false, nil
-}
-
-type CloseDormantTimelockAccountFulfillmentHandler struct {
-	data code_data.Provider
-}
-
-func NewCloseDormantTimelockAccountFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &CloseDormantTimelockAccountFulfillmentHandler{
-		data: data,
-	}
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// For now, we only ever save fulfillment records for gift cards, so the below
-	// check isn't necessary yet. However, if this is no longer the case, the code
-	// below should be uncommented, unless other flows warrant it.
-	/*
-		accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, fulfillmentRecord.Source)
-		if err != nil {
-			return false, err
-		}
-
-		// Sanity check that could avoid a distastrous scenario if we accidentally
-		// schedule something that's not a gift card
-		if accountInfoRecord.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
-			return false, errors.New("source must be a remote send gift card")
-		}
-	*/
-
-	// The source account is a Code account, so we must validate it exists on
-	// the blockchain prior to sending funds from it.
-	isSourceAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, fulfillmentRecord.Source)
-	if err != nil {
-		return false, err
-	} else if !isSourceAccountCreated {
-		return false, nil
-	}
-
-	// The destination account might is a Code account, so we must validate it
-	// exists on the blockchain prior to send funds to it.
-	isDestinationAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, *fulfillmentRecord.Destination)
-	if err != nil {
-		return false, err
-	} else if !isDestinationAccountCreated {
-		return false, nil
-	}
-
-	// todo: We can have single "AsSourceOrDestination" query
-
-	// The source account is a user account, so check that there are no other
-	// fulfillments where it's used as a source account before closing it.
-	earliestFulfillment, err := h.data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillment != nil && earliestFulfillment.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	// The source account is a user account, so check that there are no other
-	// fulfillments where it's used as a destination before closing it.
-	earliestFulfillment, err = h.data.GetFirstSchedulableFulfillmentByAddressAsDestination(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillment != nil && earliestFulfillment.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return errors.New("invalid fulfillment type")
-	}
-
-	return onTokenAccountClosed(ctx, h.data, fulfillmentRecord, txnRecord)
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	return false, nil
-}
-
-func (h *CloseDormantTimelockAccountFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	// Replace above logic with commented code if we decide to use CloseDormantAccount actions
-	timelockRecord, err := h.data.GetTimelockByVault(ctx, fulfillmentRecord.Source)
-	if err != nil {
-		return false, false, err
-	}
-
-	if timelockRecord.IsClosed() {
-		err = markActionRevoked(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
-		if err != nil {
-			return false, false, err
-		}
-
-		return true, false, nil
 	}
 
 	return false, false, nil
@@ -1050,57 +1009,88 @@ func (h *SaveRecentRootFulfillmentHandler) IsRevoked(ctx context.Context, fulfil
 	return false, false, nil
 }
 
-type InitializeCommitmentProofFulfillmentHandler struct {
-	data code_data.Provider
+type CloseCommitmentFulfillmentHandler struct {
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewInitializeCommitmentProofFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &InitializeCommitmentProofFulfillmentHandler{
-		data: data,
+func NewCloseCommitmentFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
+	return &CloseCommitmentFulfillmentHandler{
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
-// Assumption: Commitment vault opening is pre-sorted at the very front of the line
-func (h *InitializeCommitmentProofFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeCommitmentProof {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Ensure the commitment record exists and it's in a valid state.
-	commitmentRecord, err := h.data.GetCommitmentByVault(ctx, fulfillmentRecord.Source)
+// todo: New commitment closing flow not implemented yet
+func (h *CloseCommitmentFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
+	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return false, err
-	} else if commitmentRecord.State != commitment.StateOpening {
-		return false, errors.New("commitment in unexpected state")
 	}
 
-	// We're initializing a new proof for a commitment, so there are no dependencies
-	// as this is first one in the chain for opening commitment vaults.
-	return true, nil
+	// Commitment worker guarantees all cheques have been cashed
+	return commitmentRecord.State == commitment.StateClosing, nil
 }
 
-func (h *InitializeCommitmentProofFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+func (h *CloseCommitmentFulfillmentHandler) SupportsOnDemandTransactions() bool {
+	return true
 }
 
-func (h *InitializeCommitmentProofFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+	var vm *common.Account      // todo: configure vm account
+	var storage *common.Account // todo: configure storage account
+
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
+		return nil, errors.New("invalid fulfillment type")
+	}
+
+	relay, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualAccountState, memory, index, err := getVirtualRelayAccountStateInMemory(ctx, h.vmIndexerClient, vm, relay)
+	if err != nil {
+		return nil, err
+	}
+
+	txn, err := transaction_util.MakeCompressAccountTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		vm,
+		memory,
+		index,
+		storage,
+		virtualAccountState.Marshal(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	if err != nil {
+		return nil, err
+	}
+
+	return &txn, nil
 }
 
-func (h *InitializeCommitmentProofFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeCommitmentProof {
+func (h *CloseCommitmentFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return errors.New("invalid fulfillment type")
 	}
 
-	fulfillmentRecord, err := h.data.GetNextSchedulableFulfillmentByAddress(ctx, fulfillmentRecord.Source, fulfillmentRecord.IntentOrderingIndex, fulfillmentRecord.ActionOrderingIndex, fulfillmentRecord.FulfillmentOrderingIndex)
+	err := markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return err
 	}
-	return markFulfillmentAsActivelyScheduled(ctx, h.data, fulfillmentRecord)
+
+	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
 }
 
-func (h *InitializeCommitmentProofFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeCommitmentProof {
+func (h *CloseCommitmentFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return false, errors.New("invalid fulfillment type")
 	}
 
@@ -1109,307 +1099,8 @@ func (h *InitializeCommitmentProofFulfillmentHandler) OnFailure(ctx context.Cont
 	return false, nil
 }
 
-func (h *InitializeCommitmentProofFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeCommitmentProof {
-		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	return false, false, nil
-}
-
-type UploadCommitmentProofFulfillmentHandler struct {
-	data code_data.Provider
-}
-
-func NewUploadCommitmentProofFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &UploadCommitmentProofFulfillmentHandler{
-		data: data,
-	}
-}
-
-// Assumption: Commitment vault opening is pre-sorted at the very front of the line
-func (h *UploadCommitmentProofFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.UploadCommitmentProof {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Ensure the commitment record exists and it's in a valid state.
-	commitmentRecord, err := h.data.GetCommitmentByVault(ctx, fulfillmentRecord.Source)
-	if err != nil {
-		return false, err
-	} else if commitmentRecord.State != commitment.StateOpening {
-		return false, errors.New("commitment in unexpected state")
-	}
-
-	// The source account is the commitment vault. Check that there isn't an earlier
-	// fulfillment in the process for opening the account.
-	earliestFulfillmentAsSource, err := h.data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillmentAsSource != nil && earliestFulfillmentAsSource.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func (h *UploadCommitmentProofFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
-}
-
-func (h *UploadCommitmentProofFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
-}
-
-func (h *UploadCommitmentProofFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.UploadCommitmentProof {
-		return errors.New("invalid fulfillment type")
-	}
-
-	fulfillmentRecord, err := h.data.GetNextSchedulableFulfillmentByAddress(ctx, fulfillmentRecord.Source, fulfillmentRecord.IntentOrderingIndex, fulfillmentRecord.ActionOrderingIndex, fulfillmentRecord.FulfillmentOrderingIndex)
-	if err != nil {
-		return err
-	}
-	return markFulfillmentAsActivelyScheduled(ctx, h.data, fulfillmentRecord)
-}
-
-func (h *UploadCommitmentProofFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.UploadCommitmentProof {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Let it fail. More than likely we have a bug. In theory, we could try implementing
-	// auto-recovery.
-	return false, nil
-}
-
-func (h *UploadCommitmentProofFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.UploadCommitmentProof {
-		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	return false, false, nil
-}
-
-type VerifyCommitmentProofFulfillmentHandler struct {
-	data code_data.Provider
-}
-
-func NewVerifyCommitmentProofFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &VerifyCommitmentProofFulfillmentHandler{
-		data: data,
-	}
-}
-
-// Assumption: Commitment vault opening is pre-sorted at the very front of the line
-func (h *VerifyCommitmentProofFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.VerifyCommitmentProof {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Ensure the commitment record exists and it's in a valid state.
-	commitmentRecord, err := h.data.GetCommitmentByVault(ctx, fulfillmentRecord.Source)
-	if err != nil {
-		return false, err
-	} else if commitmentRecord.State != commitment.StateOpening {
-		return false, errors.New("commitment in unexpected state")
-	}
-
-	// The source account is the commitment vault. Check that there isn't an earlier
-	// fulfillment in the process for opening the account.
-	earliestFulfillmentAsSource, err := h.data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillmentAsSource != nil && earliestFulfillmentAsSource.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func (h *VerifyCommitmentProofFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
-}
-
-func (h *VerifyCommitmentProofFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
-}
-
-func (h *VerifyCommitmentProofFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.VerifyCommitmentProof {
-		return errors.New("invalid fulfillment type")
-	}
-
-	fulfillmentRecord, err := h.data.GetNextSchedulableFulfillmentByAddress(ctx, fulfillmentRecord.Source, fulfillmentRecord.IntentOrderingIndex, fulfillmentRecord.ActionOrderingIndex, fulfillmentRecord.FulfillmentOrderingIndex)
-	if err != nil {
-		return err
-	}
-	return markFulfillmentAsActivelyScheduled(ctx, h.data, fulfillmentRecord)
-}
-
-func (h *VerifyCommitmentProofFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.VerifyCommitmentProof {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Let it fail. More than likely we have a bug. In theory, we could try implementing
-	// auto-recovery.
-	return false, nil
-}
-
-func (h *VerifyCommitmentProofFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.VerifyCommitmentProof {
-		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	return false, false, nil
-}
-
-type OpenCommitmentVaultFulfillmentHandler struct {
-	data code_data.Provider
-}
-
-func NewOpenCommitmentVaultFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &OpenCommitmentVaultFulfillmentHandler{
-		data: data,
-	}
-}
-
-// Assumption: Commitment vault opening is pre-sorted at the very front of the line
-func (h *OpenCommitmentVaultFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.OpenCommitmentVault {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Ensure the commitment record exists and it's in a valid state.
-	commitmentRecord, err := h.data.GetCommitmentByVault(ctx, fulfillmentRecord.Source)
-	if err != nil {
-		return false, err
-	} else if commitmentRecord.State != commitment.StateOpening {
-		return false, errors.New("commitment in unexpected state")
-	}
-
-	// The source account is the commitment vault. Check that there isn't an earlier
-	// fulfillment in the process for opening the account.
-	earliestFulfillmentAsSource, err := h.data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, fulfillmentRecord.Source)
-	if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-		return false, err
-	}
-	if earliestFulfillmentAsSource != nil && earliestFulfillmentAsSource.ScheduledBefore(fulfillmentRecord) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func (h *OpenCommitmentVaultFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
-}
-
-func (h *OpenCommitmentVaultFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
-}
-
-func (h *OpenCommitmentVaultFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.OpenCommitmentVault {
-		return errors.New("invalid fulfillment type")
-	}
-
-	return markCommitmentOpen(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
-}
-
-func (h *OpenCommitmentVaultFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.OpenCommitmentVault {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Let it fail. More than likely we have a bug. In theory, we could try implementing
-	// auto-recovery.
-	return false, nil
-}
-
-func (h *OpenCommitmentVaultFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.OpenCommitmentVault {
-		return false, false, errors.New("invalid fulfillment type")
-	}
-
-	return false, false, nil
-}
-
-type CloseCommitmentVaultFulfillmentHandler struct {
-	data code_data.Provider
-}
-
-func NewCloseCommitmentVaultFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
-	return &CloseCommitmentVaultFulfillmentHandler{
-		data: data,
-	}
-}
-
-// Assumption: Commitment vault closing is pre-sorted to the very last position in the line
-func (h *CloseCommitmentVaultFulfillmentHandler) CanSubmitToBlockchain(ctx context.Context, fulfillmentRecord *fulfillment.Record) (scheduled bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	commitmentRecord, err := h.data.GetCommitmentByVault(ctx, fulfillmentRecord.Source)
-	if err != nil {
-		return false, err
-	} else if commitmentRecord.State != commitment.StateClosing {
-		return false, nil
-	}
-
-	var scheduableCount uint64
-	for _, scheduableState := range []fulfillment.State{
-		fulfillment.StateUnknown,
-		fulfillment.StatePending,
-	} {
-		count, err := h.data.GetFulfillmentCountByStateAndAddress(ctx, scheduableState, fulfillmentRecord.Source)
-		if err != nil {
-			return false, err
-		}
-
-		scheduableCount += count
-	}
-
-	// In the end, we should end up with one scheduleable fulfillment, and that's
-	// the fulfillment we're operating on right now. If the commitment is in the
-	// closing state, then the worker must have checked that all possible payments
-	// (including any potential new future upgrades) to this commitment vault have
-	// been played out. This is simply a sanity check of that assumption.
-	return scheduableCount == 1, nil
-}
-
-func (h *CloseCommitmentVaultFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
-}
-
-func (h *CloseCommitmentVaultFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
-}
-
-func (h *CloseCommitmentVaultFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
-		return errors.New("invalid fulfillment type")
-	}
-
-	return markCommitmentClosed(ctx, h.data, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
-}
-
-func (h *CloseCommitmentVaultFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
-		return false, errors.New("invalid fulfillment type")
-	}
-
-	// Let it fail. More than likely we have a bug. In theory, we could try implementing
-	// auto-recovery.
-	return false, nil
-}
-
-func (h *CloseCommitmentVaultFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitmentVault {
+func (h *CloseCommitmentFulfillmentHandler) IsRevoked(ctx context.Context, fulfillmentRecord *fulfillment.Record) (revoked bool, nonceUsed bool, err error) {
+	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return false, false, errors.New("invalid fulfillment type")
 	}
 
@@ -1460,30 +1151,6 @@ func isTokenAccountOnBlockchain(ctx context.Context, data code_data.Provider, ad
 	return existsOnBlockchain, nil
 }
 
-func onTokenAccountClosed(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
-	var closedAccount string
-	switch fulfillmentRecord.FulfillmentType {
-	case fulfillment.CloseEmptyTimelockAccount, fulfillment.NoPrivacyWithdraw, fulfillment.CloseDormantTimelockAccount:
-		closedAccount = fulfillmentRecord.Source
-	default:
-		return errors.New("unhanlded fulfillment type")
-	}
-
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		closeDormantFulfillmentRecord, err := data.GetNextSchedulableFulfillmentByAddress(ctx, closedAccount, uint64(math.MaxInt64)-1, 0, 0)
-		if err != nil && err != fulfillment.ErrFulfillmentNotFound {
-			return err
-		} else if err == nil {
-			err = markFulfillmentAsActivelyScheduled(ctx, data, closeDormantFulfillmentRecord)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return markTimelockClosed(ctx, data, closedAccount, txnRecord.Slot)
-}
-
 func estimateTreasuryPoolFundingLevels(ctx context.Context, data code_data.Provider, record *treasury.Record) (total uint64, used uint64, err error) {
 	total, err = data.GetTotalAvailableTreasuryPoolFunds(ctx, record.Vault)
 	if err != nil {
@@ -1498,21 +1165,17 @@ func estimateTreasuryPoolFundingLevels(ctx context.Context, data code_data.Provi
 	return total, used, nil
 }
 
-func getFulfillmentHandlers(data code_data.Provider, configProvider ConfigProvider) map[fulfillment.Type]FulfillmentHandler {
+// todo: simplify initialization of fulfillment handlers across service and contextual scheduler
+func getFulfillmentHandlers(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) map[fulfillment.Type]FulfillmentHandler {
 	handlersByType := make(map[fulfillment.Type]FulfillmentHandler)
 	handlersByType[fulfillment.InitializeLockedTimelockAccount] = NewInitializeLockedTimelockAccountFulfillmentHandler(data)
 	handlersByType[fulfillment.NoPrivacyTransferWithAuthority] = NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data)
 	handlersByType[fulfillment.NoPrivacyWithdraw] = NewNoPrivacyWithdrawFulfillmentHandler(data)
 	handlersByType[fulfillment.TemporaryPrivacyTransferWithAuthority] = NewTemporaryPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
 	handlersByType[fulfillment.PermanentPrivacyTransferWithAuthority] = NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
-	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseDormantTimelockAccount] = NewCloseDormantTimelockAccountFulfillmentHandler(data)
+	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data, vmIndexerClient)
+	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data, vmIndexerClient)
 	handlersByType[fulfillment.SaveRecentRoot] = NewSaveRecentRootFulfillmentHandler(data)
-	handlersByType[fulfillment.InitializeCommitmentProof] = NewInitializeCommitmentProofFulfillmentHandler(data)
-	handlersByType[fulfillment.UploadCommitmentProof] = NewUploadCommitmentProofFulfillmentHandler(data)
-	handlersByType[fulfillment.VerifyCommitmentProof] = NewVerifyCommitmentProofFulfillmentHandler(data)
-	handlersByType[fulfillment.OpenCommitmentVault] = NewOpenCommitmentVaultFulfillmentHandler(data)
-	handlersByType[fulfillment.CloseCommitmentVault] = NewCloseCommitmentVaultFulfillmentHandler(data)
+	handlersByType[fulfillment.CloseCommitment] = NewCloseCommitmentFulfillmentHandler(data, vmIndexerClient)
 	return handlersByType
 }

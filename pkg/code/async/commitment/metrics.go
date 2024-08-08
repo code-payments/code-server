@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
@@ -26,8 +26,6 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 			for _, state := range []commitment.State{
 				commitment.StateUnknown,
 				commitment.StatePayingDestination,
-				commitment.StateReadyToOpen,
-				commitment.StateOpening,
 				commitment.StateOpen,
 				commitment.StateClosing,
 				commitment.StateClosed,

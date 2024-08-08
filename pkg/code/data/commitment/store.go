@@ -19,9 +19,6 @@ type Store interface {
 	// GetByAddress gets a commitment account's state by its address
 	GetByAddress(ctx context.Context, address string) (*Record, error)
 
-	// GetByVault gets a commitment account's state by the vault address
-	GetByVault(ctx context.Context, vault string) (*Record, error)
-
 	// GetByAction gets a commitment account's state by the action it's involved in
 	GetByAction(ctx context.Context, intentId string, actionId uint32) (*Record, error)
 
@@ -43,7 +40,7 @@ type Store interface {
 	// CountByState counts the number of commitment records in a given state
 	CountByState(ctx context.Context, state State) (uint64, error)
 
-	// CountRepaymentsDivertedToVault counts the number of commitments whose repayments
-	// are diverted to the provided vault.
-	CountRepaymentsDivertedToVault(ctx context.Context, vault string) (uint64, error)
+	// CountPendingRepaymentsDivertedToCommitment counts the number of commitments whose
+	// pending repayments are diverted to the provided one.
+	CountPendingRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
 }

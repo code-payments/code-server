@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type State uint8
@@ -12,8 +12,8 @@ type State uint8
 const (
 	StateUnknown State = iota
 	StatePayingDestination
-	StateReadyToOpen
-	StateOpening
+	StateReadyToOpen // No longer valid in the CVM
+	StateOpening     // No longer valid in the CVM
 	StateOpen
 	StateClosing
 	StateClosed
@@ -27,21 +27,14 @@ const (
 type Record struct {
 	Id uint64
 
-	DataVersion splitter_token.DataVersion
-
 	Address string
-	Bump    uint8
 
 	Pool       string
-	PoolBump   uint8
 	RecentRoot string
-	Transcript string
 
+	Transcript  string
 	Destination string
 	Amount      uint64
-
-	Vault     string
-	VaultBump uint8
 
 	Intent   string
 	ActionId uint32
@@ -52,7 +45,7 @@ type Record struct {
 	// Not to be confused with payments being diverted to this commitment and then
 	// being closed.
 	TreasuryRepaid bool
-	// The commitment vault where repayment for Record.Amount will be diverted to.
+	// The commitment where repayment for Record.Amount will be diverted to.
 	RepaymentDivertedTo *string
 
 	State State
@@ -61,10 +54,6 @@ type Record struct {
 }
 
 func (r *Record) Validate() error {
-	if r.DataVersion != splitter_token.DataVersion1 {
-		return errors.New("commitment data version must be 1")
-	}
-
 	if len(r.Address) == 0 {
 		return errors.New("address is required")
 	}
@@ -89,10 +78,6 @@ func (r *Record) Validate() error {
 		return errors.New("settlement amount must be positive")
 	}
 
-	if len(r.Vault) == 0 {
-		return errors.New("vault is required")
-	}
-
 	if len(r.Intent) == 0 {
 		return errors.New("intent is required")
 	}
@@ -105,30 +90,17 @@ func (r *Record) Validate() error {
 }
 
 func (r *Record) Clone() *Record {
-	var repaymentDivertedTo *string
-	if r.RepaymentDivertedTo != nil {
-		value := *r.RepaymentDivertedTo
-		repaymentDivertedTo = &value
-	}
-
 	return &Record{
 		Id: r.Id,
 
-		DataVersion: r.DataVersion,
-
 		Address: r.Address,
-		Bump:    r.Bump,
 
 		Pool:       r.Pool,
-		PoolBump:   r.PoolBump,
 		RecentRoot: r.RecentRoot,
-		Transcript: r.Transcript,
 
+		Transcript:  r.Transcript,
 		Destination: r.Destination,
 		Amount:      r.Amount,
-
-		Vault:     r.Vault,
-		VaultBump: r.VaultBump,
 
 		Intent:   r.Intent,
 		ActionId: r.ActionId,
@@ -136,7 +108,7 @@ func (r *Record) Clone() *Record {
 		Owner: r.Owner,
 
 		TreasuryRepaid:      r.TreasuryRepaid,
-		RepaymentDivertedTo: repaymentDivertedTo,
+		RepaymentDivertedTo: pointer.StringCopy(r.RepaymentDivertedTo),
 
 		State: r.State,
 
@@ -147,21 +119,14 @@ func (r *Record) Clone() *Record {
 func (r *Record) CopyTo(dst *Record) {
 	dst.Id = r.Id
 
-	dst.DataVersion = r.DataVersion
-
 	dst.Address = r.Address
-	dst.Bump = r.Bump
 
 	dst.Pool = r.Pool
-	dst.PoolBump = r.PoolBump
 	dst.RecentRoot = r.RecentRoot
-	dst.Transcript = r.Transcript
 
+	dst.Transcript = r.Transcript
 	dst.Destination = r.Destination
 	dst.Amount = r.Amount
-
-	dst.Vault = r.Vault
-	dst.VaultBump = r.VaultBump
 
 	dst.Intent = r.Intent
 	dst.ActionId = r.ActionId
@@ -169,7 +134,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Owner = r.Owner
 
 	dst.TreasuryRepaid = r.TreasuryRepaid
-	dst.RepaymentDivertedTo = r.RepaymentDivertedTo
+	dst.RepaymentDivertedTo = pointer.StringCopy(r.RepaymentDivertedTo)
 
 	dst.State = r.State
 

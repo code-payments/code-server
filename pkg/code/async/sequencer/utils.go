@@ -5,11 +5,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/code-payments/code-server/pkg/solana"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 func (p *service) validateFulfillmentState(record *fulfillment.Record, states ...fulfillment.State) error {
@@ -42,6 +42,11 @@ func (p *service) markFulfillmentConfirmed(ctx context.Context, record *fulfillm
 		return err
 	}
 
+	err = p.markVirtualNonceReleasedDueToSubmittedTransaction(ctx, record)
+	if err != nil {
+		return err
+	}
+
 	record.State = fulfillment.StateConfirmed
 	record.Data = nil
 	return p.data.UpdateFulfillment(ctx, record)
@@ -54,6 +59,11 @@ func (p *service) markFulfillmentFailed(ctx context.Context, record *fulfillment
 	}
 
 	err = p.markNonceReleasedDueToSubmittedTransaction(ctx, record)
+	if err != nil {
+		return err
+	}
+
+	err = p.markVirtualNonceReleasedDueToSubmittedTransaction(ctx, record)
 	if err != nil {
 		return err
 	}
@@ -78,6 +88,11 @@ func (p *service) markFulfillmentRevoked(ctx context.Context, fulfillmentRecord 
 	// the various use cases.
 	if !nonceUsed && fulfillmentRecord.State == fulfillment.StateUnknown {
 		err = p.markNonceAvailableDueToRevokedFulfillment(ctx, fulfillmentRecord)
+		if err != nil {
+			return err
+		}
+
+		err = p.markVirtualNonceAvailableDueToRevokedFulfillment(ctx, fulfillmentRecord)
 		if err != nil {
 			return err
 		}
@@ -208,6 +223,74 @@ func (p *service) markNonceReleasedDueToSubmittedTransaction(ctx context.Context
 
 	if nonceRecord.State != nonce.StateReserved {
 		return errors.New("unexpected nonce state")
+	}
+
+	nonceRecord.State = nonce.StateReleased
+	return p.data.SaveNonce(ctx, nonceRecord)
+}
+
+// Important Note: Do NOT call this if the fulfillment being revoked is due to
+// transactions having shared nonce blockhashes!
+func (p *service) markVirtualNonceAvailableDueToRevokedFulfillment(ctx context.Context, fulfillmentToRevoke *fulfillment.Record) error {
+	// We'll only automatically manage the nonce state if the fulfillment is in
+	// an unknown state. Otherwise, there's a chance it was submitted and could
+	// have been used. A human is needed to resolve it.
+	if fulfillmentToRevoke.State != fulfillment.StateUnknown {
+		return errors.New("fulfillment is in dangerous state to manage nonce state")
+	}
+
+	// Transaction doesn't have an assigned virtual nonce
+	if fulfillmentToRevoke.VirtualNonce == nil {
+		return nil
+	}
+
+	nonceRecord, err := p.data.GetNonce(ctx, *fulfillmentToRevoke.VirtualNonce)
+	if err != nil {
+		return err
+	}
+
+	if *fulfillmentToRevoke.VirtualSignature != nonceRecord.Signature {
+		return errors.New("unexpected virtual nonce signature")
+	}
+
+	if *fulfillmentToRevoke.VirtualBlockhash != nonceRecord.Blockhash {
+		return errors.New("unexpected virtual nonce blockhash")
+	}
+
+	if nonceRecord.State != nonce.StateReserved {
+		return errors.New("unexpected virtual nonce state")
+	}
+
+	nonceRecord.State = nonce.StateAvailable
+	nonceRecord.Signature = ""
+	return p.data.SaveNonce(ctx, nonceRecord)
+}
+
+func (p *service) markVirtualNonceReleasedDueToSubmittedTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record) error {
+	if fulfillmentRecord.State != fulfillment.StatePending {
+		return errors.New("fulfillment is in unexpected state")
+	}
+
+	// Transaction doesn't have an assigned virtual nonce
+	if fulfillmentRecord.VirtualNonce == nil {
+		return nil
+	}
+
+	nonceRecord, err := p.data.GetNonce(ctx, *fulfillmentRecord.VirtualNonce)
+	if err != nil {
+		return err
+	}
+
+	if *fulfillmentRecord.VirtualSignature != nonceRecord.Signature {
+		return errors.New("unexpected virtual nonce signature")
+	}
+
+	if *fulfillmentRecord.VirtualBlockhash != nonceRecord.Blockhash {
+		return errors.New("unexpected virtual nonce blockhash")
+	}
+
+	if nonceRecord.State != nonce.StateReserved {
+		return errors.New("unexpected virtual nonce state")
 	}
 
 	nonceRecord.State = nonce.StateReleased

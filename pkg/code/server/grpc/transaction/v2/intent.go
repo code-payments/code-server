@@ -597,7 +597,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				var nonceAccount *common.Account
 				var nonceBlockchash solana.Blockhash
 				if createActionHandler.RequiresNonce(j) {
-					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.PurposeClientTransaction)
+					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 					if err != nil {
 						log.WithError(err).Warn("failure selecting available nonce")
 						return handleSubmitIntentError(streamer, err)

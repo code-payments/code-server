@@ -13,12 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/solana/system"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -31,6 +25,12 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/solana/system"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 type testEnv struct {
@@ -52,7 +52,7 @@ func setup(t *testing.T, testOverrides *testOverrides) *testEnv {
 
 	treasuryPoolAddress := testutil.NewRandomAccount(t)
 	treasuryPool := &treasury.Record{
-		DataVersion: splitter_token.DataVersion1,
+		Vm: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
 		Name: "test-pool",
 
@@ -177,15 +177,12 @@ func (e *testEnv) simulateCommitments(t *testing.T, count int, recentRoot string
 	var commitmentRecords []*commitment.Record
 	for i := 0; i < count; i++ {
 		commitmentRecord := &commitment.Record{
-			DataVersion: splitter_token.DataVersion1,
-
-			Pool:    e.treasuryPool.Address,
 			Address: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			Vault:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
+			Pool:       e.treasuryPool.Address,
 			RecentRoot: recentRoot,
-			Transcript: "transcript",
 
+			Transcript:  "transcript",
 			Destination: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			Amount:      kin.ToQuarks(1),
 
@@ -381,12 +378,13 @@ func (e *testEnv) assertIntentCreated(t *testing.T) {
 	assert.Equal(t, *fulfillmentRecord.Nonce, base58.Encode(advanceNonceIxn.Nonce))
 	assert.Equal(t, e.subsidizer.PublicKey().ToBase58(), base58.Encode(advanceNonceIxn.Authority))
 
-	saveRecentRootIxnArgs, saveRecentRootIxnAccounts, err := splitter_token.SaveRecentRootInstructionFromLegacyInstruction(txn, 1)
+	// todo: Ability to decompile CVM save recent root ixn (legacy code in comments)
+	/*saveRecentRootIxnArgs, saveRecentRootIxnAccounts, err := splitter_token.SaveRecentRootInstructionFromLegacyInstruction(txn, 1)
 	require.NoError(t, err)
 	assert.Equal(t, e.treasuryPool.Bump, saveRecentRootIxnArgs.PoolBump)
 	assert.Equal(t, e.treasuryPool.Address, base58.Encode(saveRecentRootIxnAccounts.Pool))
 	assert.Equal(t, e.subsidizer.PublicKey().ToBase58(), base58.Encode(saveRecentRootIxnAccounts.Authority))
-	assert.Equal(t, e.subsidizer.PublicKey().ToBase58(), base58.Encode(saveRecentRootIxnAccounts.Payer))
+	assert.Equal(t, e.subsidizer.PublicKey().ToBase58(), base58.Encode(saveRecentRootIxnAccounts.Payer))*/
 
 	nonceRecord, err := e.data.GetNonce(e.ctx, *fulfillmentRecord.Nonce)
 	require.NoError(t, err)
@@ -436,11 +434,13 @@ func (e *testEnv) generateAvailableNonce(t *testing.T) *nonce.Record {
 		CreatedAt:  time.Now(),
 	}
 	nonceRecord := &nonce.Record{
-		Address:   nonceAccount.PublicKey().ToBase58(),
-		Authority: e.subsidizer.PublicKey().ToBase58(),
-		Blockhash: base58.Encode(bh[:]),
-		Purpose:   nonce.PurposeInternalServerProcess,
-		State:     nonce.StateAvailable,
+		Address:             nonceAccount.PublicKey().ToBase58(),
+		Authority:           e.subsidizer.PublicKey().ToBase58(),
+		Blockhash:           base58.Encode(bh[:]),
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeInternalServerProcess,
+		State:               nonce.StateAvailable,
 	}
 	require.NoError(t, e.data.SaveKey(e.ctx, nonceKey))
 	require.NoError(t, e.data.SaveNonce(e.ctx, nonceRecord))

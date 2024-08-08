@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
+
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -25,18 +27,20 @@ type service struct {
 	conf                      *conf
 	data                      code_data.Provider
 	scheduler                 Scheduler
+	vmIndexerClient           indexerpb.IndexerClient
 	fulfillmentHandlersByType map[fulfillment.Type]FulfillmentHandler
 	actionHandlersByType      map[action.Type]ActionHandler
 	intentHandlersByType      map[intent.Type]IntentHandler
 }
 
-func New(data code_data.Provider, scheduler Scheduler, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) async.Service {
 	return &service{
 		log:                       logrus.StandardLogger().WithField("service", "sequencer"),
 		conf:                      configProvider(),
 		data:                      data,
 		scheduler:                 scheduler,
-		fulfillmentHandlersByType: getFulfillmentHandlers(data, configProvider),
+		vmIndexerClient:           vmIndexerClient,
+		fulfillmentHandlersByType: getFulfillmentHandlers(data, vmIndexerClient, configProvider),
 		actionHandlersByType:      getActionHandlers(data),
 		intentHandlersByType:      getIntentHandlers(data),
 	}
