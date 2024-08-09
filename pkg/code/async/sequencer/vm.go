@@ -11,23 +11,25 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/storage"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
 // todo: some of these utilities likely belong in a more common package
 
 var (
-	// Global VM memory lock
+	// Global VM storage and memory locks
 	//
 	// todo: Use a distributed lock
-	vmMemoryLock sync.Mutex
+	vmMemoryLock  sync.Mutex
+	vmStorageLock sync.Mutex
 )
 
-func reserveVmMemory(ctx context.Context, data code_data.Provider, vm string, accountType cvm.VirtualAccountType, address string) (*common.Account, uint16, error) {
+func reserveVmMemory(ctx context.Context, data code_data.Provider, vm *common.Account, accountType cvm.VirtualAccountType, account *common.Account) (*common.Account, uint16, error) {
 	vmMemoryLock.Lock()
 	defer vmMemoryLock.Unlock()
 
-	memoryAccountAddress, index, err := data.ReserveVmMemory(ctx, vm, accountType, address)
+	memoryAccountAddress, index, err := data.ReserveVmMemory(ctx, vm.PublicKey().ToBase58(), accountType, account.PublicKey().ToBase58())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -38,6 +40,23 @@ func reserveVmMemory(ctx context.Context, data code_data.Provider, vm string, ac
 	}
 
 	return memoryAccount, index, nil
+}
+
+func reserveVmStorage(ctx context.Context, data code_data.Provider, vm *common.Account, purpose storage.Purpose, account *common.Account) (*common.Account, error) {
+	vmStorageLock.Lock()
+	defer vmStorageLock.Unlock()
+
+	storageAccountAddress, err := data.ReserveVmStorage(ctx, vm.PublicKey().ToBase58(), purpose, account.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	storageAccount, err := common.NewAccountFromPublicKeyString(storageAccountAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	return storageAccount, nil
 }
 
 // This method can be safely called multiple times, since we know "deleted" accounts
