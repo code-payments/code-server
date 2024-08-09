@@ -6,8 +6,10 @@ import (
 )
 
 var (
+	ErrAddressAlreadyReserved = errors.New("virtual account address already in storage")
 	ErrAlreadyInitialized     = errors.New("storage account already initalized")
 	ErrInvalidInitialCapacity = errors.New("available capacity must be maximum when initializing storage")
+	ErrNoFreeStorage          = errors.New("no available free storage")
 	ErrNotFound               = errors.New("no storage accounts found")
 )
 
@@ -20,4 +22,7 @@ type Store interface {
 
 	// FindAnyWithAvailableCapacity finds a VM storage account with minimum available capcity
 	FindAnyWithAvailableCapacity(ctx context.Context, vm string, purpose Purpose, minCapacity uint64) (*Record, error)
+
+	// ReserveStorage reserves a piece of storage in a VM for the virtual account address
+	ReserveStorage(ctx context.Context, vm string, purpose Purpose, address string) (string, error)
 }

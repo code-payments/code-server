@@ -49,3 +49,8 @@ func (s *store) FindAnyWithAvailableCapacity(ctx context.Context, vm string, pur
 	}
 	return fromAccountModel(model), nil
 }
+
+// ReserveStorage implements cvm.storage.Store.ReserveStorage
+func (s *store) ReserveStorage(ctx context.Context, vm string, purpose storage.Purpose, address string) (string, error) {
+	return dbReserveStorage(ctx, s.db, vm, purpose, address)
+}

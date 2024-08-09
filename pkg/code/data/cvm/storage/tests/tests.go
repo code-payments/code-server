@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func testHappyPath(t *testing.T, s storage.Store) {
 	t.Run("testHappyPath", func(t *testing.T) {
 		ctx := context.Background()
 
-		record1 := &storage.Record{
+		record := &storage.Record{
 			Vm:                "vm1",
 			Name:              "name1",
 			Address:           "storageaccount1",
@@ -33,23 +34,23 @@ func testHappyPath(t *testing.T, s storage.Store) {
 			Purpose:           storage.PurposeDeletion,
 		}
 
-		assert.Equal(t, storage.ErrInvalidInitialCapacity, s.InitializeStorage(ctx, record1))
+		assert.Equal(t, storage.ErrInvalidInitialCapacity, s.InitializeStorage(ctx, record))
 
-		record1.AvailableCapacity = storage.GetMaxCapacity(record1.Levels)
-		cloned := record1.Clone()
+		record.AvailableCapacity = storage.GetMaxCapacity(record.Levels)
+		cloned := record.Clone()
 
 		start := time.Now()
-		require.NoError(t, s.InitializeStorage(ctx, record1))
-		assert.True(t, record1.Id > 0)
-		assert.True(t, record1.CreatedAt.After(start))
+		require.NoError(t, s.InitializeStorage(ctx, record))
+		assert.True(t, record.Id > 0)
+		assert.True(t, record.CreatedAt.After(start))
 
-		assert.Equal(t, storage.ErrAlreadyInitialized, s.InitializeStorage(ctx, record1))
+		assert.Equal(t, storage.ErrAlreadyInitialized, s.InitializeStorage(ctx, record))
 
 		actual, err := s.FindAnyWithAvailableCapacity(ctx, "vm1", storage.PurposeDeletion, 1)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		_, err = s.FindAnyWithAvailableCapacity(ctx, "vm1", storage.PurposeDeletion, storage.GetMaxCapacity(record1.Levels)+1)
+		_, err = s.FindAnyWithAvailableCapacity(ctx, "vm1", storage.PurposeDeletion, storage.GetMaxCapacity(record.Levels)+1)
 		assert.Equal(t, storage.ErrNotFound, err)
 
 		_, err = s.FindAnyWithAvailableCapacity(ctx, "vm1", storage.PurposeUnknown, 1)
@@ -57,6 +58,26 @@ func testHappyPath(t *testing.T, s storage.Store) {
 
 		_, err = s.FindAnyWithAvailableCapacity(ctx, "vm2", storage.PurposeDeletion, 1)
 		assert.Equal(t, storage.ErrNotFound, err)
+
+		_, err = s.ReserveStorage(ctx, "vm2", storage.PurposeDeletion, "virtualaccount")
+		assert.Equal(t, storage.ErrNoFreeStorage, err)
+
+		_, err = s.ReserveStorage(ctx, "vm1", storage.PurposeUnknown, "virtualaccount")
+		assert.Equal(t, storage.ErrNoFreeStorage, err)
+
+		for i := 0; i < int(storage.GetMaxCapacity(4)); i++ {
+			virtualAccountAddress := fmt.Sprintf("virtualaccount%d", i)
+
+			storageAccount, err := s.ReserveStorage(ctx, "vm1", storage.PurposeDeletion, virtualAccountAddress)
+			require.NoError(t, err)
+			assert.Equal(t, "storageaccount1", storageAccount)
+
+			_, err = s.ReserveStorage(ctx, "vm1", storage.PurposeDeletion, virtualAccountAddress)
+			assert.Equal(t, storage.ErrAddressAlreadyReserved, err)
+		}
+
+		_, err = s.ReserveStorage(ctx, "vm1", storage.PurposeDeletion, "newvirtualaccount")
+		assert.Equal(t, storage.ErrNoFreeStorage, err)
 	})
 }
 

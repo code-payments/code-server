@@ -453,6 +453,7 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	InitializeVmStorage(ctx context.Context, record *cvm_storage.Record) error
 	FindAnyVmStorageWithAvailableCapacity(ctx context.Context, vm string, purpose cvm_storage.Purpose, minCapacity uint64) (*cvm_storage.Record, error)
+	ReserveVmStorage(ctx context.Context, vm string, purpose cvm_storage.Purpose, address string) (string, error)
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -1595,4 +1596,7 @@ func (dp *DatabaseProvider) InitializeVmStorage(ctx context.Context, record *cvm
 }
 func (dp *DatabaseProvider) FindAnyVmStorageWithAvailableCapacity(ctx context.Context, vm string, purpose cvm_storage.Purpose, minCapacity uint64) (*cvm_storage.Record, error) {
 	return dp.cvmStorage.FindAnyWithAvailableCapacity(ctx, vm, purpose, minCapacity)
+}
+func (dp *DatabaseProvider) ReserveVmStorage(ctx context.Context, vm string, purpose cvm_storage.Purpose, address string) (string, error) {
+	return dp.cvmStorage.ReserveStorage(ctx, vm, purpose, address)
 }

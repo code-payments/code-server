@@ -12,19 +12,31 @@ import (
 )
 
 const (
-	accountTableName = "codewallet__core_vmstorageaccount"
+	accountTableName          = "codewallet__core_vmstorageaccount"
+	allocatedStorageTableName = "codewallet__core_vmstorageallocatedstorage"
 )
 
 type accountModel struct {
 	Id sql.NullInt64 `db:"id"`
 
-	Vm string `db"vm"`
+	Vm string `db:"vm"`
 
 	Name              string `db:"name"`
 	Address           string `db:"address"`
 	Levels            uint8  `db:"levels"`
 	AvailableCapacity uint64 `db:"available_capacity"`
 	Purpose           uint8  `db:"purpose"`
+
+	CreatedAt time.Time `db:"created_at"`
+}
+
+type allocatedStorageModel struct {
+	Id sql.NullInt64 `db:"id"`
+
+	Vm string `db:"vm"`
+
+	StorageAccount string `db:"storage_account"`
+	Address        string `db:"address"`
 
 	CreatedAt time.Time `db:"created_at"`
 }
@@ -68,8 +80,7 @@ func (m *accountModel) dbInitialize(ctx context.Context, db *sqlx.DB) error {
 		query := `INSERT INTO ` + accountTableName + `
 				(vm, name, address, levels, available_capacity, purpose, created_at)
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
-				RETURNING
-					id, vm, name, address, levels, available_capacity, purpose, created_at`
+				RETURNING id, vm, name, address, levels, available_capacity, purpose, created_at`
 
 		if m.CreatedAt.IsZero() {
 			m.CreatedAt = time.Now()
@@ -112,4 +123,47 @@ func dbFindAnyWithAvailableCapacity(ctx context.Context, db *sqlx.DB, vm string,
 		return nil, pgutil.CheckNoRows(err, storage.ErrNotFound)
 	}
 	return res, nil
+}
+
+func dbReserveStorage(ctx context.Context, db *sqlx.DB, vm string, purpose storage.Purpose, address string) (string, error) {
+	var storageAccount string
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		var model accountModel
+
+		query1 := `INSERT INTO ` + allocatedStorageTableName + `
+			(vm, storage_account, address, created_at)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id, vm, storage_account, address, created_at`
+		err := tx.QueryRowxContext(
+			ctx,
+			query1,
+			vm,
+			model.Address,
+			address,
+			time.Now(),
+		).StructScan(&allocatedStorageModel{})
+		if err != nil {
+			return pgutil.CheckUniqueViolation(err, storage.ErrAddressAlreadyReserved)
+		}
+
+		query2 := `UPDATE ` + accountTableName + `
+			SET available_capacity = available_capacity - 1
+			WHERE vm = $1 AND purpose = $2 and available_capacity > 0
+			RETURNING id, vm, name, address, levels, available_capacity, purpose, created_at`
+
+		err = tx.QueryRowxContext(
+			ctx,
+			query2,
+			vm,
+			purpose,
+		).StructScan(&model)
+		if err != nil {
+			return pgutil.CheckNoRows(err, storage.ErrNoFreeStorage)
+		}
+
+		storageAccount = model.Address
+
+		return nil
+	})
+	return storageAccount, err
 }

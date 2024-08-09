@@ -39,11 +39,25 @@ const (
 
 			CONSTRAINT codewallet__core_vmmemoryaccount__uniq__address UNIQUE (address)
 		);
+
+		CREATE TABLE codewallet__core_vmstorageallocatedstorage (
+			id SERIAL NOT NULL PRIMARY KEY,
+
+			vm TEXT NOT NULL,
+
+			storage_account TEXT NOT NULL,
+			address TEXT NULL,
+
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+
+			CONSTRAINT codewallet__core_vmmemoryallocatedmemory__uniq__address UNIQUE (address)
+		);
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
 		DROP TABLE codewallet__core_vmstorageaccount;
+		DROP TABLE codewallet__core_vmstorageallocatedstorage;
 	`
 )
 

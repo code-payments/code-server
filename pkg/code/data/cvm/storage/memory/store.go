@@ -9,14 +9,17 @@ import (
 )
 
 type store struct {
-	mu      sync.Mutex
-	last    uint64
-	records []*storage.Record
+	mu             sync.Mutex
+	last           uint64
+	records        []*storage.Record
+	storedAccounts map[string]struct{}
 }
 
 // New returns a new in memory cvm.storage.Store
 func New() storage.Store {
-	return &store{}
+	return &store{
+		storedAccounts: make(map[string]struct{}),
+	}
 }
 
 // InitializeStorage implements cvm.storage.Store.InitializeStorage
@@ -64,6 +67,28 @@ func (s *store) FindAnyWithAvailableCapacity(_ context.Context, vm string, purpo
 	return &cloned, nil
 }
 
+// ReserveStorage implements cvm.storage.Store.ReserveStorage
+func (s *store) ReserveStorage(_ context.Context, vm string, purpose storage.Purpose, address string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.storedAccounts[address]; ok {
+		return "", storage.ErrAddressAlreadyReserved
+	}
+
+	items := s.findByVmAndPurpose(vm, purpose)
+	items = s.filterByAvailableStorage(items, 1)
+
+	if len(items) == 0 {
+		return "", storage.ErrNoFreeStorage
+	}
+
+	s.storedAccounts[address] = struct{}{}
+	selected := items[0]
+	selected.AvailableCapacity -= 1
+	return selected.Address, nil
+}
+
 func (s *store) find(data *storage.Record) *storage.Record {
 	for _, item := range s.records {
 		if item.Id == data.Id {
@@ -109,4 +134,5 @@ func (s *store) reset() {
 	defer s.mu.Unlock()
 	s.last = 0
 	s.records = nil
+	s.storedAccounts = make(map[string]struct{})
 }
