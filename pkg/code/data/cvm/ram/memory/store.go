@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
@@ -18,7 +18,7 @@ type store struct {
 	storedVirtualAccounts  map[string]string
 }
 
-// New returns a new in memory vm.ram.Store
+// New returns a new in memory cvm.ram.Store
 func New() ram.Store {
 	return &store{
 		reservedAccountIndices: make(map[string]string),
@@ -26,7 +26,7 @@ func New() ram.Store {
 	}
 }
 
-// InitializeMemory implements vm.ram.Store.InitializeMemory
+// InitializeMemory implements cvm.ram.Store.InitializeMemory
 func (s *store) InitializeMemory(_ context.Context, record *ram.Record) error {
 	if err := record.Validate(); err != nil {
 		return err
@@ -51,7 +51,7 @@ func (s *store) InitializeMemory(_ context.Context, record *ram.Record) error {
 	return nil
 }
 
-// FreeMemoryByIndex implements vm.ram.Store.FreeMemoryByIndex
+// FreeMemoryByIndex implements cvm.ram.Store.FreeMemoryByIndex
 func (s *store) FreeMemoryByIndex(_ context.Context, memoryAccount string, index uint16) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -68,7 +68,7 @@ func (s *store) FreeMemoryByIndex(_ context.Context, memoryAccount string, index
 	return nil
 }
 
-// FreeMemoryByAddress implements vm.ram.Store.FreeMemoryByAddress
+// FreeMemoryByAddress implements cvm.ram.Store.FreeMemoryByAddress
 func (s *store) FreeMemoryByAddress(_ context.Context, address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,7 +84,7 @@ func (s *store) FreeMemoryByAddress(_ context.Context, address string) error {
 	return nil
 }
 
-// ReserveMemory implements vm.ram.Store.ReserveMemory
+// ReserveMemory implements cvm.ram.Store.ReserveMemory
 func (s *store) ReserveMemory(_ context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

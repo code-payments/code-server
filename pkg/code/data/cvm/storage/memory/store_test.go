@@ -3,10 +3,10 @@ package memory
 import (
 	"testing"
 
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram/tests"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/storage/tests"
 )
 
-func TestVmRamMemoryStore(t *testing.T) {
+func TestVmStorageMemoryStore(t *testing.T) {
 	testStore := New()
 	teardown := func() {
 		testStore.(*store).reset()

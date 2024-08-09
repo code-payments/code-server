@@ -30,6 +30,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/contact"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	cvm_ram "github.com/code-payments/code-server/pkg/code/data/cvm/ram"
+	cvm_storage "github.com/code-payments/code-server/pkg/code/data/cvm/storage"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/event"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
@@ -53,7 +55,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
-	vm_ram "github.com/code-payments/code-server/pkg/code/data/vm/ram"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 
 	account_memory_client "github.com/code-payments/code-server/pkg/code/data/account/memory"
@@ -65,6 +66,8 @@ import (
 	commitment_memory_client "github.com/code-payments/code-server/pkg/code/data/commitment/memory"
 	contact_memory_client "github.com/code-payments/code-server/pkg/code/data/contact/memory"
 	currency_memory_client "github.com/code-payments/code-server/pkg/code/data/currency/memory"
+	cvm_ram_memory_client "github.com/code-payments/code-server/pkg/code/data/cvm/ram/memory"
+	cvm_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/cvm/storage/memory"
 	deposit_memory_client "github.com/code-payments/code-server/pkg/code/data/deposit/memory"
 	event_memory_client "github.com/code-payments/code-server/pkg/code/data/event/memory"
 	fulfillment_memory_client "github.com/code-payments/code-server/pkg/code/data/fulfillment/memory"
@@ -89,7 +92,6 @@ import (
 	user_identity_memory_client "github.com/code-payments/code-server/pkg/code/data/user/identity/memory"
 	user_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/user/storage/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
-	vm_ram_memory_client "github.com/code-payments/code-server/pkg/code/data/vm/ram/memory"
 	webhook_memory_client "github.com/code-payments/code-server/pkg/code/data/webhook/memory"
 
 	account_postgres_client "github.com/code-payments/code-server/pkg/code/data/account/postgres"
@@ -101,6 +103,8 @@ import (
 	commitment_postgres_client "github.com/code-payments/code-server/pkg/code/data/commitment/postgres"
 	contact_postgres_client "github.com/code-payments/code-server/pkg/code/data/contact/postgres"
 	currency_postgres_client "github.com/code-payments/code-server/pkg/code/data/currency/postgres"
+	cvm_ram_postgres_client "github.com/code-payments/code-server/pkg/code/data/cvm/ram/postgres"
+	cvm_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/cvm/storage/postgres"
 	deposit_postgres_client "github.com/code-payments/code-server/pkg/code/data/deposit/postgres"
 	event_postgres_client "github.com/code-payments/code-server/pkg/code/data/event/postgres"
 	fulfillment_postgres_client "github.com/code-payments/code-server/pkg/code/data/fulfillment/postgres"
@@ -124,7 +128,6 @@ import (
 	user_identity_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/identity/postgres"
 	user_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/storage/postgres"
 	vault_postgres_client "github.com/code-payments/code-server/pkg/code/data/vault/postgres"
-	vm_ram_postgres_client "github.com/code-payments/code-server/pkg/code/data/vm/ram/postgres"
 	webhook_postgres_client "github.com/code-payments/code-server/pkg/code/data/webhook/postgres"
 )
 
@@ -439,12 +442,18 @@ type DatabaseData interface {
 	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
 	MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error
 
-	// VM RAM
+	// CVM RAM
 	// --------------------------------------------------------------------------------
-	InitializeVmMemory(ctx context.Context, record *vm_ram.Record) error
+	InitializeVmMemory(ctx context.Context, record *cvm_ram.Record) error
 	FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error
 	FreeVmMemoryByAddress(ctx context.Context, address string) error
 	ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error)
+
+	// CVM Storage
+	// --------------------------------------------------------------------------------
+	InitializeVmStorage(ctx context.Context, record *cvm_storage.Record) error
+	FindAnyVmStorageWithAvailableCapacity(ctx context.Context, vm string, purpose cvm_storage.Purpose, minCapacity uint64) (*cvm_storage.Record, error)
+	ReserveVmStorage(ctx context.Context, vm string, purpose cvm_storage.Purpose, address string) (string, error)
 
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
@@ -489,7 +498,8 @@ type DatabaseProvider struct {
 	preferences    preferences.Store
 	airdrop        airdrop.Store
 	twitter        twitter.Store
-	vmRam          vm_ram.Store
+	cvmRam         cvm_ram.Store
+	cvmStorage     cvm_storage.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -552,7 +562,8 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		preferences:    preferences_postgres_client.New(db),
 		airdrop:        airdrop_postgres_client.New(db),
 		twitter:        twitter_postgres_client.New(db),
-		vmRam:          vm_ram_postgres_client.New(db),
+		cvmRam:         cvm_ram_postgres_client.New(db),
+		cvmStorage:     cvm_storage_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -596,7 +607,8 @@ func NewTestDatabaseProvider() DatabaseData {
 		preferences:    preferences_memory_client.New(),
 		airdrop:        airdrop_memory_client.New(),
 		twitter:        twitter_memory_client.New(),
-		vmRam:          vm_ram_memory_client.New(),
+		cvmRam:         cvm_ram_memory_client.New(),
+		cvmStorage:     cvm_storage_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -1564,15 +1576,27 @@ func (dp *DatabaseProvider) MarkTwitterNonceAsUsed(ctx context.Context, tweetId 
 
 // VM RAM
 // --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) InitializeVmMemory(ctx context.Context, record *vm_ram.Record) error {
-	return dp.vmRam.InitializeMemory(ctx, record)
+func (dp *DatabaseProvider) InitializeVmMemory(ctx context.Context, record *cvm_ram.Record) error {
+	return dp.cvmRam.InitializeMemory(ctx, record)
 }
 func (dp *DatabaseProvider) FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error {
-	return dp.vmRam.FreeMemoryByIndex(ctx, memoryAccount, index)
+	return dp.cvmRam.FreeMemoryByIndex(ctx, memoryAccount, index)
 }
 func (dp *DatabaseProvider) FreeVmMemoryByAddress(ctx context.Context, address string) error {
-	return dp.vmRam.FreeMemoryByAddress(ctx, address)
+	return dp.cvmRam.FreeMemoryByAddress(ctx, address)
 }
 func (dp *DatabaseProvider) ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
-	return dp.vmRam.ReserveMemory(ctx, vm, accountType, address)
+	return dp.cvmRam.ReserveMemory(ctx, vm, accountType, address)
+}
+
+// VM Storage
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) InitializeVmStorage(ctx context.Context, record *cvm_storage.Record) error {
+	return dp.cvmStorage.InitializeStorage(ctx, record)
+}
+func (dp *DatabaseProvider) FindAnyVmStorageWithAvailableCapacity(ctx context.Context, vm string, purpose cvm_storage.Purpose, minCapacity uint64) (*cvm_storage.Record, error) {
+	return dp.cvmStorage.FindAnyWithAvailableCapacity(ctx, vm, purpose, minCapacity)
+}
+func (dp *DatabaseProvider) ReserveVmStorage(ctx context.Context, vm string, purpose cvm_storage.Purpose, address string) (string, error) {
+	return dp.cvmStorage.ReserveStorage(ctx, vm, purpose, address)
 }

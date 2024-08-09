@@ -7,7 +7,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/code/data/vm/ram"
+	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
