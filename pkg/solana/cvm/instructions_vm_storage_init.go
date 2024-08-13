@@ -27,7 +27,6 @@ type VmStorageInitInstructionArgs struct {
 type VmStorageInitInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
-	VmMemory    ed25519.PublicKey
 	VmStorage   ed25519.PublicKey
 }
 
