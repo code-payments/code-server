@@ -8,9 +8,6 @@ import (
 const (
 	envConfigPrefix = "NONCE_SERVICE_"
 
-	cvmPublicKeyConfigEnvName = envConfigPrefix + "CVM_PUBLIC_KEY"
-	defaultCvmPublicKey       = "invalid" // Ensure something valid is set
-
 	solanaMainnetNoncePubkeyPrefixConfigEnvName = envConfigPrefix + "SOLANA_MAINNET_NONCE_PUBKEY_PREFIX"
 	defaultSolanaMainnetNoncePubkeyPrefix       = "non"
 
@@ -19,7 +16,6 @@ const (
 )
 
 type conf struct {
-	cvmPublicKey                   config.String
 	solanaMainnetNoncePubkeyPrefix config.String
 	solanaMainnetNoncePoolSize     config.Uint64
 }
@@ -31,7 +27,6 @@ type ConfigProvider func() *conf
 func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
-			cvmPublicKey:                   env.NewStringConfig(cvmPublicKeyConfigEnvName, defaultCvmPublicKey),
 			solanaMainnetNoncePubkeyPrefix: env.NewStringConfig(solanaMainnetNoncePubkeyPrefixConfigEnvName, defaultSolanaMainnetNoncePubkeyPrefix),
 			solanaMainnetNoncePoolSize:     env.NewUint64Config(solanaMainnetNoncePoolSizeConfigEnvName, defaultSolanaMainnetNoncePoolSize),
 		}
