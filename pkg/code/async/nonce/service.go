@@ -10,6 +10,7 @@ import (
 	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/async"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 )
@@ -67,7 +68,7 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	} {
 		go func(state nonce.State) {
 
-			err := p.worker(ctx, nonce.EnvironmentCvm, p.conf.cvmPublicKey.Get(ctx), state, interval)
+			err := p.worker(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, interval)
 			if err != nil && err != context.Canceled {
 				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
 			}

@@ -54,12 +54,10 @@ func (p *service) storageInitWorker(serviceCtx context.Context, interval time.Du
 }
 
 func (p *service) maybeInitStorageAccount(ctx context.Context) error {
-	var vm *common.Account // todo: configure vm account
-
 	// todo: iterate over purposes when we have more than one
 	purpose := storage.PurposeDeletion
 
-	_, err := p.data.FindAnyVmStorageWithAvailableCapacity(ctx, vm.PublicKey().ToBase58(), purpose, minStorageAccountCapacity)
+	_, err := p.data.FindAnyVmStorageWithAvailableCapacity(ctx, common.CodeVmAccount.PublicKey().ToBase58(), purpose, minStorageAccountCapacity)
 	switch err {
 	case storage.ErrNotFound:
 	case nil:
@@ -68,7 +66,7 @@ func (p *service) maybeInitStorageAccount(ctx context.Context) error {
 		return err
 	}
 
-	record, err := p.initStorageAccountOnBlockchain(ctx, vm, purpose)
+	record, err := p.initStorageAccountOnBlockchain(ctx, common.CodeVmAccount, purpose)
 	if err != nil {
 		return err
 	}

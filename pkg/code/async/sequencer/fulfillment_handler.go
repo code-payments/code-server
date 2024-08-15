@@ -130,8 +130,6 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) SupportsOnDemandTran
 }
 
 func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account // todo: configure vm account
-
 	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
 	}
@@ -146,12 +144,12 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 		return nil, err
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vm, common.KinMintAccount)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
 
-	memory, accountIndex, err := reserveVmMemory(ctx, h.data, vm, cvm.VirtualAccountTypeTimelock, timelockAccounts.Vault)
+	memory, accountIndex, err := reserveVmMemory(ctx, h.data, common.CodeVmAccount, cvm.VirtualAccountTypeTimelock, timelockAccounts.Vault)
 	if err != nil {
 		return nil, err
 	}
@@ -703,8 +701,6 @@ func (h *TransferWithCommitmentFulfillmentHandler) SupportsOnDemandTransactions(
 }
 
 func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account // todo: configure vm account
-
 	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
@@ -753,12 +749,12 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
-	_, timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, vm, destinationTimelockOwner)
+	_, timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationTimelockOwner)
 	if err != nil {
 		return nil, err
 	}
 
-	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, vm, cvm.VirtualAccountTypeRelay, commitment)
+	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, common.CodeVmAccount, cvm.VirtualAccountTypeRelay, commitment)
 	if err != nil {
 		return nil, err
 	}
@@ -768,7 +764,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
-		vm,
+		common.CodeVmAccount,
 		timelockAccountMemory,
 		timelockAccountIndex,
 		relayMemory,
@@ -873,8 +869,6 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) SupportsOnDemandTransactio
 }
 
 func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account // todo: configure vm account
-
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
 	}
@@ -892,7 +886,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 		return nil, err
 	}
 
-	virtualAccountState, memory, index, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, vm, timelockOwner)
+	virtualAccountState, memory, index, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, timelockOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -901,7 +895,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 		return nil, errors.New("stale timelock account state")
 	}
 
-	storage, err := reserveVmStorage(ctx, h.data, vm, storage.PurposeDeletion, timelockVault)
+	storage, err := reserveVmStorage(ctx, h.data, common.CodeVmAccount, storage.PurposeDeletion, timelockVault)
 	if err != nil {
 		return nil, err
 	}
@@ -910,7 +904,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
-		vm,
+		common.CodeVmAccount,
 		memory,
 		index,
 		storage,
@@ -1055,8 +1049,6 @@ func (h *CloseCommitmentFulfillmentHandler) SupportsOnDemandTransactions() bool 
 }
 
 func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	var vm *common.Account // todo: configure vm account
-
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseCommitment {
 		return nil, errors.New("invalid fulfillment type")
 	}
@@ -1066,12 +1058,12 @@ func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.
 		return nil, err
 	}
 
-	virtualAccountState, memory, index, err := getVirtualRelayAccountStateInMemory(ctx, h.vmIndexerClient, vm, relay)
+	virtualAccountState, memory, index, err := getVirtualRelayAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, relay)
 	if err != nil {
 		return nil, err
 	}
 
-	storage, err := reserveVmStorage(ctx, h.data, vm, storage.PurposeDeletion, relay)
+	storage, err := reserveVmStorage(ctx, h.data, common.CodeVmAccount, storage.PurposeDeletion, relay)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,7 +1072,7 @@ func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 
-		vm,
+		common.CodeVmAccount,
 		memory,
 		index,
 		storage,

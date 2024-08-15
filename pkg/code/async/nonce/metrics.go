@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
@@ -14,8 +15,6 @@ const (
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
-	cvmPublicKey := p.conf.cvmPublicKey.Get(ctx)
-
 	delay := time.Second
 
 	for {
@@ -44,11 +43,11 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 					}
 					recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, useCase, count)
 
-					count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentCvm, cvmPublicKey, state, useCase)
+					count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, useCase)
 					if err != nil {
 						continue
 					}
-					recordNonceCountEvent(ctx, nonce.EnvironmentCvm, cvmPublicKey, state, useCase, count)
+					recordNonceCountEvent(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, useCase, count)
 				}
 			}
 
