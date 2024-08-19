@@ -23,16 +23,13 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/event"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
 	event_util "github.com/code-payments/code-server/pkg/code/event"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/lawenforcement"
-	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
@@ -1377,6 +1374,7 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) OnCommittedToDB(ctx context.Cont
 	return nil
 }
 
+/*
 type UpgradePrivacyIntentHandler struct {
 	conf                 *conf
 	data                 code_data.Provider
@@ -1431,222 +1429,6 @@ func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transa
 	return upgradeTo, ok
 }
 
-type MigrateToPrivacy2022IntentHandler struct {
-	conf *conf
-	data code_data.Provider
-}
-
-func NewMigrateToPrivacy2022IntentHandler(conf *conf, data code_data.Provider) CreateIntentHandler {
-	return &MigrateToPrivacy2022IntentHandler{
-		conf: conf,
-		data: data,
-	}
-}
-
-func (h *MigrateToPrivacy2022IntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
-	typedProtoMetadata := protoMetadata.GetMigrateToPrivacy_2022()
-	if typedProtoMetadata == nil {
-		return errors.New("unexpected metadata proto message")
-	}
-
-	intentRecord.IntentType = intent.MigrateToPrivacy2022
-	intentRecord.MigrateToPrivacy2022Metadata = &intent.MigrateToPrivacy2022Metadata{
-		Quantity: typedProtoMetadata.Quarks,
-	}
-
-	return nil
-}
-
-func (h *MigrateToPrivacy2022IntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
-	return false, nil
-}
-
-func (h *MigrateToPrivacy2022IntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	return &lockableAccounts{}, nil
-}
-
-// Note: Most validation helper functions (eg. LocalSimulation) assume DataVersion1
-// timelock accounts and aren't used. That should be fine given there's only one action and
-// validation is trivial. Migration of old timelock accounts is completely scoped to this
-// intent type.
-func (h *MigrateToPrivacy2022IntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action, deviceToken *string) error {
-	typedMetadata := metadata.GetMigrateToPrivacy_2022()
-	if typedMetadata == nil {
-		return errors.New("unexpected metadata proto message")
-	}
-
-	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 1: Intent ID validation
-	//
-
-	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 2: Validate there's a legacy timelock account to migrate.
-	//
-
-	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
-	if err != nil {
-		return err
-	}
-
-	legacyTimelockRecord, err := legacyTimelockAccounts.GetDBRecord(ctx, h.data)
-	if err == timelock.ErrTimelockNotFound {
-		return newStaleStateError("no account to migrate")
-	} else if err != nil {
-		return err
-	}
-
-	//
-	// Part 3: Validate a privacy migration intent hasn't already been submitted
-	//
-
-	_, err = h.data.GetLatestIntentByInitiatorAndType(ctx, intent.MigrateToPrivacy2022, initiatiorOwnerAccount.PublicKey().ToBase58())
-	if err == nil {
-		return newStaleStateError("already submitted intent to migrate to privacy")
-	} else if err != intent.ErrIntentNotFound {
-		return err
-	}
-
-	//
-	// Part 4: Validate an OpenAccounts intent has been submitted. In particular,
-	//         we need the new primary account to exist.
-	//
-
-	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
-	if err != nil {
-		return err
-	} else if _, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]; !ok {
-		return newStaleStateError("must submit open accounts intent")
-	}
-
-	//
-	// Part 5: Validate all involved accounts are managed by code
-	//
-
-	involvedAccounts := []*common.AccountRecords{
-		initiatorAccountsByType[commonpb.AccountType_PRIMARY][0],
-		{
-			Timelock: legacyTimelockRecord,
-			General:  nil, // validateAllAccountsManagedByCode requires common.AccountRecords, but this isn't used and doesn't exist in the DB
-		},
-	}
-	err = validateAllUserAccountsManagedByCode(ctx, involvedAccounts)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 6: Validate full balance is being migrated
-	//
-
-	balance, err := balance.CalculateFromCache(ctx, h.data, legacyTimelockAccounts.Vault)
-	if err != nil {
-		return err
-	} else if balance != typedMetadata.Quarks {
-		return newIntentValidationErrorf("must migrate %d quarks", balance)
-	}
-
-	//
-	// Part 7: Validate the individual actions
-	//
-
-	return h.validateActions(ctx, initiatiorOwnerAccount, typedMetadata, actions)
-}
-
-func (h *MigrateToPrivacy2022IntentHandler) validateActions(
-	ctx context.Context,
-	initiatiorOwnerAccount *common.Account,
-	metadata *transactionpb.MigrateToPrivacy2022Metadata,
-	actions []*transactionpb.Action,
-) error {
-	if len(actions) != 1 {
-		return newIntentValidationError("expected 1 action")
-	}
-
-	legacyTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 1: Validate actions match intent
-	//
-
-	var authorityAccount, sourceAccount, destinationAccount *commonpb.SolanaAccountId
-	switch typed := actions[0].Type.(type) {
-	case *transactionpb.Action_NoPrivacyWithdraw:
-		if metadata.Quarks == 0 {
-			return newActionValidationError(actions[0], "expected a close empty account action")
-		}
-
-		if typed.NoPrivacyWithdraw.Amount != metadata.Quarks {
-			return newActionValidationError(actions[0], "quark amount must match intent metadata")
-		}
-
-		authorityAccount = typed.NoPrivacyWithdraw.Authority
-		sourceAccount = typed.NoPrivacyWithdraw.Source
-		destinationAccount = typed.NoPrivacyWithdraw.Destination
-	case *transactionpb.Action_CloseEmptyAccount:
-		if typed.CloseEmptyAccount.AccountType != commonpb.AccountType_LEGACY_PRIMARY_2022 {
-			return newActionValidationErrorf(actions[0], "account type must be %s", commonpb.AccountType_LEGACY_PRIMARY_2022)
-		}
-
-		if metadata.Quarks > 0 {
-			return newActionValidationError(actions[0], "expected a no privacy withdraw action")
-		}
-
-		authorityAccount = typed.CloseEmptyAccount.Authority
-		sourceAccount = typed.CloseEmptyAccount.Token
-	default:
-		if metadata.Quarks > 0 {
-			return newActionValidationError(actions[0], "expected a no privacy withdraw action")
-		} else {
-			return newActionValidationError(actions[0], "expected a close empty account action")
-		}
-	}
-
-	//
-	// Part 2: Validate all accounts involved in the action
-	//
-
-	if !bytes.Equal(authorityAccount.Value, initiatiorOwnerAccount.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(actions[0], "authority must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
-	}
-
-	if !bytes.Equal(sourceAccount.Value, legacyTimelockAccounts.Vault.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(actions[0], "must migrate from account %s", legacyTimelockAccounts.Vault.PublicKey().ToBase58())
-	}
-
-	if metadata.Quarks > 0 {
-		primaryTimelockAccounts, err := initiatiorOwnerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
-		if err != nil {
-			return err
-		}
-
-		if !bytes.Equal(destinationAccount.Value, primaryTimelockAccounts.Vault.PublicKey().ToBytes()) {
-			return newActionValidationErrorf(actions[0], "must migrate funds to account %s", primaryTimelockAccounts.Vault.PublicKey().ToBase58())
-		}
-	}
-
-	return nil
-}
-
-func (h *MigrateToPrivacy2022IntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
-func (h *MigrateToPrivacy2022IntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
 
 type SendPublicPaymentIntentHandler struct {
 	conf          *conf
@@ -2470,6 +2252,7 @@ func (h *EstablishRelationshipIntentHandler) OnSaveToDB(ctx context.Context, int
 func (h *EstablishRelationshipIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
 	return nil
 }
+*/
 
 func validateAllUserAccountsManagedByCode(ctx context.Context, initiatorAccounts []*common.AccountRecords) error {
 	// Try to unlock *ANY* latest account, and you're done

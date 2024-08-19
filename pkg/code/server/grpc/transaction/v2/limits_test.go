@@ -1,5 +1,6 @@
 package transaction_v2
 
+/*
 import (
 	"crypto/ed25519"
 	"testing"
@@ -227,3 +228,4 @@ func TestGetLimits_UnauthenticateddAccess(t *testing.T) {
 	_, err = phone.client.GetLimits(phone.ctx, req)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 }
+*/

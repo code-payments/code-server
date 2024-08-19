@@ -1,22 +1,6 @@
 package transaction_v2
 
-import (
-	"context"
-	"encoding/hex"
-	"errors"
-	"sync"
-	"time"
-
-	"github.com/mr-tron/base58/base58"
-
-	commitment_worker "github.com/code-payments/code-server/pkg/code/async/commitment"
-	"github.com/code-payments/code-server/pkg/code/common"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/commitment"
-	"github.com/code-payments/code-server/pkg/code/data/merkletree"
-)
-
+/*
 type refreshingMerkleTree struct {
 	tree            *merkletree.MerkleTree
 	lastRefreshedAt time.Time
@@ -269,3 +253,4 @@ func getCachedMerkleTreeForTreasury(ctx context.Context, data code_data.Provider
 
 	return cached.tree, nil
 }
+*/

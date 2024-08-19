@@ -1,5 +1,6 @@
 package transaction_v2
 
+/*
 import (
 	"testing"
 
@@ -51,3 +52,4 @@ func TestDeclareFiatOnrampPurchaseAttempt_InvalidPurchaseAmount(t *testing.T) {
 
 	server.assertFiatOnrampPurchasedDetailsNotSaved(t, nonce)
 }
+*/

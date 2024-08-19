@@ -1,5 +1,6 @@
 package transaction_v2
 
+/*
 import (
 	"testing"
 
@@ -76,7 +77,7 @@ func TestAirdrop_GetFirstKin_InsufficientBalance(t *testing.T) {
 	server.assertNotAirdroppedFirstKin(t, phone)
 }
 
-/*
+
 func TestAirdrop_GiveFirstKin_CodeToCodePayment(t *testing.T) {
 	for _, clearCache := range []bool{true, false} {
 		server, sendingPhone, receivingPhone, cleanup := setupTestEnv(t, &testOverrides{
@@ -364,7 +365,7 @@ func TestAirdrop_GiveFirstKin_InsufficientAirdropperFunds(t *testing.T) {
 	submitIntentCall.requireSuccess(t)
 	server.assertNotAirdroppedForGivingFirstKin(t, submitIntentCall.intentId)
 }
-*/
+
 
 func TestAirdrop_IntentId(t *testing.T) {
 	reference1 := testutil.NewRandomAccount(t).PublicKey().ToBase58()
@@ -392,3 +393,4 @@ func TestAirdrop_IntentId(t *testing.T) {
 		assert.Equal(t, generated3, GetNewAirdropIntentId(AirdropTypeGetFirstKin, reference2))
 	}
 }
+*/

@@ -2,41 +2,12 @@ package transaction_v2
 
 import (
 	"context"
-	"crypto/sha256"
-	"database/sql"
-	"fmt"
-	"time"
 
-	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
-	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
-	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
-	"github.com/code-payments/code-server/pkg/code/balance"
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/event"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
-	event_util "github.com/code-payments/code-server/pkg/code/event"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	push_util "github.com/code-payments/code-server/pkg/code/push"
-	"github.com/code-payments/code-server/pkg/code/transaction"
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/grpc/client"
-	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // This is a quick and dirty file to get an initial airdrop feature out
@@ -66,6 +37,8 @@ var (
 	cachedAirdropStatus        = cache.NewCache(10_000)
 	cachedFirstReceivesByOwner = cache.NewCache(10_000)
 )
+
+/*
 
 func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.AirdropRequest) (*transactionpb.AirdropResponse, error) {
 	log := s.log.WithFields(logrus.Fields{
@@ -177,172 +150,6 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 			Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
 		},
 	}, nil
-}
-
-func (s *transactionServer) maybeAirdropForSubmittingIntent(ctx context.Context, intentRecord *intent.Record, submitActionsOwnerMetadata *common.OwnerMetadata) {
-	if false {
-		// Disabled
-		s.maybeAirdropForSendingUserTheirFirstKin(ctx, intentRecord)
-	}
-}
-
-func (s *transactionServer) maybeAirdropForSendingUserTheirFirstKin(ctx context.Context, intentRecord *intent.Record) error {
-	log := s.log.WithFields(logrus.Fields{
-		"method":      "maybeAirdropForSendingUserTheirFirstKin",
-		"intent":      intentRecord.IntentId,
-		"intent_type": intentRecord.IntentType,
-	})
-
-	var ownerToAirdrop *common.Account
-	var ownerToCheckForFirstReceive *common.Account
-	var quarksGivenByReferrer uint64
-	var exchangedIn currency_lib.Code
-	var nativeAmount float64
-	var err error
-	switch intentRecord.IntentType {
-	case intent.SendPrivatePayment:
-		// Not a direct payment to a Code user
-		if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) == 0 {
-			return nil
-		}
-
-		// Private movement of funds within the same owner
-		if intentRecord.InitiatorOwnerAccount == intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount {
-			return nil
-		}
-
-		ownerToAirdrop, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to airdrop")
-			return err
-		}
-
-		ownerToCheckForFirstReceive, err = common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to check for first receive")
-			return err
-		}
-
-		quarksGivenByReferrer = intentRecord.SendPrivatePaymentMetadata.Quantity
-		exchangedIn = intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-		nativeAmount = intentRecord.SendPrivatePaymentMetadata.NativeAmount
-	case intent.SendPublicPayment:
-		// Not a direct payment to a Code user
-		if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
-			return nil
-		}
-
-		// Public movement of funds within the same owner
-		if intentRecord.InitiatorOwnerAccount == intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount {
-			return nil
-		}
-
-		ownerToAirdrop, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to airdrop")
-			return err
-		}
-
-		ownerToCheckForFirstReceive, err = common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to check for first receive")
-			return err
-		}
-
-		quarksGivenByReferrer = intentRecord.SendPublicPaymentMetadata.Quantity
-		exchangedIn = intentRecord.SendPublicPaymentMetadata.ExchangeCurrency
-		nativeAmount = intentRecord.SendPublicPaymentMetadata.NativeAmount
-	case intent.ReceivePaymentsPublicly:
-		// Not receiving a gift card
-		if !intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
-			return nil
-		}
-
-		// Gift card is being voided
-		if intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard {
-			return nil
-		}
-
-		giftCardIssuedIntentRecord, err := s.data.GetOriginalGiftCardIssuedIntent(ctx, intentRecord.ReceivePaymentsPubliclyMetadata.Source)
-		if err != nil {
-			log.WithError(err).Warn("failure getting gift card issued intent")
-			return err
-		}
-
-		// The same user is claiming their gift card
-		if giftCardIssuedIntentRecord.InitiatorOwnerAccount == intentRecord.InitiatorOwnerAccount {
-			return nil
-		}
-
-		ownerToAirdrop, err = common.NewAccountFromPublicKeyString(giftCardIssuedIntentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to airdrop")
-			return err
-		}
-
-		ownerToCheckForFirstReceive, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to check for first receive")
-			return err
-		}
-
-		quarksGivenByReferrer = intentRecord.ReceivePaymentsPubliclyMetadata.Quantity
-		exchangedIn = giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-		nativeAmount = giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.NativeAmount
-	default:
-		return nil
-	}
-
-	log = log.WithFields(logrus.Fields{
-		"owner_to_airdrop":                 ownerToAirdrop.PublicKey().ToBase58(),
-		"owner_to_check_for_first_receive": ownerToCheckForFirstReceive.PublicKey().ToBase58(),
-	})
-
-	for _, owner := range []*common.Account{ownerToAirdrop, ownerToCheckForFirstReceive} {
-		isEligible, err := s.data.IsEligibleForAirdrop(ctx, owner.PublicKey().ToBase58())
-		if err != nil {
-			log.WithError(err).Warn("failure getting airdrop eligibility for owner account")
-			return err
-		}
-		if !isEligible {
-			return nil
-		}
-	}
-
-	isFirstReceive, err := s.isFirstReceiveFromOtherCodeUser(ctx, intentRecord.IntentId, ownerToCheckForFirstReceive)
-	if err != nil {
-		log.WithError(err).Warn("failure checking if intent is user's first receive from someone else")
-		return err
-	} else if !isFirstReceive {
-		return nil
-	}
-
-	if !s.conf.disableAntispamChecks.Get(ctx) {
-		allow, err := s.antispamGuard.AllowReferralBonus(
-			ctx,
-			ownerToAirdrop,
-			ownerToCheckForFirstReceive,
-			s.airdropper.VaultOwner,
-			quarksGivenByReferrer,
-			exchangedIn,
-			nativeAmount,
-		)
-		if err != nil {
-			log.WithError(err).Warn("failure performing antispam check")
-			return err
-		} else if !allow {
-			return nil
-		}
-	}
-
-	intentId := GetNewAirdropIntentId(AirdropTypeGiveFirstKin, intentRecord.IntentId)
-	_, err = s.airdrop(ctx, intentId, ownerToAirdrop, AirdropTypeGiveFirstKin)
-	if err != nil {
-		log.Warn("failure giving airdrop")
-		return err
-	}
-
-	return nil
 }
 
 // airdrop gives Kin airdrops denominated in USD for performing certain
@@ -730,6 +537,23 @@ func (s *transactionServer) isFirstReceiveFromOtherCodeUser(ctx context.Context,
 	return firstReceive.IntentId == intentToCheck, nil
 }
 
+func GetOldAirdropIntentId(airdropType AirdropType, reference string) string {
+	return fmt.Sprintf("airdrop-%d-%s", airdropType, reference)
+}
+
+// Consistent intent ID that maps to a 32 byte buffer
+func GetNewAirdropIntentId(airdropType AirdropType, reference string) string {
+	old := GetOldAirdropIntentId(airdropType, reference)
+	hashed := sha256.Sum256([]byte(old))
+	return base58.Encode(hashed[:])
+}
+
+func getAirdropCacheKey(owner *common.Account, airdropType AirdropType) string {
+	return fmt.Sprintf("%s:%d\n", owner.PublicKey().ToBase58(), airdropType)
+}
+
+*/
+
 func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 	log := s.log.WithFields(logrus.Fields{
 		"method": "mustLoadAirdropper",
@@ -747,7 +571,7 @@ func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 			return err
 		}
 
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		if err != nil {
 			return err
 		}
@@ -758,21 +582,6 @@ func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 	if err != nil {
 		log.WithError(err).Fatal("failure loading account")
 	}
-}
-
-func GetOldAirdropIntentId(airdropType AirdropType, reference string) string {
-	return fmt.Sprintf("airdrop-%d-%s", airdropType, reference)
-}
-
-// Consistent intent ID that maps to a 32 byte buffer
-func GetNewAirdropIntentId(airdropType AirdropType, reference string) string {
-	old := GetOldAirdropIntentId(airdropType, reference)
-	hashed := sha256.Sum256([]byte(old))
-	return base58.Encode(hashed[:])
-}
-
-func getAirdropCacheKey(owner *common.Account, airdropType AirdropType) string {
-	return fmt.Sprintf("%s:%d\n", owner.PublicKey().ToBase58(), airdropType)
 }
 
 func (t AirdropType) String() string {

@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"strings"
 	"time"
 
@@ -24,10 +23,8 @@ import (
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -40,7 +37,6 @@ import (
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -124,21 +120,20 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		log = log.WithField("intent_type", "receive_payments_privately")
 		intentHandler = NewReceivePaymentsPrivatelyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 		intentRequiresNewTreasuryPoolFunds = true
-	case *transactionpb.Metadata_UpgradePrivacy:
-		log = log.WithField("intent_type", "upgrade_privacy")
-		intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
-	case *transactionpb.Metadata_MigrateToPrivacy_2022:
-		log = log.WithField("intent_type", "migrate_to_privacy_2022")
-		intentHandler = NewMigrateToPrivacy2022IntentHandler(s.conf, s.data)
-	case *transactionpb.Metadata_SendPublicPayment:
-		log = log.WithField("intent_type", "send_public_payment")
-		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
-	case *transactionpb.Metadata_ReceivePaymentsPublicly:
-		log = log.WithField("intent_type", "receive_payments_publicly")
-		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard, s.maxmind)
-	case *transactionpb.Metadata_EstablishRelationship:
-		log = log.WithField("intent_type", "establish_relationship")
-		intentHandler = NewEstablishRelationshipIntentHandler(s.conf, s.data, s.antispamGuard)
+	/*
+		case *transactionpb.Metadata_UpgradePrivacy:
+				log = log.WithField("intent_type", "upgrade_privacy")
+				intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
+			case *transactionpb.Metadata_SendPublicPayment:
+				log = log.WithField("intent_type", "send_public_payment")
+				intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
+			case *transactionpb.Metadata_ReceivePaymentsPublicly:
+				log = log.WithField("intent_type", "receive_payments_publicly")
+				intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard, s.maxmind)
+			case *transactionpb.Metadata_EstablishRelationship:
+				log = log.WithField("intent_type", "establish_relationship")
+				intentHandler = NewEstablishRelationshipIntentHandler(s.conf, s.data, s.antispamGuard)
+	*/
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}
@@ -440,14 +435,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log = log.WithField("action_type", "open_account")
 			actionType = action.OpenAccount
 			actionHandler, err = NewOpenAccountActionHandler(s.data, typed.OpenAccount, submitActionsReq.Metadata)
-		case *transactionpb.Action_CloseEmptyAccount:
-			log = log.WithField("action_type", "close_empty_account")
-			actionType = action.CloseEmptyAccount
-			actionHandler, err = NewCloseEmptyAccountActionHandler(intentRecord.IntentType, typed.CloseEmptyAccount)
-		case *transactionpb.Action_CloseDormantAccount:
-			log = log.WithField("action_type", "close_dormant_account")
-			actionType = action.CloseDormantAccount
-			actionHandler, err = NewCloseDormantAccountActionHandler(typed.CloseDormantAccount)
 		case *transactionpb.Action_NoPrivacyTransfer:
 			log = log.WithField("action_type", "no_privacy_transfer")
 			actionType = action.NoPrivacyTransfer
@@ -468,25 +455,27 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log = log.WithField("action_type", "temporary_privacy_exchange")
 			actionType = action.PrivateTransfer
 			actionHandler, err = NewTemporaryPrivacyTransferActionHandler(ctx, s.conf, s.data, intentRecord, protoAction, true, s.selectTreasuryPoolForAdvance)
-		case *transactionpb.Action_PermanentPrivacyUpgrade:
-			log = log.WithField("action_type", "permanent_privacy_upgrade")
-			actionType = action.PrivateTransfer
+		/*
+			case *transactionpb.Action_PermanentPrivacyUpgrade:
+				log = log.WithField("action_type", "permanent_privacy_upgrade")
+				actionType = action.PrivateTransfer
 
-			// Pass along the privacy upgrade target found during intent validation
-			// to avoid duplication of work.
-			cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
-			if !ok {
-				log.Warn("cached privacy upgrade target not found")
-				return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
-			}
+				// Pass along the privacy upgrade target found during intent validation
+				// to avoid duplication of work.
+				cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
+				if !ok {
+					log.Warn("cached privacy upgrade target not found")
+					return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
+				}
 
-			actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
-				ctx,
-				s.data,
-				intentRecord,
-				typed.PermanentPrivacyUpgrade,
-				cachedUpgradeTarget,
-			)
+				actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
+					ctx,
+					s.data,
+					intentRecord,
+					typed.PermanentPrivacyUpgrade,
+					cachedUpgradeTarget,
+				)
+		*/
 		default:
 			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
 		}
@@ -1008,15 +997,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		if ok {
 			backgroundCtx = context.WithValue(backgroundCtx, metrics.NewRelicContextKey, nr)
 		}
-
-		// todo: We likely want to put this in a worker if this is a long term feature
-		if s.conf.enableAirdrops.Get(backgroundCtx) {
-			if s.conf.enableAsyncAirdropProcessing.Get(backgroundCtx) {
-				go s.maybeAirdropForSubmittingIntent(backgroundCtx, intentRecord, submitActionsOwnerMetadata)
-			} else {
-				s.maybeAirdropForSubmittingIntent(backgroundCtx, intentRecord, submitActionsOwnerMetadata)
-			}
-		}
 	}
 
 	// RPC is finished. Send success to the client
@@ -1178,14 +1158,6 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 				},
 			},
 		}
-	case intent.MigrateToPrivacy2022:
-		metadata = &transactionpb.Metadata{
-			Type: &transactionpb.Metadata_MigrateToPrivacy_2022{
-				MigrateToPrivacy_2022: &transactionpb.MigrateToPrivacy2022Metadata{
-					Quarks: intentRecord.MigrateToPrivacy2022Metadata.Quantity,
-				},
-			},
-		}
 	case intent.SendPublicPayment:
 		destinationAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
 		if err != nil {
@@ -1265,12 +1237,6 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	timelockRecord, err := s.data.GetTimelockByVault(ctx, accountToCheck.PublicKey().ToBase58())
 	switch err {
 	case nil:
-		if timelockRecord.DataVersion != timelock_token_v1.DataVersion1 {
-			return &transactionpb.CanWithdrawToAccountResponse{
-				IsValidPaymentDestination: false,
-				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-			}, nil
-		}
 	case timelock.ErrTimelockNotFound:
 		// Nothing to do
 	default:
@@ -1350,6 +1316,7 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	}, nil
 }
 
+/*
 func (s *transactionServer) GetPrivacyUpgradeStatus(ctx context.Context, req *transactionpb.GetPrivacyUpgradeStatusRequest) (*transactionpb.GetPrivacyUpgradeStatusResponse, error) {
 	intentId := base58.Encode(req.IntentId.Value)
 
@@ -1374,7 +1341,7 @@ func (s *transactionServer) GetPrivacyUpgradeStatus(ctx context.Context, req *tr
 	case ErrInvalidActionToUpgrade:
 		result = transactionpb.GetPrivacyUpgradeStatusResponse_INVALID_ACTION
 	case ErrPrivacyUpgradeMissed:
-		upgradeStatus = transactionpb.GetPrivacyUpgradeStatusResponse_TEMPORARY_TRANSACTION_FINALIZED
+		upgradeStatus = transactionpb.GetPrivacyUpgradeStatusResponse_TEMPORARY_ACTION_FINALIZED
 	case ErrPrivacyAlreadyUpgraded:
 		upgradeStatus = transactionpb.GetPrivacyUpgradeStatusResponse_ALREADY_UPGRADED
 	case ErrWaitForNextBlock:
@@ -1571,3 +1538,4 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 		Actions: actions,
 	}, nil
 }
+*/
