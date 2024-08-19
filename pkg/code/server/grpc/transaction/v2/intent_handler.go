@@ -31,7 +31,6 @@ import (
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // todo: Make working with different timelock versions easier
@@ -241,55 +240,13 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 }
 
 func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
-	// Validate action count. Primary account has 1 open action and every other
-	// account has 1 open and 1 close action.
-	expectedActionCount := 2*len(accountTypesToOpen) - 1
+	expectedActionCount := len(accountTypesToOpen)
 	if len(actions) != expectedActionCount {
 		return newIntentValidationErrorf("expected %d total actions", expectedActionCount)
 	}
 
-	// Validate the first action is opening the primary account using the owner
-	// account as the authority.
-
-	openAction := actions[0]
-	if openAction.GetOpenAccount() == nil {
-		return newActionValidationError(openAction, "expected an open account action")
-	}
-
-	if openAction.GetOpenAccount().AccountType != commonpb.AccountType_PRIMARY {
-		return newActionValidationErrorf(openAction, "account type must be %s", commonpb.AccountType_PRIMARY)
-	}
-
-	if openAction.GetOpenAccount().Index != 0 {
-		return newActionValidationError(openAction, "index must be 0 for all newly opened accounts")
-	}
-
-	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatiorOwnerAccount.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(openAction, "owner must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
-	}
-
-	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
-		return newActionValidationErrorf(openAction, "authority must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
-	}
-
-	expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
-	if err != nil {
-		return err
-	}
-
-	if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
-	}
-
-	tokenAccountToCollapseTo := openAction.GetOpenAccount().Token
-
-	// Validate all other actions are to open and close all other remaining account types
-	actions = actions[1:]
-	for i, expectedAccountType := range accountTypesToOpen[1:] {
-		openAction := actions[2*i]
-		closeDormantAction := actions[2*i+1]
-
-		// Validate the open action
+	for i, expectedAccountType := range accountTypesToOpen {
+		openAction := actions[i]
 
 		if openAction.GetOpenAccount() == nil {
 			return newActionValidationError(openAction, "expected an open account action")
@@ -307,8 +264,15 @@ func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *comm
 			return newActionValidationErrorf(openAction, "owner must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
 		}
 
-		if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
-			return newActionValidationErrorf(openAction, "authority cannot be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+		switch expectedAccountType {
+		case commonpb.AccountType_PRIMARY:
+			if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+				return newActionValidationErrorf(openAction, "authority must be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+			}
+		default:
+			if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
+				return newActionValidationErrorf(openAction, "authority cannot be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+			}
 		}
 
 		expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
@@ -318,28 +282,6 @@ func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *comm
 
 		if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
 			return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
-		}
-
-		// Validate the close dormant action
-
-		if closeDormantAction.GetCloseDormantAccount() == nil {
-			return newActionValidationError(closeDormantAction, "expected a close dormant account action")
-		}
-
-		if closeDormantAction.GetCloseDormantAccount().AccountType != expectedAccountType {
-			return newActionValidationErrorf(closeDormantAction, "expected %s account type", expectedAccountType)
-		}
-
-		if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Authority.Value, openAction.GetOpenAccount().Authority.Value) {
-			return newActionValidationErrorf(closeDormantAction, "authority must be %s", base58.Encode(openAction.GetOpenAccount().Authority.Value))
-		}
-
-		if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Token.Value, openAction.GetOpenAccount().Token.Value) {
-			return newActionValidationErrorf(closeDormantAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
-		}
-
-		if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Destination.Value, tokenAccountToCollapseTo.Value) {
-			return newActionValidationErrorf(closeDormantAction, "destination must be %s", base58.Encode(tokenAccountToCollapseTo.Value))
 		}
 	}
 
@@ -832,19 +774,6 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		return err
 	}
 
-	// Ensure the client isn't trying to sneak in additional close dormant account actions
-	if metadata.IsRemoteSend {
-		err = validateCloseDormantAccountActionCount(actions, 2)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = validateCloseDormantAccountActionCount(actions, 1)
-		if err != nil {
-			return err
-		}
-	}
-
 	// There's one closed account, and it must be the latest temporary outgoing account.
 	closedAccounts := simResult.GetClosedAccounts()
 	if len(closedAccounts) != 1 {
@@ -1223,11 +1152,6 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 		if len(closedAccounts) > 0 {
 			return newActionValidationError(closedAccounts[0].CloseAction, "cannot close any account")
 		}
-
-		err = validateCloseDormantAccountActionCount(actions, 0)
-		if err != nil {
-			return err
-		}
 	} else {
 
 		// There's one opened account, and it must be the new temporary incoming account.
@@ -1245,18 +1169,11 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) validateActions(
 			return err
 		}
 
-		// Ensure the client isn't trying to sneak in additional close dormant account actions
-		err = validateCloseDormantAccountActionCount(actions, 1)
-		if err != nil {
-			return err
-		}
-
-		// There's one closed account, and it must be the latest temporary incoming account.
+		// No accounts are closed, the latest temporary incoming account is simply
+		// compressed after used.
 		closedAccounts := simResult.GetClosedAccounts()
-		if len(closedAccounts) != 1 {
-			return newIntentValidationError("must close one account")
-		} else if closedAccounts[0].TokenAccount.PublicKey().ToBase58() != source.PublicKey().ToBase58() {
-			return newActionValidationError(closedAccounts[0].CloseAction, "must close latest temporary incoming account")
+		if len(closedAccounts) != 0 {
+			return newIntentValidationError("cannot close any account")
 		}
 	}
 
@@ -2506,18 +2423,9 @@ func validateNextTemporaryAccountOpened(
 		return errors.New("previous temp account record missing")
 	}
 
-	primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
-	if !ok {
-		return errors.New("primary account record missing")
-	}
-	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords[0].Timelock.VaultAddress)
-	if err != nil {
-		return err
-	}
-
 	// Find the open and close actions
 
-	var openAction, closeDormantAction *transactionpb.Action
+	var openAction *transactionpb.Action
 	for _, action := range actions {
 		switch typed := action.Type.(type) {
 		case *transactionpb.Action_OpenAccount:
@@ -2528,18 +2436,8 @@ func validateNextTemporaryAccountOpened(
 
 				openAction = action
 			}
-		case *transactionpb.Action_CloseDormantAccount:
-			if typed.CloseDormantAccount.AccountType == accountType {
-				if closeDormantAction != nil {
-					return newIntentValidationErrorf("multiple close dormant account actions for %s account type", accountType)
-				}
-
-				closeDormantAction = action
-			}
 		}
 	}
-
-	// Validate the open action
 
 	if openAction == nil {
 		return newIntentValidationErrorf("open account action for %s account type missing", accountType)
@@ -2567,28 +2465,6 @@ func validateNextTemporaryAccountOpened(
 		return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
 	}
 
-	// Validate the close dormant action
-
-	if closeDormantAction == nil {
-		return newIntentValidationErrorf("close dormant account action for %s account type missing", accountType)
-	}
-
-	if closeDormantAction.Id < openAction.Id {
-		return newIntentValidationError("open account action must come before close dormant account action")
-	}
-
-	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Authority.Value, openAction.GetOpenAccount().Authority.Value) {
-		return newActionValidationErrorf(closeDormantAction, "authority must be %s", base58.Encode(openAction.GetOpenAccount().Authority.Value))
-	}
-
-	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Token.Value, openAction.GetOpenAccount().Token.Value) {
-		return newActionValidationErrorf(closeDormantAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
-	}
-
-	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Destination.Value, tokenAccountToCollapseTo.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(closeDormantAction, "destination must be %s", tokenAccountToCollapseTo.PublicKey().ToBase58())
-	}
-
 	return nil
 }
 
@@ -2599,18 +2475,7 @@ func validateGiftCardAccountOpened(
 	expectedGiftCardVault *common.Account,
 	actions []*transactionpb.Action,
 ) error {
-	primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
-	if !ok {
-		return errors.New("primary account record missing")
-	}
-	tokenAccountToCollapseTo, err := common.NewAccountFromPublicKeyString(primaryAccountRecords[0].Timelock.VaultAddress)
-	if err != nil {
-		return err
-	}
-
-	// Find the open and close actions
-
-	var openAction, closeDormantAction *transactionpb.Action
+	var openAction *transactionpb.Action
 	for _, action := range actions {
 		switch typed := action.Type.(type) {
 		case *transactionpb.Action_OpenAccount:
@@ -2621,18 +2486,8 @@ func validateGiftCardAccountOpened(
 
 				openAction = action
 			}
-		case *transactionpb.Action_CloseDormantAccount:
-			if typed.CloseDormantAccount.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
-				if closeDormantAction != nil {
-					return newIntentValidationErrorf("multiple close dormant account actions for %s account type", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
-				}
-
-				closeDormantAction = action
-			}
 		}
 	}
-
-	// Validate the open action
 
 	if openAction == nil {
 		return newIntentValidationErrorf("open account action for %s account type missing", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
@@ -2663,46 +2518,6 @@ func validateGiftCardAccountOpened(
 		return newActionValidationErrorf(openAction, "token must be %s", derivedVaultAccount.PublicKey().ToBase58())
 	}
 
-	// Validate the close dormant action
-
-	if closeDormantAction == nil {
-		return newIntentValidationErrorf("close dormant account action for %s account type missing", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
-	}
-
-	if closeDormantAction.Id < openAction.Id {
-		return newIntentValidationError("open account action must come before close dormant account action")
-	}
-
-	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Authority.Value, openAction.GetOpenAccount().Authority.Value) {
-		return newActionValidationErrorf(closeDormantAction, "authority must be %s", base58.Encode(openAction.GetOpenAccount().Authority.Value))
-	}
-
-	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Token.Value, openAction.GetOpenAccount().Token.Value) {
-		return newActionValidationErrorf(closeDormantAction, "token must be %s", derivedVaultAccount.PublicKey().ToBase58())
-	}
-
-	if !bytes.Equal(closeDormantAction.GetCloseDormantAccount().Destination.Value, tokenAccountToCollapseTo.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(closeDormantAction, "destination must be %s", tokenAccountToCollapseTo.PublicKey().ToBase58())
-	}
-
-	return nil
-}
-
-func validateCloseDormantAccountActionCount(actions []*transactionpb.Action, expected int) error {
-	var actual int
-	for _, action := range actions {
-		switch action.Type.(type) {
-		case *transactionpb.Action_CloseDormantAccount:
-			actual++
-		}
-	}
-
-	if actual < expected {
-		return newIntentValidationError("too few close dormant account actions")
-	}
-	if actual > expected {
-		return newIntentValidationError("too many close dormant account actions")
-	}
 	return nil
 }
 
@@ -3046,7 +2861,7 @@ func getExpectedTimelockVaultFromProtoAccount(authorityProto *commonpb.SolanaAcc
 		return nil, err
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
