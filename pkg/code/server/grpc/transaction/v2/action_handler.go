@@ -733,6 +733,7 @@ func (h *TemporaryPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) 
 	return h.data.SaveCommitment(ctx, h.unsavedCommitmentRecord)
 }
 
+/*
 // Handles both of the equivalent client transfer and exchange actions. The
 // server-defined action only defines the private movement of funds between
 // accounts and it's all treated the same by backend processes. The client
@@ -881,6 +882,7 @@ func (h *PermanentPrivacyUpgradeActionHandler) OnSaveToDB(ctx context.Context) e
 
 	return h.data.SaveCommitment(ctx, commitmentBeingUpgraded)
 }
+*/
 
 func getTransript(
 	intent string,
