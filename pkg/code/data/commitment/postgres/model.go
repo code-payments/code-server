@@ -21,7 +21,7 @@ type model struct {
 	Id sql.NullInt64 `db:"id"`
 
 	Address      string `db:"address"`
-	VaultAddress string `db:"vault_address"`
+	VaultAddress string `db:"vault"`
 
 	Pool       string `db:"pool"`
 	RecentRoot string `db:"recent_root"`
@@ -121,7 +121,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 		// Luckily, all updateable state-like fields should progress forward in a
 		// predictable manner, making conditions easy to reason about.
 		query := `INSERT INTO ` + tableName + `
-		(address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at)
+		(address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 
 		ON CONFLICT (address)
@@ -130,7 +130,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 			WHERE ` + tableName + `.address = $1 AND ` + treasuryRepaidCondition + ` AND ` + divertedToCondition + ` AND ` + tableName + `.state <= $13
 
 		RETURNING
-			id, address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at`
+			id, address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at`
 
 		if m.CreatedAt.IsZero() {
 			m.CreatedAt = time.Now()
@@ -162,7 +162,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 func dbGetByAddress(ctx context.Context, db *sqlx.DB, address string) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
+	query := `SELECT id, address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
 		FROM ` + tableName + `
 		WHERE address = $1
 		LIMIT 1`
@@ -177,9 +177,9 @@ func dbGetByAddress(ctx context.Context, db *sqlx.DB, address string) (*model, e
 func dbGetByVault(ctx context.Context, db *sqlx.DB, address string) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
+	query := `SELECT id, address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
 		FROM ` + tableName + `
-		WHERE vault_address = $1
+		WHERE vault = $1
 		LIMIT 1`
 
 	err := db.GetContext(ctx, res, query, address)
@@ -192,7 +192,7 @@ func dbGetByVault(ctx context.Context, db *sqlx.DB, address string) (*model, err
 func dbGetByAction(ctx context.Context, db *sqlx.DB, intentId string, actionId uint32) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
+	query := `SELECT id, address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
 		FROM ` + tableName + `
 		WHERE intent = $1 AND action_id = $2
 		LIMIT 1`
@@ -207,7 +207,7 @@ func dbGetByAction(ctx context.Context, db *sqlx.DB, intentId string, actionId u
 func dbGetAllByState(ctx context.Context, db *sqlx.DB, state commitment.State, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
+	query := `SELECT id, address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
 		FROM ` + tableName + `
 		WHERE (state = $1)
 	`
@@ -229,7 +229,7 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state commitment.State, c
 func dbGetUpgradeableByOwner(ctx context.Context, db *sqlx.DB, owner string, limit uint64) ([]*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, address, vault_address, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
+	query := `SELECT id, address, vault, pool, recent_root, transcript, destination, amount, intent, action_id, owner, treasury_repaid, repayment_diverted_to, state, created_at
 		FROM ` + tableName + `
 		WHERE owner = $1 AND state > $3 AND state < $4 AND repayment_diverted_to IS NULL
 		LIMIT $2

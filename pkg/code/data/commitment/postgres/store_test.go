@@ -23,7 +23,7 @@ const (
 			id SERIAL NOT NULL PRIMARY KEY,
 
 			address TEXT NOT NULL,
-			vault_address TEXT NOT NULL,
+			vault TEXT NOT NULL,
 
 			pool TEXT NOT NULL,
 			recent_root TEXT NOT NULL,
