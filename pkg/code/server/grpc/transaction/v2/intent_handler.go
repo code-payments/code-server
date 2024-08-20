@@ -27,9 +27,11 @@ import (
 	event_util "github.com/code-payments/code-server/pkg/code/event"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/code/lawenforcement"
+	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/pointer"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
 
@@ -1345,7 +1347,7 @@ func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transa
 	upgradeTo, ok := h.cachedUpgradeTargets[protoAction.ActionId]
 	return upgradeTo, ok
 }
-
+*/
 
 type SendPublicPaymentIntentHandler struct {
 	conf          *conf
@@ -2169,7 +2171,6 @@ func (h *EstablishRelationshipIntentHandler) OnSaveToDB(ctx context.Context, int
 func (h *EstablishRelationshipIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
 	return nil
 }
-*/
 
 func validateAllUserAccountsManagedByCode(ctx context.Context, initiatorAccounts []*common.AccountRecords) error {
 	// Try to unlock *ANY* latest account, and you're done
