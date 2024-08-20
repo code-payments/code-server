@@ -23,6 +23,7 @@ const (
 			id SERIAL NOT NULL PRIMARY KEY,
 
 			address TEXT NOT NULL,
+			vault_address TEXT NOT NULL,
 
 			pool TEXT NOT NULL,
 			recent_root TEXT NOT NULL,
@@ -44,6 +45,7 @@ const (
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
 			CONSTRAINT codewallet__core_commitment__uniq__address UNIQUE (address),
+			CONSTRAINT codewallet__core_commitment__uniq__vault_address UNIQUE (vault_address),
 			CONSTRAINT codewallet__core_commitment__uniq__transcript UNIQUE (transcript),
 			CONSTRAINT codewallet__core_commitment__uniq__intent__and__action_id UNIQUE (intent, action_id)
 		);

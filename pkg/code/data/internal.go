@@ -325,6 +325,7 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	SaveCommitment(ctx context.Context, record *commitment.Record) error
 	GetCommitmentByAddress(ctx context.Context, address string) (*commitment.Record, error)
+	GetCommitmentByVault(ctx context.Context, vault string) (*commitment.Record, error)
 	GetCommitmentByAction(ctx context.Context, intentId string, actionId uint32) (*commitment.Record, error)
 	GetAllCommitmentsByState(ctx context.Context, state commitment.State, opts ...query.Option) ([]*commitment.Record, error)
 	GetUpgradeableCommitmentsByOwner(ctx context.Context, owner string, limit uint64) ([]*commitment.Record, error)
@@ -1285,6 +1286,9 @@ func (dp *DatabaseProvider) SaveCommitment(ctx context.Context, record *commitme
 }
 func (dp *DatabaseProvider) GetCommitmentByAddress(ctx context.Context, address string) (*commitment.Record, error) {
 	return dp.commitment.GetByAddress(ctx, address)
+}
+func (dp *DatabaseProvider) GetCommitmentByVault(ctx context.Context, vault string) (*commitment.Record, error) {
+	return dp.commitment.GetByVault(ctx, vault)
 }
 func (dp *DatabaseProvider) GetCommitmentByAction(ctx context.Context, intentId string, actionId uint32) (*commitment.Record, error) {
 	return dp.commitment.GetByAction(ctx, intentId, actionId)

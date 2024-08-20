@@ -37,7 +37,7 @@ func TestGetDeadlineToUpgradePrivacy_HappyPath(t *testing.T) {
 	commitmentRecord.TreasuryRepaid = false
 
 	// Privacy is already upgraded
-	commitmentRecord.RepaymentDivertedTo = &commitmentRecords[1].Address
+	commitmentRecord.RepaymentDivertedTo = &commitmentRecords[1].VaultAddress
 	_, err = GetDeadlineToUpgradePrivacy(env.ctx, env.data, commitmentRecord)
 	assert.Equal(t, ErrNoPrivacyUpgradeDeadline, err)
 	commitmentRecord.RepaymentDivertedTo = nil

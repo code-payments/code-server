@@ -84,6 +84,18 @@ func (s *store) GetByAddress(_ context.Context, address string) (*commitment.Rec
 	return nil, commitment.ErrCommitmentNotFound
 }
 
+// GetByVault implements commitment.Store.GetByVault
+func (s *store) GetByVault(_ context.Context, address string) (*commitment.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if item := s.findByVault(address); item != nil {
+		return item.Clone(), nil
+	}
+
+	return nil, commitment.ErrCommitmentNotFound
+}
+
 // GetByAction implements commitment.Store.GetByAction
 func (s *store) GetByAction(_ context.Context, intentId string, actionId uint32) (*commitment.Record, error) {
 	s.mu.Lock()
@@ -195,6 +207,15 @@ func (s *store) find(data *commitment.Record) *commitment.Record {
 func (s *store) findByAddress(address string) *commitment.Record {
 	for _, item := range s.records {
 		if item.Address == address {
+			return item
+		}
+	}
+	return nil
+}
+
+func (s *store) findByVault(address string) *commitment.Record {
+	for _, item := range s.records {
+		if item.VaultAddress == address {
 			return item
 		}
 	}

@@ -19,6 +19,9 @@ type Store interface {
 	// GetByAddress gets a commitment account's state by its address
 	GetByAddress(ctx context.Context, address string) (*Record, error)
 
+	// GetByVault gets a commitment account's state by its vault address
+	GetByVault(ctx context.Context, address string) (*Record, error)
+
 	// GetByAction gets a commitment account's state by the action it's involved in
 	GetByAction(ctx context.Context, intentId string, actionId uint32) (*Record, error)
 

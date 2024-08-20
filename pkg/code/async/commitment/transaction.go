@@ -33,7 +33,7 @@ func (p *service) injectCloseCommitmentFulfillment(ctx context.Context, commitme
 
 		FulfillmentType: fulfillment.CloseCommitment,
 
-		Source: commitmentRecord.Address,
+		Source: commitmentRecord.VaultAddress,
 
 		IntentOrderingIndex:      uint64(math.MaxInt64),
 		ActionOrderingIndex:      0,

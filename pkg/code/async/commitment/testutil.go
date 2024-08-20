@@ -106,7 +106,8 @@ func (e testEnv) simulateCommitment(t *testing.T, recentRoot string, state commi
 	require.NoError(t, err)
 
 	commitmentRecord := &commitment.Record{
-		Address: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		Address:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		VaultAddress: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
 		Pool:       e.treasuryPool.Address,
 		RecentRoot: recentRoot,
@@ -259,7 +260,7 @@ func (e testEnv) simulatePermanentPrivacyChequeCashed(t *testing.T, commitmentRe
 func (e testEnv) simulateCommitmentBeingUpgraded(t *testing.T, upgradeFrom, upgradeTo *commitment.Record) {
 	require.Nil(t, upgradeFrom.RepaymentDivertedTo)
 
-	upgradeFrom.RepaymentDivertedTo = &upgradeTo.Address
+	upgradeFrom.RepaymentDivertedTo = &upgradeTo.VaultAddress
 	require.NoError(t, e.data.SaveCommitment(e.ctx, upgradeFrom))
 
 	fulfillmentRecords, err := e.data.GetAllFulfillmentsByTypeAndAction(e.ctx, fulfillment.TemporaryPrivacyTransferWithAuthority, upgradeFrom.Intent, upgradeFrom.ActionId)

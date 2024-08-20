@@ -48,6 +48,16 @@ func (s *store) GetByAddress(ctx context.Context, address string) (*commitment.R
 	return fromModel(model), nil
 }
 
+// GetByVault implements commitment.Store.GetByVault
+func (s *store) GetByVault(ctx context.Context, address string) (*commitment.Record, error) {
+	model, err := dbGetByVault(ctx, s.db, address)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromModel(model), nil
+}
+
 // GetByAction implements commitment.Store.GetByAction
 func (s *store) GetByAction(ctx context.Context, intentId string, actionId uint32) (*commitment.Record, error) {
 	model, err := dbGetByAction(ctx, s.db, intentId, actionId)

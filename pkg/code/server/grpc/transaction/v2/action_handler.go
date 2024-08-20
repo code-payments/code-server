@@ -479,6 +479,7 @@ type TemporaryPrivacyTransferActionHandler struct {
 	treasuryPool      *common.Account
 	treasuryPoolVault *common.Account
 	commitment        *common.Account
+	commitmentVault   *common.Account
 
 	recentRoot merkletree.Hash
 	transcript []byte
@@ -590,8 +591,29 @@ func NewTemporaryPrivacyTransferActionHandler(
 		return nil, err
 	}
 
+	proofAddress, _, err := cvm.GetRelayProofAddress(&cvm.GetRelayProofAddressArgs{
+		Relay:      h.treasuryPool.PublicKey().ToBytes(),
+		MerkleRoot: cvm.Hash(h.recentRoot),
+		Commitment: cvm.Hash(commitmentAddress),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	commitmentVaultAddress, _, err := cvm.GetRelayVaultAddress(&cvm.GetRelayVaultAddressArgs{
+		RelayOrProof: proofAddress,
+	})
+	if err != nil {
+		return nil, err
+	}
+	h.commitmentVault, err = common.NewAccountFromPublicKeyBytes(commitmentVaultAddress)
+	if err != nil {
+		return nil, err
+	}
+
 	h.unsavedCommitmentRecord = &commitment.Record{
-		Address: h.commitment.PublicKey().ToBase58(),
+		Address:      h.commitment.PublicKey().ToBase58(),
+		VaultAddress: h.commitmentVault.PublicKey().ToBase58(),
 
 		Pool:       h.treasuryPool.PublicKey().ToBase58(),
 		RecentRoot: cachedTreasuryMetadata.mostRecentRoot,
@@ -678,7 +700,7 @@ func (h *TemporaryPrivacyTransferActionHandler) GetFulfillmentMetadata(
 			nonce,
 			bh,
 			h.source,
-			h.commitment, // todo: Is this right? If not, we'll need to update workers.
+			h.commitmentVault,
 			h.unsavedCommitmentRecord.Amount,
 		)
 		if err != nil {
@@ -692,7 +714,7 @@ func (h *TemporaryPrivacyTransferActionHandler) GetFulfillmentMetadata(
 
 			fulfillmentType:          fulfillment.TemporaryPrivacyTransferWithAuthority,
 			source:                   h.source.Vault,
-			destination:              h.commitment, // todo: Is this right? If not, we'll need to update workers.
+			destination:              h.commitmentVault,
 			fulfillmentOrderingIndex: 2000,
 			disableActiveScheduling:  true,
 		}, nil
