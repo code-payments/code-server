@@ -540,6 +540,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 				// Re-use the same nonce as the one in the fulfillment we're upgrading,
 				// so we avoid server from submitting both.
+				//
+				// todo: This doesn't select the virtual durable nonce
 				selectedNonce, err = transaction.SelectNonceFromFulfillmentToUpgrade(ctx, s.data, fulfillmentToUpgrade)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting nonce from existing fulfillment")
