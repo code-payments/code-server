@@ -23,7 +23,6 @@ import (
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 )
 
 type newFulfillmentMetadata struct {
@@ -576,10 +575,10 @@ func NewTemporaryPrivacyTransferActionHandler(
 		amount,
 	)
 
-	commitmentAddress, _, err := splitter_token.GetCommitmentStateAddress(&splitter_token.GetCommitmentStateAddressArgs{
-		Pool:        h.treasuryPool.PublicKey().ToBytes(),
-		RecentRoot:  []byte(h.recentRoot),
-		Transcript:  h.transcript,
+	commitmentAddress, _, err := cvm.GetRelayCommitmentAddress(&cvm.GetRelayCommitmentAddressArgs{
+		Relay:       h.treasuryPool.PublicKey().ToBytes(),
+		MerkleRoot:  cvm.Hash(h.recentRoot),
+		Transcript:  cvm.Hash(h.transcript),
 		Destination: h.destination.PublicKey().ToBytes(),
 		Amount:      amount,
 	})
