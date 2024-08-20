@@ -37,6 +37,7 @@ import (
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -399,19 +400,18 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	phoneLock.Unlock()
 	phoneLockUnlocked = true
 
-	type fulfillmentWithMetadata struct {
+	type fulfillmentWithSigningMetadata struct {
 		record *fulfillment.Record
 
-		txn               *solana.Transaction
-		isCreatedOnDemand bool
-
 		requiresClientSignature bool
+		expectedSigner          *common.Account
+		virtualIxnHash          *cvm.Hash
 	}
 
 	// Convert all actions into a set of fulfillments
 	var actionHandlers []BaseActionHandler
 	var actionRecords []*action.Record
-	var fulfillments []fulfillmentWithMetadata
+	var fulfillments []fulfillmentWithSigningMetadata
 	var reservedNonces []*transaction.SelectedNonce
 	var serverParameters []*transactionpb.ServerParameter
 	for i, protoAction := range submitActionsReq.Actions {
@@ -519,13 +519,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		serverParameter.ActionId = protoAction.Id
 		serverParameters = append(serverParameters, serverParameter)
 
-		transactionCount := 1
+		fulfillmentCount := 1
 		if !isUpgradeActionOperation {
-			transactionCount = actionHandler.(CreateActionHandler).TransactionCount()
+			fulfillmentCount = actionHandler.(CreateActionHandler).FulfillmentCount()
 		}
 
-		for j := 0; j < transactionCount; j++ {
-			var makeTxnResult *makeSolanaTransactionResult
+		for j := 0; j < fulfillmentCount; j++ {
+			var newFulfillmentMetadata *newFulfillmentMetadata
 			var selectedNonce *transaction.SelectedNonce
 			var actionId uint32
 			if isUpgradeActionOperation {
@@ -547,13 +547,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				}
 				defer selectedNonce.Unlock()
 
-				// Make a new transaction, which is the upgraded version of the old one.
-				makeTxnResult, err = upgradeActionHandler.MakeUpgradedSolanaTransaction(
+				// Get metadata for the fulfillment being upgraded
+				newFulfillmentMetadata, err = upgradeActionHandler.GetFulfillmentMetadata(
 					selectedNonce.Account,
 					selectedNonce.Blockhash,
 				)
 				if err != nil {
-					log.WithError(err).Warn("failure making solana transaction")
+					log.WithError(err).Warn("failure getting fulfillment metadata")
 					return handleSubmitIntentError(streamer, err)
 				}
 
@@ -585,27 +585,18 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 					selectedNonce = nil
 				}
 
-				// Make a new transaction
-				makeTxnResult, err = createActionHandler.MakeNewSolanaTransaction(
+				// Get metadata for the new fulfillment being created
+				newFulfillmentMetadata, err = createActionHandler.GetFulfillmentMetadata(
 					j,
 					nonceAccount,
 					nonceBlockchash,
 				)
 				if err != nil {
-					log.WithError(err).Warn("failure making solana transaction")
+					log.WithError(err).Warn("failure getting fulfillment metadata")
 					return handleSubmitIntentError(streamer, err)
 				}
 
 				actionId = protoAction.Id
-			}
-
-			// Sign the Solana transaction
-			if !makeTxnResult.isCreatedOnDemand {
-				err = makeTxnResult.txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-				if err != nil {
-					log.WithError(err).Warn("failure signing solana transaction")
-					return handleSubmitIntentError(streamer, err)
-				}
 			}
 
 			// Construct the fulfillment record
@@ -616,57 +607,43 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				ActionId:   actionId,
 				ActionType: actionType,
 
-				FulfillmentType: makeTxnResult.fulfillmentType,
+				FulfillmentType: newFulfillmentMetadata.fulfillmentType,
 
-				Source: makeTxnResult.source.PublicKey().ToBase58(),
+				Source: newFulfillmentMetadata.source.PublicKey().ToBase58(),
 
 				IntentOrderingIndex:      0, // Unknown until intent record is saved, so it's injected later
 				ActionOrderingIndex:      actionId,
-				FulfillmentOrderingIndex: makeTxnResult.fulfillmentOrderingIndex,
+				FulfillmentOrderingIndex: newFulfillmentMetadata.fulfillmentOrderingIndex,
 
-				DisableActiveScheduling: makeTxnResult.disableActiveScheduling,
+				DisableActiveScheduling: newFulfillmentMetadata.disableActiveScheduling,
 
 				InitiatorPhoneNumber: intentRecord.InitiatorPhoneNumber,
 
 				State: fulfillment.StateUnknown,
 			}
-			if !makeTxnResult.isCreatedOnDemand {
-				fulfillmentRecord.Data = makeTxnResult.txn.Marshal()
-				fulfillmentRecord.Signature = pointer.String(base58.Encode(makeTxnResult.txn.Signature()))
+			if newFulfillmentMetadata.destination != nil {
+				fulfillmentRecord.Destination = pointer.String(newFulfillmentMetadata.destination.PublicKey().ToBase58())
+			}
 
-				fulfillmentRecord.VirtualSignature = pointer.String("todo")
+			// Fulfillment has a virtual instruction requiring client signature
+			if newFulfillmentMetadata.requiresClientSignature {
 				fulfillmentRecord.VirtualNonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
 				fulfillmentRecord.VirtualBlockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
-			}
-			if makeTxnResult.destination != nil {
-				destination := makeTxnResult.destination.PublicKey().ToBase58()
-				fulfillmentRecord.Destination = &destination
-			}
 
-			// Transaction requires a client signature
-			var requiresClientSignature bool
-			if !makeTxnResult.isCreatedOnDemand && makeTxnResult.txn.Message.Header.NumSignatures > clientSignatureIndex {
-				// Upgraded transactions always use the same nonce, so there's no
-				// need to provide it.
-				if !isUpgradeActionOperation {
-					serverParameter.Nonces = append(serverParameter.Nonces, &transactionpb.NoncedTransactionMetadata{
-						Nonce: selectedNonce.Account.ToProto(),
-						Blockhash: &commonpb.Blockhash{
-							Value: selectedNonce.Blockhash[:],
-						},
-					})
-				}
-
-				requiresClientSignature = true
+				serverParameter.Nonces = append(serverParameter.Nonces, &transactionpb.NoncedTransactionMetadata{
+					Nonce: selectedNonce.Account.ToProto(),
+					Blockhash: &commonpb.Blockhash{
+						Value: selectedNonce.Blockhash[:],
+					},
+				})
 			}
 
-			fulfillments = append(fulfillments, fulfillmentWithMetadata{
+			fulfillments = append(fulfillments, fulfillmentWithSigningMetadata{
 				record: fulfillmentRecord,
 
-				isCreatedOnDemand: makeTxnResult.isCreatedOnDemand,
-				txn:               makeTxnResult.txn,
-
-				requiresClientSignature: requiresClientSignature,
+				requiresClientSignature: newFulfillmentMetadata.requiresClientSignature,
+				expectedSigner:          newFulfillmentMetadata.expectedSigner,
+				virtualIxnHash:          newFulfillmentMetadata.virtualIxnHash,
 			})
 			reservedNonces = append(reservedNonces, selectedNonce)
 		}
@@ -680,7 +657,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		},
 	}
 
-	var unsignedFulfillments []fulfillmentWithMetadata
+	var unsignedFulfillments []fulfillmentWithSigningMetadata
 	for _, fulfillmentWithMetadata := range fulfillments {
 		if fulfillmentWithMetadata.requiresClientSignature {
 			unsignedFulfillments = append(unsignedFulfillments, fulfillmentWithMetadata)
@@ -740,15 +717,14 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			unsignedFulfillment := unsignedFulfillments[i]
 
 			if !ed25519.Verify(
-				unsignedFulfillment.txn.Message.Accounts[clientSignatureIndex],
-				unsignedFulfillment.txn.Message.Marshal(),
+				unsignedFulfillment.expectedSigner.PublicKey().ToBytes(),
+				unsignedFulfillment.virtualIxnHash[:],
 				signature.Value,
 			) {
-				signatureErrorDetails = append(signatureErrorDetails, toInvalidSignatureErrorDetails(unsignedFulfillment.record.ActionId, *unsignedFulfillment.txn, signature))
+				signatureErrorDetails = append(signatureErrorDetails, toInvalidVirtualIxnSignatureErrorDetails(unsignedFulfillment.record.ActionId, *unsignedFulfillment.virtualIxnHash, signature))
 			}
 
-			copy(unsignedFulfillment.txn.Signatures[clientSignatureIndex][:], signature.Value)
-			unsignedFulfillments[i].record.Data = unsignedFulfillments[i].txn.Marshal()
+			unsignedFulfillment.record.VirtualSignature = pointer.String(base58.Encode(signature.Value))
 		}
 
 		if len(signatureErrorDetails) > 0 {
@@ -794,7 +770,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			fulfillmentRecordsToSave = append(fulfillmentRecordsToSave, fulfillmentWithMetadata.record)
 
 			// Reserve the nonce with the latest server-signed fulfillment.
-			if !fulfillmentWithMetadata.isCreatedOnDemand {
+			if fulfillmentWithMetadata.requiresClientSignature {
 				nonceToReserve := reservedNonces[i]
 				if isIntentUpdateOperation {
 					err = nonceToReserve.UpdateSignature(ctx, *fulfillmentWithMetadata.record.Signature)

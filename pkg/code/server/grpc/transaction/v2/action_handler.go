@@ -22,17 +22,20 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
-// todo: a better name for this lol?
-type makeSolanaTransactionResult struct {
-	isCreatedOnDemand bool
-	txn               *solana.Transaction // Can be null if the transaction is on-demand created at scheduling time
+type newFulfillmentMetadata struct {
+	// Signature metadata
+
+	requiresClientSignature bool
+	expectedSigner          *common.Account // Must be null if the requiresClientSignature is false
+	virtualIxnHash          *cvm.Hash       // Must be null if the requiresClientSignature is false
 
 	// Additional metadata to add to the action and fulfillment record, which relates
-	// specifically to the transaction that was created.
+	// specifically to the transaction or virtual instruction within the context of
+	// the action.
 
 	fulfillmentType fulfillment.Type
 
@@ -63,28 +66,24 @@ type BaseActionHandler interface {
 type CreateActionHandler interface {
 	BaseActionHandler
 
-	// TransactionCount returns the total number of transactions that will be created
-	// for the action.
-	TransactionCount() int
+	// FulfillmentCount returns the total number of fulfillments that
+	// will be created for the action.
+	FulfillmentCount() int
 
 	// PopulateMetadata populates action metadata into the provided record
 	PopulateMetadata(actionRecord *action.Record) error
 
 	// RequiresNonce determines whether a nonce should be acquired for the
-	// transaction being created. This should only be false in cases where
-	// client signatures are not required and transaction construction can
-	// be deferred to scheduling time. The nonce and bh parameters of
-	// MakeNewSolanaTransaction will be null.
-	RequiresNonce(transactionIndex int) bool
+	// fulfillment being created. This should be true whenever a virtual
+	// instruction needs to be signed by the client.
+	RequiresNonce(fulfillmentIndex int) bool
 
-	// MakeNewSolanaTransaction makes a new Solana transaction. Implementations
-	// can choose to defer creation until scheduling time. This may be done in
-	// cases where the client signature is not required.
-	MakeNewSolanaTransaction(
+	// GetFulfillmentMetadata gets metadata for the fulfillment being created
+	GetFulfillmentMetadata(
 		index int,
 		nonce *common.Account,
 		bh solana.Blockhash,
-	) (*makeSolanaTransactionResult, error)
+	) (*newFulfillmentMetadata, error)
 }
 
 // UpgradeActionHandler is an interface for upgrading existing actions. It's
@@ -96,11 +95,11 @@ type UpgradeActionHandler interface {
 	// upgraded.
 	GetFulfillmentBeingUpgraded() *fulfillment.Record
 
-	// MakeUpgradedSolanaTransaction makes an upgraded Solana transaction
-	MakeUpgradedSolanaTransaction(
+	// GetFulfillmentMetadata gets upgraded fulfillment metadata
+	GetFulfillmentMetadata(
 		nonce *common.Account,
 		bh solana.Blockhash,
-	) (*makeSolanaTransactionResult, error)
+	) (*newFulfillmentMetadata, error)
 }
 
 type OpenAccountActionHandler struct {
@@ -161,7 +160,7 @@ func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transacti
 	}, nil
 }
 
-func (h *OpenAccountActionHandler) TransactionCount() int {
+func (h *OpenAccountActionHandler) FulfillmentCount() int {
 	return 1
 }
 
@@ -185,16 +184,17 @@ func (h *OpenAccountActionHandler) RequiresNonce(index int) bool {
 	return false
 }
 
-func (h *OpenAccountActionHandler) MakeNewSolanaTransaction(
+func (h *OpenAccountActionHandler) GetFulfillmentMetadata(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*newFulfillmentMetadata, error) {
 	switch index {
 	case 0:
-		return &makeSolanaTransactionResult{
-			isCreatedOnDemand: true,
-			txn:               nil,
+		return &newFulfillmentMetadata{
+			requiresClientSignature: false,
+			expectedSigner:          nil,
+			virtualIxnHash:          nil,
 
 			fulfillmentType:          fulfillment.InitializeLockedTimelockAccount,
 			source:                   h.timelockAccounts.Vault,
@@ -203,7 +203,7 @@ func (h *OpenAccountActionHandler) MakeNewSolanaTransaction(
 			disableActiveScheduling:  h.accountType != commonpb.AccountType_PRIMARY, // Non-primary accounts are created on demand after first usage
 		}, nil
 	default:
-		return nil, errors.New("invalid transaction index")
+		return nil, errors.New("invalid virtual ixn index")
 	}
 }
 
@@ -280,7 +280,7 @@ func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, fee
 	}, nil
 }
 
-func (h *NoPrivacyTransferActionHandler) TransactionCount() int {
+func (h *NoPrivacyTransferActionHandler) FulfillmentCount() int {
 	return 1
 }
 
@@ -323,14 +323,14 @@ func (h *NoPrivacyTransferActionHandler) RequiresNonce(index int) bool {
 	return true
 }
 
-func (h *NoPrivacyTransferActionHandler) MakeNewSolanaTransaction(
+func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*newFulfillmentMetadata, error) {
 	switch index {
 	case 0:
-		txn, err := transaction_util.MakeTransferWithAuthorityTransaction(
+		virtualIxnHash, err := transaction_util.GetVirtualTransferWithAuthorityHash(
 			nonce,
 			bh,
 			h.source,
@@ -341,8 +341,10 @@ func (h *NoPrivacyTransferActionHandler) MakeNewSolanaTransaction(
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
-			txn: &txn,
+		return &newFulfillmentMetadata{
+			requiresClientSignature: true,
+			expectedSigner:          h.source.VaultOwner,
+			virtualIxnHash:          virtualIxnHash,
 
 			fulfillmentType:          fulfillment.NoPrivacyTransferWithAuthority,
 			source:                   h.source.Vault,
@@ -363,29 +365,17 @@ type NoPrivacyWithdrawActionHandler struct {
 	source                  *common.TimelockAccounts
 	destination             *common.Account
 	amount                  uint64
-	additionalMemo          *string
 	disableActiveScheduling bool
 }
 
 func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
-	var additionalMemo *string
 	var disableActiveScheduling bool
 
 	switch intentRecord.IntentType {
 	case intent.SendPrivatePayment:
-		if intentRecord.SendPrivatePaymentMetadata.IsTip {
-			tipMemo, err := transaction_util.GetTipMemoValue(intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform, intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username)
-			if err != nil {
-				return nil, err
-			}
-			additionalMemo = &tipMemo
-		}
-
 		// Technically we should do this for public receives too, but we don't
 		// yet have a great way of doing cross intent fulfillment polling hints.
 		disableActiveScheduling = true
-	case intent.MigrateToPrivacy2022:
-		dataVersion = timelock_token_v1.DataVersionLegacy
 	}
 
 	sourceAuthority, err := common.NewAccountFromProto(protoAction.Authority)
@@ -407,12 +397,11 @@ func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction 
 		source:                  source,
 		destination:             destination,
 		amount:                  protoAction.Amount,
-		additionalMemo:          additionalMemo,
 		disableActiveScheduling: disableActiveScheduling,
 	}, nil
 }
 
-func (h *NoPrivacyWithdrawActionHandler) TransactionCount() int {
+func (h *NoPrivacyWithdrawActionHandler) FulfillmentCount() int {
 	return 1
 }
 
@@ -440,26 +429,27 @@ func (h *NoPrivacyWithdrawActionHandler) RequiresNonce(index int) bool {
 	return true
 }
 
-func (h *NoPrivacyWithdrawActionHandler) MakeNewSolanaTransaction(
+func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*newFulfillmentMetadata, error) {
 	switch index {
 	case 0:
-		txn, err := transaction_util.MakeCloseAccountWithBalanceTransaction(
+		virtualIxnHash, err := transaction_util.GetVirtualCloseAccountWithBalanceHash(
 			nonce,
 			bh,
 			h.source,
 			h.destination,
-			h.additionalMemo,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
-			txn: &txn,
+		return &newFulfillmentMetadata{
+			requiresClientSignature: true,
+			expectedSigner:          h.source.VaultOwner,
+			virtualIxnHash:          virtualIxnHash,
 
 			fulfillmentType:          fulfillment.NoPrivacyWithdraw,
 			source:                   h.source.Vault,
@@ -490,7 +480,6 @@ type TemporaryPrivacyTransferActionHandler struct {
 	treasuryPool      *common.Account
 	treasuryPoolVault *common.Account
 	commitment        *common.Account
-	commitmentVault   *common.Account
 
 	recentRoot merkletree.Hash
 	transcript []byte
@@ -587,7 +576,7 @@ func NewTemporaryPrivacyTransferActionHandler(
 		amount,
 	)
 
-	commitmentAddress, commitmentBump, err := splitter_token.GetCommitmentStateAddress(&splitter_token.GetCommitmentStateAddressArgs{
+	commitmentAddress, _, err := splitter_token.GetCommitmentStateAddress(&splitter_token.GetCommitmentStateAddressArgs{
 		Pool:        h.treasuryPool.PublicKey().ToBytes(),
 		RecentRoot:  []byte(h.recentRoot),
 		Transcript:  h.transcript,
@@ -602,39 +591,20 @@ func NewTemporaryPrivacyTransferActionHandler(
 		return nil, err
 	}
 
-	commitmentVaultAddress, commitmentVaultBump, err := splitter_token.GetCommitmentVaultAddress(&splitter_token.GetCommitmentVaultAddressArgs{
-		Pool:       h.treasuryPool.PublicKey().ToBytes(),
-		Commitment: h.commitment.PublicKey().ToBytes(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	h.commitmentVault, err = common.NewAccountFromPublicKeyBytes(commitmentVaultAddress)
-	if err != nil {
-		return nil, err
-	}
-
 	h.unsavedCommitmentRecord = &commitment.Record{
-		DataVersion: splitter_token.DataVersion1,
-
 		Address: h.commitment.PublicKey().ToBase58(),
-		Bump:    commitmentBump,
 
-		Vault:     h.commitmentVault.PublicKey().ToBase58(),
-		VaultBump: commitmentVaultBump,
-
-		Pool:     h.treasuryPool.PublicKey().ToBase58(),
-		PoolBump: cachedTreasuryMetadata.stateBump,
-
+		Pool:       h.treasuryPool.PublicKey().ToBase58(),
 		RecentRoot: cachedTreasuryMetadata.mostRecentRoot,
-		Transcript: hex.EncodeToString(h.transcript),
 
+		Transcript:  hex.EncodeToString(h.transcript),
 		Destination: h.destination.PublicKey().ToBase58(),
 		Amount:      amount,
 
 		Intent:   intentRecord.IntentId,
 		ActionId: untypedAction.Id,
-		Owner:    intentRecord.InitiatorOwnerAccount,
+
+		Owner: intentRecord.InitiatorOwnerAccount,
 
 		State: commitment.StateUnknown,
 	}
@@ -642,7 +612,7 @@ func NewTemporaryPrivacyTransferActionHandler(
 	return h, nil
 }
 
-func (h *TemporaryPrivacyTransferActionHandler) TransactionCount() int {
+func (h *TemporaryPrivacyTransferActionHandler) FulfillmentCount() int {
 	return 2
 }
 
@@ -686,16 +656,17 @@ func (h *TemporaryPrivacyTransferActionHandler) RequiresNonce(index int) bool {
 	return index != 0
 }
 
-func (h *TemporaryPrivacyTransferActionHandler) MakeNewSolanaTransaction(
+func (h *TemporaryPrivacyTransferActionHandler) GetFulfillmentMetadata(
 	index int,
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
+) (*newFulfillmentMetadata, error) {
 	switch index {
 	case 0:
-		return &makeSolanaTransactionResult{
-			isCreatedOnDemand: true,
-			txn:               nil,
+		return &newFulfillmentMetadata{
+			requiresClientSignature: false,
+			expectedSigner:          nil,
+			virtualIxnHash:          nil,
 
 			fulfillmentType:          fulfillment.TransferWithCommitment,
 			source:                   h.treasuryPoolVault,
@@ -704,23 +675,25 @@ func (h *TemporaryPrivacyTransferActionHandler) MakeNewSolanaTransaction(
 			disableActiveScheduling:  h.isCollectedForHideInTheCrowdPrivacy,
 		}, nil
 	case 1:
-		txn, err := transaction_util.MakeTransferWithAuthorityTransaction(
+		virtualIxnHash, err := transaction_util.GetVirtualTransferWithAuthorityHash(
 			nonce,
 			bh,
 			h.source,
-			h.commitmentVault,
+			h.commitment, // todo: Is this right? If not, we'll need to update workers.
 			h.unsavedCommitmentRecord.Amount,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		return &makeSolanaTransactionResult{
-			txn: &txn,
+		return &newFulfillmentMetadata{
+			requiresClientSignature: true,
+			expectedSigner:          h.source.VaultOwner,
+			virtualIxnHash:          virtualIxnHash,
 
 			fulfillmentType:          fulfillment.TemporaryPrivacyTransferWithAuthority,
 			source:                   h.source.Vault,
-			destination:              h.commitmentVault,
+			destination:              h.commitment, // todo: Is this right? If not, we'll need to update workers.
 			fulfillmentOrderingIndex: 2000,
 			disableActiveScheduling:  true,
 		}, nil

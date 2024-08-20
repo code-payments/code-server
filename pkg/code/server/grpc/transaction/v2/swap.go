@@ -359,7 +359,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapStructuredError(
 			streamer,
 			transactionpb.SwapResponse_Error_SIGNATURE_ERROR,
-			toInvalidSignatureErrorDetails(0, txn, submitSignatureReq.Signature),
+			toInvalidTxnSignatureErrorDetails(0, txn, submitSignatureReq.Signature),
 		)
 	}
 

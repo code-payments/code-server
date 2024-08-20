@@ -125,6 +125,14 @@ github.com/code-payments/code-protobuf-api v1.16.6 h1:QCot0U+4Ar5SdSX4v955FORMsd
 github.com/code-payments/code-protobuf-api v1.16.6/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
 github.com/code-payments/code-protobuf-api v1.18.1-0.20240816181522-d676c469560e h1:I7bUSQWqDeJ1pjJo58MFFiBraocNXpxzKYT/ZQRAYK8=
 github.com/code-payments/code-protobuf-api v1.18.1-0.20240816181522-d676c469560e/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820134923-fef9aa9ba43c h1:OT6lfsDtao85Yxosdkm5QpPMdwWp4uln63450iEvPn0=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820134923-fef9aa9ba43c/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820143954-42db9b3554ca h1:xRsh9a/PZyouBpo1IBwdrVnCZZRmvlyDQlS1OJKAr/w=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820143954-42db9b3554ca/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820144322-178f09e6cb66 h1:9FXVlKe7qYXv2s3YU3z+ptxbVFiPtIwPRehIlTTntPM=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820144322-178f09e6cb66/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820154350-ad076084d5a4 h1:f/dui6iRfeYm/59hsh3gC9UU016po77bp1TdLnBuzG8=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20240820154350-ad076084d5a4/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
 github.com/code-payments/code-vm-indexer v0.1.0 h1:XzBwFrZp1R+9POGF/zMy5o6/OCI2J+jGJ7qr4cL72rY=
 github.com/code-payments/code-vm-indexer v0.1.0/go.mod h1:LtXqlb7ub0mPUNKlCPJbsEDQrkZvWTPSRM5hTdHcqpM=
 github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6 h1:NmTXa/uVnDyp0TY5MKi197+3HWcnYWfnHGyaFthlnGw=
