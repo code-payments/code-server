@@ -470,6 +470,15 @@ func (h *SendPrivatePaymentIntentHandler) AllowCreation(ctx context.Context, int
 		return errors.New("unexpected metadata proto message")
 	}
 
+	// todo: need a solution for auto returns
+	if intentRecord.SendPrivatePaymentMetadata.IsRemoteSend {
+		return newIntentDeniedError("remote send is not supported yet for the vm")
+	}
+	// todo: need a solution for additional memo containing tipping platform and username in a memo
+	if intentRecord.SendPrivatePaymentMetadata.IsTip {
+		return newIntentDeniedError("tipping is not supported yet for the vm")
+	}
+
 	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
 	if err != nil {
 		return err
