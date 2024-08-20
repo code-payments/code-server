@@ -363,7 +363,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		)
 	}
 
-	copy(txn.Signatures[clientSignatureIndex][:], submitSignatureReq.Signature.Value)
+	copy(txn.Signatures[1][:], submitSignatureReq.Signature.Value)
 	txn.Sign(s.swapSubsidizer.PrivateKey().ToBytes())
 
 	log = log.WithField("transaction_id", base58.Encode(txn.Signature()))

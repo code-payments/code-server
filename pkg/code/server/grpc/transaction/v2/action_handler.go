@@ -39,11 +39,8 @@ type makeSolanaTransactionResult struct {
 	source      *common.Account
 	destination *common.Account
 
-	intentOrderingIndexOverride *uint64
-	actionOrderingIndexOverride *uint32
-	fulfillmentOrderingIndex    uint32
-
-	disableActiveScheduling bool
+	fulfillmentOrderingIndex uint32
+	disableActiveScheduling  bool
 }
 
 // BaseActionHandler is a base interface for operation-specific action handlers
@@ -127,7 +124,7 @@ func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transacti
 		return nil, err
 	}
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +230,7 @@ func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTrans
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+	source, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +254,7 @@ func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, fee
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+	source, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +368,6 @@ type NoPrivacyWithdrawActionHandler struct {
 }
 
 func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
-	dataVersion := timelock_token_v1.DataVersion1
 	var additionalMemo *string
 	var disableActiveScheduling bool
 
@@ -397,7 +393,7 @@ func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction 
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(dataVersion, common.KinMintAccount)
+	source, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +551,7 @@ func NewTemporaryPrivacyTransferActionHandler(
 		return nil, err
 	}
 
-	h.source, err = authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+	h.source, err = authority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}

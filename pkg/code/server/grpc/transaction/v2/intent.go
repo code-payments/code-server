@@ -40,12 +40,6 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
-const (
-	// Assumes the client signature index is consistent across all transactions,
-	// including those constructed in the SubmitIntent and Swap RPCs.
-	clientSignatureIndex = 1
-)
-
 func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_SubmitIntentServer) error {
 	// Bound the total RPC. Keeping the timeout higher to see where we land because
 	// there's a lot of stuff happening in this method.
@@ -406,15 +400,12 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	phoneLockUnlocked = true
 
 	type fulfillmentWithMetadata struct {
-		record        *fulfillment.Record
-		isRecordSaved bool
+		record *fulfillment.Record
 
 		txn               *solana.Transaction
 		isCreatedOnDemand bool
 
 		requiresClientSignature bool
-
-		intentOrderingIndexOverriden bool
 	}
 
 	// Convert all actions into a set of fulfillments
@@ -499,14 +490,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		actionHandlers = append(actionHandlers, actionHandler)
 
-		// Some actions are optional tools for Code to use at its disposal and
-		// are not necessarily required to complete the intent flow. We can
-		// choose to discard them by revoking the action immediately. However,
-		// clients still have an expectation to sign them, since this is a
-		// server toggle. As a result, we must go through the process of creating
-		// the transaction.
-		areFulfillmentsSavedForAction := true
-
 		// Upgrades cannot create new actions.
 		if !isUpgradeActionOperation {
 			// Construct the equivalent action record
@@ -527,9 +510,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				log.WithError(err).Warn("failure populating action metadata")
 				return handleSubmitIntentError(streamer, err)
 			}
-
-			// Action could be immediately revoked if we opt to not require it
-			areFulfillmentsSavedForAction = actionRecord.State != action.StateRevoked
 
 			actionRecords = append(actionRecords, actionRecord)
 		}
@@ -586,7 +566,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				var nonceAccount *common.Account
 				var nonceBlockchash solana.Blockhash
 				if createActionHandler.RequiresNonce(j) {
-					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 					if err != nil {
 						log.WithError(err).Warn("failure selecting available nonce")
 						return handleSubmitIntentError(streamer, err)
@@ -654,18 +634,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				fulfillmentRecord.Data = makeTxnResult.txn.Marshal()
 				fulfillmentRecord.Signature = pointer.String(base58.Encode(makeTxnResult.txn.Signature()))
 
-				fulfillmentRecord.Nonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
-				fulfillmentRecord.Blockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
+				fulfillmentRecord.VirtualSignature = pointer.String("todo")
+				fulfillmentRecord.VirtualNonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
+				fulfillmentRecord.VirtualBlockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
 			}
 			if makeTxnResult.destination != nil {
 				destination := makeTxnResult.destination.PublicKey().ToBase58()
 				fulfillmentRecord.Destination = &destination
-			}
-			if makeTxnResult.intentOrderingIndexOverride != nil {
-				fulfillmentRecord.IntentOrderingIndex = *makeTxnResult.intentOrderingIndexOverride
-			}
-			if makeTxnResult.actionOrderingIndexOverride != nil {
-				fulfillmentRecord.ActionOrderingIndex = *makeTxnResult.actionOrderingIndexOverride
 			}
 
 			// Transaction requires a client signature
@@ -692,10 +667,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				txn:               makeTxnResult.txn,
 
 				requiresClientSignature: requiresClientSignature,
-
-				intentOrderingIndexOverriden: makeTxnResult.intentOrderingIndexOverride != nil,
-
-				isRecordSaved: areFulfillmentsSavedForAction,
 			})
 			reservedNonces = append(reservedNonces, selectedNonce)
 		}
@@ -818,16 +789,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		// Save all fulfillment records
 		fulfillmentRecordsToSave := make([]*fulfillment.Record, 0)
 		for i, fulfillmentWithMetadata := range fulfillments {
-			if !fulfillmentWithMetadata.isRecordSaved {
-				continue
-			}
-
-			// If the intent ordering index isn't overriden, the inject it here where
-			// the value is guaranteed to be set due to the lazy saving of the intent
-			// record.
-			if !fulfillmentWithMetadata.intentOrderingIndexOverriden {
-				fulfillmentWithMetadata.record.IntentOrderingIndex = intentRecord.Id
-			}
+			fulfillmentWithMetadata.record.IntentOrderingIndex = intentRecord.Id
 
 			fulfillmentRecordsToSave = append(fulfillmentRecordsToSave, fulfillmentWithMetadata.record)
 
