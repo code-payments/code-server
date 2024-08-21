@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"strings"
 	"time"
 
@@ -24,10 +23,8 @@ import (
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -40,14 +37,8 @@ import (
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/token"
-)
-
-const (
-	// Assumes the client signature index is consistent across all transactions,
-	// including those constructed in the SubmitIntent and Swap RPCs.
-	clientSignatureIndex = 1
 )
 
 func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_SubmitIntentServer) error {
@@ -124,12 +115,11 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		log = log.WithField("intent_type", "receive_payments_privately")
 		intentHandler = NewReceivePaymentsPrivatelyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 		intentRequiresNewTreasuryPoolFunds = true
-	case *transactionpb.Metadata_UpgradePrivacy:
-		log = log.WithField("intent_type", "upgrade_privacy")
-		intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
-	case *transactionpb.Metadata_MigrateToPrivacy_2022:
-		log = log.WithField("intent_type", "migrate_to_privacy_2022")
-		intentHandler = NewMigrateToPrivacy2022IntentHandler(s.conf, s.data)
+		/*
+			case *transactionpb.Metadata_UpgradePrivacy:
+					log = log.WithField("intent_type", "upgrade_privacy")
+					intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
+		*/
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
 		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
@@ -139,6 +129,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	case *transactionpb.Metadata_EstablishRelationship:
 		log = log.WithField("intent_type", "establish_relationship")
 		intentHandler = NewEstablishRelationshipIntentHandler(s.conf, s.data, s.antispamGuard)
+
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}
@@ -410,22 +401,18 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	phoneLock.Unlock()
 	phoneLockUnlocked = true
 
-	type fulfillmentWithMetadata struct {
-		record        *fulfillment.Record
-		isRecordSaved bool
-
-		txn               *solana.Transaction
-		isCreatedOnDemand bool
+	type fulfillmentWithSigningMetadata struct {
+		record *fulfillment.Record
 
 		requiresClientSignature bool
-
-		intentOrderingIndexOverriden bool
+		expectedSigner          *common.Account
+		virtualIxnHash          *cvm.Hash
 	}
 
 	// Convert all actions into a set of fulfillments
 	var actionHandlers []BaseActionHandler
 	var actionRecords []*action.Record
-	var fulfillments []fulfillmentWithMetadata
+	var fulfillments []fulfillmentWithSigningMetadata
 	var reservedNonces []*transaction.SelectedNonce
 	var serverParameters []*transactionpb.ServerParameter
 	for i, protoAction := range submitActionsReq.Actions {
@@ -440,14 +427,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log = log.WithField("action_type", "open_account")
 			actionType = action.OpenAccount
 			actionHandler, err = NewOpenAccountActionHandler(s.data, typed.OpenAccount, submitActionsReq.Metadata)
-		case *transactionpb.Action_CloseEmptyAccount:
-			log = log.WithField("action_type", "close_empty_account")
-			actionType = action.CloseEmptyAccount
-			actionHandler, err = NewCloseEmptyAccountActionHandler(intentRecord.IntentType, typed.CloseEmptyAccount)
-		case *transactionpb.Action_CloseDormantAccount:
-			log = log.WithField("action_type", "close_dormant_account")
-			actionType = action.CloseDormantAccount
-			actionHandler, err = NewCloseDormantAccountActionHandler(typed.CloseDormantAccount)
 		case *transactionpb.Action_NoPrivacyTransfer:
 			log = log.WithField("action_type", "no_privacy_transfer")
 			actionType = action.NoPrivacyTransfer
@@ -468,25 +447,27 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log = log.WithField("action_type", "temporary_privacy_exchange")
 			actionType = action.PrivateTransfer
 			actionHandler, err = NewTemporaryPrivacyTransferActionHandler(ctx, s.conf, s.data, intentRecord, protoAction, true, s.selectTreasuryPoolForAdvance)
-		case *transactionpb.Action_PermanentPrivacyUpgrade:
-			log = log.WithField("action_type", "permanent_privacy_upgrade")
-			actionType = action.PrivateTransfer
+		/*
+			case *transactionpb.Action_PermanentPrivacyUpgrade:
+				log = log.WithField("action_type", "permanent_privacy_upgrade")
+				actionType = action.PrivateTransfer
 
-			// Pass along the privacy upgrade target found during intent validation
-			// to avoid duplication of work.
-			cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
-			if !ok {
-				log.Warn("cached privacy upgrade target not found")
-				return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
-			}
+				// Pass along the privacy upgrade target found during intent validation
+				// to avoid duplication of work.
+				cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
+				if !ok {
+					log.Warn("cached privacy upgrade target not found")
+					return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
+				}
 
-			actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
-				ctx,
-				s.data,
-				intentRecord,
-				typed.PermanentPrivacyUpgrade,
-				cachedUpgradeTarget,
-			)
+				actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
+					ctx,
+					s.data,
+					intentRecord,
+					typed.PermanentPrivacyUpgrade,
+					cachedUpgradeTarget,
+				)
+		*/
 		default:
 			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
 		}
@@ -510,14 +491,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		actionHandlers = append(actionHandlers, actionHandler)
 
-		// Some actions are optional tools for Code to use at its disposal and
-		// are not necessarily required to complete the intent flow. We can
-		// choose to discard them by revoking the action immediately. However,
-		// clients still have an expectation to sign them, since this is a
-		// server toggle. As a result, we must go through the process of creating
-		// the transaction.
-		areFulfillmentsSavedForAction := true
-
 		// Upgrades cannot create new actions.
 		if !isUpgradeActionOperation {
 			// Construct the equivalent action record
@@ -539,9 +512,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				return handleSubmitIntentError(streamer, err)
 			}
 
-			// Action could be immediately revoked if we opt to not require it
-			areFulfillmentsSavedForAction = actionRecord.State != action.StateRevoked
-
 			actionRecords = append(actionRecords, actionRecord)
 		}
 
@@ -550,13 +520,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		serverParameter.ActionId = protoAction.Id
 		serverParameters = append(serverParameters, serverParameter)
 
-		transactionCount := 1
+		fulfillmentCount := 1
 		if !isUpgradeActionOperation {
-			transactionCount = actionHandler.(CreateActionHandler).TransactionCount()
+			fulfillmentCount = actionHandler.(CreateActionHandler).FulfillmentCount()
 		}
 
-		for j := 0; j < transactionCount; j++ {
-			var makeTxnResult *makeSolanaTransactionResult
+		for j := 0; j < fulfillmentCount; j++ {
+			var newFulfillmentMetadata *newFulfillmentMetadata
 			var selectedNonce *transaction.SelectedNonce
 			var actionId uint32
 			if isUpgradeActionOperation {
@@ -571,6 +541,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 				// Re-use the same nonce as the one in the fulfillment we're upgrading,
 				// so we avoid server from submitting both.
+				//
+				// todo: This doesn't select the virtual durable nonce
 				selectedNonce, err = transaction.SelectNonceFromFulfillmentToUpgrade(ctx, s.data, fulfillmentToUpgrade)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting nonce from existing fulfillment")
@@ -578,13 +550,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				}
 				defer selectedNonce.Unlock()
 
-				// Make a new transaction, which is the upgraded version of the old one.
-				makeTxnResult, err = upgradeActionHandler.MakeUpgradedSolanaTransaction(
+				// Get metadata for the fulfillment being upgraded
+				newFulfillmentMetadata, err = upgradeActionHandler.GetFulfillmentMetadata(
 					selectedNonce.Account,
 					selectedNonce.Blockhash,
 				)
 				if err != nil {
-					log.WithError(err).Warn("failure making solana transaction")
+					log.WithError(err).Warn("failure getting fulfillment metadata")
 					return handleSubmitIntentError(streamer, err)
 				}
 
@@ -597,7 +569,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				var nonceAccount *common.Account
 				var nonceBlockchash solana.Blockhash
 				if createActionHandler.RequiresNonce(j) {
-					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 					if err != nil {
 						log.WithError(err).Warn("failure selecting available nonce")
 						return handleSubmitIntentError(streamer, err)
@@ -616,27 +588,18 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 					selectedNonce = nil
 				}
 
-				// Make a new transaction
-				makeTxnResult, err = createActionHandler.MakeNewSolanaTransaction(
+				// Get metadata for the new fulfillment being created
+				newFulfillmentMetadata, err = createActionHandler.GetFulfillmentMetadata(
 					j,
 					nonceAccount,
 					nonceBlockchash,
 				)
 				if err != nil {
-					log.WithError(err).Warn("failure making solana transaction")
+					log.WithError(err).Warn("failure getting fulfillment metadata")
 					return handleSubmitIntentError(streamer, err)
 				}
 
 				actionId = protoAction.Id
-			}
-
-			// Sign the Solana transaction
-			if !makeTxnResult.isCreatedOnDemand {
-				err = makeTxnResult.txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-				if err != nil {
-					log.WithError(err).Warn("failure signing solana transaction")
-					return handleSubmitIntentError(streamer, err)
-				}
 			}
 
 			// Construct the fulfillment record
@@ -647,66 +610,43 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				ActionId:   actionId,
 				ActionType: actionType,
 
-				FulfillmentType: makeTxnResult.fulfillmentType,
+				FulfillmentType: newFulfillmentMetadata.fulfillmentType,
 
-				Source: makeTxnResult.source.PublicKey().ToBase58(),
+				Source: newFulfillmentMetadata.source.PublicKey().ToBase58(),
 
 				IntentOrderingIndex:      0, // Unknown until intent record is saved, so it's injected later
 				ActionOrderingIndex:      actionId,
-				FulfillmentOrderingIndex: makeTxnResult.fulfillmentOrderingIndex,
+				FulfillmentOrderingIndex: newFulfillmentMetadata.fulfillmentOrderingIndex,
 
-				DisableActiveScheduling: makeTxnResult.disableActiveScheduling,
+				DisableActiveScheduling: newFulfillmentMetadata.disableActiveScheduling,
 
 				InitiatorPhoneNumber: intentRecord.InitiatorPhoneNumber,
 
 				State: fulfillment.StateUnknown,
 			}
-			if !makeTxnResult.isCreatedOnDemand {
-				fulfillmentRecord.Data = makeTxnResult.txn.Marshal()
-				fulfillmentRecord.Signature = pointer.String(base58.Encode(makeTxnResult.txn.Signature()))
-
-				fulfillmentRecord.Nonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
-				fulfillmentRecord.Blockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
-			}
-			if makeTxnResult.destination != nil {
-				destination := makeTxnResult.destination.PublicKey().ToBase58()
-				fulfillmentRecord.Destination = &destination
-			}
-			if makeTxnResult.intentOrderingIndexOverride != nil {
-				fulfillmentRecord.IntentOrderingIndex = *makeTxnResult.intentOrderingIndexOverride
-			}
-			if makeTxnResult.actionOrderingIndexOverride != nil {
-				fulfillmentRecord.ActionOrderingIndex = *makeTxnResult.actionOrderingIndexOverride
+			if newFulfillmentMetadata.destination != nil {
+				fulfillmentRecord.Destination = pointer.String(newFulfillmentMetadata.destination.PublicKey().ToBase58())
 			}
 
-			// Transaction requires a client signature
-			var requiresClientSignature bool
-			if !makeTxnResult.isCreatedOnDemand && makeTxnResult.txn.Message.Header.NumSignatures > clientSignatureIndex {
-				// Upgraded transactions always use the same nonce, so there's no
-				// need to provide it.
-				if !isUpgradeActionOperation {
-					serverParameter.Nonces = append(serverParameter.Nonces, &transactionpb.NoncedTransactionMetadata{
-						Nonce: selectedNonce.Account.ToProto(),
-						Blockhash: &commonpb.Blockhash{
-							Value: selectedNonce.Blockhash[:],
-						},
-					})
-				}
+			// Fulfillment has a virtual instruction requiring client signature
+			if newFulfillmentMetadata.requiresClientSignature {
+				fulfillmentRecord.VirtualNonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
+				fulfillmentRecord.VirtualBlockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
 
-				requiresClientSignature = true
+				serverParameter.Nonces = append(serverParameter.Nonces, &transactionpb.NoncedTransactionMetadata{
+					Nonce: selectedNonce.Account.ToProto(),
+					Blockhash: &commonpb.Blockhash{
+						Value: selectedNonce.Blockhash[:],
+					},
+				})
 			}
 
-			fulfillments = append(fulfillments, fulfillmentWithMetadata{
+			fulfillments = append(fulfillments, fulfillmentWithSigningMetadata{
 				record: fulfillmentRecord,
 
-				isCreatedOnDemand: makeTxnResult.isCreatedOnDemand,
-				txn:               makeTxnResult.txn,
-
-				requiresClientSignature: requiresClientSignature,
-
-				intentOrderingIndexOverriden: makeTxnResult.intentOrderingIndexOverride != nil,
-
-				isRecordSaved: areFulfillmentsSavedForAction,
+				requiresClientSignature: newFulfillmentMetadata.requiresClientSignature,
+				expectedSigner:          newFulfillmentMetadata.expectedSigner,
+				virtualIxnHash:          newFulfillmentMetadata.virtualIxnHash,
 			})
 			reservedNonces = append(reservedNonces, selectedNonce)
 		}
@@ -720,7 +660,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		},
 	}
 
-	var unsignedFulfillments []fulfillmentWithMetadata
+	var unsignedFulfillments []fulfillmentWithSigningMetadata
 	for _, fulfillmentWithMetadata := range fulfillments {
 		if fulfillmentWithMetadata.requiresClientSignature {
 			unsignedFulfillments = append(unsignedFulfillments, fulfillmentWithMetadata)
@@ -780,15 +720,14 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			unsignedFulfillment := unsignedFulfillments[i]
 
 			if !ed25519.Verify(
-				unsignedFulfillment.txn.Message.Accounts[clientSignatureIndex],
-				unsignedFulfillment.txn.Message.Marshal(),
+				unsignedFulfillment.expectedSigner.PublicKey().ToBytes(),
+				unsignedFulfillment.virtualIxnHash[:],
 				signature.Value,
 			) {
-				signatureErrorDetails = append(signatureErrorDetails, toInvalidSignatureErrorDetails(unsignedFulfillment.record.ActionId, *unsignedFulfillment.txn, signature))
+				signatureErrorDetails = append(signatureErrorDetails, toInvalidVirtualIxnSignatureErrorDetails(unsignedFulfillment.record.ActionId, *unsignedFulfillment.virtualIxnHash, signature))
 			}
 
-			copy(unsignedFulfillment.txn.Signatures[clientSignatureIndex][:], signature.Value)
-			unsignedFulfillments[i].record.Data = unsignedFulfillments[i].txn.Marshal()
+			unsignedFulfillment.record.VirtualSignature = pointer.String(base58.Encode(signature.Value))
 		}
 
 		if len(signatureErrorDetails) > 0 {
@@ -829,21 +768,12 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		// Save all fulfillment records
 		fulfillmentRecordsToSave := make([]*fulfillment.Record, 0)
 		for i, fulfillmentWithMetadata := range fulfillments {
-			if !fulfillmentWithMetadata.isRecordSaved {
-				continue
-			}
-
-			// If the intent ordering index isn't overriden, the inject it here where
-			// the value is guaranteed to be set due to the lazy saving of the intent
-			// record.
-			if !fulfillmentWithMetadata.intentOrderingIndexOverriden {
-				fulfillmentWithMetadata.record.IntentOrderingIndex = intentRecord.Id
-			}
+			fulfillmentWithMetadata.record.IntentOrderingIndex = intentRecord.Id
 
 			fulfillmentRecordsToSave = append(fulfillmentRecordsToSave, fulfillmentWithMetadata.record)
 
 			// Reserve the nonce with the latest server-signed fulfillment.
-			if !fulfillmentWithMetadata.isCreatedOnDemand {
+			if fulfillmentWithMetadata.requiresClientSignature {
 				nonceToReserve := reservedNonces[i]
 				if isIntentUpdateOperation {
 					err = nonceToReserve.UpdateSignature(ctx, *fulfillmentWithMetadata.record.Signature)
@@ -1008,15 +938,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		if ok {
 			backgroundCtx = context.WithValue(backgroundCtx, metrics.NewRelicContextKey, nr)
 		}
-
-		// todo: We likely want to put this in a worker if this is a long term feature
-		if s.conf.enableAirdrops.Get(backgroundCtx) {
-			if s.conf.enableAsyncAirdropProcessing.Get(backgroundCtx) {
-				go s.maybeAirdropForSubmittingIntent(backgroundCtx, intentRecord, submitActionsOwnerMetadata)
-			} else {
-				s.maybeAirdropForSubmittingIntent(backgroundCtx, intentRecord, submitActionsOwnerMetadata)
-			}
-		}
 	}
 
 	// RPC is finished. Send success to the client
@@ -1178,14 +1099,6 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 				},
 			},
 		}
-	case intent.MigrateToPrivacy2022:
-		metadata = &transactionpb.Metadata{
-			Type: &transactionpb.Metadata_MigrateToPrivacy_2022{
-				MigrateToPrivacy_2022: &transactionpb.MigrateToPrivacy2022Metadata{
-					Quarks: intentRecord.MigrateToPrivacy2022Metadata.Quantity,
-				},
-			},
-		}
 	case intent.SendPublicPayment:
 		destinationAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
 		if err != nil {
@@ -1265,12 +1178,6 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	timelockRecord, err := s.data.GetTimelockByVault(ctx, accountToCheck.PublicKey().ToBase58())
 	switch err {
 	case nil:
-		if timelockRecord.DataVersion != timelock_token_v1.DataVersion1 {
-			return &transactionpb.CanWithdrawToAccountResponse{
-				IsValidPaymentDestination: false,
-				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-			}, nil
-		}
 	case timelock.ErrTimelockNotFound:
 		// Nothing to do
 	default:
@@ -1350,6 +1257,7 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	}, nil
 }
 
+/*
 func (s *transactionServer) GetPrivacyUpgradeStatus(ctx context.Context, req *transactionpb.GetPrivacyUpgradeStatusRequest) (*transactionpb.GetPrivacyUpgradeStatusResponse, error) {
 	intentId := base58.Encode(req.IntentId.Value)
 
@@ -1374,7 +1282,7 @@ func (s *transactionServer) GetPrivacyUpgradeStatus(ctx context.Context, req *tr
 	case ErrInvalidActionToUpgrade:
 		result = transactionpb.GetPrivacyUpgradeStatusResponse_INVALID_ACTION
 	case ErrPrivacyUpgradeMissed:
-		upgradeStatus = transactionpb.GetPrivacyUpgradeStatusResponse_TEMPORARY_TRANSACTION_FINALIZED
+		upgradeStatus = transactionpb.GetPrivacyUpgradeStatusResponse_TEMPORARY_ACTION_FINALIZED
 	case ErrPrivacyAlreadyUpgraded:
 		upgradeStatus = transactionpb.GetPrivacyUpgradeStatusResponse_ALREADY_UPGRADED
 	case ErrWaitForNextBlock:
@@ -1571,3 +1479,4 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 		Actions: actions,
 	}, nil
 }
+*/

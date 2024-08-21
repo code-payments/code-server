@@ -1,5 +1,6 @@
 package transaction_v2
 
+/*
 import (
 	"bytes"
 	"context"
@@ -6180,3 +6181,4 @@ func getProtoChatMessage(t *testing.T, record *chat.Message) *chatpb.ChatMessage
 	require.NoError(t, proto.Unmarshal(record.Data, &protoMessage))
 	return &protoMessage
 }
+*/

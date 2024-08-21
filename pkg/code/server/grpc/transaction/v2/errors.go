@@ -14,6 +14,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
 const (
@@ -173,7 +174,7 @@ func toReasonStringErrorDetails(err error) *transactionpb.ErrorDetails {
 	}
 }
 
-func toInvalidSignatureErrorDetails(
+func toInvalidTxnSignatureErrorDetails(
 	actionId uint32,
 	txn solana.Transaction,
 	signature *commonpb.Signature,
@@ -188,8 +189,30 @@ func toInvalidSignatureErrorDetails(
 		Type: &transactionpb.ErrorDetails_InvalidSignature{
 			InvalidSignature: &transactionpb.InvalidSignatureErrorDetails{
 				ActionId: actionId,
-				ExpectedTransaction: &commonpb.Transaction{
-					Value: txn.Marshal(),
+				ExpectedBlob: &transactionpb.InvalidSignatureErrorDetails_ExpectedTransaction{
+					ExpectedTransaction: &commonpb.Transaction{
+						Value: txn.Marshal(),
+					},
+				},
+				ProvidedSignature: signature,
+			},
+		},
+	}
+}
+
+func toInvalidVirtualIxnSignatureErrorDetails(
+	actionId uint32,
+	virtualIxnHash cvm.Hash,
+	signature *commonpb.Signature,
+) *transactionpb.ErrorDetails {
+	return &transactionpb.ErrorDetails{
+		Type: &transactionpb.ErrorDetails_InvalidSignature{
+			InvalidSignature: &transactionpb.InvalidSignatureErrorDetails{
+				ActionId: actionId,
+				ExpectedBlob: &transactionpb.InvalidSignatureErrorDetails_ExpectedVixnHash{
+					ExpectedVixnHash: &commonpb.Hash{
+						Value: virtualIxnHash[:],
+					},
 				},
 				ProvidedSignature: signature,
 			},

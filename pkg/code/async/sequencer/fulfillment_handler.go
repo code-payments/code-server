@@ -541,7 +541,7 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 		return false, nil
 	}
 
-	newCommitmentRecord, err := h.data.GetCommitmentByAddress(ctx, *oldCommitmentRecord.RepaymentDivertedTo)
+	newCommitmentRecord, err := h.data.GetCommitmentByVault(ctx, *oldCommitmentRecord.RepaymentDivertedTo)
 	if err != nil {
 		return false, err
 	}
@@ -739,6 +739,11 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
+	commitmentVault, err := common.NewAccountFromPublicKeyString(commitmentRecord.VaultAddress)
+	if err != nil {
+		return nil, err
+	}
+
 	transcript, err := hex.DecodeString(commitmentRecord.Transcript)
 	if err != nil {
 		return nil, err
@@ -754,7 +759,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
-	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, common.CodeVmAccount, cvm.VirtualAccountTypeRelay, commitment)
+	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, common.CodeVmAccount, cvm.VirtualAccountTypeRelay, commitmentVault)
 	if err != nil {
 		return nil, err
 	}

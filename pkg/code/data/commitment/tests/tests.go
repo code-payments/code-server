@@ -33,7 +33,8 @@ func testRoundTrip(t *testing.T, s commitment.Store) {
 		ctx := context.Background()
 
 		expected := &commitment.Record{
-			Address: "address",
+			Address:      "address",
+			VaultAddress: "vault",
 
 			Pool:       "pool",
 			RecentRoot: "root",
@@ -53,6 +54,9 @@ func testRoundTrip(t *testing.T, s commitment.Store) {
 		}
 
 		_, err := s.GetByAddress(ctx, expected.Address)
+		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
+
+		_, err = s.GetByVault(ctx, expected.VaultAddress)
 		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
 
 		_, err = s.GetByAction(ctx, expected.Intent, expected.ActionId)
@@ -81,6 +85,10 @@ func testRoundTrip(t *testing.T, s commitment.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, expected, actual)
 
+		actual, err = s.GetByVault(ctx, expected.VaultAddress)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, expected, actual)
+
 		actual, err = s.GetByAction(ctx, expected.Intent, expected.ActionId)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, expected, actual)
@@ -94,7 +102,8 @@ func testUpdateConstraints(t *testing.T, s commitment.Store) {
 		otherCommitmentCommitment1 := "other-commitment-1"
 		otherCommitmentCommitment2 := "other-commitment-2"
 		expected := &commitment.Record{
-			Address: "address",
+			Address:      "address",
+			VaultAddress: "vault",
 
 			Pool:       "pool",
 			RecentRoot: "root",
@@ -150,11 +159,11 @@ func testGetAllByState(t *testing.T, s commitment.Store) {
 		assert.Equal(t, commitment.ErrCommitmentNotFound, err)
 
 		expected := []*commitment.Record{
-			{Address: "commitment1", Pool: "pool", RecentRoot: "root", Transcript: "transcript1", Intent: "intent", ActionId: 0, Owner: "owner1", Destination: "destination", Amount: 123, State: commitment.StateOpen},
-			{Address: "commitment2", Pool: "pool", RecentRoot: "root", Transcript: "transcript2", Intent: "intent", ActionId: 1, Owner: "owner2", Destination: "destination", Amount: 123, State: commitment.StateOpen},
-			{Address: "commitment3", Pool: "pool", RecentRoot: "root", Transcript: "transcript3", Intent: "intent", ActionId: 2, Owner: "owner3", Destination: "destination", Amount: 123, State: commitment.StateOpen},
-			{Address: "commitment4", Pool: "pool", RecentRoot: "root", Transcript: "transcript4", Intent: "intent", ActionId: 3, Owner: "owner4", Destination: "destination", Amount: 123, State: commitment.StateClosed},
-			{Address: "commitment5", Pool: "pool", RecentRoot: "root", Transcript: "transcript5", Intent: "intent", ActionId: 4, Owner: "owner5", Destination: "destination", Amount: 123, State: commitment.StateClosed},
+			{Address: "commitment1", VaultAddress: "vault1", Pool: "pool", RecentRoot: "root", Transcript: "transcript1", Intent: "intent", ActionId: 0, Owner: "owner1", Destination: "destination", Amount: 123, State: commitment.StateOpen},
+			{Address: "commitment2", VaultAddress: "vault2", Pool: "pool", RecentRoot: "root", Transcript: "transcript2", Intent: "intent", ActionId: 1, Owner: "owner2", Destination: "destination", Amount: 123, State: commitment.StateOpen},
+			{Address: "commitment3", VaultAddress: "vault3", Pool: "pool", RecentRoot: "root", Transcript: "transcript3", Intent: "intent", ActionId: 2, Owner: "owner3", Destination: "destination", Amount: 123, State: commitment.StateOpen},
+			{Address: "commitment4", VaultAddress: "vault4", Pool: "pool", RecentRoot: "root", Transcript: "transcript4", Intent: "intent", ActionId: 3, Owner: "owner4", Destination: "destination", Amount: 123, State: commitment.StateClosed},
+			{Address: "commitment5", VaultAddress: "vault5", Pool: "pool", RecentRoot: "root", Transcript: "transcript5", Intent: "intent", ActionId: 4, Owner: "owner5", Destination: "destination", Amount: 123, State: commitment.StateClosed},
 		}
 		for _, record := range expected {
 			require.NoError(t, s.Save(ctx, record))
@@ -249,6 +258,7 @@ func testGetUpgradeableByOwner(t *testing.T, s commitment.Store) {
 			record.Pool = "pool"
 			record.RecentRoot = "root"
 			record.Address = fmt.Sprintf("address%d", i)
+			record.VaultAddress = fmt.Sprintf("vault%d", i)
 			record.RecentRoot = fmt.Sprintf("root%d", i)
 			record.Transcript = fmt.Sprintf("transcript%d", i)
 			record.Destination = fmt.Sprintf("destination%d", i)
@@ -306,6 +316,7 @@ func testGetTreasuryPoolDeficit(t *testing.T, s commitment.Store) {
 
 			// Populate data irrelevant to test
 			record.Address = fmt.Sprintf("address%d", i)
+			record.VaultAddress = fmt.Sprintf("vault%d", i)
 			record.RecentRoot = fmt.Sprintf("root%d", i)
 			record.Transcript = fmt.Sprintf("transcript%d", i)
 			record.Destination = fmt.Sprintf("destination%d", i)
@@ -367,6 +378,7 @@ func testCounts(t *testing.T, s commitment.Store) {
 			record.Pool = "pool"
 			record.Amount = 1
 			record.Address = fmt.Sprintf("address%d", i)
+			record.VaultAddress = fmt.Sprintf("vault%d", i)
 			record.Transcript = fmt.Sprintf("transcript%d", i)
 			record.Destination = fmt.Sprintf("destination%d", i)
 			record.Intent = fmt.Sprintf("intent%d", i)
@@ -405,6 +417,7 @@ func testCounts(t *testing.T, s commitment.Store) {
 
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *commitment.Record) {
 	assert.Equal(t, obj1.Address, obj2.Address)
+	assert.Equal(t, obj1.VaultAddress, obj2.VaultAddress)
 	assert.Equal(t, obj1.Pool, obj2.Pool)
 	assert.Equal(t, obj1.RecentRoot, obj2.RecentRoot)
 	assert.Equal(t, obj1.Transcript, obj2.Transcript)

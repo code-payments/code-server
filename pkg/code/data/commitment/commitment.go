@@ -27,7 +27,8 @@ const (
 type Record struct {
 	Id uint64
 
-	Address string
+	Address      string
+	VaultAddress string
 
 	Pool       string
 	RecentRoot string
@@ -56,6 +57,10 @@ type Record struct {
 func (r *Record) Validate() error {
 	if len(r.Address) == 0 {
 		return errors.New("address is required")
+	}
+
+	if len(r.VaultAddress) == 0 {
+		return errors.New("vault address is required")
 	}
 
 	if len(r.Pool) == 0 {
@@ -93,7 +98,8 @@ func (r *Record) Clone() *Record {
 	return &Record{
 		Id: r.Id,
 
-		Address: r.Address,
+		Address:      r.Address,
+		VaultAddress: r.VaultAddress,
 
 		Pool:       r.Pool,
 		RecentRoot: r.RecentRoot,
@@ -120,6 +126,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Id = r.Id
 
 	dst.Address = r.Address
+	dst.VaultAddress = r.VaultAddress
 
 	dst.Pool = r.Pool
 	dst.RecentRoot = r.RecentRoot

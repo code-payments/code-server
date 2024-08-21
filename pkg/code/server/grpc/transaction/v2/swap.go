@@ -359,11 +359,11 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapStructuredError(
 			streamer,
 			transactionpb.SwapResponse_Error_SIGNATURE_ERROR,
-			toInvalidSignatureErrorDetails(0, txn, submitSignatureReq.Signature),
+			toInvalidTxnSignatureErrorDetails(0, txn, submitSignatureReq.Signature),
 		)
 	}
 
-	copy(txn.Signatures[clientSignatureIndex][:], submitSignatureReq.Signature.Value)
+	copy(txn.Signatures[1][:], submitSignatureReq.Signature.Value)
 	txn.Sign(s.swapSubsidizer.PrivateKey().ToBytes())
 
 	log = log.WithField("transaction_id", base58.Encode(txn.Signature()))
@@ -520,8 +520,8 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 		}
 
 		switch typed := protoChatMessage.Content[0].Type.(type) {
-		case *chatpb.Content_Localized:
-			if typed.Localized.KeyOrText != localization.ChatMessageUsdcDeposited {
+		case *chatpb.Content_ServerLocalized:
+			if typed.ServerLocalized.KeyOrText != localization.ChatMessageUsdcDeposited {
 				return nil
 			}
 		}
