@@ -40,8 +40,8 @@ func SendKinPurchasesMessage(ctx context.Context, data code_data.Provider, recei
 func ToUsdcDepositedMessage(signature string, ts time.Time) (*chatpb.ChatMessage, error) {
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.ChatMessageUsdcDeposited,
 				},
 			},
@@ -60,8 +60,8 @@ func NewUsdcBeingConvertedMessage(ts time.Time) (*chatpb.ChatMessage, error) {
 
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.ChatMessageUsdcBeingConverted,
 				},
 			},
@@ -79,8 +79,8 @@ func ToKinAvailableForUseMessage(signature string, ts time.Time, purchases ...*t
 
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.ChatMessageKinAvailableForUse,
 				},
 			},

@@ -177,7 +177,8 @@ func (e *testEnv) simulateCommitments(t *testing.T, count int, recentRoot string
 	var commitmentRecords []*commitment.Record
 	for i := 0; i < count; i++ {
 		commitmentRecord := &commitment.Record{
-			Address: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			Address:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+			VaultAddress: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
 			Pool:       e.treasuryPool.Address,
 			RecentRoot: recentRoot,

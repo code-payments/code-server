@@ -45,7 +45,7 @@ const (
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
 			CONSTRAINT codewallet__core_commitment__uniq__address UNIQUE (address),
-			CONSTRAINT codewallet__core_commitment__uniq__vault_address UNIQUE (vault_address),
+			CONSTRAINT codewallet__core_commitment__uniq__vault UNIQUE (vault),
 			CONSTRAINT codewallet__core_commitment__uniq__transcript UNIQUE (transcript),
 			CONSTRAINT codewallet__core_commitment__uniq__intent__and__action_id UNIQUE (intent, action_id)
 		);

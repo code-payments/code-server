@@ -147,7 +147,7 @@ func (s *server) GetChats(ctx context.Context, req *chatpb.GetChatsRequest) (*ch
 			}
 
 			protoMetadata.Title = &chatpb.ChatMetadata_Localized{
-				Localized: &chatpb.LocalizedContent{
+				Localized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.LocalizeWithFallback(
 						locale,
 						localization.GetLocalizationKeyForUserAgent(ctx, chatProperties.TitleLocalizationKey),
@@ -298,11 +298,11 @@ func (s *server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 
 		for _, content := range protoChatMessage.Content {
 			switch typed := content.Type.(type) {
-			case *chatpb.Content_Localized:
-				typed.Localized.KeyOrText = localization.LocalizeWithFallback(
+			case *chatpb.Content_ServerLocalized:
+				typed.ServerLocalized.KeyOrText = localization.LocalizeWithFallback(
 					locale,
-					localization.GetLocalizationKeyForUserAgent(ctx, typed.Localized.KeyOrText),
-					typed.Localized.KeyOrText,
+					localization.GetLocalizationKeyForUserAgent(ctx, typed.ServerLocalized.KeyOrText),
+					typed.ServerLocalized.KeyOrText,
 				)
 			}
 		}
