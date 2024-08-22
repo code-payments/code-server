@@ -320,15 +320,15 @@ func SendChatMessagePushNotification(
 	for _, content := range chatMessage.Content {
 		var contentToPush *chatpb.Content
 		switch typedContent := content.Type.(type) {
-		case *chatpb.Content_Localized:
-			localizedPushBody, err := localization.Localize(locale, typedContent.Localized.KeyOrText)
+		case *chatpb.Content_ServerLocalized:
+			localizedPushBody, err := localization.Localize(locale, typedContent.ServerLocalized.KeyOrText)
 			if err != nil {
 				continue
 			}
 
 			contentToPush = &chatpb.Content{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: localizedPushBody,
 					},
 				},
@@ -358,8 +358,8 @@ func SendChatMessagePushNotification(
 			}
 
 			contentToPush = &chatpb.Content{
-				Type: &chatpb.Content_Localized{
-					Localized: &chatpb.LocalizedContent{
+				Type: &chatpb.Content_ServerLocalized{
+					ServerLocalized: &chatpb.ServerLocalizedContent{
 						KeyOrText: localizedPushBody,
 					},
 				},

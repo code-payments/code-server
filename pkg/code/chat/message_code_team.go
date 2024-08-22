@@ -48,8 +48,8 @@ func newIncentiveMessage(localizedTextKey string, intentRecord *intent.Record) (
 
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localizedTextKey,
 				},
 			},

@@ -2,7 +2,10 @@ package transaction_v2
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 
+	"github.com/mr-tron/base58/base58"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -537,21 +540,6 @@ func (s *transactionServer) isFirstReceiveFromOtherCodeUser(ctx context.Context,
 	return firstReceive.IntentId == intentToCheck, nil
 }
 
-func GetOldAirdropIntentId(airdropType AirdropType, reference string) string {
-	return fmt.Sprintf("airdrop-%d-%s", airdropType, reference)
-}
-
-// Consistent intent ID that maps to a 32 byte buffer
-func GetNewAirdropIntentId(airdropType AirdropType, reference string) string {
-	old := GetOldAirdropIntentId(airdropType, reference)
-	hashed := sha256.Sum256([]byte(old))
-	return base58.Encode(hashed[:])
-}
-
-func getAirdropCacheKey(owner *common.Account, airdropType AirdropType) string {
-	return fmt.Sprintf("%s:%d\n", owner.PublicKey().ToBase58(), airdropType)
-}
-
 */
 
 func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
@@ -582,6 +570,21 @@ func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 	if err != nil {
 		log.WithError(err).Fatal("failure loading account")
 	}
+}
+
+func GetOldAirdropIntentId(airdropType AirdropType, reference string) string {
+	return fmt.Sprintf("airdrop-%d-%s", airdropType, reference)
+}
+
+// Consistent intent ID that maps to a 32 byte buffer
+func GetNewAirdropIntentId(airdropType AirdropType, reference string) string {
+	old := GetOldAirdropIntentId(airdropType, reference)
+	hashed := sha256.Sum256([]byte(old))
+	return base58.Encode(hashed[:])
+}
+
+func getAirdropCacheKey(owner *common.Account, airdropType AirdropType) string {
+	return fmt.Sprintf("%s:%d\n", owner.PublicKey().ToBase58(), airdropType)
 }
 
 func (t AirdropType) String() string {

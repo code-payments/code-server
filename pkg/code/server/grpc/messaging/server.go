@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
 	"github.com/code-payments/code-server/pkg/cache"
@@ -285,7 +286,7 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 
 			err := streamer.Send(&messagingpb.OpenMessageStreamWithKeepAliveResponse{
 				ResponseOrPing: &messagingpb.OpenMessageStreamWithKeepAliveResponse_Ping{
-					Ping: &messagingpb.ServerPing{
+					Ping: &commonpb.ServerPing{
 						Timestamp: timestamppb.Now(),
 						PingDelay: durationpb.New(messageStreamPingDelay),
 					},

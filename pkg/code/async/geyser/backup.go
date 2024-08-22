@@ -2,15 +2,12 @@ package async_geyser
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
 	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/metrics"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // Backup system workers can be found here. This is necessary because we can't rely
@@ -44,43 +41,11 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_timelock_state_worker")
 				defer m.End()
-				tracedCtx := newrelic.NewContext(serviceCtx, m)
+				//tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				jobSucceeded := true
+				jobSucceeded := false
 
-				// Find and process unlocked timelock accounts unlocking between [+21 - n days, +21 days],
-				// which enables a retry mechanism across time.
-				for i := uint8(0); i <= uint8(p.conf.backupTimelockWorkerDaysChecked.Get(tracedCtx)); i++ {
-					daysUntilUnlock := timelock_token_v1.DefaultNumDaysLocked - i
-
-					addresses, slot, err := findUnlockedTimelockV1Accounts(tracedCtx, p.data, daysUntilUnlock)
-					if err != nil {
-						m.NoticeError(err)
-						log.WithError(err).Warn("failure getting unlocked timelock accounts")
-						jobSucceeded = false
-						continue
-					}
-
-					log.Infof("found %d timelock accounts unlocking in %d days", len(addresses), daysUntilUnlock)
-
-					for _, address := range addresses {
-						log := log.WithField("account", address)
-
-						stateAccount, err := common.NewAccountFromPublicKeyString(address)
-						if err != nil {
-							log.WithError(err).Warn("invalid state account address")
-							continue
-						}
-
-						err = updateTimelockV1AccountCachedState(tracedCtx, p.data, stateAccount, slot)
-						if err != nil {
-							m.NoticeError(err)
-							log.WithError(err).Warn("failure updating cached timelock account state")
-							jobSucceeded = false
-							continue
-						}
-					}
-				}
+				// todo: implement me
 
 				p.metricStatusLock.Lock()
 				p.unlockedTimelockAccountsSynced = jobSucceeded
@@ -116,40 +81,9 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_external_deposit_worker")
 				defer m.End()
-				tracedCtx := newrelic.NewContext(serviceCtx, m)
+				// tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				accountInfoRecords, err := p.data.GetPrioritizedAccountInfosRequiringDepositSync(tracedCtx, p.conf.backupExternalDepositWorkerCount.Get(tracedCtx))
-				if err != nil {
-					if err != account.ErrAccountInfoNotFound {
-						m.NoticeError(err)
-						log.WithError(err).Warn("failure getting accounts to sync external deposits")
-					}
-					return
-				}
-
-				var wg sync.WaitGroup
-				for _, accountInfoRecord := range accountInfoRecords {
-					vault, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
-					if err != nil {
-						log.WithError(err).WithField("account", accountInfoRecord.TokenAccount).Warn("invalid token account")
-						continue
-					}
-
-					wg.Add(1)
-
-					go func(vault *common.Account) {
-						defer wg.Done()
-
-						log := log.WithField("account", vault.PublicKey().ToBase58())
-
-						err := fixMissingExternalDeposits(tracedCtx, p.conf, p.data, p.pusher, vault)
-						if err != nil {
-							m.NoticeError(err)
-							log.WithError(err).Warn("failure fixing missing external deposits")
-						}
-					}(vault)
-				}
-				wg.Wait()
+				// todo: implement me
 			}()
 		case <-serviceCtx.Done():
 			return serviceCtx.Err()

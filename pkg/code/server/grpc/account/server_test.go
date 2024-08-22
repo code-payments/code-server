@@ -17,14 +17,12 @@ import (
 	accountpb "github.com/code-payments/code-protobuf-api/generated/go/account/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/user"
@@ -95,54 +93,8 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 	assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
 }
 
-func TestIsCodeAccount_LegacyPrimary2022Migration_HappyPath(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	ownerAccount := testutil.NewRandomAccount(t)
-
-	req := &accountpb.IsCodeAccountRequest{
-		Owner: ownerAccount.ToProto(),
-	}
-	reqBytes, err := proto.Marshal(req)
-	require.NoError(t, err)
-	req.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-	}
-
-	resp, err := env.client.IsCodeAccount(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.IsCodeAccountResponse_NOT_FOUND, resp.Result)
-
-	legacyAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_LEGACY_PRIMARY_2022)
-
-	resp, err = env.client.IsCodeAccount(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
-
-	setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
-
-	resp, err = env.client.IsCodeAccount(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
-
-	setupPrivacyMigration2022Intent(t, env, ownerAccount)
-
-	resp, err = env.client.IsCodeAccount(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
-
-	legacyAccountRecords.Timelock.VaultState = timelock_token_v1.StateClosed
-	legacyAccountRecords.Timelock.Block += 1
-	require.NoError(t, env.data.SaveTimelock(env.ctx, legacyAccountRecords.Timelock))
-
-	resp, err = env.client.IsCodeAccount(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
-}
-
 func TestIsCodeAccount_NotManagedByCode(t *testing.T) {
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 4; i++ {
 		for _, unmanagedState := range []timelock_token_v1.TimelockState{
 			timelock_token_v1.StateWaitingForTimeout,
 			timelock_token_v1.StateUnlocked,
@@ -166,7 +118,6 @@ func TestIsCodeAccount_NotManagedByCode(t *testing.T) {
 			assert.Equal(t, accountpb.IsCodeAccountResponse_NOT_FOUND, resp.Result)
 
 			var allAccountRecords []*common.AccountRecords
-			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_LEGACY_PRIMARY_2022))
 			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY))
 			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_BUCKET_100_KIN))
 			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_TEMPORARY_INCOMING))
@@ -242,7 +193,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			tokenAccount, err = authority.ToAssociatedTokenAccount(common.UsdcMintAccount)
 			require.NoError(t, err)
 		} else {
-			timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+			timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 			require.NoError(t, err)
 			tokenAccount = timelockAccounts.Vault
 		}
@@ -443,7 +394,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 	} {
 		phoneNumber := fmt.Sprintf("+1800555%d", i)
 		ownerAccount := testutil.NewRandomAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		require.NoError(t, err)
 
 		req := &accountpb.GetTokenAccountInfosRequest{
@@ -628,65 +579,37 @@ func TestGetTokenAccountInfos_ManagementState(t *testing.T) {
 	defer cleanup()
 
 	for _, tc := range []struct {
-		timelockState  timelock_token_v1.TimelockState
-		block          uint64
-		timeAuthority  *common.Account
-		closeAuthority *common.Account
-		expected       accountpb.TokenAccountInfo_ManagementState
+		timelockState timelock_token_v1.TimelockState
+		block         uint64
+		expected      accountpb.TokenAccountInfo_ManagementState
 	}{
 		{
-			timelockState:  timelock_token_v1.StateUnknown,
-			block:          0,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED,
+			timelockState: timelock_token_v1.StateUnknown,
+			block:         0,
+			expected:      accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED,
 		},
 		{timelockState: timelock_token_v1.StateUnknown,
-			block:          1,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN,
+			block:    1,
+			expected: accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN,
 		},
 		{timelockState: timelock_token_v1.StateUnlocked,
-			block:          2,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKED,
+			block:    2,
+			expected: accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKED,
 		},
 		{
-			timelockState:  timelock_token_v1.StateWaitingForTimeout,
-			block:          3,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKING,
+			timelockState: timelock_token_v1.StateWaitingForTimeout,
+			block:         3,
+			expected:      accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKING,
 		},
 		{
-			timelockState:  timelock_token_v1.StateLocked,
-			block:          4,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED,
+			timelockState: timelock_token_v1.StateLocked,
+			block:         4,
+			expected:      accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED,
 		},
 		{
-			timelockState:  timelock_token_v1.StateClosed,
-			block:          5,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_CLOSED,
-		},
-		{
-			timelockState:  timelock_token_v1.StateLocked,
-			block:          6,
-			timeAuthority:  testutil.NewRandomAccount(t),
-			closeAuthority: env.subsidizer,
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE,
-		},
-		{
-			timelockState:  timelock_token_v1.StateLocked,
-			block:          7,
-			timeAuthority:  env.subsidizer,
-			closeAuthority: testutil.NewRandomAccount(t),
-			expected:       accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE,
+			timelockState: timelock_token_v1.StateClosed,
+			block:         5,
+			expected:      accountpb.TokenAccountInfo_MANAGEMENT_STATE_CLOSED,
 		},
 	} {
 		ownerAccount := testutil.NewRandomAccount(t)
@@ -703,8 +626,6 @@ func TestGetTokenAccountInfos_ManagementState(t *testing.T) {
 		accountRecords := getDefaultTestAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
 		accountRecords.Timelock.VaultState = tc.timelockState
 		accountRecords.Timelock.Block = tc.block
-		accountRecords.Timelock.TimeAuthority = tc.timeAuthority.PublicKey().ToBase58()
-		accountRecords.Timelock.CloseAuthority = tc.closeAuthority.PublicKey().ToBase58()
 		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
 		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 
@@ -790,112 +711,6 @@ func TestGetTokenAccountInfos_NoTokenAccounts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_NOT_FOUND, resp.Result)
 	assert.Empty(t, resp.TokenAccountInfos)
-}
-
-func TestGetTokenAccountInfos_LegacyPrimary2022Migration_HappyPath(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	ownerAccount := testutil.NewRandomAccount(t)
-
-	req := &accountpb.GetTokenAccountInfosRequest{
-		Owner: ownerAccount.ToProto(),
-	}
-	reqBytes, err := proto.Marshal(req)
-	require.NoError(t, err)
-	req.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-	}
-
-	accountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_LEGACY_PRIMARY_2022)
-	setupCachedBalance(t, env, accountRecords, kin.ToQuarks(123))
-
-	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 1)
-
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
-	require.NoError(t, err)
-
-	accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
-	require.True(t, ok)
-
-	assert.Equal(t, commonpb.AccountType_LEGACY_PRIMARY_2022, accountInfo.AccountType)
-	assert.EqualValues(t, 0, accountInfo.Index)
-	assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
-	assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
-	assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Authority.Value)
-	assert.Equal(t, common.KinMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
-	assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
-	assert.EqualValues(t, kin.ToQuarks(123), accountInfo.Balance)
-	assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
-	assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS, accountInfo.BlockchainState)
-	assert.False(t, accountInfo.MustRotate)
-}
-
-func TestGetTokenAccountInfos_LegacyPrimary2022Migration_IntentSubmitted(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	ownerAccount := testutil.NewRandomAccount(t)
-
-	req := &accountpb.GetTokenAccountInfosRequest{
-		Owner: ownerAccount.ToProto(),
-	}
-	reqBytes, err := proto.Marshal(req)
-	require.NoError(t, err)
-	req.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-	}
-
-	accountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_LEGACY_PRIMARY_2022)
-	setupCachedBalance(t, env, accountRecords, kin.ToQuarks(123))
-
-	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 1)
-
-	setupPrivacyMigration2022Intent(t, env, ownerAccount)
-
-	resp, err = env.client.GetTokenAccountInfos(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_NOT_FOUND, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 0)
-}
-
-func TestGetTokenAccountInfos_LegacyPrimary2022Migration_AccountClosed(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	ownerAccount := testutil.NewRandomAccount(t)
-
-	req := &accountpb.GetTokenAccountInfosRequest{
-		Owner: ownerAccount.ToProto(),
-	}
-	reqBytes, err := proto.Marshal(req)
-	require.NoError(t, err)
-	req.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-	}
-
-	accountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_LEGACY_PRIMARY_2022)
-	setupCachedBalance(t, env, accountRecords, kin.ToQuarks(123))
-
-	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 1)
-
-	accountRecords.Timelock.VaultState = timelock_token_v1.StateClosed
-	accountRecords.Timelock.Block += 1
-	require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
-
-	resp, err = env.client.GetTokenAccountInfos(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_NOT_FOUND, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 0)
 }
 
 func TestLinkAdditionalAccounts_HappyPath(t *testing.T) {
@@ -1097,8 +912,12 @@ func TestUnauthenticatedRPC(t *testing.T) {
 func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
 	accountRecords := getDefaultTestAccountRecords(t, env, ownerAccount, authorityAccount, index, accountType)
 
-	if accountType != commonpb.AccountType_LEGACY_PRIMARY_2022 {
-		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
+	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
+
+	if accountRecords.IsTimelock() {
+		accountRecords.Timelock.VaultState = timelock_token_v1.StateLocked
+		accountRecords.Timelock.Block += 1
+		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 	}
 
 	if accountType == commonpb.AccountType_TEMPORARY_INCOMING {
@@ -1113,23 +932,10 @@ func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccou
 		require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
 	}
 
-	if accountRecords.IsTimelock() {
-		accountRecords.Timelock.VaultState = timelock_token_v1.StateLocked
-		accountRecords.Timelock.Block += 1
-		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
-	}
-
 	return accountRecords
 }
 
 func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
-	var dataVerstion timelock_token_v1.TimelockDataVersion
-	if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
-		dataVerstion = timelock_token_v1.DataVersionLegacy
-	} else {
-		dataVerstion = timelock_token_v1.DataVersion1
-	}
-
 	var tokenAccount *common.Account
 	var mintAccount *common.Account
 	var timelockRecord *timelock.Record
@@ -1143,7 +949,7 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 	} else {
 		mintAccount = common.KinMintAccount
 
-		timelockAccounts, err := authorityAccount.GetTimelockAccounts(dataVerstion, mintAccount)
+		timelockAccounts, err := authorityAccount.GetTimelockAccounts(common.CodeVmAccount, mintAccount)
 		require.NoError(t, err)
 		timelockRecord = timelockAccounts.ToDBRecord()
 
@@ -1172,40 +978,16 @@ func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, autho
 }
 
 func setupCachedBalance(t *testing.T, env testEnv, accountRecords *common.AccountRecords, balance uint64) {
-	if accountRecords.Timelock.DataVersion == timelock_token_v1.DataVersionLegacy {
-		paymentRecord := &payment.Record{
-			Source:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			Destination: accountRecords.General.TokenAccount,
-			Quantity:    balance,
+	depositRecord := &deposit.Record{
+		Signature:      fmt.Sprintf("txn%d", rand.Uint64()),
+		Destination:    accountRecords.General.TokenAccount,
+		Amount:         balance,
+		UsdMarketValue: 1,
 
-			Rendezvous: "",
-			IsExternal: true,
-
-			TransactionId: fmt.Sprintf("txn%d", rand.Uint64()),
-
-			ConfirmationState: transaction.ConfirmationFinalized,
-
-			ExchangeCurrency: string(currency.KIN),
-			ExchangeRate:     1.0,
-			UsdMarketValue:   1.0,
-
-			BlockId: 12345,
-
-			CreatedAt: time.Now(),
-		}
-		require.NoError(t, env.data.CreatePayment(env.ctx, paymentRecord))
-	} else {
-		depositRecord := &deposit.Record{
-			Signature:      fmt.Sprintf("txn%d", rand.Uint64()),
-			Destination:    accountRecords.General.TokenAccount,
-			Amount:         balance,
-			UsdMarketValue: 1,
-
-			ConfirmationState: transaction.ConfirmationFinalized,
-			Slot:              12345,
-		}
-		require.NoError(t, env.data.SaveExternalDeposit(env.ctx, depositRecord))
+		ConfirmationState: transaction.ConfirmationFinalized,
+		Slot:              12345,
 	}
+	require.NoError(t, env.data.SaveExternalDeposit(env.ctx, depositRecord))
 }
 
 func setupOpenAccountsIntent(t *testing.T, env testEnv, ownerAccount *common.Account) {
@@ -1216,29 +998,6 @@ func setupOpenAccountsIntent(t *testing.T, env testEnv, ownerAccount *common.Acc
 		InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
 
 		OpenAccountsMetadata: &intent.OpenAccountsMetadata{},
-
-		State: intent.StatePending,
-	}
-
-	require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
-}
-
-func setupPrivacyMigration2022Intent(t *testing.T, env testEnv, ownerAccount *common.Account) {
-	tokenAccount, err := ownerAccount.ToTimelockVault(timelock_token_v1.DataVersionLegacy, common.KinMintAccount)
-	require.NoError(t, err)
-
-	balance, err := balance.CalculateFromCache(env.ctx, env.data, tokenAccount)
-	require.NoError(t, err)
-
-	intentRecord := &intent.Record{
-		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		IntentType: intent.MigrateToPrivacy2022,
-
-		InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
-
-		MigrateToPrivacy2022Metadata: &intent.MigrateToPrivacy2022Metadata{
-			Quantity: balance,
-		},
 
 		State: intent.StatePending,
 	}
