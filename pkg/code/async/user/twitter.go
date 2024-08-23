@@ -171,6 +171,14 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 func (p *service) refreshTwitterUserInfo(ctx context.Context, username string) error {
 	user, err := p.twitterClient.GetUserByUsername(ctx, username)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "could not find user with username") {
+			err = p.onTwitterUsernameNotFound(ctx, username)
+			if err != nil {
+				return errors.Wrap(err, "error updating cached user state")
+			}
+			return nil
+		}
+
 		return errors.Wrap(err, "error getting user info from twitter")
 	}
 
@@ -218,6 +226,25 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 	default:
 		return errors.Wrap(err, "error updating cached twitter user")
 	}
+}
+
+func (p *service) onTwitterUsernameNotFound(ctx context.Context, username string) error {
+	record, err := p.data.GetTwitterUserByUsername(ctx, username)
+	switch err {
+	case nil:
+	case twitter.ErrUserNotFound:
+		return nil
+	default:
+		return errors.Wrap(err, "error getting cached twitter user")
+	}
+
+	record.LastUpdatedAt = time.Now()
+
+	err = p.data.SaveTwitterUser(ctx, record)
+	if err != nil {
+		return errors.Wrap(err, "error updating cached twitter user")
+	}
+	return nil
 }
 
 func (p *service) findNewRegistrationTweets(ctx context.Context) ([]*twitter_lib.Tweet, error) {
