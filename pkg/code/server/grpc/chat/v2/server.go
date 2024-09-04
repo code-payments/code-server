@@ -2,7 +2,6 @@ package chat_v2
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"math"
@@ -22,8 +21,6 @@ import (
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
-	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
-
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	chatv2 "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -548,159 +545,147 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 		return nil, err
 	}
 
+	// todo: Maybe expand this in the future.
+	if req.Self.Platform != chatpb.Platform_TWITTER {
+		log.Info("cannot start chat without specifying username")
+		return &chatpb.StartChatResponse{Result: chatpb.StartChatResponse_INVALID_PARAMETER}, nil
+	}
+
+	selfVerified, err := s.ownsTwitterUsername(ctx, owner, req.Self.Username)
+	if err != nil {
+		log.WithError(err).Warn("failed to verify creators twitter")
+		return nil, status.Error(codes.Internal, "")
+	}
+	if !selfVerified {
+		return &chatpb.StartChatResponse{Result: chatpb.StartChatResponse_DENIED}, nil
+	}
+
 	switch typed := req.Parameters.(type) {
-	case *chatpb.StartChatRequest_TipChat:
-		intentId := base58.Encode(typed.TipChat.IntentId.Value)
-		log = log.WithField("intent", intentId)
+	case *chatpb.StartChatRequest_TwoWayChat:
+		chatId := chat.GetChatId(owner.PublicKey().ToBase58(), base58.Encode(typed.TwoWayChat.OtherUser.Value), true)
 
-		intentRecord, err := s.data.GetIntent(ctx, intentId)
-		if err == intent.ErrIntentNotFound {
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_INVALID_PARAMETER,
-				Chat:   nil,
-			}, nil
-		} else if err != nil {
-			log.WithError(err).Warn("failure getting intent record")
-			return nil, status.Error(codes.Internal, "")
-		}
-
-		// The intent was not for a tip.
-		if intentRecord.SendPrivatePaymentMetadata == nil || !intentRecord.SendPrivatePaymentMetadata.IsTip {
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_INVALID_PARAMETER,
-				Chat:   nil,
-			}, nil
-		}
-
-		tipper, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("invalid tipper owner account")
-			return nil, status.Error(codes.Internal, "")
-		}
-		log = log.WithField("tipper", tipper.PublicKey().ToBase58())
-
-		tippee, err := common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("invalid tippee owner account")
-			return nil, status.Error(codes.Internal, "")
-		}
-		log = log.WithField("tippee", tippee.PublicKey().ToBase58())
-
-		// For now, don't allow chats where you tipped yourself.
-		//
-		// todo: How do we want to handle this case?
-		if owner.PublicKey().ToBase58() == tipper.PublicKey().ToBase58() {
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_INVALID_PARAMETER,
-				Chat:   nil,
-			}, nil
-		}
-
-		// Only the owner of the platform user at the time of tipping can initiate the chat.
-		if owner.PublicKey().ToBase58() != tippee.PublicKey().ToBase58() {
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_DENIED,
-				Chat:   nil,
-			}, nil
-		}
-
-		// todo: This will require a refactor when we allow creation of other types of chats
-		switch intentRecord.SendPrivatePaymentMetadata.TipMetadata.Platform {
-		case transactionpb.TippedUser_TWITTER:
-			twitterUsername := intentRecord.SendPrivatePaymentMetadata.TipMetadata.Username
-
-			// The owner must still own the Twitter username
-			ownsUsername, err := s.ownsTwitterUsername(ctx, owner, twitterUsername)
-			if err != nil {
-				log.WithError(err).Warn("failure determing twitter username ownership")
-				return nil, status.Error(codes.Internal, "")
-			} else if !ownsUsername {
-				return &chatpb.StartChatResponse{
-					Result: chatpb.StartChatResponse_DENIED,
-				}, nil
-			}
-
-			// todo: try to find an existing chat, but for now always create a new completely random one
-			var chatId chat.ChatId
-			rand.Read(chatId[:])
-
-			creationTs := time.Now()
-
-			chatRecord := &chat.ChatRecord{
-				ChatId:   chatId,
-				ChatType: chat.ChatTypeTwoWay,
-
-				IsVerified: true,
-
-				CreatedAt: creationTs,
-			}
-
-			memberRecords := []*chat.MemberRecord{
-				{
-					ChatId:   chatId,
-					MemberId: chat.GenerateMemberId(),
-
-					Platform:     chat.PlatformTwitter,
-					PlatformId:   twitterUsername,
-					OwnerAccount: owner.PublicKey().ToBase58(),
-
-					JoinedAt: creationTs,
-				},
-				{
-					ChatId:   chatId,
-					MemberId: chat.GenerateMemberId(),
-
-					Platform:   chat.PlatformCode,
-					PlatformId: tipper.PublicKey().ToBase58(),
-
-					JoinedAt: creationTs,
-				},
-			}
-
-			err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
-				err := s.data.PutChatV2(ctx, chatRecord)
+		if typed.TwoWayChat.IntentId == nil {
+			/*
+				isFriends, err := s.data.IsFriendshipPaid(ctx, owner, typed.TwoWayChat.OtherUser)
 				if err != nil {
-					return errors.Wrap(err, "error creating chat record")
+					log.WithError(err).Warn("failure checking two way chat")
+					return nil, status.Error(codes.Internal, "")
 				}
 
-				for _, memberRecord := range memberRecords {
-					err := s.data.PutChatMemberV2(ctx, memberRecord)
-					if err != nil {
-						return errors.Wrap(err, "error creating member record")
-					}
+				if !isFriends {
+					return &chatpb.StartChatResponse{Result: chatpb.StartChatResponse_DENIED}, nil
+				}
+			*/
+			_, err = s.data.GetChatByIdV2(ctx, chatId)
+			if errors.Is(err, chat.ErrChatNotFound) {
+				return &chatpb.StartChatResponse{Result: chatpb.StartChatResponse_DENIED}, nil
+			} else if err != nil {
+				log.WithError(err).Warn("failure checking two way chat")
+				return nil, status.Error(codes.Internal, "")
+			}
+		} else {
+			intentId := base58.Encode(typed.TwoWayChat.IntentId.Value)
+			log = log.WithField("intent", intentId)
+
+			intentRecord, err := s.data.GetIntent(ctx, intentId)
+			if errors.Is(err, intent.ErrIntentNotFound) {
+				log.WithError(err).Info("Intent not found")
+				return &chatpb.StartChatResponse{
+					Result: chatpb.StartChatResponse_INVALID_PARAMETER,
+					Chat:   nil,
+				}, nil
+			} else if err != nil {
+				log.WithError(err).Warn("failure getting intent record")
+				return nil, status.Error(codes.Internal, "")
+			}
+
+			if intentRecord.SendPrivatePaymentMetadata == nil {
+				return &chatpb.StartChatResponse{Result: chatpb.StartChatResponse_DENIED}, nil
+			}
+
+			// TODO: Further verification
+		}
+
+		// At this point, we assume the relationship is valid, and can proceed to recover or create
+		// the chat record.
+		creationTs := time.Now()
+		chatRecord := &chat.ChatRecord{
+			ChatId:     chatId,
+			ChatType:   chat.ChatTypeTwoWay,
+			IsVerified: true,
+			CreatedAt:  creationTs,
+		}
+		memberRecords := []*chat.MemberRecord{
+			{
+				ChatId:   chatId,
+				MemberId: chat.GenerateMemberId(),
+
+				Platform:     chat.PlatformTwitter,
+				PlatformId:   req.Self.Username,
+				OwnerAccount: owner.PublicKey().ToBase58(),
+
+				JoinedAt: creationTs,
+			},
+			{
+				ChatId:   chatId,
+				MemberId: chat.GenerateMemberId(),
+
+				Platform:   chat.PlatformTwitter,
+				PlatformId: typed.TwoWayChat.Identity.Username,
+
+				JoinedAt: time.Now(),
+			},
+		}
+
+		err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+			chatRecord, err = s.data.GetChatByIdV2(ctx, chatId)
+			if err != nil && errors.Is(err, chat.ErrChatNotFound) {
+				return fmt.Errorf("failed to check existing chat: %w", err)
+			}
+
+			if chatRecord != nil {
+				memberRecords, err = s.data.GetAllChatMembersV2(ctx, chatId)
+				if err != nil {
+					return fmt.Errorf("failed to get members of existing chat: %w", err)
 				}
 
 				return nil
-			})
-			if err != nil {
-				log.WithError(err).Warn("failure creating new chat")
-				return nil, status.Error(codes.Internal, "")
 			}
 
-			protoChat, err := s.toProtoChat(
-				ctx,
-				chatRecord,
-				memberRecords,
-				map[chat.Platform]string{
-					chat.PlatformCode:    owner.PublicKey().ToBase58(),
-					chat.PlatformTwitter: twitterUsername,
-				},
-			)
-			if err != nil {
-				log.WithError(err).Warn("failure constructing proto chat message")
-				return nil, status.Error(codes.Internal, "")
+			if err = s.data.PutChatV2(ctx, chatRecord); err != nil {
+				return fmt.Errorf("failed to save new chat: %w", err)
+			}
+			for _, m := range memberRecords {
+				if err = s.data.PutChatMemberV2(ctx, m); err != nil {
+					return fmt.Errorf("failed to add member to chat: %w", err)
+				}
 			}
 
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_OK,
-				Chat:   protoChat,
-			}, nil
-		default:
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_INVALID_PARAMETER,
-				Chat:   nil,
-			}, nil
+			return nil
+		})
+		if err != nil {
+			log.WithError(err).Warn("failure creating chat")
+			return nil, status.Error(codes.Internal, "")
 		}
+
+		protoChat, err := s.toProtoChat(
+			ctx,
+			chatRecord,
+			memberRecords,
+			map[chat.Platform]string{
+				chat.PlatformCode:    owner.PublicKey().ToBase58(),
+				chat.PlatformTwitter: req.Self.Username,
+			},
+		)
+		if err != nil {
+			log.WithError(err).Warn("failure constructing proto chat message")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		return &chatpb.StartChatResponse{
+			Result: chatpb.StartChatResponse_OK,
+			Chat:   protoChat,
+		}, nil
 
 	default:
 		return nil, status.Error(codes.InvalidArgument, "StartChatRequest.Parameters is nil")

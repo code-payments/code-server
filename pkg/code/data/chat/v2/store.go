@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+
 	"github.com/code-payments/code-server/pkg/database/query"
 )
 
@@ -43,7 +45,7 @@ type Store interface {
 	GetAllMessagesByChatId(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
 
 	// GetUnreadCount gets the unread message count for a chat ID at a read pointer
-	GetUnreadCount(ctx context.Context, chatId ChatId, readPointer MessageId) (uint32, error)
+	GetUnreadCount(ctx context.Context, chatId ChatId, memberId MemberId, readPointer MessageId) (uint32, error)
 
 	// PutChat creates a new chat
 	PutChat(ctx context.Context, record *ChatRecord) error
@@ -65,4 +67,24 @@ type Store interface {
 
 	// SetSubscriptionState updates the subscription state for a chat member
 	SetSubscriptionState(ctx context.Context, chatId ChatId, memberId MemberId, isSubscribed bool) error
+}
+
+type PaymentStore interface {
+	// MarkFriendshipPaid marks a friendship as paid.
+	//
+	// The intentId is the intent that paid for the friendship.
+	MarkFriendshipPaid(ctx context.Context, payer, other *common.SolanaAccountId, intentId *common.IntentId) error
+
+	// IsFriendshipPaid returns whether a payment has been made for a friendship.
+	//
+	// IsFriendshipPaid  is reflexive, with only a single payment being required.
+	IsFriendshipPaid(ctx context.Context, user, other *common.SolanaAccountId) (bool, error)
+
+	// MarkChatPaid marks a chat as paid.
+	MarkChatPaid(ctx context.Context, payer *common.SolanaAccountId, chat ChatId) error
+
+	// IsChatPaid returns whether a member paid to be part of a chat.
+	//
+	// This is only valid for non-two way chats.
+	IsChatPaid(ctx context.Context, chatId ChatId, member *common.SolanaAccountId) (bool, error)
 }

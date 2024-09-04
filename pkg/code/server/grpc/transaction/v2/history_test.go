@@ -3,7 +3,6 @@ package transaction_v2
 import (
 	"testing"
 
-	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,7 +13,6 @@ import (
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
-	chat_v2 "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
@@ -340,10 +338,6 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 1)
 
-	chatMessageRecordsV2, err := server.data.GetAllChatMessagesV2(server.ctx, chat_v2.GetChatId(chat_util.TipsName, sendingPhone.parentAccount.PublicKey().ToBase58(), true))
-	require.NoError(t, err)
-	requireEquivalent(t, chatMessageRecords, chatMessageRecordsV2)
-
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[0])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
@@ -419,10 +413,6 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, chatMessageRecords, 1)
 
-	chatMessageRecordsV2, err = server.data.GetAllChatMessagesV2(server.ctx, chat_v2.GetChatId(chat_util.TipsName, receivingPhone.parentAccount.PublicKey().ToBase58(), true))
-	require.NoError(t, err)
-	requireEquivalent(t, chatMessageRecords, chatMessageRecordsV2)
-
 	protoChatMessage = getProtoChatMessage(t, chatMessageRecords[0])
 	require.Len(t, protoChatMessage.Content, 1)
 	require.NotNil(t, protoChatMessage.Content[0].GetExchangeData())
@@ -431,50 +421,4 @@ func TestPaymentHistory_HappyPath(t *testing.T) {
 	assert.Equal(t, 0.1, protoChatMessage.Content[0].GetExchangeData().GetExact().ExchangeRate)
 	assert.Equal(t, 45.6, protoChatMessage.Content[0].GetExchangeData().GetExact().NativeAmount)
 	assert.Equal(t, kin.ToQuarks(456), protoChatMessage.Content[0].GetExchangeData().GetExact().Quarks)
-}
-
-func requireEquivalent(t *testing.T, v1 []*chat_v1.Message, v2 []*chat_v2.MessageRecord) {
-	require.Equal(t, len(v1), len(v2))
-
-	for i, v1Record := range v1 {
-		v2Record := v2[i]
-
-		require.Equal(t, v1Record.ChatId[:], v2Record.ChatId[:])
-		require.Equal(t, v1Record.IsSilent, v2Record.IsSilent)
-
-		v1Message := getProtoChatMessage(t, v1Record)
-		require.Empty(t, v1Message.Sender)
-
-		v2Message := getProtoChatMessageV2(t, v2Record)
-		require.Empty(t, v2Message.SenderId)
-
-		require.Equal(t, len(v1Message.Content), len(v2Message.Content))
-
-		// TODO: Move this to somewhere common?
-		for c := range v1Message.Content {
-			a := v1Message.Content[c].GetExchangeData()
-			require.NotNil(t, a)
-
-			b := v2Message.Content[c].GetExchangeData()
-			require.NotNil(t, b)
-
-			require.EqualValues(t, a.Verb, b.Verb)
-
-			if a.GetExact() != nil {
-				require.Equal(t, a.GetExact().Currency, b.GetExact().Currency)
-				require.Equal(t, a.GetExact().ExchangeRate, b.GetExact().ExchangeRate)
-				require.Equal(t, a.GetExact().NativeAmount, b.GetExact().NativeAmount)
-				require.Equal(t, a.GetExact().Quarks, b.GetExact().Quarks)
-			} else if a.GetPartial() != nil {
-				require.Equal(t, a.GetPartial().Currency, b.GetPartial().Currency)
-				require.Equal(t, a.GetPartial().NativeAmount, b.GetPartial().NativeAmount)
-			} else {
-				t.Fatal("Unhandled case")
-			}
-
-			intent := b.GetIntent()
-			require.NotNil(t, intent)
-			require.Equal(t, v1Record.MessageId, base58.Encode(intent.Value))
-		}
-	}
 }
