@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	userpb "github.com/code-payments/code-protobuf-api/generated/go/user/v1"
@@ -103,6 +105,8 @@ func (p *service) twitterUserInfoUpdateWorker(serviceCtx context.Context, interv
 }
 
 func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
+	log := p.log.WithField("method", "processNewTwitterRegistrations")
+
 	tweets, err := p.findNewRegistrationTweets(ctx)
 	if err != nil {
 		return errors.Wrap(err, "error finding new registration tweets")
@@ -112,6 +116,11 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 		if tweet.AdditionalMetadata.Author == nil {
 			return errors.Errorf("author missing in tweet %s", tweet.ID)
 		}
+
+		log := log.WithFields(logrus.Fields{
+			"tweet":    tweet.ID,
+			"username": tweet.AdditionalMetadata.Author,
+		})
 
 		// Attempt to find a verified tip account from the registration tweet
 		tipAccount, registrationNonce, err := p.findVerifiedTipAccountRegisteredInTweet(ctx, tweet)
@@ -140,7 +149,21 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 
 		switch err {
 		case nil:
-			go push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+			// todo: all of these success handlers are fire and forget best-effort delivery
+
+			go func() {
+				err := push_util.SendTwitterAccountConnectedPushNotification(ctx, p.data, p.pusher, tipAccount)
+				if err != nil {
+					log.WithError(err).Warn("failure sending success push")
+				}
+			}()
+
+			go func() {
+				err := p.sendRegistrationSuccessReply(ctx, tweet.ID, tweet.AdditionalMetadata.Author.Username)
+				if err != nil {
+					log.WithError(err).Warn("failure sending success reply")
+				}
+			}()
 		case twitter.ErrDuplicateTipAddress:
 			err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 				err = p.data.MarkTwitterNonceAsUsed(ctx, tweet.ID, *registrationNonce)
@@ -226,25 +249,6 @@ func (p *service) updateCachedTwitterUser(ctx context.Context, user *twitter_lib
 	default:
 		return errors.Wrap(err, "error updating cached twitter user")
 	}
-}
-
-func (p *service) onTwitterUsernameNotFound(ctx context.Context, username string) error {
-	record, err := p.data.GetTwitterUserByUsername(ctx, username)
-	switch err {
-	case nil:
-	case twitter.ErrUserNotFound:
-		return nil
-	default:
-		return errors.Wrap(err, "error getting cached twitter user")
-	}
-
-	record.LastUpdatedAt = time.Now()
-
-	err = p.data.SaveTwitterUser(ctx, record)
-	if err != nil {
-		return errors.Wrap(err, "error updating cached twitter user")
-	}
-	return nil
 }
 
 func (p *service) findNewRegistrationTweets(ctx context.Context) ([]*twitter_lib.Tweet, error) {
@@ -359,6 +363,36 @@ func (p *service) findVerifiedTipAccountRegisteredInTweet(ctx context.Context, t
 	}
 
 	return nil, nil, errTwitterRegistrationNotFound
+}
+
+func (p *service) sendRegistrationSuccessReply(ctx context.Context, regristrationTweetId, username string) error {
+	// todo: localize this
+	message := fmt.Sprintf(
+		"@%s your X account is now connected! Share this link to receive tips: https://tipcard.getcode.com/x/%s",
+		username,
+		username,
+	)
+	_, err := p.twitterClient.SendReply(ctx, regristrationTweetId, message)
+	return err
+}
+
+func (p *service) onTwitterUsernameNotFound(ctx context.Context, username string) error {
+	record, err := p.data.GetTwitterUserByUsername(ctx, username)
+	switch err {
+	case nil:
+	case twitter.ErrUserNotFound:
+		return nil
+	default:
+		return errors.Wrap(err, "error getting cached twitter user")
+	}
+
+	record.LastUpdatedAt = time.Now()
+
+	err = p.data.SaveTwitterUser(ctx, record)
+	if err != nil {
+		return errors.Wrap(err, "error updating cached twitter user")
+	}
+	return nil
 }
 
 func toProtoVerifiedType(value string) userpb.TwitterUser_VerifiedType {
