@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dghubble/oauth1"
 	"github.com/pkg/errors"
 
 	"github.com/code-payments/code-server/pkg/metrics"
@@ -28,8 +29,10 @@ const (
 type Client struct {
 	httpClient *http.Client
 
-	clientId     string
-	clientSecret string
+	clientId          string
+	clientSecret      string
+	accessToken       string
+	accessTokenSecret string
 
 	bearerTokenMu          sync.RWMutex
 	bearerToken            string
@@ -37,11 +40,13 @@ type Client struct {
 }
 
 // NewClient returns a new Twitter client
-func NewClient(clientId, clientSecret string) *Client {
+func NewClient(clientId, clientSecret, accessToken, accessTokenSecret string) *Client {
 	return &Client{
-		httpClient:   http.DefaultClient,
-		clientId:     clientId,
-		clientSecret: clientSecret,
+		httpClient:        http.DefaultClient,
+		clientId:          clientId,
+		clientSecret:      clientSecret,
+		accessToken:       accessToken,
+		accessTokenSecret: accessTokenSecret,
 	}
 }
 
@@ -143,8 +148,16 @@ func (c *Client) SearchRecentTweets(ctx context.Context, searchString string, ma
 	return tweets, nextToken, err
 }
 
+// SendReply sends a reply to the provided tweet
+func (c *Client) SendReply(ctx context.Context, tweetId, text string) (string, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "SendReply")
+	defer tracer.End()
+
+	return c.sendTweet(ctx, text, &tweetId)
+}
+
 func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
-	bearerToken, err := c.getBearerToken(c.clientId, c.clientSecret)
+	bearerToken, err := c.getBearerToken()
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +202,7 @@ func (c *Client) getUser(ctx context.Context, fromUrl string) (*User, error) {
 }
 
 func (c *Client) getTweets(ctx context.Context, fromUrl string) ([]*Tweet, *string, error) {
-	bearerToken, err := c.getBearerToken(c.clientId, c.clientSecret)
+	bearerToken, err := c.getBearerToken()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -253,7 +266,77 @@ func (c *Client) getTweets(ctx context.Context, fromUrl string) ([]*Tweet, *stri
 	return result.Data, result.Meta.NextToken, nil
 }
 
-func (c *Client) getBearerToken(clientId, clientSecret string) (string, error) {
+func (c *Client) sendTweet(ctx context.Context, text string, inReplyTo *string) (string, error) {
+	apiUrl := baseUrl + "tweets"
+
+	type ReplyParams struct {
+		InReplyToTweetId string `json:"in_reply_to_tweet_id"`
+	}
+	type Request struct {
+		Text  string       `json:"text"`
+		Reply *ReplyParams `json:"reply"`
+	}
+
+	reqPayload := Request{
+		Text: text,
+	}
+	if inReplyTo != nil {
+		reqPayload.Reply = &ReplyParams{
+			InReplyToTweetId: *inReplyTo,
+		}
+	}
+
+	reqJson, err := json.Marshal(reqPayload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", apiUrl, bytes.NewBuffer(reqJson))
+	if err != nil {
+		return "", err
+	}
+
+	req = req.WithContext(ctx)
+
+	req.Header.Set("Content-Type", "application/json")
+
+	config := oauth1.NewConfig(c.clientId, c.clientSecret)
+	token := oauth1.NewToken(c.accessToken, c.accessTokenSecret)
+	httpClient := config.Client(oauth1.NoContext, token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			Id *string `json:"id"`
+		} `json:"data"`
+		Errors []*twitterError `json:"errors"`
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	if len(result.Errors) > 0 {
+		return "", result.Errors[0].toError()
+	}
+	return *result.Data.Id, nil
+}
+
+func (c *Client) getBearerToken() (string, error) {
 	c.bearerTokenMu.RLock()
 	if time.Since(c.lastBearerTokenRefresh) < bearerTokenMaxAge {
 		c.bearerTokenMu.RUnlock()
@@ -275,7 +358,7 @@ func (c *Client) getBearerToken(clientId, clientSecret string) (string, error) {
 	}
 
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(clientId, clientSecret)
+	req.SetBasicAuth(c.clientId, c.clientSecret)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
