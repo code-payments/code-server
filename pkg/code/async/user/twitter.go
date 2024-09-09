@@ -194,7 +194,7 @@ func (p *service) processNewTwitterRegistrations(ctx context.Context) error {
 func (p *service) refreshTwitterUserInfo(ctx context.Context, username string) error {
 	user, err := p.twitterClient.GetUserByUsername(ctx, username)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "could not find user with username") {
+		if strings.Contains(strings.ToLower(err.Error()), "could not find user with username") || strings.Contains(strings.ToLower(err.Error()), "user has been suspended") {
 			err = p.onTwitterUsernameNotFound(ctx, username)
 			if err != nil {
 				return errors.Wrap(err, "error updating cached user state")
