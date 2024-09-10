@@ -170,7 +170,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 
 	source *common.TimelockAccounts,
 	destination *common.Account,
-	kinAmountInQuarks uint32,
+	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
 	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
 	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
@@ -231,7 +231,7 @@ func MakeInternalTreasuryAdvanceTransaction(
 	treasuryPoolVault *common.Account,
 	destination *common.Account,
 	commitment *common.Account,
-	kinAmountInQuarks uint32,
+	kinAmountInQuarks uint64,
 	transcript []byte,
 	recentRoot []byte,
 ) (solana.Transaction, error) {

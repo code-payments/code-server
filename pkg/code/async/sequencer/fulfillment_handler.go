@@ -1057,7 +1057,7 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		treasuryPoolVault,
 		destination,
 		commitment,
-		uint32(commitmentRecord.Amount), // todo: assumes amount never overflows uint32
+		commitmentRecord.Amount,
 		transcript,
 		recentRoot,
 	)
