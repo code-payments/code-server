@@ -297,7 +297,7 @@ func MakeCashChequeTransaction(
 	treasuryPool *common.Account,
 	treasuryPoolVault *common.Account,
 	commitmentVault *common.Account,
-	kinAmountInQuarks uint32,
+	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 

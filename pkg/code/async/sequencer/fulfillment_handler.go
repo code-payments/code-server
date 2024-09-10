@@ -335,7 +335,7 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 
 		nil, // todo: source
 		nil, // tood: destination
-		uint32(*actionRecord.Quantity),
+		*actionRecord.Quantity,
 	)
 	if err != nil {
 		return nil, err
@@ -645,7 +645,7 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		treasuryPool,
 		treasuryPoolVault,
 		commitmentVault,
-		uint32(commitmentRecord.Amount),
+		commitmentRecord.Amount,
 	)
 	if err != nil {
 		return nil, err
@@ -852,7 +852,7 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		treasuryPool,
 		treasuryPoolVault,
 		commitmentVault,
-		uint32(oldCommitmentRecord.Amount),
+		oldCommitmentRecord.Amount,
 	)
 	if err != nil {
 		return nil, err
