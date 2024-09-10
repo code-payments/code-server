@@ -8,7 +8,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
-	"github.com/code-payments/code-server/pkg/solana/memo"
 )
 
 // todo: The argument sizes are blowing out of proportion, though there's likely
@@ -89,7 +88,7 @@ func MakeCompressAccountTransaction(
 	return MakeNoncedTransaction(nonce, bh, compressInstruction)
 }
 
-func MakeInternalCloseAccountWithBalanceTransaction(
+func MakeInternalWithdrawTransaction(
 	nonce *common.Account,
 	bh solana.Blockhash,
 
@@ -107,14 +106,12 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 
 	source *common.TimelockAccounts,
 	destination *common.Account,
-
-	additionalMemo *string,
 ) (solana.Transaction, error) {
 	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
 	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
 	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
 
-	transferVirtualIxn := cvm.NewVirtualInstruction(
+	withdrawVirtualIxn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
 		&cvm.VirtualDurableNonce{
 			Address: virtualNonce.PublicKey().ToBytes(),
@@ -145,20 +142,14 @@ func MakeInternalCloseAccountWithBalanceTransaction(
 			VmMemC:      &memoryCPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
-			Opcode:     transferVirtualIxn.Opcode,
+			Opcode:     withdrawVirtualIxn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
 			MemBanks:   []uint8{0, 1, 2},
-			Data:       transferVirtualIxn.Data,
+			Data:       withdrawVirtualIxn.Data,
 		},
 	)
 
-	var instructions []solana.Instruction
-	if additionalMemo != nil {
-		instructions = append(instructions, memo.Instruction(*additionalMemo))
-	}
-	instructions = append(instructions, execInstruction)
-
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, bh, execInstruction)
 }
 
 func MakeInternalTransferWithAuthorityTransaction(
@@ -244,10 +235,11 @@ func MakeInternalTreasuryAdvanceTransaction(
 	transcript []byte,
 	recentRoot []byte,
 ) (solana.Transaction, error) {
-	relayPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
-	relayVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
 	memoryAPublicKeyBytes := ed25519.PublicKey(accountMemory.PublicKey().ToBytes())
 	memoryBPublicKeyBytes := ed25519.PublicKey(relayMemory.PublicKey().ToBytes())
+
+	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
+	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
 
 	relayTransferInternalVirtualInstruction := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -268,15 +260,93 @@ func MakeInternalTreasuryAdvanceTransaction(
 			VmAuthority:  common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:           vm.PublicKey().ToBytes(),
 			VmMemA:       &memoryAPublicKeyBytes,
-			VmOmnibus:    &memoryBPublicKeyBytes,
-			VmRelay:      &relayPublicKeyBytes,
-			VmRelayVault: &relayVaultPublicKeyBytes,
+			VmMemB:       &memoryBPublicKeyBytes,
+			VmRelay:      &treasuryPoolPublicKeyBytes,
+			VmRelayVault: &treasuryPoolVaultPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     relayTransferInternalVirtualInstruction.Opcode,
 			MemIndices: []uint16{accountIndex, relayIndex},
 			MemBanks:   []uint8{0, 1},
 			Data:       relayTransferInternalVirtualInstruction.Data,
+		},
+	)
+
+	return MakeNoncedTransaction(nonce, bh, execInstruction)
+}
+
+func MakeCashChequeTransaction(
+	nonce *common.Account,
+	bh solana.Blockhash,
+
+	virtualSignature solana.Signature,
+	virtualNonce *common.Account,
+	virtualBlockhash solana.Blockhash,
+
+	vm *common.Account,
+	vmOmnibus *common.Account,
+
+	nonceMemory *common.Account,
+	nonceIndex uint16,
+	sourceMemory *common.Account,
+	sourceIndex uint16,
+	relayMemory *common.Account,
+	relayIndex uint16,
+
+	source *common.TimelockAccounts,
+	treasuryPool *common.Account,
+	treasuryPoolVault *common.Account,
+	commitmentVault *common.Account,
+	kinAmountInQuarks uint32,
+) (solana.Transaction, error) {
+	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
+
+	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
+	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
+	memoryCPublicKeyBytes := ed25519.PublicKey(relayMemory.PublicKey().ToBytes())
+
+	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
+	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
+
+	transferRelayVirtualIxn := cvm.NewVirtualInstruction(
+		common.GetSubsidizer().PublicKey().ToBytes(),
+		&cvm.VirtualDurableNonce{
+			Address: virtualNonce.PublicKey().ToBytes(),
+			Nonce:   cvm.Hash(virtualBlockhash),
+		},
+		cvm.NewTimelockTransferRelayVirtualInstructionCtor(
+			&cvm.TimelockTransferRelayVirtualInstructionAccounts{
+				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
+				VirtualTimelock:      source.State.PublicKey().ToBytes(),
+				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
+				Owner:                source.VaultOwner.PublicKey().ToBytes(),
+				RelayVault:           commitmentVault.PublicKey().ToBytes(),
+			},
+			&cvm.TimelockTransferRelayVirtualInstructionArgs{
+				TimelockBump: source.StateBump,
+				Amount:       kinAmountInQuarks,
+				Signature:    cvm.Signature(virtualSignature),
+			},
+		),
+	)
+
+	execInstruction := cvm.NewVmExecInstruction(
+		&cvm.VmExecInstructionAccounts{
+			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
+			Vm:              vm.PublicKey().ToBytes(),
+			VmMemA:          &memoryAPublicKeyBytes,
+			VmMemB:          &memoryBPublicKeyBytes,
+			VmMemC:          &memoryCPublicKeyBytes,
+			VmOmnibus:       &vmOmnibusPublicKeyBytes,
+			VmRelay:         &treasuryPoolPublicKeyBytes,
+			VmRelayVault:    &treasuryPoolVaultPublicKeyBytes,
+			ExternalAddress: &treasuryPoolVaultPublicKeyBytes,
+		},
+		&cvm.VmExecInstructionArgs{
+			Opcode:     transferRelayVirtualIxn.Opcode,
+			MemIndices: []uint16{nonceIndex, sourceIndex, relayIndex},
+			MemBanks:   []uint8{0, 1, 2},
+			Data:       transferRelayVirtualIxn.Data,
 		},
 	)
 
