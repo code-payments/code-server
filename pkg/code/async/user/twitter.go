@@ -368,7 +368,7 @@ func (p *service) findVerifiedTipAccountRegisteredInTweet(ctx context.Context, t
 func (p *service) sendRegistrationSuccessReply(ctx context.Context, regristrationTweetId, username string) error {
 	// todo: localize this
 	message := fmt.Sprintf(
-		"@%s your X account is now connected! Share this link to receive tips: https://tipcard.getcode.com/x/%s",
+		"@%s your X account is now connected. Share this link to receive tips: https://tipcard.getcode.com/x/%s",
 		username,
 		username,
 	)
