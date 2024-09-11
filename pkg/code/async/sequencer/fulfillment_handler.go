@@ -321,17 +321,7 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 		return nil, err
 	}
 
-	destinationVault, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationVault.PublicKey().ToBase58())
-	if err != nil {
-		return nil, err
-	}
-
-	destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+	destinationTokenAccount, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
 	if err != nil {
 		return nil, err
 	}
@@ -346,34 +336,71 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 		return nil, err
 	}
 
-	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+	isInternal, err := isInternalVmTransfer(ctx, h.data, destinationTokenAccount)
 	if err != nil {
 		return nil, err
 	}
 
-	// todo: support external transfers
-	txn, err := transaction_util.MakeInternalTransferWithAuthorityTransaction(
-		selectedNonce.Account,
-		selectedNonce.Blockhash,
+	var txn solana.Transaction
+	var makeTxnErr error
+	if isInternal {
+		destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationTokenAccount.PublicKey().ToBase58())
+		if err != nil {
+			return nil, err
+		}
 
-		solana.Signature(virtualSignatureBytes),
-		virtualNonce,
-		solana.Blockhash(virtualBlockhashBytes),
+		destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+		if err != nil {
+			return nil, err
+		}
 
-		common.CodeVmAccount,
-		nonceMemory,
-		nonceIndex,
-		sourceMemory,
-		sourceIndex,
-		destinationeMemory,
-		destinationIndex,
+		_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+		if err != nil {
+			return nil, err
+		}
 
-		sourceTimelockAccounts,
-		destinationVault,
-		*actionRecord.Quantity,
-	)
-	if err != nil {
-		return nil, err
+		txn, makeTxnErr = transaction_util.MakeInternalTransferWithAuthorityTransaction(
+			selectedNonce.Account,
+			selectedNonce.Blockhash,
+
+			solana.Signature(virtualSignatureBytes),
+			virtualNonce,
+			solana.Blockhash(virtualBlockhashBytes),
+
+			common.CodeVmAccount,
+			nonceMemory,
+			nonceIndex,
+			sourceMemory,
+			sourceIndex,
+			destinationeMemory,
+			destinationIndex,
+
+			sourceTimelockAccounts,
+			destinationTokenAccount,
+			*actionRecord.Quantity,
+		)
+	} else {
+		txn, makeTxnErr = transaction_util.MakeExternalTransferWithAuthorityTransaction(
+			selectedNonce.Account,
+			selectedNonce.Blockhash,
+
+			solana.Signature(virtualSignatureBytes),
+			virtualNonce,
+			solana.Blockhash(virtualBlockhashBytes),
+
+			common.CodeVmAccount,
+			nonceMemory,
+			nonceIndex,
+			sourceMemory,
+			sourceIndex,
+
+			sourceTimelockAccounts,
+			destinationTokenAccount,
+			*actionRecord.Quantity,
+		)
+	}
+	if makeTxnErr != nil {
+		return nil, makeTxnErr
 	}
 	return &txn, nil
 }
@@ -480,17 +507,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 		return nil, err
 	}
 
-	destinationVault, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationVault.PublicKey().ToBase58())
-	if err != nil {
-		return nil, err
-	}
-
-	destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+	destinationTokenAccount, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
 	if err != nil {
 		return nil, err
 	}
@@ -505,33 +522,69 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 		return nil, err
 	}
 
-	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+	isInternal, err := isInternalVmTransfer(ctx, h.data, destinationTokenAccount)
 	if err != nil {
 		return nil, err
 	}
 
-	// todo: support external transfers
-	txn, err := transaction_util.MakeInternalWithdrawTransaction(
-		selectedNonce.Account,
-		selectedNonce.Blockhash,
+	var txn solana.Transaction
+	var makeTxnErr error
+	if isInternal {
+		destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationTokenAccount.PublicKey().ToBase58())
+		if err != nil {
+			return nil, err
+		}
 
-		solana.Signature(virtualSignatureBytes),
-		virtualNonce,
-		solana.Blockhash(virtualBlockhashBytes),
+		destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+		if err != nil {
+			return nil, err
+		}
 
-		common.CodeVmAccount,
-		nonceMemory,
-		nonceIndex,
-		sourceMemory,
-		sourceIndex,
-		destinationeMemory,
-		destinationIndex,
+		_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+		if err != nil {
+			return nil, err
+		}
 
-		sourceTimelockAccounts,
-		destinationVault,
-	)
-	if err != nil {
-		return nil, err
+		txn, makeTxnErr = transaction_util.MakeInternalWithdrawTransaction(
+			selectedNonce.Account,
+			selectedNonce.Blockhash,
+
+			solana.Signature(virtualSignatureBytes),
+			virtualNonce,
+			solana.Blockhash(virtualBlockhashBytes),
+
+			common.CodeVmAccount,
+			nonceMemory,
+			nonceIndex,
+			sourceMemory,
+			sourceIndex,
+			destinationeMemory,
+			destinationIndex,
+
+			sourceTimelockAccounts,
+			destinationTokenAccount,
+		)
+	} else {
+		txn, makeTxnErr = transaction_util.MakeExternalWithdrawTransaction(
+			selectedNonce.Account,
+			selectedNonce.Blockhash,
+
+			solana.Signature(virtualSignatureBytes),
+			virtualNonce,
+			solana.Blockhash(virtualBlockhashBytes),
+
+			common.CodeVmAccount,
+			nonceMemory,
+			nonceIndex,
+			sourceMemory,
+			sourceIndex,
+
+			sourceTimelockAccounts,
+			destinationTokenAccount,
+		)
+	}
+	if makeTxnErr != nil {
+		return nil, makeTxnErr
 	}
 	return &txn, nil
 }
@@ -1099,15 +1152,6 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, errors.New("commitment in unexpected state")
 	}
 
-	timelockRecord, err := h.data.GetTimelockByVault(ctx, commitmentRecord.Destination)
-	if err != nil {
-		return nil, err
-	}
-	destinationTimelockOwner, err := common.NewAccountFromPublicKeyString(timelockRecord.VaultOwner)
-	if err != nil {
-		return nil, err
-	}
-
 	treasuryPool, err := common.NewAccountFromPublicKeyString(commitmentRecord.Pool)
 	if err != nil {
 		return nil, err
@@ -1143,37 +1187,72 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 		return nil, err
 	}
 
-	_, timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationTimelockOwner)
-	if err != nil {
-		return nil, err
-	}
-
 	relayMemory, relayAccountIndex, err := reserveVmMemory(ctx, h.data, common.CodeVmAccount, cvm.VirtualAccountTypeRelay, commitmentVault)
 	if err != nil {
 		return nil, err
 	}
 
-	// todo: support external transfers
-	txn, err := transaction_util.MakeInternalTreasuryAdvanceTransaction(
-		selectedNonce.Account,
-		selectedNonce.Blockhash,
-
-		common.CodeVmAccount,
-		timelockAccountMemory,
-		timelockAccountIndex,
-		relayMemory,
-		relayAccountIndex,
-
-		treasuryPool,
-		treasuryPoolVault,
-		destination,
-		commitment,
-		commitmentRecord.Amount,
-		transcript,
-		recentRoot,
-	)
+	isInternal, err := isInternalVmTransfer(ctx, h.data, destination)
 	if err != nil {
 		return nil, err
+	}
+
+	var txn solana.Transaction
+	var makeTxnErr error
+	if isInternal {
+		destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, commitmentRecord.Destination)
+		if err != nil {
+			return nil, err
+		}
+
+		destinationOwner, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		_, timelockAccountMemory, timelockAccountIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationOwner)
+		if err != nil {
+			return nil, err
+		}
+
+		txn, makeTxnErr = transaction_util.MakeInternalTreasuryAdvanceTransaction(
+			selectedNonce.Account,
+			selectedNonce.Blockhash,
+
+			common.CodeVmAccount,
+			timelockAccountMemory,
+			timelockAccountIndex,
+			relayMemory,
+			relayAccountIndex,
+
+			treasuryPool,
+			treasuryPoolVault,
+			destination,
+			commitment,
+			commitmentRecord.Amount,
+			transcript,
+			recentRoot,
+		)
+	} else {
+		txn, makeTxnErr = transaction_util.MakeExternalTreasuryAdvanceTransaction(
+			selectedNonce.Account,
+			selectedNonce.Blockhash,
+
+			common.CodeVmAccount,
+			relayMemory,
+			relayAccountIndex,
+
+			treasuryPool,
+			treasuryPoolVault,
+			destination,
+			commitment,
+			commitmentRecord.Amount,
+			transcript,
+			recentRoot,
+		)
+	}
+	if makeTxnErr != nil {
+		return nil, makeTxnErr
 	}
 	return &txn, nil
 }

@@ -12,6 +12,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	"github.com/code-payments/code-server/pkg/code/data/cvm/storage"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
@@ -168,4 +169,18 @@ func getVirtualRelayAccountStateInMemory(ctx context.Context, vmIndexerClient in
 	}
 
 	return &state, memory, uint16(protoMemory.Index), nil
+}
+
+func isInternalVmTransfer(ctx context.Context, data code_data.Provider, destination *common.Account) (bool, error) {
+	// We only track Timelock managed within our VM, so the presence of a record
+	// is sufficient to determine internal/external transfer status
+	_, err := data.GetTimelockByVault(ctx, destination.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		return true, nil
+	case timelock.ErrTimelockNotFound:
+		return false, nil
+	default:
+		return false, err
+	}
 }
