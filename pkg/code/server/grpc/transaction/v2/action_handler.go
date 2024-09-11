@@ -714,7 +714,7 @@ func (h *TemporaryPrivacyTransferActionHandler) GetFulfillmentMetadata(
 
 			fulfillmentType:          fulfillment.TemporaryPrivacyTransferWithAuthority,
 			source:                   h.source.Vault,
-			destination:              h.commitmentVault,
+			destination:              h.commitmentVault, // Technically treasury vault with VM, but would break a number of things that we don't want to deal with for now
 			fulfillmentOrderingIndex: 2000,
 			disableActiveScheduling:  true,
 		}, nil
@@ -727,7 +727,6 @@ func (h *TemporaryPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) 
 	return h.data.SaveCommitment(ctx, h.unsavedCommitmentRecord)
 }
 
-/*
 // Handles both of the equivalent client transfer and exchange actions. The
 // server-defined action only defines the private movement of funds between
 // accounts and it's all treated the same by backend processes. The client
@@ -736,10 +735,9 @@ func (h *TemporaryPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) 
 type PermanentPrivacyUpgradeActionHandler struct {
 	data code_data.Provider
 
-	source              *common.TimelockAccounts
-	oldCommitmentVault  *common.Account
-	privacyUpgradeProof *privacyUpgradeProof
-	amount              uint64
+	source                  *common.TimelockAccounts
+	commitmentBeingUpgraded *commitment.Record
+	privacyUpgradeProof     *privacyUpgradeProof
 
 	fulfillmentToUpgrade *fulfillment.Record
 }
@@ -761,28 +759,7 @@ func NewPermanentPrivacyUpgradeActionHandler(
 		return nil, err
 	}
 
-	var txnToUpgrade solana.Transaction
-	err = txnToUpgrade.Unmarshal(h.fulfillmentToUpgrade.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	oldIxnArgs, oldIxnAccounts, err := timelock_token_v1.TransferWithAuthorityInstructionFromLegacyInstruction(txnToUpgrade, 2)
-	if err != nil {
-		return nil, err
-	}
-
-	authority, err := common.NewAccountFromPublicKeyBytes(oldIxnAccounts.VaultOwner)
-	if err != nil {
-		return nil, err
-	}
-
-	h.source, err = authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	h.oldCommitmentVault, err = common.NewAccountFromPublicKeyBytes(oldIxnAccounts.Destination)
+	h.commitmentBeingUpgraded, err = h.data.GetCommitmentByAction(ctx, intentRecord.IntentId, protoAction.ActionId)
 	if err != nil {
 		return nil, err
 	}
@@ -792,7 +769,25 @@ func NewPermanentPrivacyUpgradeActionHandler(
 		return nil, err
 	}
 
-	h.amount = oldIxnArgs.Amount
+	actionRecord, err := h.data.GetActionById(ctx, intentRecord.IntentId, protoAction.ActionId)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, actionRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	authority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	h.source, err = authority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
 
 	return h, nil
 }
@@ -840,43 +835,38 @@ func (h *PermanentPrivacyUpgradeActionHandler) getFulfillmentBeingUpgraded(ctx c
 	return fulfillmentRecords[0], nil
 }
 
-func (h *PermanentPrivacyUpgradeActionHandler) MakeUpgradedSolanaTransaction(
+func (h *PermanentPrivacyUpgradeActionHandler) GetFulfillmentMetadata(
 	nonce *common.Account,
 	bh solana.Blockhash,
-) (*makeSolanaTransactionResult, error) {
-	txn, err := transaction_util.MakeTransferWithAuthorityTransaction(
+) (*newFulfillmentMetadata, error) {
+	virtualIxnHash, err := transaction_util.GetVirtualTransferWithAuthorityHash(
 		nonce,
 		bh,
 		h.source,
 		h.privacyUpgradeProof.newCommitmentVault,
-		h.amount,
+		h.commitmentBeingUpgraded.Amount,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return &makeSolanaTransactionResult{
-		txn: &txn,
+	return &newFulfillmentMetadata{
+		requiresClientSignature: true,
+		expectedSigner:          h.source.VaultOwner,
+		virtualIxnHash:          virtualIxnHash,
 
 		fulfillmentType:          fulfillment.PermanentPrivacyTransferWithAuthority,
 		source:                   h.source.Vault,
-		destination:              h.privacyUpgradeProof.newCommitmentVault,
+		destination:              h.privacyUpgradeProof.newCommitmentVault, // Technically treasury vault with VM, but would break a number of things that we don't want to deal with for now
 		fulfillmentOrderingIndex: 1000,
 	}, nil
 }
 
 func (h *PermanentPrivacyUpgradeActionHandler) OnSaveToDB(ctx context.Context) error {
-	commitmentBeingUpgraded, err := h.data.GetCommitmentByVault(ctx, h.oldCommitmentVault.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
-
 	newDestination := h.privacyUpgradeProof.newCommitmentVault.PublicKey().ToBase58()
-	commitmentBeingUpgraded.RepaymentDivertedTo = &newDestination
-
-	return h.data.SaveCommitment(ctx, commitmentBeingUpgraded)
+	h.commitmentBeingUpgraded.RepaymentDivertedTo = &newDestination
+	return h.data.SaveCommitment(ctx, h.commitmentBeingUpgraded)
 }
-*/
 
 func getTransript(
 	intent string,

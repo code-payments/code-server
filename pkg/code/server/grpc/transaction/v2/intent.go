@@ -115,11 +115,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		log = log.WithField("intent_type", "receive_payments_privately")
 		intentHandler = NewReceivePaymentsPrivatelyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 		intentRequiresNewTreasuryPoolFunds = true
-		/*
-			case *transactionpb.Metadata_UpgradePrivacy:
-					log = log.WithField("intent_type", "upgrade_privacy")
-					intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
-		*/
+	case *transactionpb.Metadata_UpgradePrivacy:
+		log = log.WithField("intent_type", "upgrade_privacy")
+		intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
 		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
@@ -447,27 +445,25 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log = log.WithField("action_type", "temporary_privacy_exchange")
 			actionType = action.PrivateTransfer
 			actionHandler, err = NewTemporaryPrivacyTransferActionHandler(ctx, s.conf, s.data, intentRecord, protoAction, true, s.selectTreasuryPoolForAdvance)
-		/*
-			case *transactionpb.Action_PermanentPrivacyUpgrade:
-				log = log.WithField("action_type", "permanent_privacy_upgrade")
-				actionType = action.PrivateTransfer
+		case *transactionpb.Action_PermanentPrivacyUpgrade:
+			log = log.WithField("action_type", "permanent_privacy_upgrade")
+			actionType = action.PrivateTransfer
 
-				// Pass along the privacy upgrade target found during intent validation
-				// to avoid duplication of work.
-				cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
-				if !ok {
-					log.Warn("cached privacy upgrade target not found")
-					return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
-				}
+			// Pass along the privacy upgrade target found during intent validation
+			// to avoid duplication of work.
+			cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
+			if !ok {
+				log.Warn("cached privacy upgrade target not found")
+				return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
+			}
 
-				actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
-					ctx,
-					s.data,
-					intentRecord,
-					typed.PermanentPrivacyUpgrade,
-					cachedUpgradeTarget,
-				)
-		*/
+			actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
+				ctx,
+				s.data,
+				intentRecord,
+				typed.PermanentPrivacyUpgrade,
+				cachedUpgradeTarget,
+			)
 		default:
 			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
 		}
