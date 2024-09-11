@@ -82,28 +82,60 @@ func getVirtualTimelockAccountStateInMemory(ctx context.Context, vmIndexerClient
 
 	if len(resp.Items) > 1 {
 		return nil, nil, 0, errors.New("multiple results returned")
-	} else if resp.Items[0].Storage.GetCompressed() != nil {
+	} else if resp.Items[0].Storage.GetMemory() == nil {
 		return nil, nil, 0, errors.New("account is compressed")
 	}
 
-	memory, err := common.NewAccountFromPublicKeyBytes(resp.Items[0].Storage.GetMemory().Account.Value)
+	protoMemory := resp.Items[0].Storage.GetMemory()
+	memory, err := common.NewAccountFromPublicKeyBytes(protoMemory.Account.Value)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
+	protoAccount := resp.Items[0].Account
 	state := cvm.VirtualTimelockAccount{
-		Owner: resp.Items[0].Account.Owner.Value,
-		Nonce: cvm.Hash(resp.Items[0].Account.Nonce.Value),
+		Owner: protoAccount.Owner.Value,
+		Nonce: cvm.Hash(protoAccount.Nonce.Value),
 
-		TokenBump:    uint8(resp.Items[0].Account.TokenBump),
-		UnlockBump:   uint8(resp.Items[0].Account.UnlockBump),
-		WithdrawBump: uint8(resp.Items[0].Account.WithdrawBump),
+		TokenBump:    uint8(protoAccount.TokenBump),
+		UnlockBump:   uint8(protoAccount.UnlockBump),
+		WithdrawBump: uint8(protoAccount.WithdrawBump),
 
-		Balance: resp.Items[0].Account.Balance,
-		Bump:    uint8(resp.Items[0].Account.Bump),
+		Balance: protoAccount.Balance,
+		Bump:    uint8(protoAccount.Bump),
 	}
 
-	return &state, memory, uint16(resp.Items[0].Storage.GetMemory().Index), nil
+	return &state, memory, uint16(protoMemory.Index), nil
+}
+
+func getVirtualDurableNonceAccountStateInMemory(ctx context.Context, vmIndexerClient indexerpb.IndexerClient, vm, nonce *common.Account) (*cvm.VirtualDurableNonce, *common.Account, uint16, error) {
+	resp, err := vmIndexerClient.GetVirtualDurableNonce(ctx, &indexerpb.GetVirtualDurableNonceRequest{
+		VmAccount: &indexerpb.Address{Value: vm.PublicKey().ToBytes()},
+		Address:   &indexerpb.Address{Value: nonce.PublicKey().ToBytes()},
+	})
+	if err != nil {
+		return nil, nil, 0, err
+	} else if resp.Result != indexerpb.GetVirtualDurableNonceResponse_OK {
+		return nil, nil, 0, errors.Errorf("received rpc result %s", resp.Result.String())
+	}
+
+	protoMemory := resp.Item.Storage.GetMemory()
+	if protoMemory == nil {
+		return nil, nil, 0, errors.New("account is compressed")
+	}
+
+	memory, err := common.NewAccountFromPublicKeyBytes(protoMemory.Account.Value)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	protoAccount := resp.Item.Account
+	state := cvm.VirtualDurableNonce{
+		Address: protoAccount.Address.Value,
+		Nonce:   cvm.Hash(protoAccount.Nonce.Value),
+	}
+
+	return &state, memory, uint16(protoMemory.Index), nil
 }
 
 func getVirtualRelayAccountStateInMemory(ctx context.Context, vmIndexerClient indexerpb.IndexerClient, vm, relay *common.Account) (*cvm.VirtualRelayAccount, *common.Account, uint16, error) {
@@ -117,17 +149,23 @@ func getVirtualRelayAccountStateInMemory(ctx context.Context, vmIndexerClient in
 		return nil, nil, 0, errors.Errorf("received rpc result %s", resp.Result.String())
 	}
 
-	memory, err := common.NewAccountFromPublicKeyBytes(resp.Item.Storage.GetMemory().Account.Value)
+	protoMemory := resp.Item.Storage.GetMemory()
+	if protoMemory == nil {
+		return nil, nil, 0, errors.New("account is compressed")
+	}
+
+	memory, err := common.NewAccountFromPublicKeyBytes(protoMemory.Account.Value)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
+	protoAccount := resp.Item.Account
 	state := cvm.VirtualRelayAccount{
-		Address:     resp.Item.Account.Address.Value,
-		Commitment:  cvm.Hash(resp.Item.Account.Commitment.Value),
-		RecentRoot:  cvm.Hash(resp.Item.Account.RecentRoot.Value),
-		Destination: resp.Item.Account.Destination.Value,
+		Address:     protoAccount.Address.Value,
+		Commitment:  cvm.Hash(protoAccount.Commitment.Value),
+		RecentRoot:  cvm.Hash(protoAccount.RecentRoot.Value),
+		Destination: protoAccount.Destination.Value,
 	}
 
-	return &state, memory, uint16(resp.Item.Storage.GetMemory().Index), nil
+	return &state, memory, uint16(protoMemory.Index), nil
 }

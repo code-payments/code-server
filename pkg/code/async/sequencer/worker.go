@@ -10,6 +10,7 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
@@ -235,6 +236,11 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 
 		err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 			txn, err := fulfillmentHandler.MakeOnDemandTransaction(ctx, record, selectedNonce)
+			if err != nil {
+				return err
+			}
+
+			err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
 			if err != nil {
 				return err
 			}

@@ -35,8 +35,6 @@ import (
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
 
-// todo: Make working with different timelock versions easier
-
 var accountTypesToOpen = []commonpb.AccountType{
 	commonpb.AccountType_PRIMARY,
 	commonpb.AccountType_TEMPORARY_INCOMING,

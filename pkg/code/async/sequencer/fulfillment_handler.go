@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mr-tron/base58"
+
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
@@ -46,6 +48,10 @@ type FulfillmentHandler interface {
 
 	// SupportsOnDemandTransactions returns whether a fulfillment type supports
 	// on demand transaction creation
+	//
+	// Note: This is also being abused for an initial version of packing virtual
+	// instructions 1:1 into a Solana transaction. A new flow/strategy will be
+	// needed when we require more efficient packing.
 	SupportsOnDemandTransactions() bool
 
 	// MakeOnDemandTransaction constructs a transaction at the time of submission
@@ -166,12 +172,6 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransact
 	if err != nil {
 		return nil, err
 	}
-
-	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-	if err != nil {
-		return nil, err
-	}
-
 	return &txn, nil
 }
 
@@ -203,12 +203,14 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) IsRevoked(ctx contex
 }
 
 type NoPrivacyTransferWithAuthorityFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &NoPrivacyTransferWithAuthorityFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -275,20 +277,116 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) IsRevoked(ctx context
 }
 
 func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+	return true
 }
 
 func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNonce, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.VirtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
+	if err != nil {
+		return nil, err
+	}
+
+	actionRecord, err := h.data.GetActionById(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationVault, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
+	if err != nil {
+		return nil, err
+	}
+
+	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+	if err != nil {
+		return nil, err
+	}
+
+	// todo: support external transfers
+	txn, err := transaction_util.MakeInternalTransferWithAuthorityTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		solana.Signature(virtualSignatureBytes),
+		virtualNonce,
+		solana.Blockhash(virtualBlockhashBytes),
+
+		common.CodeVmAccount,
+		nonceMemory,
+		nonceIndex,
+		sourceMemory,
+		sourceIndex,
+		destinationeMemory,
+		destinationIndex,
+
+		sourceTimelockAccounts,
+		destinationVault,
+		*actionRecord.Quantity,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &txn, nil
 }
 
 type NoPrivacyWithdrawFulfillmentHandler struct {
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewNoPrivacyWithdrawFulfillmentHandler(data code_data.Provider) FulfillmentHandler {
+func NewNoPrivacyWithdrawFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) FulfillmentHandler {
 	return &NoPrivacyWithdrawFulfillmentHandler{
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -343,11 +441,99 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) CanSubmitToBlockchain(ctx context.
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+	return true
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNonce, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.VirtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationVault, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
+	if err != nil {
+		return nil, err
+	}
+
+	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+	if err != nil {
+		return nil, err
+	}
+
+	// todo: support external transfers
+	txn, err := transaction_util.MakeInternalWithdrawTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		solana.Signature(virtualSignatureBytes),
+		virtualNonce,
+		solana.Blockhash(virtualBlockhashBytes),
+
+		common.CodeVmAccount,
+		nonceMemory,
+		nonceIndex,
+		sourceMemory,
+		sourceIndex,
+		destinationeMemory,
+		destinationIndex,
+
+		sourceTimelockAccounts,
+		destinationVault,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &txn, nil
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
@@ -381,14 +567,16 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) IsRevoked(ctx context.Context, ful
 }
 
 type TemporaryPrivacyTransferWithAuthorityFulfillmentHandler struct {
-	conf *conf
-	data code_data.Provider
+	conf            *conf
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewTemporaryPrivacyTransferWithAuthorityFulfillmentHandler(data code_data.Provider, configProvider ConfigProvider) FulfillmentHandler {
+func NewTemporaryPrivacyTransferWithAuthorityFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) FulfillmentHandler {
 	return &TemporaryPrivacyTransferWithAuthorityFulfillmentHandler{
-		conf: configProvider(),
-		data: data,
+		conf:            configProvider(),
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -452,11 +640,108 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 }
 
 func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+	return true
 }
 
 func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNonce, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.VirtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
+	if err != nil {
+		return nil, err
+	}
+
+	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return nil, err
+	}
+
+	treasuryPool, err := common.NewAccountFromPrivateKeyString(commitmentRecord.Pool)
+	if err != nil {
+		return nil, err
+	}
+
+	treasuryPoolVault, err := common.NewAccountFromPrivateKeyString(*fulfillmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+
+	commitmentVault, err := common.NewAccountFromPublicKeyString(commitmentRecord.VaultAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
+	if err != nil {
+		return nil, err
+	}
+
+	_, relayMemory, relayIndex, err := getVirtualRelayAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, commitmentVault)
+	if err != nil {
+		return nil, err
+	}
+
+	txn, err := transaction_util.MakeCashChequeTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		solana.Signature(virtualSignatureBytes),
+		virtualNonce,
+		solana.Blockhash(virtualBlockhashBytes),
+
+		common.CodeVmAccount,
+		common.CodeVmOmnibusAccount,
+
+		nonceMemory,
+		nonceIndex,
+		sourceMemory,
+		sourceIndex,
+		relayMemory,
+		relayIndex,
+
+		sourceTimelockAccounts,
+		treasuryPool,
+		treasuryPoolVault,
+		commitmentVault,
+		commitmentRecord.Amount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &txn, nil
 }
 
 func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
@@ -514,14 +799,16 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) IsRevoked(ctx 
 }
 
 type PermanentPrivacyTransferWithAuthorityFulfillmentHandler struct {
-	conf *conf
-	data code_data.Provider
+	conf            *conf
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 }
 
-func NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data code_data.Provider, configProvider ConfigProvider) FulfillmentHandler {
+func NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) FulfillmentHandler {
 	return &PermanentPrivacyTransferWithAuthorityFulfillmentHandler{
-		conf: configProvider(),
-		data: data,
+		conf:            configProvider(),
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 	}
 }
 
@@ -575,11 +862,113 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlo
 }
 
 func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) SupportsOnDemandTransactions() bool {
-	return false
+	return true
 }
 
 func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
-	return nil, errors.New("not supported")
+	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNonce, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.VirtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
+	if err != nil {
+		return nil, err
+	}
+
+	oldCommitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return nil, err
+	}
+
+	newCommitmentRecord, err := h.data.GetCommitmentByVault(ctx, *oldCommitmentRecord.RepaymentDivertedTo)
+	if err != nil {
+		return nil, err
+	}
+
+	treasuryPool, err := common.NewAccountFromPrivateKeyString(newCommitmentRecord.Pool)
+	if err != nil {
+		return nil, err
+	}
+
+	treasuryPoolVault, err := common.NewAccountFromPrivateKeyString(*fulfillmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+
+	commitmentVault, err := common.NewAccountFromPublicKeyString(newCommitmentRecord.VaultAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
+	if err != nil {
+		return nil, err
+	}
+
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
+	if err != nil {
+		return nil, err
+	}
+
+	_, relayMemory, relayIndex, err := getVirtualRelayAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, commitmentVault)
+	if err != nil {
+		return nil, err
+	}
+
+	txn, err := transaction_util.MakeCashChequeTransaction(
+		selectedNonce.Account,
+		selectedNonce.Blockhash,
+
+		solana.Signature(virtualSignatureBytes),
+		virtualNonce,
+		solana.Blockhash(virtualBlockhashBytes),
+
+		common.CodeVmAccount,
+		common.CodeVmOmnibusAccount,
+
+		nonceMemory,
+		nonceIndex,
+		sourceMemory,
+		sourceIndex,
+		relayMemory,
+		relayIndex,
+
+		sourceTimelockAccounts,
+		treasuryPool,
+		treasuryPoolVault,
+		commitmentVault,
+		oldCommitmentRecord.Amount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &txn, nil
 }
 
 func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error {
@@ -786,12 +1175,6 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 	if err != nil {
 		return nil, err
 	}
-
-	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-	if err != nil {
-		return nil, err
-	}
-
 	return &txn, nil
 }
 
@@ -918,12 +1301,6 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ct
 	if err != nil {
 		return nil, err
 	}
-
-	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-	if err != nil {
-		return nil, err
-	}
-
 	return &txn, nil
 }
 
@@ -1086,12 +1463,6 @@ func (h *CloseCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx context.
 	if err != nil {
 		return nil, err
 	}
-
-	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-	if err != nil {
-		return nil, err
-	}
-
 	return &txn, nil
 }
 
@@ -1188,10 +1559,10 @@ func estimateTreasuryPoolFundingLevels(ctx context.Context, data code_data.Provi
 func getFulfillmentHandlers(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) map[fulfillment.Type]FulfillmentHandler {
 	handlersByType := make(map[fulfillment.Type]FulfillmentHandler)
 	handlersByType[fulfillment.InitializeLockedTimelockAccount] = NewInitializeLockedTimelockAccountFulfillmentHandler(data)
-	handlersByType[fulfillment.NoPrivacyTransferWithAuthority] = NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data)
-	handlersByType[fulfillment.NoPrivacyWithdraw] = NewNoPrivacyWithdrawFulfillmentHandler(data)
-	handlersByType[fulfillment.TemporaryPrivacyTransferWithAuthority] = NewTemporaryPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
-	handlersByType[fulfillment.PermanentPrivacyTransferWithAuthority] = NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data, configProvider)
+	handlersByType[fulfillment.NoPrivacyTransferWithAuthority] = NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data, vmIndexerClient)
+	handlersByType[fulfillment.NoPrivacyWithdraw] = NewNoPrivacyWithdrawFulfillmentHandler(data, vmIndexerClient)
+	handlersByType[fulfillment.TemporaryPrivacyTransferWithAuthority] = NewTemporaryPrivacyTransferWithAuthorityFulfillmentHandler(data, vmIndexerClient, configProvider)
+	handlersByType[fulfillment.PermanentPrivacyTransferWithAuthority] = NewPermanentPrivacyTransferWithAuthorityFulfillmentHandler(data, vmIndexerClient, configProvider)
 	handlersByType[fulfillment.TransferWithCommitment] = NewTransferWithCommitmentFulfillmentHandler(data, vmIndexerClient)
 	handlersByType[fulfillment.CloseEmptyTimelockAccount] = NewCloseEmptyTimelockAccountFulfillmentHandler(data, vmIndexerClient)
 	handlersByType[fulfillment.SaveRecentRoot] = NewSaveRecentRootFulfillmentHandler(data)
