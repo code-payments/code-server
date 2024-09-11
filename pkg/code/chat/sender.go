@@ -12,7 +12,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 )
 
 // SendChatMessage sends a chat message to a receiving owner account.
@@ -24,13 +24,13 @@ func SendChatMessage(
 	ctx context.Context,
 	data code_data.Provider,
 	chatTitle string,
-	chatType chat.ChatType,
+	chatType chat_v1.ChatType,
 	isVerifiedChat bool,
 	receiver *common.Account,
 	protoMessage *chatpb.ChatMessage,
 	isSilentMessage bool,
 ) (canPushMessage bool, err error) {
-	chatId := chat.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), isVerifiedChat)
+	chatId := chat_v1.GetChatId(chatTitle, receiver.PublicKey().ToBase58(), isVerifiedChat)
 
 	if protoMessage.Cursor != nil {
 		// Let the utilities and GetMessages RPC handle cursors
@@ -58,13 +58,13 @@ func SendChatMessage(
 	canPersistMessage := true
 	canPushMessage = !isSilentMessage
 
-	existingChatRecord, err := data.GetChatById(ctx, chatId)
+	existingChatRecord, err := data.GetChatByIdV1(ctx, chatId)
 	switch err {
 	case nil:
 		canPersistMessage = !existingChatRecord.IsUnsubscribed
 		canPushMessage = canPushMessage && canPersistMessage && !existingChatRecord.IsMuted
-	case chat.ErrChatNotFound:
-		chatRecord := &chat.Chat{
+	case chat_v1.ErrChatNotFound:
+		chatRecord := &chat_v1.Chat{
 			ChatId:     chatId,
 			ChatType:   chatType,
 			ChatTitle:  chatTitle,
@@ -79,8 +79,8 @@ func SendChatMessage(
 			CreatedAt: time.Now(),
 		}
 
-		err = data.PutChat(ctx, chatRecord)
-		if err != nil && err != chat.ErrChatAlreadyExists {
+		err = data.PutChatV1(ctx, chatRecord)
+		if err != nil && err != chat_v1.ErrChatAlreadyExists {
 			return false, err
 		}
 	default:
@@ -88,7 +88,7 @@ func SendChatMessage(
 	}
 
 	if canPersistMessage {
-		messageRecord := &chat.Message{
+		messageRecord := &chat_v1.Message{
 			ChatId: chatId,
 
 			MessageId: base58.Encode(messageId),
@@ -100,7 +100,7 @@ func SendChatMessage(
 			Timestamp: ts.AsTime(),
 		}
 
-		err = data.PutChatMessage(ctx, messageRecord)
+		err = data.PutChatMessageV1(ctx, messageRecord)
 		if err != nil {
 			return false, err
 		}

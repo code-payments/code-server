@@ -11,7 +11,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 )
 
@@ -93,9 +93,9 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 					return errors.Wrap(err, "error getting original gift card issued intent")
 				}
 
-				chatId := chat.GetChatId(CashTransactionsName, giftCardIssuedIntentRecord.InitiatorOwnerAccount, true)
+				chatId := chat_v1.GetChatId(CashTransactionsName, giftCardIssuedIntentRecord.InitiatorOwnerAccount, true)
 
-				err = data.DeleteChatMessage(ctx, chatId, giftCardIssuedIntentRecord.IntentId)
+				err = data.DeleteChatMessageV1(ctx, chatId, giftCardIssuedIntentRecord.IntentId)
 				if err != nil {
 					return errors.Wrap(err, "error deleting chat message")
 				}
@@ -152,13 +152,13 @@ func SendCashTransactionsExchangeMessage(ctx context.Context, data code_data.Pro
 			ctx,
 			data,
 			CashTransactionsName,
-			chat.ChatTypeInternal,
+			chat_v1.ChatTypeInternal,
 			true,
 			receiver,
 			protoMessage,
 			true,
 		)
-		if err != nil && err != chat.ErrMessageAlreadyExists {
+		if err != nil && err != chat_v1.ErrMessageAlreadyExists {
 			return errors.Wrap(err, "error persisting chat message")
 		}
 	}

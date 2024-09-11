@@ -32,6 +32,36 @@ func StringCopy(value *string) *string {
 	return String(*value)
 }
 
+// Uint8 returns a pointer to the provided uint8 value
+func Uint8(value uint8) *uint8 {
+	return &value
+}
+
+// Uint8OrDefault returns the pointer if not nil, otherwise the default value
+func Uint8OrDefault(value *uint8, defaultValue uint8) *uint8 {
+	if value != nil {
+		return value
+	}
+	return &defaultValue
+}
+
+// Uint8IfValid returns a pointer to the value if it's valid, otherwise nil
+func Uint8IfValid(valid bool, value uint8) *uint8 {
+	if valid {
+		return &value
+	}
+	return nil
+}
+
+// Uint8Copy returns a pointer that's a copy of the provided value
+func Uint8Copy(value *uint8) *uint8 {
+	if value == nil {
+		return nil
+	}
+
+	return Uint8(*value)
+}
+
 // Uint64 returns a pointer to the provided uint64 value
 func Uint64(value uint64) *uint64 {
 	return &value

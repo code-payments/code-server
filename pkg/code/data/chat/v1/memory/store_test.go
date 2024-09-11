@@ -3,7 +3,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/code-payments/code-server/pkg/code/data/chat/tests"
+	"github.com/code-payments/code-server/pkg/code/data/chat/v1/tests"
 )
 
 func TestChatMemoryStore(t *testing.T) {

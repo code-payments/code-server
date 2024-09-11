@@ -8,10 +8,10 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 )
 
 const (

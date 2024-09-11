@@ -11,14 +11,14 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
+	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
 	"github.com/code-payments/code-server/pkg/code/localization"
 )
 
 // GetKinPurchasesChatId returns the chat ID for the Kin Purchases chat for a
 // given owner account
-func GetKinPurchasesChatId(owner *common.Account) chat.ChatId {
-	return chat.GetChatId(KinPurchasesName, owner.PublicKey().ToBase58(), true)
+func GetKinPurchasesChatId(owner *common.Account) chat_v1.ChatId {
+	return chat_v1.GetChatId(KinPurchasesName, owner.PublicKey().ToBase58(), true)
 }
 
 // SendKinPurchasesMessage sends a message to the Kin Purchases chat.
@@ -27,7 +27,7 @@ func SendKinPurchasesMessage(ctx context.Context, data code_data.Provider, recei
 		ctx,
 		data,
 		KinPurchasesName,
-		chat.ChatTypeInternal,
+		chat_v1.ChatTypeInternal,
 		true,
 		receiver,
 		chatMessage,
@@ -40,8 +40,8 @@ func SendKinPurchasesMessage(ctx context.Context, data code_data.Provider, recei
 func ToUsdcDepositedMessage(signature string, ts time.Time) (*chatpb.ChatMessage, error) {
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.ChatMessageUsdcDeposited,
 				},
 			},
@@ -60,8 +60,8 @@ func NewUsdcBeingConvertedMessage(ts time.Time) (*chatpb.ChatMessage, error) {
 
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.ChatMessageUsdcBeingConverted,
 				},
 			},
@@ -79,8 +79,8 @@ func ToKinAvailableForUseMessage(signature string, ts time.Time, purchases ...*t
 
 	content := []*chatpb.Content{
 		{
-			Type: &chatpb.Content_Localized{
-				Localized: &chatpb.LocalizedContent{
+			Type: &chatpb.Content_ServerLocalized{
+				ServerLocalized: &chatpb.ServerLocalizedContent{
 					KeyOrText: localization.ChatMessageKinAvailableForUse,
 				},
 			},
