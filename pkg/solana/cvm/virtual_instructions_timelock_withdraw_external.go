@@ -11,12 +11,12 @@ const (
 	TimelockWithdrawEnternalVirtrualInstructionDataSize = SignatureSize // signature
 )
 
-type TimelockWithdrawEnternalVirtualInstructionArgs struct {
+type TimelockWithdrawExternalVirtualInstructionArgs struct {
 	TimelockBump uint8
 	Signature    Signature
 }
 
-type TimelockWithdrawEnternalVirtualInstructionAccounts struct {
+type TimelockWithdrawExternalVirtualInstructionAccounts struct {
 	VmAuthority          ed25519.PublicKey
 	VirtualTimelock      ed25519.PublicKey
 	VirtualTimelockVault ed25519.PublicKey
@@ -25,9 +25,9 @@ type TimelockWithdrawEnternalVirtualInstructionAccounts struct {
 	Mint                 ed25519.PublicKey
 }
 
-func NewTimelockWithdrawEnternalVirtualInstructionCtor(
-	accounts *TimelockWithdrawEnternalVirtualInstructionAccounts,
-	args *TimelockWithdrawEnternalVirtualInstructionArgs,
+func NewTimelockWithdrawExternalVirtualInstructionCtor(
+	accounts *TimelockWithdrawExternalVirtualInstructionAccounts,
+	args *TimelockWithdrawExternalVirtualInstructionArgs,
 ) VirtualInstructionCtor {
 	return func() (Opcode, []solana.Instruction, []byte) {
 		var offset int

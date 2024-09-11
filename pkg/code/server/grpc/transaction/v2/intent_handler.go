@@ -2541,16 +2541,13 @@ func validateNoUpgradeActions(actions []*transactionpb.Action) error {
 }
 
 func validateExternalKinTokenAccountWithinIntent(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) error {
-	/*
-		isValid, message, err := common.ValidateExternalKinTokenAccount(ctx, data, tokenAccount)
-		if err != nil {
-			return err
-		} else if !isValid {
-			return newIntentValidationError(message)
-		}
-		return nil
-	*/
-	return newIntentDeniedError("external transfers are not yet supported")
+	isValid, message, err := common.ValidateExternalKinTokenAccount(ctx, data, tokenAccount)
+	if err != nil {
+		return err
+	} else if !isValid {
+		return newIntentValidationError(message)
+	}
+	return nil
 }
 
 func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, intentId string, proto *transactionpb.ExchangeData) error {
