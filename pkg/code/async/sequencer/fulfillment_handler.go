@@ -301,17 +301,52 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 		return nil, err
 	}
 
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationVault, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
 	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
 	if err != nil {
 		return nil, err
 	}
 
-	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, nil) // todo
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
 	if err != nil {
 		return nil, err
 	}
 
-	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, nil) // todo
+	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
 	if err != nil {
 		return nil, err
 	}
@@ -333,8 +368,8 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 		destinationeMemory,
 		destinationIndex,
 
-		nil, // todo: source
-		nil, // tood: destination
+		sourceTimelockAccounts,
+		destinationVault,
 		*actionRecord.Quantity,
 	)
 	if err != nil {
@@ -425,17 +460,52 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 		return nil, err
 	}
 
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationVault, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destinationVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	destinationAuthority, err := common.NewAccountFromPublicKeyString(destinationAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
 	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
 	if err != nil {
 		return nil, err
 	}
 
-	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, nil) // todo
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
 	if err != nil {
 		return nil, err
 	}
 
-	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, nil) // todo
+	_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
 	if err != nil {
 		return nil, err
 	}
@@ -457,8 +527,8 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 		destinationeMemory,
 		destinationIndex,
 
-		nil, // todo: source
-		nil, // todo: destination
+		sourceTimelockAccounts,
+		destinationVault,
 	)
 	if err != nil {
 		return nil, err
@@ -593,6 +663,7 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 	if err != nil {
 		return nil, err
 	}
+
 	treasuryPool, err := common.NewAccountFromPrivateKeyString(commitmentRecord.Pool)
 	if err != nil {
 		return nil, err
@@ -608,12 +679,32 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		return nil, err
 	}
 
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
 	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
 	if err != nil {
 		return nil, err
 	}
 
-	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, nil) // todo
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +732,7 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		relayMemory,
 		relayIndex,
 
-		nil, // todo: source
+		sourceTimelockAccounts,
 		treasuryPool,
 		treasuryPoolVault,
 		commitmentVault,
@@ -815,12 +906,32 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		return nil, err
 	}
 
+	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, sourceVault.PublicKey().ToBase58())
+	if err != nil {
+		return nil, err
+	}
+
+	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
 	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
 	if err != nil {
 		return nil, err
 	}
 
-	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, nil) // todo
+	_, sourceMemory, sourceIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, sourceAuthority)
 	if err != nil {
 		return nil, err
 	}
@@ -848,7 +959,7 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		relayMemory,
 		relayIndex,
 
-		nil, // todo: source
+		sourceTimelockAccounts,
 		treasuryPool,
 		treasuryPoolVault,
 		commitmentVault,
