@@ -28,12 +28,15 @@ func New(data code_data.Provider, pusher push_lib.Provider, configProvider Confi
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-	go func() {
-		err := p.giftCardAutoReturnWorker(ctx, interval)
-		if err != nil && err != context.Canceled {
-			p.log.WithError(err).Warn("gift card auto-return processing loop terminated unexpectedly")
-		}
-	}()
+	// todo: auto returns are broken because we've removed close dormant account actions
+	/*
+		go func() {
+			err := p.giftCardAutoReturnWorker(ctx, interval)
+			if err != nil && err != context.Canceled {
+				p.log.WithError(err).Warn("gift card auto-return processing loop terminated unexpectedly")
+			}
+		}()
+	*/
 
 	go func() {
 		err := p.swapRetryWorker(ctx, interval)
