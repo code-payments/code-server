@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"time"
 
@@ -23,8 +24,10 @@ import (
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -1253,7 +1256,6 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	}, nil
 }
 
-/*
 func (s *transactionServer) GetPrivacyUpgradeStatus(ctx context.Context, req *transactionpb.GetPrivacyUpgradeStatusRequest) (*transactionpb.GetPrivacyUpgradeStatusResponse, error) {
 	intentId := base58.Encode(req.IntentId.Value)
 
@@ -1408,27 +1410,33 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 			return nil, err
 		}
 
-		if len(fulfillmentRecords) != 1 || *fulfillmentRecords[0].Destination != commitmentRecord.Vault {
+		if len(fulfillmentRecords) != 1 || *fulfillmentRecords[0].Destination != commitmentRecord.VaultAddress {
 			return nil, errors.New("fulfillment to upgrade was not found")
 		}
 		fulfillmentToUpgrade := fulfillmentRecords[0]
 
-		var txn solana.Transaction
-		err = txn.Unmarshal(fulfillmentToUpgrade.Data)
+		nonce, err := common.NewAccountFromPublicKeyString(*fulfillmentToUpgrade.VirtualNonce)
 		if err != nil {
 			return nil, err
 		}
 
-		clientSignature := txn.Signatures[clientSignatureIndex]
-
-		// Clear out all signatures, so clients have no way of submitting this transaction
-		var emptySig solana.Signature
-		for i := range txn.Signatures {
-			copy(txn.Signatures[i][:], emptySig[:])
+		bh, err := base58.Decode(*fulfillmentToUpgrade.VirtualBlockhash)
+		if err != nil {
+			return nil, err
 		}
 
 		// todo: this can be heavily cached
 		sourceAccountInfo, err := data.GetAccountInfoByTokenAddress(ctx, fulfillmentToUpgrade.Source)
+		if err != nil {
+			return nil, err
+		}
+
+		sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfo.AuthorityAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		if err != nil {
 			return nil, err
 		}
@@ -1448,12 +1456,29 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 			return nil, err
 		}
 
+		txn, err := transaction.GetVirtualTransferWithAuthorityTransaction(
+			nonce,
+			solana.Blockhash(bh),
+
+			sourceTimelockAccounts,
+			originalDestination,
+			commitmentRecord.Amount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		clientSignature, err := base58.Decode(*fulfillmentToUpgrade.VirtualSignature)
+		if err != nil {
+			return nil, err
+		}
+
 		action := &transactionpb.UpgradeableIntent_UpgradeablePrivateAction{
 			TransactionBlob: &commonpb.Transaction{
 				Value: txn.Marshal(),
 			},
 			ClientSignature: &commonpb.Signature{
-				Value: clientSignature[:],
+				Value: clientSignature,
 			},
 			ActionId:              commitmentRecord.ActionId,
 			SourceAccountType:     sourceAccountInfo.AccountType,
@@ -1475,4 +1500,3 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 		Actions: actions,
 	}, nil
 }
-*/
