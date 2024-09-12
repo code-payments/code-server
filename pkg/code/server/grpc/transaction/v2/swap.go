@@ -32,7 +32,9 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/solana"
 	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	swap_validator "github.com/code-payments/code-server/pkg/solana/swapvalidator"
+	"github.com/code-payments/code-server/pkg/solana/token"
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
@@ -138,9 +140,25 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, err)
 	}
 
-	swapDestination, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
+	vmDepositPda, _, err := cvm.GetVmDepositAddress(&cvm.GetVmDepositAddressArgs{
+		Depositor: owner.PublicKey().ToBytes(),
+		Vm:        common.CodeVmAccount.PublicKey().ToBytes(),
+	})
 	if err != nil {
-		log.WithError(err).Warn("invalid kin primary account")
+		log.WithError(err).Warn("failure deriving vm deposit pda")
+		return handleSwapError(streamer, err)
+	}
+
+	// todo: This might come from a DB record at some point
+	vmDepositTokenAddress, err := token.GetAssociatedAccount(vmDepositPda, kin.TokenMint)
+	if err != nil {
+		log.WithError(err).Warn("failure deriving vm deposit token account")
+		return handleSwapError(streamer, err)
+	}
+
+	swapDestination, err := common.NewAccountFromPublicKeyBytes(vmDepositTokenAddress)
+	if err != nil {
+		log.WithError(err).Warn("invalid vm deposit token account")
 		return handleSwapError(streamer, err)
 	}
 	log = log.WithField("swap_destination", swapDestination.PublicKey().ToBase58())
