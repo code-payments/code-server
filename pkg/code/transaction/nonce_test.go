@@ -68,26 +68,26 @@ func TestNonce_SelectAvailableNonce(t *testing.T) {
 func TestNonce_SelectNonceFromFulfillmentToUpgrade_HappyPath(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonces(t, env, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 2)
+	generateAvailableNonces(t, env, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction, 2)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 
 	fulfillmentToUpgrade := &fulfillment.Record{
-		Nonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
-		Blockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
-		Signature: pointer.String("signature"),
+		VirtualNonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
+		VirtualBlockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
+		VirtualSignature: pointer.String("signature"),
 	}
 
-	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.Signature))
+	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.VirtualSignature))
 
 	selectedNonce.Unlock()
 
-	selectedNonce, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	selectedNonce, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	require.NoError(t, err)
 
-	assert.Equal(t, *fulfillmentToUpgrade.Nonce, selectedNonce.Account.PublicKey().ToBase58())
-	assert.Equal(t, *fulfillmentToUpgrade.Blockhash, base58.Encode(selectedNonce.Blockhash[:]))
+	assert.Equal(t, *fulfillmentToUpgrade.VirtualNonce, selectedNonce.Account.PublicKey().ToBase58())
+	assert.Equal(t, *fulfillmentToUpgrade.VirtualBlockhash, base58.Encode(selectedNonce.Blockhash[:]))
 
 	require.NoError(t, selectedNonce.UpdateSignature(env.ctx, "new_signature"))
 
@@ -98,25 +98,25 @@ func TestNonce_SelectNonceFromFulfillmentToUpgrade_HappyPath(t *testing.T) {
 
 	selectedNonce.Unlock()
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 }
 
-func TestNonce_SelectNonceFromFulfillmentToUpgrade_DangerousPath(t *testing.T) {
+func TestNonce_SelectVirtualNonceFromFulfillmentToUpgrade_DangerousPath(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonces(t, env, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 2)
+	generateAvailableNonces(t, env, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction, 2)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 
 	fulfillmentToUpgrade := &fulfillment.Record{
-		Nonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
-		Blockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
-		Signature: pointer.String("signature"),
+		VirtualNonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
+		VirtualBlockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
+		VirtualSignature: pointer.String("signature"),
 	}
 
-	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.Signature))
+	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.VirtualSignature))
 
 	selectedNonce.Unlock()
 
@@ -127,21 +127,21 @@ func TestNonce_SelectNonceFromFulfillmentToUpgrade_DangerousPath(t *testing.T) {
 	nonceRecord.Blockhash = "Cmui8pHYbKKox8g7n7xa2Qaxh1TSJsHpr3xCeNaEisdy"
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 
 	nonceRecord.Blockhash = originalBlockhash
 	nonceRecord.State = nonce.StateAvailable
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 
 	nonceRecord.State = nonce.StateReserved
 	nonceRecord.Signature = "other_signature"
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 }
 
