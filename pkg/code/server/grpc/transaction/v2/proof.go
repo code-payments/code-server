@@ -1,6 +1,22 @@
 package transaction_v2
 
-/*
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/mr-tron/base58"
+
+	commitment_worker "github.com/code-payments/code-server/pkg/code/async/commitment"
+	"github.com/code-payments/code-server/pkg/code/common"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/commitment"
+	"github.com/code-payments/code-server/pkg/code/data/merkletree"
+)
+
 type refreshingMerkleTree struct {
 	tree            *merkletree.MerkleTree
 	lastRefreshedAt time.Time
@@ -186,7 +202,7 @@ func getProofForPrivacyUpgrade(ctx context.Context, data code_data.Provider, upg
 		return nil, err
 	}
 
-	newCommitmentVaultAccount, err := common.NewAccountFromPublicKeyString(upgradingTo.newCommitmentRecord.Vault)
+	newCommitmentVaultAccount, err := common.NewAccountFromPublicKeyString(upgradingTo.newCommitmentRecord.VaultAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -253,4 +269,3 @@ func getCachedMerkleTreeForTreasury(ctx context.Context, data code_data.Provider
 
 	return cached.tree, nil
 }
-*/

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"time"
 
@@ -23,8 +24,10 @@ import (
 
 	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -115,11 +118,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		log = log.WithField("intent_type", "receive_payments_privately")
 		intentHandler = NewReceivePaymentsPrivatelyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 		intentRequiresNewTreasuryPoolFunds = true
-		/*
-			case *transactionpb.Metadata_UpgradePrivacy:
-					log = log.WithField("intent_type", "upgrade_privacy")
-					intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
-		*/
+	case *transactionpb.Metadata_UpgradePrivacy:
+		log = log.WithField("intent_type", "upgrade_privacy")
+		intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
 		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
@@ -447,27 +448,25 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log = log.WithField("action_type", "temporary_privacy_exchange")
 			actionType = action.PrivateTransfer
 			actionHandler, err = NewTemporaryPrivacyTransferActionHandler(ctx, s.conf, s.data, intentRecord, protoAction, true, s.selectTreasuryPoolForAdvance)
-		/*
-			case *transactionpb.Action_PermanentPrivacyUpgrade:
-				log = log.WithField("action_type", "permanent_privacy_upgrade")
-				actionType = action.PrivateTransfer
+		case *transactionpb.Action_PermanentPrivacyUpgrade:
+			log = log.WithField("action_type", "permanent_privacy_upgrade")
+			actionType = action.PrivateTransfer
 
-				// Pass along the privacy upgrade target found during intent validation
-				// to avoid duplication of work.
-				cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
-				if !ok {
-					log.Warn("cached privacy upgrade target not found")
-					return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
-				}
+			// Pass along the privacy upgrade target found during intent validation
+			// to avoid duplication of work.
+			cachedUpgradeTarget, ok := intentHandler.(*UpgradePrivacyIntentHandler).GetCachedUpgradeTarget(typed.PermanentPrivacyUpgrade)
+			if !ok {
+				log.Warn("cached privacy upgrade target not found")
+				return handleSubmitIntentError(streamer, errors.New("cached privacy upgrade target not found"))
+			}
 
-				actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
-					ctx,
-					s.data,
-					intentRecord,
-					typed.PermanentPrivacyUpgrade,
-					cachedUpgradeTarget,
-				)
-		*/
+			actionHandler, err = NewPermanentPrivacyUpgradeActionHandler(
+				ctx,
+				s.data,
+				intentRecord,
+				typed.PermanentPrivacyUpgrade,
+				cachedUpgradeTarget,
+			)
 		default:
 			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
 		}
@@ -541,9 +540,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 				// Re-use the same nonce as the one in the fulfillment we're upgrading,
 				// so we avoid server from submitting both.
-				//
-				// todo: This doesn't select the virtual durable nonce
-				selectedNonce, err = transaction.SelectNonceFromFulfillmentToUpgrade(ctx, s.data, fulfillmentToUpgrade)
+				selectedNonce, err = transaction.SelectVirtualNonceFromFulfillmentToUpgrade(ctx, s.data, fulfillmentToUpgrade)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting nonce from existing fulfillment")
 					return handleSubmitIntentError(streamer, err)
@@ -1257,7 +1254,6 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	}, nil
 }
 
-/*
 func (s *transactionServer) GetPrivacyUpgradeStatus(ctx context.Context, req *transactionpb.GetPrivacyUpgradeStatusRequest) (*transactionpb.GetPrivacyUpgradeStatusResponse, error) {
 	intentId := base58.Encode(req.IntentId.Value)
 
@@ -1412,27 +1408,33 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 			return nil, err
 		}
 
-		if len(fulfillmentRecords) != 1 || *fulfillmentRecords[0].Destination != commitmentRecord.Vault {
+		if len(fulfillmentRecords) != 1 || *fulfillmentRecords[0].Destination != commitmentRecord.VaultAddress {
 			return nil, errors.New("fulfillment to upgrade was not found")
 		}
 		fulfillmentToUpgrade := fulfillmentRecords[0]
 
-		var txn solana.Transaction
-		err = txn.Unmarshal(fulfillmentToUpgrade.Data)
+		nonce, err := common.NewAccountFromPublicKeyString(*fulfillmentToUpgrade.VirtualNonce)
 		if err != nil {
 			return nil, err
 		}
 
-		clientSignature := txn.Signatures[clientSignatureIndex]
-
-		// Clear out all signatures, so clients have no way of submitting this transaction
-		var emptySig solana.Signature
-		for i := range txn.Signatures {
-			copy(txn.Signatures[i][:], emptySig[:])
+		bh, err := base58.Decode(*fulfillmentToUpgrade.VirtualBlockhash)
+		if err != nil {
+			return nil, err
 		}
 
 		// todo: this can be heavily cached
 		sourceAccountInfo, err := data.GetAccountInfoByTokenAddress(ctx, fulfillmentToUpgrade.Source)
+		if err != nil {
+			return nil, err
+		}
+
+		sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfo.AuthorityAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		if err != nil {
 			return nil, err
 		}
@@ -1452,12 +1454,29 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 			return nil, err
 		}
 
+		txn, err := transaction.GetVirtualTransferWithAuthorityTransaction(
+			nonce,
+			solana.Blockhash(bh),
+
+			sourceTimelockAccounts,
+			originalDestination,
+			commitmentRecord.Amount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		clientSignature, err := base58.Decode(*fulfillmentToUpgrade.VirtualSignature)
+		if err != nil {
+			return nil, err
+		}
+
 		action := &transactionpb.UpgradeableIntent_UpgradeablePrivateAction{
 			TransactionBlob: &commonpb.Transaction{
 				Value: txn.Marshal(),
 			},
 			ClientSignature: &commonpb.Signature{
-				Value: clientSignature[:],
+				Value: clientSignature,
 			},
 			ActionId:              commitmentRecord.ActionId,
 			SourceAccountType:     sourceAccountInfo.AccountType,
@@ -1479,4 +1498,3 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 		Actions: actions,
 	}, nil
 }
-*/

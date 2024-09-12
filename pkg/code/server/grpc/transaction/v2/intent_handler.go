@@ -1300,7 +1300,6 @@ func (h *ReceivePaymentsPrivatelyIntentHandler) OnCommittedToDB(ctx context.Cont
 	return nil
 }
 
-/*
 type UpgradePrivacyIntentHandler struct {
 	conf                 *conf
 	data                 code_data.Provider
@@ -1354,7 +1353,6 @@ func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transa
 	upgradeTo, ok := h.cachedUpgradeTargets[protoAction.ActionId]
 	return upgradeTo, ok
 }
-*/
 
 type SendPublicPaymentIntentHandler struct {
 	conf          *conf
