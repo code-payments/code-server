@@ -32,6 +32,9 @@ func TestNonce_SelectAvailableNonce(t *testing.T) {
 	_, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 	assert.Equal(t, ErrNoAvailableNonces, err)
 
+	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, testutil.NewRandomAccount(t).PublicKey().ToBase58(), nonce.PurposeClientTransaction)
+	assert.Equal(t, ErrNoAvailableNonces, err)
+
 	selectedNonces := make(map[string]struct{})
 	for i := 0; i < len(noncesByAddress); i++ {
 		selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
@@ -61,8 +64,6 @@ func TestNonce_SelectAvailableNonce(t *testing.T) {
 	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 	assert.Equal(t, ErrNoAvailableNonces, err)
 
-	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, testutil.NewRandomAccount(t).PublicKey().ToBase58(), nonce.PurposeClientTransaction)
-	assert.Equal(t, ErrNoAvailableNonces, err)
 }
 
 func TestNonce_SelectNonceFromFulfillmentToUpgrade_HappyPath(t *testing.T) {
