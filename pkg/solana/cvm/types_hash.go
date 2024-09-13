@@ -35,6 +35,15 @@ func getHashArray(src []byte, dst *HashArray, offset *int) {
 		getHash(src, &(*dst)[i], offset)
 	}
 }
+func putHashArray(dst []byte, v HashArray, offset *int) {
+	binary.LittleEndian.PutUint32(dst[*offset:], uint32(len(v)))
+	*offset += 4
+
+	for _, hash := range v {
+		copy(dst[*offset:], hash[:])
+		*offset += HashSize
+	}
+}
 
 func (h HashArray) String() string {
 	stringValues := make([]string, len(h))

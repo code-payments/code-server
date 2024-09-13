@@ -19,7 +19,7 @@ const (
 		MaxRelayAccountNameSize + // name
 		1 + // num_levels
 		1 + // num_history
-		TokenPoolSize) // token_pool
+		TokenPoolSize) // treasury
 )
 
 var RelayAccountDiscriminator = []byte{0xf2, 0xbb, 0xef, 0x5f, 0x89, 0xe1, 0xf5, 0x5c}
