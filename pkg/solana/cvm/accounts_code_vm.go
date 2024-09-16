@@ -17,7 +17,9 @@ const (
 		1 + // bump
 		8 + // slot
 		HashSize + // poh
-		5) // padding
+		5 + // padding
+		PagedMemorySize + // change_log
+		2) // padding
 )
 
 var CodeVmAccountDiscriminator = []byte{0xed, 0x82, 0x60, 0x0b, 0xbb, 0x2c, 0xc7, 0x55}
@@ -30,7 +32,7 @@ type CodeVmAccount struct {
 	Bump         uint8
 	Slot         uint64
 	Poh          Hash
-	// todo: change log
+	ChangeLog    PagedMemory
 }
 
 func (obj *CodeVmAccount) Unmarshal(data []byte) error {
@@ -53,13 +55,15 @@ func (obj *CodeVmAccount) Unmarshal(data []byte) error {
 	getUint8(data, &obj.Bump, &offset)
 	getUint64(data, &obj.Slot, &offset)
 	getHash(data, &obj.Poh, &offset)
+	offset += 5
+	getPagedMemory(data, &obj.ChangeLog, &offset)
 
 	return nil
 }
 
 func (obj *CodeVmAccount) String() string {
 	return fmt.Sprintf(
-		"CodeVmAccount{authority=%s,mint=%s,omnibus=%s,lock_duration=%d,bump=%d,slot=%d,poh=%s}",
+		"CodeVmAccount{authority=%s,mint=%s,omnibus=%s,lock_duration=%d,bump=%d,slot=%d,poh=%s,changelog=%s}",
 		base58.Encode(obj.Authority),
 		base58.Encode(obj.Mint),
 		obj.Omnibus.String(),
@@ -67,5 +71,6 @@ func (obj *CodeVmAccount) String() string {
 		obj.Bump,
 		obj.Slot,
 		obj.Poh.String(),
+		obj.ChangeLog.String(),
 	)
 }
