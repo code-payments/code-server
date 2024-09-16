@@ -1,20 +1,28 @@
 package cvm
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
 const (
-	NumPages = 255
+	minSectorSize = 1 // num_allocated
 )
 
-const SectorSize = (1 + // num_allocated
-	NumPages*PageSize) // pages
-
 type Sector struct {
+	numPages uint32
+	pageSize uint32
+
 	NumAllocated uint8
 	Pages        []Page
+}
+
+func NewSector(numPages uint32, pageSize uint32) Sector {
+	return Sector{
+		numPages: numPages,
+		pageSize: pageSize,
+	}
 }
 
 func (obj *Sector) GetLinkedPages(startIndex uint8) []Page {
@@ -31,16 +39,20 @@ func (obj *Sector) GetLinkedPages(startIndex uint8) []Page {
 }
 
 func (obj *Sector) Unmarshal(data []byte) error {
-	if len(data) < SectorSize {
+	if obj.numPages == 0 || obj.pageSize == 0 {
+		return errors.New("sector not initialized")
+	}
+
+	if len(data) < GetSectorSize(int(obj.numPages), int(obj.pageSize)) {
 		return ErrInvalidAccountData
 	}
 
 	var offset int
 
-	obj.Pages = make([]Page, NumPages)
+	obj.Pages = make([]Page, obj.numPages)
 
 	getUint8(data, &obj.NumAllocated, &offset)
-	for i := 0; i < NumPages; i++ {
+	for i := 0; i < int(obj.numPages); i++ {
 		getPage(data, &obj.Pages[i], &offset)
 	}
 
@@ -62,5 +74,10 @@ func (obj *Sector) String() string {
 
 func getSector(src []byte, dst *Sector, offset *int) {
 	dst.Unmarshal(src[*offset:])
-	*offset += SectorSize
+	*offset += int(GetSectorSize(int(dst.numPages), int(dst.pageSize)))
+}
+
+func GetSectorSize(numPages, pageSize int) int {
+	return (minSectorSize +
+		numPages*pageSize) // pages
 }
