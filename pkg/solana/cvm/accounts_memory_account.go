@@ -26,7 +26,7 @@ const minMemoryAccountWithDataSize = (8 + // discriminator
 	32 + // vm
 	1 + // bump
 	MaxMemoryAccountNameLength + // name
-	1) // todo: data
+	1) // memory_layout
 
 var MemoryAccountDiscriminator = []byte{0x89, 0x7a, 0xdc, 0x6e, 0xdd, 0xca, 0x3e, 0x7f}
 
