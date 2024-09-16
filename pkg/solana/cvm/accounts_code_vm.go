@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	CodeVmAccountSize = (8 + //discriminator
+	// todo: func for real size
+	minCodeVmAccountSize = (8 + //discriminator
 		32 + // authority
 		32 + // mint
 		TokenPoolSize + // omnibus
@@ -17,9 +18,7 @@ const (
 		1 + // bump
 		8 + // slot
 		HashSize + // poh
-		5 + // padding
-		PagedMemorySize + // change_log
-		2) // padding
+		7) // padding
 )
 
 var CodeVmAccountDiscriminator = []byte{0xed, 0x82, 0x60, 0x0b, 0xbb, 0x2c, 0xc7, 0x55}
@@ -36,7 +35,7 @@ type CodeVmAccount struct {
 }
 
 func (obj *CodeVmAccount) Unmarshal(data []byte) error {
-	if len(data) < CodeVmAccountSize {
+	if len(data) < minCodeVmAccountSize {
 		return ErrInvalidAccountData
 	}
 
@@ -56,6 +55,7 @@ func (obj *CodeVmAccount) Unmarshal(data []byte) error {
 	getUint64(data, &obj.Slot, &offset)
 	getHash(data, &obj.Poh, &offset)
 	offset += 5
+	obj.ChangeLog = NewChangelogMemory()
 	getPagedMemory(data, &obj.ChangeLog, &offset)
 
 	return nil

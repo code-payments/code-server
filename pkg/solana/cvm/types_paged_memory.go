@@ -1,19 +1,63 @@
 package cvm
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
 const (
-	PageCapacity = 100
-	NumSectors   = 2
+	AccountMemoryCapacity      = 100 // todo: set to 65536
+	AccountMemorySectors       = 2   // TODO: set to 255
+	AccountMemoryPages         = 255
+	MixedAccountMemoryPageSize = 32
+
+	ChangelogMemoryCapacity = 255
+	ChangelogMemorySectors  = 2
+	ChangelogMemoryPages    = 180
+	ChangelogMemoryPageSize = 21
 )
 
-const PagedMemorySize = (PageCapacity*AllocatedMemorySize + // accounts
-	NumSectors*SectorSize) // sectors
+func NewAccountMemory(accountPageSize uint32) PagedMemory {
+	return PagedMemory{
+		capacity:   AccountMemoryCapacity,
+		numSectors: AccountMemorySectors,
+		numPages:   AccountMemoryPages,
+		pageSize:   accountPageSize,
+	}
+}
+
+func NewTimelockAccountMemory() PagedMemory {
+	return NewAccountMemory(GetVirtualAccountSizeInMemory(VirtualAccountTypeTimelock))
+}
+
+func NewNonceAccountMemory() PagedMemory {
+	return NewAccountMemory(GetVirtualAccountSizeInMemory(VirtualAccountTypeDurableNonce))
+}
+
+func NewRelayAccountMemory() PagedMemory {
+	return NewAccountMemory(GetVirtualAccountSizeInMemory(VirtualAccountTypeRelay))
+}
+
+func NewMixedAccountMemory() PagedMemory {
+	return NewAccountMemory(MixedAccountMemoryPageSize)
+}
+
+func NewChangelogMemory() PagedMemory {
+	return PagedMemory{
+		capacity:   ChangelogMemoryCapacity,
+		numSectors: ChangelogMemorySectors,
+		numPages:   ChangelogMemoryPages,
+		pageSize:   ChangelogMemoryPageSize,
+	}
+}
 
 type PagedMemory struct {
+	capacity   uint32
+	numSectors uint32
+	numPages   uint32
+	pageSize   uint32
+
 	Items   []AllocatedMemory
 	Sectors []Sector
 }
@@ -43,19 +87,23 @@ func (obj *PagedMemory) Read(index int) ([]byte, bool) {
 }
 
 func (obj *PagedMemory) Unmarshal(data []byte) error {
-	if len(data) < PagedMemorySize {
+	if obj.capacity == 0 || obj.numSectors == 0 || obj.numPages == 0 || obj.pageSize == 0 {
+		return errors.New("paged memory not initialized")
+	}
+
+	if len(data) < GetPagedMemorySize(int(obj.capacity), int(obj.numSectors), int(obj.numPages), int(obj.pageSize)) {
 		return ErrInvalidAccountData
 	}
 
 	var offset int
 
-	obj.Items = make([]AllocatedMemory, PageCapacity)
-	obj.Sectors = make([]Sector, NumSectors)
+	obj.Items = make([]AllocatedMemory, obj.capacity)
+	obj.Sectors = make([]Sector, obj.numSectors)
 
-	for i := 0; i < PageCapacity; i++ {
+	for i := 0; i < int(obj.capacity); i++ {
 		getAllocatedMemory(data, &obj.Items[i], &offset)
 	}
-	for i := 0; i < NumSectors; i++ {
+	for i := 0; i < int(obj.numSectors); i++ {
 		getSector(data, &obj.Sectors[i], &offset)
 	}
 
@@ -82,5 +130,10 @@ func (obj *PagedMemory) String() string {
 
 func getPagedMemory(src []byte, dst *PagedMemory, offset *int) {
 	dst.Unmarshal(src[*offset:])
-	*offset += PagedMemorySize
+	*offset += int(GetPagedMemorySize(int(dst.capacity), int(dst.numSectors), int(dst.numPages), int(dst.numPages)))
+}
+
+func GetPagedMemorySize(capacity, numSectors, numPages, pageSize int) int {
+	return (capacity*AllocatedMemorySize + // accounts
+		numSectors*GetSectorSize(numPages, pageSize)) // sectors
 }

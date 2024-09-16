@@ -3,6 +3,7 @@ package cvm
 import (
 	"bytes"
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 
 	"github.com/mr-tron/base58"
@@ -20,17 +21,17 @@ type MemoryAccountWithData struct {
 	Data   PagedMemory
 }
 
-const MemoryAccountWithDataSize = (8 + // discriminator
+// todo: func for real size
+const minMemoryAccountWithDataSize = (8 + // discriminator
 	32 + // vm
 	1 + // bump
 	MaxMemoryAccountNameLength + // name
-	1 + // layout
-	PagedMemorySize) // data
+	1) // todo: data
 
 var MemoryAccountDiscriminator = []byte{0x89, 0x7a, 0xdc, 0x6e, 0xdd, 0xca, 0x3e, 0x7f}
 
 func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
-	if len(data) < MemoryAccountWithDataSize {
+	if len(data) < minMemoryAccountWithDataSize {
 		return ErrInvalidAccountData
 	}
 
@@ -46,6 +47,18 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 	getUint8(data, &obj.Bump, &offset)
 	getFixedString(data, &obj.Name, MaxMemoryAccountNameLength, &offset)
 	getMemoryLayout(data, &obj.Layout, &offset)
+	switch obj.Layout {
+	case MemoryLayoutMixed:
+		obj.Data = NewMixedAccountMemory()
+	case MemoryLayoutTimelock:
+		obj.Data = NewTimelockAccountMemory()
+	case MemoryLayoutNonce:
+		obj.Data = NewNonceAccountMemory()
+	case MemoryLayoutRelay:
+		obj.Data = NewRelayAccountMemory()
+	default:
+		return errors.New("unexpected memory layout")
+	}
 	getPagedMemory(data, &obj.Data, &offset)
 
 	return nil
