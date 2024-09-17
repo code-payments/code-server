@@ -37,6 +37,7 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testGetLatestSaveRecentRootIntentForTreasury,
 		testGetOriginalGiftCardIssuedIntent,
 		testGetGiftCardClaimedIntent,
+		testChatPayment,
 	} {
 		tf(t, s)
 		teardown()
@@ -1009,5 +1010,56 @@ func testGetGiftCardClaimedIntent(t *testing.T, s intent.Store) {
 		actual, err = s.GetGiftCardClaimedIntent(ctx, "a4")
 		require.NoError(t, err)
 		assert.Equal(t, "i9", actual.IntentId)
+	})
+}
+
+func testChatPayment(t *testing.T, s intent.Store) {
+	t.Run("testChatPayment", func(t *testing.T) {
+		record := &intent.Record{
+			IntentId:              "i1",
+			IntentType:            intent.SendPrivatePayment,
+			InitiatorOwnerAccount: "init1",
+			SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+				DestinationOwnerAccount: "do",
+				DestinationTokenAccount: "dt",
+				Quantity:                1,
+				ExchangeCurrency:        "USD",
+				ExchangeRate:            1,
+				NativeAmount:            1,
+				UsdMarketValue:          1,
+				IsChat:                  true,
+				ChatId:                  "chatId",
+			},
+		}
+		require.NoError(t, s.Save(context.Background(), record))
+
+		saved, err := s.Get(context.Background(), record.IntentId)
+		require.NoError(t, err)
+		require.Equal(t, record, saved)
+	})
+
+	t.Run("testChatPayment invalid", func(t *testing.T) {
+		base := &intent.Record{
+			IntentId:              "i1",
+			IntentType:            intent.SendPrivatePayment,
+			InitiatorOwnerAccount: "init1",
+			SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+				DestinationOwnerAccount: "do",
+				DestinationTokenAccount: "dt",
+				Quantity:                1,
+				ExchangeCurrency:        "USD",
+				ExchangeRate:            1,
+				NativeAmount:            1,
+				UsdMarketValue:          1,
+			},
+		}
+
+		r := base.Clone()
+		r.SendPrivatePaymentMetadata.IsChat = true
+		require.Error(t, s.Save(context.Background(), &r))
+
+		r = base.Clone()
+		r.SendPrivatePaymentMetadata.ChatId = "chatId"
+		require.Error(t, s.Save(context.Background(), &r))
 	})
 }

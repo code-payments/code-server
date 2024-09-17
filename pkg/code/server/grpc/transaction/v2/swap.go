@@ -521,8 +521,8 @@ func (s *transactionServer) bestEffortNotifyUserOfSwapInProgress(ctx context.Con
 		}
 
 		switch typed := protoChatMessage.Content[0].Type.(type) {
-		case *chatpb.Content_Localized:
-			if typed.Localized.KeyOrText != localization.ChatMessageUsdcDeposited {
+		case *chatpb.Content_ServerLocalized:
+			if typed.ServerLocalized.KeyOrText != localization.ChatMessageUsdcDeposited {
 				return nil
 			}
 		}
