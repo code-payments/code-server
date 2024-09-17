@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 )
 
 type ChatId [32]byte
@@ -51,7 +52,7 @@ func GetChatIdFromString(value string) (ChatId, error) {
 }
 
 // GetChatIdFromProto gets a chat ID from the protobuf variant
-func GetChatIdFromProto(proto *chatpb.ChatId) (ChatId, error) {
+func GetChatIdFromProto(proto *commonpb.ChatId) (ChatId, error) {
 	if err := proto.Validate(); err != nil {
 		return ChatId{}, errors.Wrap(err, "proto validation failed")
 	}
@@ -60,8 +61,8 @@ func GetChatIdFromProto(proto *chatpb.ChatId) (ChatId, error) {
 }
 
 // ToProto converts a chat ID to its protobuf variant
-func (c ChatId) ToProto() *chatpb.ChatId {
-	return &chatpb.ChatId{Value: c[:]}
+func (c ChatId) ToProto() *commonpb.ChatId {
+	return &commonpb.ChatId{Value: c[:]}
 }
 
 // Validate validates a chat ID
