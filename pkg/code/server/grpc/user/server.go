@@ -22,6 +22,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/phone"
@@ -701,6 +702,12 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 			return nil, status.Error(codes.Internal, "")
 		}
 
+		var friendChatId *commonpb.ChatId
+		if req.Requestor != nil {
+			// TODO: Validate the requestor
+			friendChatId = chat.GetChatId(base58.Encode(req.Requestor.Value), tipAddress.PublicKey().ToBase58(), true).ToProto()
+		}
+
 		return &userpb.GetTwitterUserResponse{
 			Result: userpb.GetTwitterUserResponse_OK,
 			TwitterUser: &userpb.TwitterUser{
@@ -710,6 +717,11 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 				ProfilePicUrl: record.ProfilePicUrl,
 				VerifiedType:  record.VerifiedType,
 				FollowerCount: record.FollowerCount,
+				FriendshipCost: &transactionpb.ExchangeDataWithoutRate{
+					Currency:     "usd",
+					NativeAmount: 1.0,
+				},
+				FriendChatId: friendChatId,
 			},
 		}, nil
 	case twitter.ErrUserNotFound:
@@ -720,7 +732,6 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 		log.WithError(err).Warn("failure getting twitter user info")
 		return nil, status.Error(codes.Internal, "")
 	}
-
 }
 
 func (s *identityServer) markWebhookAsPending(ctx context.Context, id string) error {

@@ -3,6 +3,7 @@ package chat_v2
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"math"
 	"sync"
@@ -603,7 +604,15 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 				return &chatpb.StartChatResponse{Result: chatpb.StartChatResponse_DENIED}, nil
 			}
 
-			// TODO: Further verification
+			// TODO: Further verification + Enforcement
+			if !intentRecord.SendPrivatePaymentMetadata.IsChat {
+				log.Warn("intent is not for chat")
+			}
+
+			expectedChatId := base64.StdEncoding.EncodeToString(chatId[:])
+			if intentRecord.SendPrivatePaymentMetadata.ChatId != expectedChatId {
+				log.WithField("expected", expectedChatId).WithField("actual", intentRecord.SendPrivatePaymentMetadata.ChatId).Warn("chat id mismatch")
+			}
 		}
 
 		// At this point, we assume the relationship is valid, and can proceed to recover or create
@@ -639,7 +648,7 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 
 		err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 			chatRecord, err = s.data.GetChatByIdV2(ctx, chatId)
-			if err != nil && errors.Is(err, chat.ErrChatNotFound) {
+			if err != nil && !errors.Is(err, chat.ErrChatNotFound) {
 				return fmt.Errorf("failed to check existing chat: %w", err)
 			}
 
