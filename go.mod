@@ -6,7 +6,7 @@ require (
 	firebase.google.com/go/v4 v4.8.0
 	github.com/aws/aws-sdk-go-v2 v0.17.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
-	github.com/code-payments/code-protobuf-api v1.16.6
+	github.com/code-payments/code-protobuf-api v1.19.0
 	github.com/dghubble/oauth1 v0.7.3
 	github.com/emirpasic/gods v1.12.0
 	github.com/envoyproxy/protoc-gen-validate v1.0.4
@@ -131,5 +131,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/code-payments/code-protobuf-api => github.com/mfycheng/code-protobuf-api v0.0.0-20240917020256-534473de95f3
