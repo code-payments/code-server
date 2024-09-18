@@ -647,12 +647,13 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 		}
 
 		err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
-			chatRecord, err = s.data.GetChatByIdV2(ctx, chatId)
+			existingChatRecord, err := s.data.GetChatByIdV2(ctx, chatId)
 			if err != nil && !errors.Is(err, chat.ErrChatNotFound) {
 				return fmt.Errorf("failed to check existing chat: %w", err)
 			}
 
 			if chatRecord != nil {
+				chatRecord = existingChatRecord
 				memberRecords, err = s.data.GetAllChatMembersV2(ctx, chatId)
 				if err != nil {
 					return fmt.Errorf("failed to get members of existing chat: %w", err)
