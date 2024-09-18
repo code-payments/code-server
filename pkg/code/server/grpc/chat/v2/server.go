@@ -652,7 +652,7 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 				return fmt.Errorf("failed to check existing chat: %w", err)
 			}
 
-			if chatRecord != nil {
+			if existingChatRecord != nil {
 				chatRecord = existingChatRecord
 				memberRecords, err = s.data.GetAllChatMembersV2(ctx, chatId)
 				if err != nil {
