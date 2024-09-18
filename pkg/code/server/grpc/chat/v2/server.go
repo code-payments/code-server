@@ -1281,9 +1281,18 @@ func (s *Server) toProtoChat(ctx context.Context, chatRecord *chat.ChatRecord, m
 			myTwitterUsername, ok := myIdentitiesByPlatform[chat.PlatformTwitter]
 			isSelf = ok && myTwitterUsername == memberRecord.PlatformId
 
+			profilePicUrl := ""
+			user, err := s.data.GetTwitterUserByUsername(ctx, memberRecord.PlatformId)
+			if err != nil {
+				s.log.WithError(err).WithField("method", "toProtoChat").Warn("Failed to get twitter user for member record")
+			} else {
+				profilePicUrl = user.ProfilePicUrl
+			}
+
 			identity = &chatpb.ChatMemberIdentity{
-				Platform: memberRecord.Platform.ToProto(),
-				Username: memberRecord.PlatformId,
+				Platform:      memberRecord.Platform.ToProto(),
+				Username:      memberRecord.PlatformId,
+				ProfilePicUrl: profilePicUrl,
 			}
 		default:
 			return nil, errors.Errorf("unsupported platform type: %s", memberRecord.Platform.String())
