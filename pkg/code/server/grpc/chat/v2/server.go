@@ -639,8 +639,9 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 				ChatId:   chatId,
 				MemberId: chat.GenerateMemberId(),
 
-				Platform:   chat.PlatformTwitter,
-				PlatformId: typed.TwoWayChat.Identity.Username,
+				Platform:     chat.PlatformTwitter,
+				PlatformId:   typed.TwoWayChat.Identity.Username,
+				OwnerAccount: base58.Encode(typed.TwoWayChat.OtherUser.Value),
 
 				JoinedAt: time.Now(),
 			},
