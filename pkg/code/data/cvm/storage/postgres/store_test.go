@@ -46,7 +46,7 @@ const (
 			vm TEXT NOT NULL,
 
 			storage_account TEXT NOT NULL,
-			address TEXT NULL,
+			address TEXT NOT NULL,
 
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 

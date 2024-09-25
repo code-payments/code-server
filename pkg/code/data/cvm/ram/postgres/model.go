@@ -186,7 +186,7 @@ func dbReserveMemory(ctx context.Context, db *sqlx.DB, vm string, accountType cv
 			SET is_allocated = true, address = $3, last_updated_at = $4
 			WHERE id IN (
 				SELECT id FROM ` + allocatedMemoryTableName + `
-				WHERE vm = $1 AND NOT is_allocated AND stored_account_type = $2
+				WHERE vm = $1 AND stored_account_type = $2 AND NOT is_allocated
 				LIMIT 1
 				FOR UPDATE
 			)
