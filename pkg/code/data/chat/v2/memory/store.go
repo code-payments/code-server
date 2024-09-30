@@ -3,133 +3,246 @@ package memory
 import (
 	"bytes"
 	"context"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
-	"time"
-
-	"github.com/pkg/errors"
 
 	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/database/query"
 )
 
-// todo: finish implementing me
-type store struct {
-	mu sync.Mutex
-
-	chatRecords    []*chat.ChatRecord
-	memberRecords  []*chat.MemberRecord
-	messageRecords []*chat.MessageRecord
-
-	lastChatId    int64
-	lastMemberId  int64
-	lastMessageId int64
+type InMemoryStore struct {
+	mu       sync.RWMutex
+	chats    map[string]*chat.MetadataRecord
+	members  map[string]map[string]*chat.MemberRecord
+	messages map[string][]*chat.MessageRecord
 }
 
-// New returns a new in memory chat.Store
-func New() chat.Store {
-	return &store{}
+func New() *InMemoryStore {
+	return &InMemoryStore{
+		chats:    make(map[string]*chat.MetadataRecord),
+		members:  make(map[string]map[string]*chat.MemberRecord),
+		messages: make(map[string][]*chat.MessageRecord),
+	}
 }
 
-// GetChatById implements chat.Store.GetChatById
-func (s *store) GetChatById(_ context.Context, chatId chat.ChatId) (*chat.ChatRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// GetChatMetadata retrieves the metadata record for a specific chat
+func (s *InMemoryStore) GetChatMetadata(_ context.Context, chatId chat.ChatId) (*chat.MetadataRecord, error) {
+	if err := chatId.Validate(); err != nil {
+		return nil, err
+	}
 
-	item := s.findChatById(chatId)
-	if item == nil {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if md, exists := s.chats[string(chatId[:])]; exists {
+		cloned := md.Clone()
+		return &cloned, nil
+	}
+
+	return nil, chat.ErrChatNotFound
+}
+
+// GetChatMessageV2 retrieves a specific message from a chat
+func (s *InMemoryStore) GetChatMessageV2(_ context.Context, chatId chat.ChatId, messageId chat.MessageId) (*chat.MessageRecord, error) {
+	if err := chatId.Validate(); err != nil {
+		return nil, err
+	}
+	if err := messageId.Validate(); err != nil {
+		return nil, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if messages, exists := s.messages[string(chatId[:])]; exists {
+		for _, message := range messages {
+			if bytes.Equal(message.MessageId[:], messageId[:]) {
+				clone := message.Clone()
+				return &clone, nil
+			}
+		}
+	}
+
+	return nil, chat.ErrMessageNotFound
+}
+
+// GetAllChatsForUserV2 retrieves all chat IDs that a given user belongs to
+func (s *InMemoryStore) GetAllChatsForUserV2(_ context.Context, user chat.MemberId, opts ...query.Option) ([]chat.ChatId, error) {
+	if err := user.Validate(); err != nil {
+		return nil, err
+	}
+
+	qo := &query.QueryOptions{
+		Supported: query.CanQueryByCursor | query.CanLimitResults | query.CanSortBy,
+	}
+	err := qo.Apply(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var chatIds []chat.ChatId
+	for chatIdStr, members := range s.members {
+		if _, exists := members[user.String()]; exists {
+			chatId, _ := chat.GetChatIdFromBytes([]byte(chatIdStr))
+			chatIds = append(chatIds, chatId)
+		}
+	}
+
+	// Sort the chatIds
+	sort.Slice(chatIds, func(i, j int) bool {
+		if qo.SortBy == query.Descending {
+			return bytes.Compare(chatIds[i][:], chatIds[j][:]) > 0
+		}
+		return bytes.Compare(chatIds[i][:], chatIds[j][:]) < 0
+	})
+
+	// Apply cursor if provided
+	if qo.Cursor != nil {
+		cursorChatId, err := chat.GetChatIdFromBytes(qo.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		var filteredChatIds []chat.ChatId
+		for _, chatId := range chatIds {
+			if qo.SortBy == query.Descending {
+				if bytes.Compare(chatId[:], cursorChatId[:]) < 0 {
+					filteredChatIds = append(filteredChatIds, chatId)
+				}
+			} else {
+				if bytes.Compare(chatId[:], cursorChatId[:]) > 0 {
+					filteredChatIds = append(filteredChatIds, chatId)
+				}
+			}
+		}
+		chatIds = filteredChatIds
+	}
+
+	// Apply limit if provided
+	if qo.Limit > 0 && uint64(len(chatIds)) > qo.Limit {
+		chatIds = chatIds[:qo.Limit]
+	}
+
+	return chatIds, nil
+}
+
+// GetAllChatMessagesV2 retrieves all messages for a specific chat
+func (s *InMemoryStore) GetAllChatMessagesV2(_ context.Context, chatId chat.ChatId, opts ...query.Option) ([]*chat.MessageRecord, error) {
+	if err := chatId.Validate(); err != nil {
+		return nil, err
+	}
+
+	qo := &query.QueryOptions{
+		Supported: query.CanLimitResults | query.CanSortBy | query.CanQueryByCursor,
+	}
+	if err := qo.Apply(opts...); err != nil {
+		return nil, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	messages, exists := s.messages[string(chatId[:])]
+	if !exists {
+		return nil, nil
+	}
+
+	var result []*chat.MessageRecord
+	for _, msg := range messages {
+		cloned := msg.Clone()
+		result = append(result, &cloned)
+	}
+
+	// Sort the messages
+	sort.Slice(result, func(i, j int) bool {
+		if qo.SortBy == query.Descending {
+			return bytes.Compare(result[i].MessageId[:], result[j].MessageId[:]) > 0
+		}
+		return bytes.Compare(result[i].MessageId[:], result[j].MessageId[:]) < 0
+	})
+
+	// Apply cursor if provided
+	if len(qo.Cursor) > 0 {
+		cursorMessageId, err := chat.GetMessageIdFromBytes(qo.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		var filteredMessages []*chat.MessageRecord
+		for _, msg := range result {
+			if qo.SortBy == query.Descending {
+				if bytes.Compare(msg.MessageId[:], cursorMessageId[:]) < 0 {
+					filteredMessages = append(filteredMessages, msg)
+				}
+			} else {
+				if bytes.Compare(msg.MessageId[:], cursorMessageId[:]) > 0 {
+					filteredMessages = append(filteredMessages, msg)
+				}
+			}
+		}
+		result = filteredMessages
+	}
+
+	// Apply limit if provided
+	if qo.Limit > 0 && uint64(len(result)) > qo.Limit {
+		result = result[:qo.Limit]
+	}
+
+	return result, nil
+}
+
+// GetChatMembersV2 retrieves all members of a specific chat
+func (s *InMemoryStore) GetChatMembersV2(_ context.Context, chatId chat.ChatId) ([]*chat.MemberRecord, error) {
+	if err := chatId.Validate(); err != nil {
+		return nil, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	members, exists := s.members[string(chatId[:])]
+	if !exists {
 		return nil, chat.ErrChatNotFound
 	}
 
-	cloned := item.Clone()
-	return &cloned, nil
-}
-
-// GetMemberById implements chat.Store.GetMemberById
-func (s *store) GetMemberById(_ context.Context, chatId chat.ChatId, memberId chat.MemberId) (*chat.MemberRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findMemberById(chatId, memberId)
-	if item == nil {
-		return nil, chat.ErrMemberNotFound
+	var result []*chat.MemberRecord
+	for _, member := range members {
+		cloned := member.Clone()
+		result = append(result, &cloned)
 	}
 
-	cloned := item.Clone()
-	return &cloned, nil
+	slices.SortFunc(result, func(a, b *chat.MemberRecord) int {
+		return strings.Compare(a.MemberId, b.MemberId)
+	})
+
+	return result, nil
 }
 
-// GetMessageById implements chat.Store.GetMessageById
-func (s *store) GetMessageById(_ context.Context, chatId chat.ChatId, messageId chat.MessageId) (*chat.MessageRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findMessageById(chatId, messageId)
-	if item == nil {
-		return nil, chat.ErrMessageNotFound
+// IsChatMember checks if a given member is part of a specific chat
+func (s *InMemoryStore) IsChatMember(_ context.Context, chatId chat.ChatId, memberId chat.MemberId) (bool, error) {
+	if err := chatId.Validate(); err != nil {
+		return false, err
+	}
+	if err := memberId.Validate(); err != nil {
+		return false, err
 	}
 
-	cloned := item.Clone()
-	return &cloned, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if members, exists := s.members[string(chatId[:])]; exists {
+		_, exists = members[memberId.String()]
+		return exists, nil
+	}
+
+	return false, nil
 }
 
-// GetAllMembersByChatId implements chat.Store.GetAllMembersByChatId
-func (s *store) GetAllMembersByChatId(_ context.Context, chatId chat.ChatId) ([]*chat.MemberRecord, error) {
-	items := s.findMembersByChatId(chatId)
-	if len(items) == 0 {
-		return nil, chat.ErrMemberNotFound
-	}
-	return cloneMemberRecords(items), nil
-}
-
-// GetAllMembersByPlatformIds implements chat.store.GetAllMembersByPlatformIds
-func (s *store) GetAllMembersByPlatformIds(_ context.Context, idByPlatform map[chat.Platform]string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findMembersByPlatformIds(idByPlatform)
-	items, err := s.getMemberRecordPage(items, cursor, direction, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(items) == 0 {
-		return nil, chat.ErrMemberNotFound
-	}
-	return cloneMemberRecords(items), nil
-}
-
-// GetUnreadCount implements chat.store.GetUnreadCount
-func (s *store) GetUnreadCount(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, readPointer chat.MessageId) (uint32, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findMessagesByChatId(chatId)
-	items = s.filterMessagesAfter(items, readPointer)
-	items = s.filterMessagesNotSentBy(items, memberId)
-	items = s.filterNotifiedMessages(items)
-	return uint32(len(items)), nil
-}
-
-// GetAllMessagesByChatId implements chat.Store.GetAllMessagesByChatId
-func (s *store) GetAllMessagesByChatId(_ context.Context, chatId chat.ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MessageRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findMessagesByChatId(chatId)
-	items, err := s.getMessageRecordPage(items, cursor, direction, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(items) == 0 {
-		return nil, chat.ErrMessageNotFound
-	}
-	return cloneMessageRecords(items), nil
-}
-
-// PutChat creates a new chat
-func (s *store) PutChat(_ context.Context, record *chat.ChatRecord) error {
+// PutChatV2 stores or updates the metadata for a specific chat
+func (s *InMemoryStore) PutChatV2(_ context.Context, record *chat.MetadataRecord) error {
 	if err := record.Validate(); err != nil {
 		return err
 	}
@@ -137,25 +250,18 @@ func (s *store) PutChat(_ context.Context, record *chat.ChatRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lastChatId++
-
-	if item := s.findChat(record); item != nil {
+	if _, exists := s.chats[string(record.ChatId[:])]; exists {
 		return chat.ErrChatExists
 	}
 
-	record.Id = s.lastChatId
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = time.Now()
-	}
-
 	cloned := record.Clone()
-	s.chatRecords = append(s.chatRecords, &cloned)
+	s.chats[string(record.ChatId[:])] = &cloned
 
 	return nil
 }
 
-// PutMember creates a new chat member
-func (s *store) PutMember(_ context.Context, record *chat.MemberRecord) error {
+// PutChatMemberV2 stores or updates a member record for a specific chat
+func (s *InMemoryStore) PutChatMemberV2(_ context.Context, record *chat.MemberRecord) error {
 	if err := record.Validate(); err != nil {
 		return err
 	}
@@ -163,25 +269,24 @@ func (s *store) PutMember(_ context.Context, record *chat.MemberRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lastMemberId++
+	members, exists := s.members[string(record.ChatId[:])]
+	if !exists {
+		members = make(map[string]*chat.MemberRecord)
+		s.members[string(record.ChatId[:])] = members
+	}
 
-	if item := s.findMember(record); item != nil {
+	if _, exists = members[record.MemberId]; exists {
 		return chat.ErrMemberExists
 	}
 
-	record.Id = s.lastMemberId
-	if record.JoinedAt.IsZero() {
-		record.JoinedAt = time.Now()
-	}
-
 	cloned := record.Clone()
-	s.memberRecords = append(s.memberRecords, &cloned)
+	members[record.MemberId] = &cloned
 
 	return nil
 }
 
-// PutMessage implements chat.Store.PutMessage
-func (s *store) PutMessage(_ context.Context, record *chat.MessageRecord) error {
+// PutChatMessageV2 stores or updates a message record in a specific chat
+func (s *InMemoryStore) PutChatMessageV2(_ context.Context, record *chat.MessageRecord) error {
 	if err := record.Validate(); err != nil {
 		return err
 	}
@@ -189,353 +294,125 @@ func (s *store) PutMessage(_ context.Context, record *chat.MessageRecord) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lastMessageId++
-
-	if item := s.findMessage(record); item != nil {
-		return chat.ErrMessageExsits
+	messages := s.messages[string(record.ChatId[:])]
+	if messages == nil {
+		messages = make([]*chat.MessageRecord, 0)
+		s.messages[string(record.ChatId[:])] = messages
 	}
 
-	record.Id = s.lastMessageId
+	i, found := sort.Find(len(messages), func(i int) int {
+		return bytes.Compare(record.MessageId[:], messages[i].MessageId[:])
+	})
+	if found {
+		return chat.ErrMessageExists
+	}
 
 	cloned := record.Clone()
-	s.messageRecords = append(s.messageRecords, &cloned)
+	messages = slices.Insert(messages, i, &cloned)
+	s.messages[string(record.ChatId[:])] = messages
 
 	return nil
 }
 
-// AdvancePointer implements chat.Store.AdvancePointer
-func (s *store) AdvancePointer(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, pointerType chat.PointerType, pointer chat.MessageId) (bool, error) {
+// SetChatMuteStateV2 sets the mute state for a specific chat member
+func (s *InMemoryStore) SetChatMuteStateV2(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, isMuted bool) error {
+	if err := chatId.Validate(); err != nil {
+		return err
+	}
+	if err := memberId.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if members, exists := s.members[string(chatId[:])]; exists {
+		if member, exists := members[memberId.String()]; exists {
+			member.IsMuted = isMuted
+			return nil
+		}
+	}
+	return chat.ErrMemberNotFound
+}
+
+// AdvanceChatPointerV2 advances a pointer for a chat member
+func (s *InMemoryStore) AdvanceChatPointerV2(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, pointerType chat.PointerType, pointer chat.MessageId) (bool, error) {
+	if err := chatId.Validate(); err != nil {
+		return false, err
+	}
+	if err := memberId.Validate(); err != nil {
+		return false, err
+	}
+	if err := pointer.Validate(); err != nil {
+		return false, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	members, exists := s.members[string(chatId[:])]
+	if !exists {
+		return false, chat.ErrMemberNotFound
+	}
+
+	member, exists := members[memberId.String()]
+	if !exists {
+		return false, chat.ErrMemberNotFound
+	}
+
 	switch pointerType {
-	case chat.PointerTypeDelivered, chat.PointerTypeRead:
+	case chat.PointerTypeSent:
+	case chat.PointerTypeDelivered:
+		if member.DeliveryPointer == nil || bytes.Compare(pointer[:], member.DeliveryPointer[:]) > 0 {
+			newPtr := pointer.Clone()
+			member.DeliveryPointer = &newPtr
+			return true, nil
+		}
+	case chat.PointerTypeRead:
+		if member.ReadPointer == nil || bytes.Compare(pointer[:], member.ReadPointer[:]) > 0 {
+			newPtr := pointer.Clone()
+			member.ReadPointer = &newPtr
+			return true, nil
+		}
 	default:
 		return false, chat.ErrInvalidPointerType
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findMemberById(chatId, memberId)
-	if item == nil {
-		return false, chat.ErrMemberNotFound
-	}
-
-	var currentPointer *chat.MessageId
-	switch pointerType {
-	case chat.PointerTypeDelivered:
-		currentPointer = item.DeliveryPointer
-	case chat.PointerTypeRead:
-		currentPointer = item.ReadPointer
-	}
-
-	if currentPointer == nil || currentPointer.Before(pointer) {
-		switch pointerType {
-		case chat.PointerTypeDelivered:
-			cloned := pointer.Clone()
-			item.DeliveryPointer = &cloned
-		case chat.PointerTypeRead:
-			cloned := pointer.Clone()
-			item.ReadPointer = &cloned
-		}
-
-		return true, nil
-	}
 	return false, nil
 }
 
-// UpgradeIdentity implements chat.Store.UpgradeIdentity
-func (s *store) UpgradeIdentity(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, platform chat.Platform, platformId string) error {
-	switch platform {
-	case chat.PlatformTwitter:
-	default:
-		return errors.Errorf("platform not supported for identity upgrades: %s", platform.String())
+// GetChatUnreadCountV2 calculates and returns the unread message count
+func (s *InMemoryStore) GetChatUnreadCountV2(ctx context.Context, chatId chat.ChatId, memberId chat.MemberId, readPointer *chat.MessageId) (uint32, error) {
+	if err := chatId.Validate(); err != nil {
+		return 0, err
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findMemberById(chatId, memberId)
-	if item == nil {
-		return chat.ErrMemberNotFound
+	if err := memberId.Validate(); err != nil {
+		return 0, err
 	}
-	if item.Platform != chat.PlatformCode {
-		return chat.ErrMemberIdentityAlreadyUpgraded
-	}
-
-	item.Platform = platform
-	item.PlatformId = platformId
-
-	return nil
-}
-
-// SetMuteState implements chat.Store.SetMuteState
-func (s *store) SetMuteState(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, isMuted bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findMemberById(chatId, memberId)
-	if item == nil {
-		return chat.ErrMemberNotFound
-	}
-
-	item.IsMuted = isMuted
-
-	return nil
-}
-
-// SetSubscriptionState implements chat.Store.SetSubscriptionState
-func (s *store) SetSubscriptionState(_ context.Context, chatId chat.ChatId, memberId chat.MemberId, isSubscribed bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findMemberById(chatId, memberId)
-	if item == nil {
-		return chat.ErrMemberNotFound
-	}
-
-	item.IsUnsubscribed = !isSubscribed
-
-	return nil
-}
-
-func (s *store) findChat(data *chat.ChatRecord) *chat.ChatRecord {
-	for _, item := range s.chatRecords {
-		if data.Id == item.Id {
-			return item
-		}
-
-		if bytes.Equal(data.ChatId[:], item.ChatId[:]) {
-			return item
+	if readPointer != nil {
+		if err := readPointer.Validate(); err != nil {
+			return 0, err
 		}
 	}
-	return nil
-}
 
-func (s *store) findChatById(chatId chat.ChatId) *chat.ChatRecord {
-	for _, item := range s.chatRecords {
-		if bytes.Equal(chatId[:], item.ChatId[:]) {
-			return item
-		}
-	}
-	return nil
-}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-func (s *store) findMember(data *chat.MemberRecord) *chat.MemberRecord {
-	for _, item := range s.memberRecords {
-		if data.Id == item.Id {
-			return item
+	unread := uint32(0)
+	messages := s.messages[string(chatId[:])]
+	for _, message := range messages {
+		if readPointer != nil {
+			if bytes.Compare(message.MessageId[:], readPointer[:]) <= 0 {
+				continue
+			}
 		}
 
-		if bytes.Equal(data.ChatId[:], item.ChatId[:]) && bytes.Equal(data.MemberId[:], item.MemberId[:]) {
-			return item
-		}
-	}
-	return nil
-}
-
-func (s *store) findMemberById(chatId chat.ChatId, memberId chat.MemberId) *chat.MemberRecord {
-	for _, item := range s.memberRecords {
-		if bytes.Equal(chatId[:], item.ChatId[:]) && bytes.Equal(memberId[:], item.MemberId[:]) {
-			return item
-		}
-	}
-	return nil
-}
-
-func (s *store) findMembersByChatId(chatId chat.ChatId) []*chat.MemberRecord {
-	var res []*chat.MemberRecord
-	for _, item := range s.memberRecords {
-		if bytes.Equal(chatId[:], item.ChatId[:]) {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) findMembersByPlatformIds(idByPlatform map[chat.Platform]string) []*chat.MemberRecord {
-	var res []*chat.MemberRecord
-	for _, item := range s.memberRecords {
-		platformId, ok := idByPlatform[item.Platform]
-		if !ok {
+		if message.Sender.String() == memberId.String() {
 			continue
 		}
 
-		if platformId == item.PlatformId {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) getMemberRecordPage(items []*chat.MemberRecord, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MemberRecord, error) {
-	if len(items) == 0 {
-		return nil, nil
+		unread++
 	}
 
-	var memberIdCursor *uint64
-	if len(cursor) > 0 {
-		cursorValue := query.FromCursor(cursor)
-		memberIdCursor = &cursorValue
-	}
-
-	var res []*chat.MemberRecord
-	if memberIdCursor == nil {
-		res = items
-	} else {
-		for _, item := range items {
-			if item.Id > int64(*memberIdCursor) && direction == query.Ascending {
-				res = append(res, item)
-			}
-
-			if item.Id < int64(*memberIdCursor) && direction == query.Descending {
-				res = append(res, item)
-			}
-		}
-	}
-
-	if direction == query.Ascending {
-		sort.Sort(chat.MembersById(res))
-	} else {
-		sort.Sort(sort.Reverse(chat.MembersById(res)))
-	}
-
-	if len(res) >= int(limit) {
-		return res[:limit], nil
-	}
-
-	return res, nil
-}
-
-func (s *store) findMessage(data *chat.MessageRecord) *chat.MessageRecord {
-	for _, item := range s.messageRecords {
-		if data.Id == item.Id {
-			return item
-		}
-
-		if bytes.Equal(data.ChatId[:], item.ChatId[:]) && bytes.Equal(data.MessageId[:], item.MessageId[:]) {
-			return item
-		}
-	}
-	return nil
-}
-
-func (s *store) findMessageById(chatId chat.ChatId, messageId chat.MessageId) *chat.MessageRecord {
-	for _, item := range s.messageRecords {
-		if bytes.Equal(chatId[:], item.ChatId[:]) && bytes.Equal(messageId[:], item.MessageId[:]) {
-			return item
-		}
-	}
-	return nil
-}
-
-func (s *store) findMessagesByChatId(chatId chat.ChatId) []*chat.MessageRecord {
-	var res []*chat.MessageRecord
-	for _, item := range s.messageRecords {
-		if bytes.Equal(chatId[:], item.ChatId[:]) {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) filterMessagesAfter(items []*chat.MessageRecord, pointer chat.MessageId) []*chat.MessageRecord {
-	var res []*chat.MessageRecord
-	for _, item := range items {
-		if item.MessageId.After(pointer) {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) filterMessagesNotSentBy(items []*chat.MessageRecord, sender chat.MemberId) []*chat.MessageRecord {
-	var res []*chat.MessageRecord
-	for _, item := range items {
-		if item.Sender == nil || !bytes.Equal(item.Sender[:], sender[:]) {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) filterNotifiedMessages(items []*chat.MessageRecord) []*chat.MessageRecord {
-	var res []*chat.MessageRecord
-	for _, item := range items {
-		if !item.IsSilent {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) getMessageRecordPage(items []*chat.MessageRecord, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*chat.MessageRecord, error) {
-	if len(items) == 0 {
-		return nil, nil
-	}
-
-	var messageIdCursor *chat.MessageId
-	if len(cursor) > 0 {
-		messageId, err := chat.GetMessageIdFromBytes(cursor)
-		if err != nil {
-			return nil, err
-		}
-		messageIdCursor = &messageId
-	}
-
-	var res []*chat.MessageRecord
-	if messageIdCursor == nil {
-		res = items
-	} else {
-		for _, item := range items {
-			if item.MessageId.After(*messageIdCursor) && direction == query.Ascending {
-				res = append(res, item)
-			}
-
-			if item.MessageId.Before(*messageIdCursor) && direction == query.Descending {
-				res = append(res, item)
-			}
-		}
-	}
-
-	if direction == query.Ascending {
-		sort.Sort(chat.MessagesByMessageId(res))
-	} else {
-		sort.Sort(sort.Reverse(chat.MessagesByMessageId(res)))
-	}
-
-	if len(res) >= int(limit) {
-		return res[:limit], nil
-	}
-
-	return res, nil
-}
-
-func (s *store) reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.chatRecords = nil
-	s.memberRecords = nil
-	s.messageRecords = nil
-
-	s.lastChatId = 0
-	s.lastMemberId = 0
-	s.lastMessageId = 0
-}
-
-func cloneMemberRecords(items []*chat.MemberRecord) []*chat.MemberRecord {
-	res := make([]*chat.MemberRecord, len(items))
-	for i, item := range items {
-		cloned := item.Clone()
-		res[i] = &cloned
-	}
-	return res
-}
-
-func cloneMessageRecords(items []*chat.MessageRecord) []*chat.MessageRecord {
-	res := make([]*chat.MessageRecord, len(items))
-	for i, item := range items {
-		cloned := item.Clone()
-		res[i] = &cloned
-	}
-	return res
+	return unread, nil
 }

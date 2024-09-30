@@ -25,7 +25,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
-	chatv2pb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
@@ -38,7 +37,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	chat_v1 "github.com/code-payments/code-server/pkg/code/data/chat/v1"
-	chat_v2 "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
@@ -6181,10 +6179,4 @@ func getProtoChatMessage(t *testing.T, record *chat_v1.Message) *chatpb.ChatMess
 	var protoMessage chatpb.ChatMessage
 	require.NoError(t, proto.Unmarshal(record.Data, &protoMessage))
 	return &protoMessage
-}
-
-func getProtoChatMessageV2(t *testing.T, record *chat_v2.MessageRecord) *chatv2pb.ChatMessage {
-	protoMessage := &chatv2pb.ChatMessage{}
-	require.NoError(t, proto.Unmarshal(record.Data, protoMessage))
-	return protoMessage
 }

@@ -3,88 +3,68 @@ package chat_v2
 import (
 	"context"
 	"errors"
-
-	"github.com/code-payments/code-protobuf-api/generated/go/common/v1"
-
 	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 var (
-	ErrChatExists                    = errors.New("chat already exists")
-	ErrChatNotFound                  = errors.New("chat not found")
-	ErrMemberExists                  = errors.New("chat member already exists")
-	ErrMemberNotFound                = errors.New("chat member not found")
-	ErrMemberIdentityAlreadyUpgraded = errors.New("chat member identity already upgraded")
-	ErrMessageExsits                 = errors.New("chat message already exists")
-	ErrMessageNotFound               = errors.New("chat message not found")
-	ErrInvalidPointerType            = errors.New("invalid pointer type")
+	ErrChatExists         = errors.New("chat already exists")
+	ErrChatNotFound       = errors.New("chat not found")
+	ErrMemberExists       = errors.New("chat member already exists")
+	ErrMemberNotFound     = errors.New("chat member not found")
+	ErrMessageExists      = errors.New("chat message already exists")
+	ErrMessageNotFound    = errors.New("chat message not found")
+	ErrInvalidPointerType = errors.New("invalid pointer type")
 )
 
-// todo: Define interface methods
 type Store interface {
-	// GetChatById gets a chat by its chat ID
-	GetChatById(ctx context.Context, chatId ChatId) (*ChatRecord, error)
-
-	// GetMemberById gets a chat member by the chat and member IDs
-	GetMemberById(ctx context.Context, chatId ChatId, memberId MemberId) (*MemberRecord, error)
-
-	// GetMessageById gets a chat message by the chat and message IDs
-	GetMessageById(ctx context.Context, chatId ChatId, messageId MessageId) (*MessageRecord, error)
-
-	// GetAllMembersByChatId gets all members for a given chat
+	// GetChatMetadata retrieves the metadata record for a specific chat, identified by chatId.
 	//
-	// todo: Add paging when we introduce group chats
-	GetAllMembersByChatId(ctx context.Context, chatId ChatId) ([]*MemberRecord, error)
+	// It returns ErrChatNotFound if the chat doesn't exist.
+	GetChatMetadata(ctx context.Context, chatId ChatId) (*MetadataRecord, error)
 
-	// GetAllMembersByPlatformIds gets all members for platform users across all chats
-	GetAllMembersByPlatformIds(ctx context.Context, idByPlatform map[Platform]string, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MemberRecord, error)
+	// GetChatMessageV2 retrieves a specific message from a chat, identified by chatId and messageId.
+	GetChatMessageV2(ctx context.Context, chatId ChatId, messageId MessageId) (*MessageRecord, error)
 
-	// GetAllMessagesByChatId gets all messages for a given chat
+	// GetAllChatsForUserV2 retrieves all chat IDs that a given user (where user is the messaging address).
+	GetAllChatsForUserV2(ctx context.Context, user MemberId, opts ...query.Option) ([]ChatId, error)
+
+	// GetAllChatMessagesV2 retrieves all messages for a specific chat, identified by chatId.
+	GetAllChatMessagesV2(ctx context.Context, chatId ChatId, opts ...query.Option) ([]*MessageRecord, error)
+
+	// GetChatMembersV2 retrieves all members of a specific chat, identified by chatId.
+	GetChatMembersV2(ctx context.Context, chatId ChatId) ([]*MemberRecord, error)
+
+	// IsChatMember checks if a given member, identified by memberId, is part of a specific chat, identified by chatId.
+	IsChatMember(ctx context.Context, chatId ChatId, memberId MemberId) (bool, error)
+
+	// PutChatV2 stores or updates the metadata for a specific chat.
 	//
-	// Note: Cursor is a message ID
-	GetAllMessagesByChatId(ctx context.Context, chatId ChatId, cursor query.Cursor, direction query.Ordering, limit uint64) ([]*MessageRecord, error)
+	// ErrChatExists is returned if the chat with the same ID already exists.
+	PutChatV2(ctx context.Context, record *MetadataRecord) error
 
-	// GetUnreadCount gets the unread message count for a chat ID at a read pointer
-	GetUnreadCount(ctx context.Context, chatId ChatId, memberId MemberId, readPointer MessageId) (uint32, error)
-
-	// PutChat creates a new chat
-	PutChat(ctx context.Context, record *ChatRecord) error
-
-	// PutMember creates a new chat member
-	PutMember(ctx context.Context, record *MemberRecord) error
-
-	// PutMessage creates a new chat message
-	PutMessage(ctx context.Context, record *MessageRecord) error
-
-	// AdvancePointer advances a chat pointer for a chat member
-	AdvancePointer(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) (bool, error)
-
-	// UpgradeIdentity upgrades a chat member's identity from an anonymous state
-	UpgradeIdentity(ctx context.Context, chatId ChatId, memberId MemberId, platform Platform, platformId string) error
-
-	// SetMuteState updates the mute state for a chat member
-	SetMuteState(ctx context.Context, chatId ChatId, memberId MemberId, isMuted bool) error
-
-	// SetSubscriptionState updates the subscription state for a chat member
-	SetSubscriptionState(ctx context.Context, chatId ChatId, memberId MemberId, isSubscribed bool) error
-}
-
-type PaymentStore interface {
-	// MarkFriendshipPaid marks a friendship as paid.
+	// PutChatMemberV2 stores or updates a member record for a specific chat.
 	//
-	// The intentId is the intent that paid for the friendship.
-	MarkFriendshipPaid(ctx context.Context, payer, other *common.SolanaAccountId, intentId *common.IntentId) error
+	// ErrMemberExists is returned if the member already exists.
+	// Updating should be done with specific DB calls.
+	PutChatMemberV2(ctx context.Context, record *MemberRecord) error
 
-	// IsFriendshipPaid returns whether a payment has been made for a friendship.
+	// PutChatMessageV2 stores or updates a message record in a specific chat.
 	//
-	// IsFriendshipPaid  is reflexive, with only a single payment being required.
-	IsFriendshipPaid(ctx context.Context, user, other *common.SolanaAccountId) (bool, error)
+	// ErrMessageExists is returned if the message already exists.
+	PutChatMessageV2(ctx context.Context, record *MessageRecord) error
 
-	// MarkChatPaid marks a chat as paid.
-	MarkChatPaid(ctx context.Context, payer *common.SolanaAccountId, chat ChatId) error
-
-	// IsChatPaid returns whether a member paid to be part of a chat.
+	// SetChatMuteStateV2 sets the mute state for a specific chat member, identified by chatId and memberId.
 	//
-	// This is only valid for non-two way chats.
-	IsChatPaid(ctx context.Context, chatId ChatId, member *common.SolanaAccountId) (bool, error)
+	// ErrMemberNotFound if the member does not exist.
+	SetChatMuteStateV2(ctx context.Context, chatId ChatId, memberId MemberId, isMuted bool) error
+
+	// AdvanceChatPointerV2 advances a pointer for a chat member, identified by chatId and memberId.
+	//
+	// It returns whether the pointer was advanced. If no member exists, ErrMemberNotFound is returned.
+	AdvanceChatPointerV2(ctx context.Context, chatId ChatId, memberId MemberId, pointerType PointerType, pointer MessageId) (bool, error)
+
+	// GetChatUnreadCountV2 calculates and returns the unread message count for a specific chat member,
+	//
+	// Existence checks are not performed.
+	GetChatUnreadCountV2(ctx context.Context, chatId ChatId, memberId MemberId, readPointer *MessageId) (uint32, error)
 }

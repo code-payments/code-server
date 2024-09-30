@@ -705,7 +705,19 @@ func (s *identityServer) GetTwitterUser(ctx context.Context, req *userpb.GetTwit
 		var friendChatId *commonpb.ChatId
 		if req.Requestor != nil {
 			// TODO: Validate the requestor
-			friendChatId = chat.GetChatId(base58.Encode(req.Requestor.Value), tipAddress.PublicKey().ToBase58(), true).ToProto()
+			ownerAccount, err := common.NewAccountFromProto(req.Requestor)
+			if err != nil {
+				log.WithError(err).Warn("failed to get owner account")
+				return nil, status.Error(codes.Internal, "")
+			}
+
+			ownerMessagingAccount, err := ownerAccount.ToMessagingAccount(common.KinMintAccount)
+			if err != nil {
+				log.WithError(err).Warn("failed to get owner messaging account")
+				return nil, status.Error(codes.Internal, "")
+			}
+
+			friendChatId = chat.GetTwoWayChatId(ownerMessagingAccount.PublicKey().ToBytes(), tipAddress.PublicKey().ToBytes()).ToProto()
 		}
 
 		return &userpb.GetTwitterUserResponse{

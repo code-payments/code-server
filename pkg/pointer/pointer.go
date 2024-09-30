@@ -7,6 +7,15 @@ func String(value string) *string {
 	return &value
 }
 
+// StringOrEmpty returns the value of the string, if set. Otherwise, "".
+func StringOrEmpty(value *string) string {
+	if value != nil {
+		return *value
+	}
+
+	return ""
+}
+
 // StringOrDefault returns the pointer if not nil, otherwise the default value
 func StringOrDefault(value *string, defaultValue string) *string {
 	if value != nil {

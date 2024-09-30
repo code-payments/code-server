@@ -1,9 +1,9 @@
 package chat_v2
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -15,122 +15,13 @@ type ChatType uint8
 
 const (
 	ChatTypeUnknown ChatType = iota
-	ChatTypeNotification
 	ChatTypeTwoWay
 	// ChatTypeGroup
 )
 
-type ReferenceType uint8
-
-const (
-	ReferenceTypeUnknown ReferenceType = iota
-	ReferenceTypeIntent
-	ReferenceTypeSignature
-)
-
-type PointerType uint8
-
-const (
-	PointerTypeUnknown PointerType = iota
-	PointerTypeSent
-	PointerTypeDelivered
-	PointerTypeRead
-)
-
-type Platform uint8
-
-const (
-	PlatformUnknown Platform = iota
-	PlatformCode
-	PlatformTwitter
-)
-
-type ChatRecord struct {
-	Id     int64
-	ChatId ChatId
-
-	ChatType ChatType
-
-	// Presence determined by ChatType:
-	//  * Notification: Present, and may be a localization key
-	//  * Two Way: Not present and generated dynamically based on chat members
-	//  * Group: Present, and will not be a localization key
-	ChatTitle *string
-
-	IsVerified bool
-
-	CreatedAt time.Time
-}
-
-type MemberRecord struct {
-	Id       int64
-	ChatId   ChatId
-	MemberId MemberId
-
-	Platform   Platform
-	PlatformId string
-
-	// If Platform != PlatformCode, this store the owner
-	// of the account (at time of creation). This allows
-	// us to send push notifications for non-code users.
-	OwnerAccount string
-
-	DeliveryPointer *MessageId
-	ReadPointer     *MessageId
-
-	IsMuted        bool
-	IsUnsubscribed bool
-
-	JoinedAt time.Time
-}
-
-func (m *MemberRecord) GetOwner() string {
-	if m.Platform == PlatformCode {
-		return m.PlatformId
-	}
-
-	return m.OwnerAccount
-}
-
-type MessageRecord struct {
-	Id        int64
-	ChatId    ChatId
-	MessageId MessageId
-
-	// Not present for notification-style chats
-	Sender *MemberId
-
-	Data []byte
-
-	ReferenceType *ReferenceType
-	Reference     *string
-
-	IsSilent bool
-
-	// Note: No timestamp field, since it's encoded in MessageId
-}
-
-type MembersById []*MemberRecord
-
-func (a MembersById) Len() int      { return len(a) }
-func (a MembersById) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a MembersById) Less(i, j int) bool {
-	return a[i].Id < a[j].Id
-}
-
-type MessagesByMessageId []*MessageRecord
-
-func (a MessagesByMessageId) Len() int      { return len(a) }
-func (a MessagesByMessageId) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a MessagesByMessageId) Less(i, j int) bool {
-	return a[i].MessageId.Before(a[j].MessageId)
-}
-
 // GetChatTypeFromProto gets a chat type from the protobuf variant
 func GetChatTypeFromProto(proto chatpb.ChatType) ChatType {
 	switch proto {
-	case chatpb.ChatType_NOTIFICATION:
-		return ChatTypeNotification
 	case chatpb.ChatType_TWO_WAY:
 		return ChatTypeTwoWay
 	default:
@@ -141,8 +32,6 @@ func GetChatTypeFromProto(proto chatpb.ChatType) ChatType {
 // ToProto returns the proto representation of the chat type
 func (c ChatType) ToProto() chatpb.ChatType {
 	switch c {
-	case ChatTypeNotification:
-		return chatpb.ChatType_NOTIFICATION
 	case ChatTypeTwoWay:
 		return chatpb.ChatType_TWO_WAY
 	default:
@@ -153,14 +42,21 @@ func (c ChatType) ToProto() chatpb.ChatType {
 // String returns the string representation of the chat type
 func (c ChatType) String() string {
 	switch c {
-	case ChatTypeNotification:
-		return "notification"
 	case ChatTypeTwoWay:
 		return "two-way"
 	default:
 		return "unknown"
 	}
 }
+
+type PointerType uint8
+
+const (
+	PointerTypeUnknown PointerType = iota
+	PointerTypeSent
+	PointerTypeDelivered
+	PointerTypeRead
+)
 
 // GetPointerTypeFromProto gets a chat ID from the protobuf variant
 func GetPointerTypeFromProto(proto chatpb.PointerType) PointerType {
@@ -204,7 +100,14 @@ func (p PointerType) String() string {
 	}
 }
 
-// ToProto returns the proto representation of the platform
+type Platform uint8
+
+const (
+	PlatformUnknown Platform = iota
+	PlatformTwitter
+)
+
+// GetPlatformFromProto returns the proto representation of the platform
 func GetPlatformFromProto(proto chatpb.Platform) Platform {
 	switch proto {
 	case chatpb.Platform_TWITTER:
@@ -227,8 +130,6 @@ func (p Platform) ToProto() chatpb.Platform {
 // String returns the string representation of the platform
 func (p Platform) String() string {
 	switch p {
-	case PlatformCode:
-		return "code"
 	case PlatformTwitter:
 		return "twitter"
 	default:
@@ -236,21 +137,23 @@ func (p Platform) String() string {
 	}
 }
 
+type MetadataRecord struct {
+	Id        int64
+	ChatId    ChatId
+	ChatType  ChatType
+	CreatedAt time.Time
+
+	ChatTitle *string
+}
+
 // Validate validates a chat Record
-func (r *ChatRecord) Validate() error {
+func (r *MetadataRecord) Validate() error {
 	if err := r.ChatId.Validate(); err != nil {
 		return errors.Wrap(err, "invalid chat id")
 	}
 
 	switch r.ChatType {
-	case ChatTypeNotification:
-		if r.ChatTitle == nil || len(*r.ChatTitle) == 0 {
-			return errors.New("chat title is required for notification chats")
-		}
 	case ChatTypeTwoWay:
-		if r.ChatTitle != nil {
-			return errors.New("chat title cannot be set for two way chats")
-		}
 	default:
 		return errors.Errorf("invalid chat type: %d", r.ChatType)
 	}
@@ -263,62 +166,71 @@ func (r *ChatRecord) Validate() error {
 }
 
 // Clone clones a chat record
-func (r *ChatRecord) Clone() ChatRecord {
-	return ChatRecord{
-		Id:     r.Id,
-		ChatId: r.ChatId,
-
-		ChatType: r.ChatType,
+func (r *MetadataRecord) Clone() MetadataRecord {
+	return MetadataRecord{
+		Id:        r.Id,
+		ChatId:    r.ChatId,
+		ChatType:  r.ChatType,
+		CreatedAt: r.CreatedAt,
 
 		ChatTitle: pointer.StringCopy(r.ChatTitle),
-
-		IsVerified: r.IsVerified,
-
-		CreatedAt: r.CreatedAt,
 	}
 }
 
 // CopyTo copies a chat record to the provided destination
-func (r *ChatRecord) CopyTo(dst *ChatRecord) {
+func (r *MetadataRecord) CopyTo(dst *MetadataRecord) {
 	dst.Id = r.Id
 	dst.ChatId = r.ChatId
-
 	dst.ChatType = r.ChatType
+	dst.CreatedAt = r.CreatedAt
 
 	dst.ChatTitle = pointer.StringCopy(r.ChatTitle)
+}
 
-	dst.IsVerified = r.IsVerified
+type MemberRecord struct {
+	Id     int64
+	ChatId ChatId
 
-	dst.CreatedAt = r.CreatedAt
+	// MemberId is derived from Owner (using account.ToMessagingAccount)
+	//
+	// It is stored to allow indexed lookups when only MemberId is available.
+	// We must also store Owner so server can lookup proper push tokens.
+	MemberId string
+
+	// Owner is required to be able to send push notifications.
+	//
+	// Currently, it is _optional_, as we don't have a way to reverse lookup.
+	// However, we _will_ want to make it mandatory.
+	Owner string
+
+	// Identity.
+	//
+	// Currently, assumes single.
+	Platform   Platform
+	PlatformId string
+
+	DeliveryPointer *MessageId
+	ReadPointer     *MessageId
+
+	IsMuted  bool
+	JoinedAt time.Time
 }
 
 // Validate validates a member Record
 func (r *MemberRecord) Validate() error {
 	if err := r.ChatId.Validate(); err != nil {
-		return errors.Wrap(err, "invalid chat id")
+		return fmt.Errorf("invalid chat id: %w", err)
 	}
 
-	if err := r.MemberId.Validate(); err != nil {
-		return errors.Wrap(err, "invalid member id")
+	if len(r.MemberId) == 0 {
+		return fmt.Errorf("missing member id")
 	}
 
 	if len(r.PlatformId) == 0 {
-		return errors.New("platform id is required")
-	}
-	if r.Platform != PlatformCode && len(r.OwnerAccount) == 0 {
-		return errors.New("owner account is required for non code platform members")
+		return fmt.Errorf("missing platform id")
 	}
 
 	switch r.Platform {
-	case PlatformCode:
-		decoded, err := base58.Decode(r.PlatformId)
-		if err != nil {
-			return errors.Wrap(err, "invalid base58 plaftorm id")
-		}
-
-		if len(decoded) != 32 {
-			return errors.Wrap(err, "platform id is not a 32 byte buffer")
-		}
 	case PlatformTwitter:
 		if len(r.PlatformId) > 15 {
 			return errors.New("platform id must have at most 15 characters")
@@ -364,17 +276,15 @@ func (r *MemberRecord) Clone() MemberRecord {
 		Id:       r.Id,
 		ChatId:   r.ChatId,
 		MemberId: r.MemberId,
+		Owner:    r.Owner,
 
-		Platform:     r.Platform,
-		PlatformId:   r.PlatformId,
-		OwnerAccount: r.OwnerAccount,
+		Platform:   r.Platform,
+		PlatformId: r.PlatformId,
 
 		DeliveryPointer: deliveryPointerCopy,
 		ReadPointer:     readPointerCopy,
 
-		IsMuted:        r.IsMuted,
-		IsUnsubscribed: r.IsUnsubscribed,
-
+		IsMuted:  r.IsMuted,
 		JoinedAt: r.JoinedAt,
 	}
 }
@@ -383,11 +293,11 @@ func (r *MemberRecord) Clone() MemberRecord {
 func (r *MemberRecord) CopyTo(dst *MemberRecord) {
 	dst.Id = r.Id
 	dst.ChatId = r.ChatId
+	dst.Owner = r.Owner
 	dst.MemberId = r.MemberId
 
 	dst.Platform = r.Platform
 	dst.PlatformId = r.PlatformId
-	dst.OwnerAccount = r.OwnerAccount
 
 	if r.DeliveryPointer != nil {
 		cloned := r.DeliveryPointer.Clone()
@@ -399,9 +309,30 @@ func (r *MemberRecord) CopyTo(dst *MemberRecord) {
 	}
 
 	dst.IsMuted = r.IsMuted
-	dst.IsUnsubscribed = r.IsUnsubscribed
-
 	dst.JoinedAt = r.JoinedAt
+}
+
+type MembersById []*MemberRecord
+
+func (a MembersById) Len() int      { return len(a) }
+func (a MembersById) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a MembersById) Less(i, j int) bool {
+	return a[i].Id < a[j].Id
+}
+
+type MessageRecord struct {
+	Id        int64
+	ChatId    ChatId
+	MessageId MessageId
+
+	Sender *MemberId
+
+	Payload []byte
+
+	IsSilent bool
+
+	// Note: No timestamp field, since it's encoded in MessageId
+	// Note: Maybe a timestamp field, because it's maybe better?
 }
 
 // Validate validates a message Record
@@ -420,44 +351,19 @@ func (r *MessageRecord) Validate() error {
 		}
 	}
 
-	if len(r.Data) == 0 {
-		return errors.New("message data is required")
-	}
-
-	if r.Reference == nil && r.ReferenceType != nil {
-		return errors.New("reference is required when reference type is provided")
-	}
-
-	if r.Reference != nil && r.ReferenceType == nil {
-		return errors.New("reference cannot be set when reference type is missing")
-	}
-
-	if r.ReferenceType != nil {
-		switch *r.ReferenceType {
-		case ReferenceTypeIntent:
-			decoded, err := base58.Decode(*r.Reference)
-			if err != nil {
-				return errors.Wrap(err, "invalid base58 intent id reference")
-			}
-
-			if len(decoded) != 32 {
-				return errors.Wrap(err, "reference is not a 32 byte buffer")
-			}
-		case ReferenceTypeSignature:
-			decoded, err := base58.Decode(*r.Reference)
-			if err != nil {
-				return errors.Wrap(err, "invalid base58 signature reference")
-			}
-
-			if len(decoded) != 64 {
-				return errors.Wrap(err, "reference is not a 64 byte buffer")
-			}
-		default:
-			return errors.Errorf("invalid reference type: %d", *r.ReferenceType)
-		}
+	if len(r.Payload) == 0 {
+		return errors.New("message payload is required")
 	}
 
 	return nil
+}
+
+type MessagesByMessageId []*MessageRecord
+
+func (a MessagesByMessageId) Len() int      { return len(a) }
+func (a MessagesByMessageId) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a MessagesByMessageId) Less(i, j int) bool {
+	return a[i].MessageId.Before(a[j].MessageId)
 }
 
 // Clone clones a message record
@@ -468,13 +374,10 @@ func (r *MessageRecord) Clone() MessageRecord {
 		senderCopy = &cloned
 	}
 
-	dataCopy := make([]byte, len(r.Data))
-	copy(dataCopy, r.Data)
-
-	var referenceTypeCopy *ReferenceType
-	if r.ReferenceType != nil {
-		cloned := *r.ReferenceType
-		referenceTypeCopy = &cloned
+	var payloadCopy []byte
+	if len(r.Payload) > 0 {
+		payloadCopy = make([]byte, len(r.Payload))
+		copy(payloadCopy, r.Payload)
 	}
 
 	return MessageRecord{
@@ -484,10 +387,7 @@ func (r *MessageRecord) Clone() MessageRecord {
 
 		Sender: senderCopy,
 
-		Data: dataCopy,
-
-		ReferenceType: referenceTypeCopy,
-		Reference:     pointer.StringCopy(r.Reference),
+		Payload: payloadCopy,
 
 		IsSilent: r.IsSilent,
 	}
@@ -504,15 +404,9 @@ func (r *MessageRecord) CopyTo(dst *MessageRecord) {
 		dst.Sender = &cloned
 	}
 
-	dataCopy := make([]byte, len(r.Data))
-	copy(dataCopy, r.Data)
-	dst.Data = dataCopy
-
-	if r.ReferenceType != nil {
-		cloned := *r.ReferenceType
-		dst.ReferenceType = &cloned
-	}
-	dst.Reference = pointer.StringCopy(r.Reference)
+	payloadCopy := make([]byte, len(r.Payload))
+	copy(payloadCopy, r.Payload)
+	dst.Payload = payloadCopy
 
 	dst.IsSilent = r.IsSilent
 }

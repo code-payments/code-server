@@ -9,14 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGenerateMemberId_Validation(t *testing.T) {
-	valid := GenerateMemberId()
-	assert.NoError(t, valid.Validate())
-
-	invalid := MemberId(GenerateMessageId())
-	assert.Error(t, invalid.Validate())
-}
-
 func TestGenerateMessageId_Validation(t *testing.T) {
 	valid := GenerateMessageId()
 	assert.NoError(t, valid.Validate())

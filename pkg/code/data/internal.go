@@ -396,20 +396,18 @@ type DatabaseData interface {
 
 	// Chat V2
 	// --------------------------------------------------------------------------------
-	GetChatByIdV2(ctx context.Context, chatId chat_v2.ChatId) (*chat_v2.ChatRecord, error)
-	GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error)
-	GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error)
-	GetAllChatMembersV2(ctx context.Context, chatId chat_v2.ChatId) ([]*chat_v2.MemberRecord, error)
-	GetPlatformUserChatMembershipV2(ctx context.Context, idByPlatform map[chat_v2.Platform]string, opts ...query.Option) ([]*chat_v2.MemberRecord, error)
+	GetChatMetadata(ctx context.Context, chatId chat_v2.ChatId) (*chat_v2.MetadataRecord, error)
+	GetChatMessageV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error)
+	GetAllChatsForUserV2(ctx context.Context, user chat_v2.MemberId, opts ...query.Option) ([]chat_v2.ChatId, error)
 	GetAllChatMessagesV2(ctx context.Context, chatId chat_v2.ChatId, opts ...query.Option) ([]*chat_v2.MessageRecord, error)
-	GetChatUnreadCountV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, readPointer chat_v2.MessageId) (uint32, error)
-	PutChatV2(ctx context.Context, record *chat_v2.ChatRecord) error
+	GetChatMembersV2(ctx context.Context, chatId chat_v2.ChatId) ([]*chat_v2.MemberRecord, error)
+	IsChatMember(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (bool, error)
+	PutChatV2(ctx context.Context, record *chat_v2.MetadataRecord) error
 	PutChatMemberV2(ctx context.Context, record *chat_v2.MemberRecord) error
 	PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error
-	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) (bool, error)
-	UpgradeChatMemberIdentityV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, platform chat_v2.Platform, platformId string) error
 	SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error
-	SetChatSubscriptionStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isSubscribed bool) error
+	AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) (bool, error)
+	GetChatUnreadCountV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, readPointer *chat_v2.MessageId) (uint32, error)
 
 	// Badge Count
 	// --------------------------------------------------------------------------------
@@ -1467,55 +1465,41 @@ func (dp *DatabaseProvider) SetChatSubscriptionStateV1(ctx context.Context, chat
 
 // Chat V2
 // --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) GetChatByIdV2(ctx context.Context, chatId chat_v2.ChatId) (*chat_v2.ChatRecord, error) {
-	return dp.chatv2.GetChatById(ctx, chatId)
+func (dp *DatabaseProvider) GetChatMetadata(ctx context.Context, chatId chat_v2.ChatId) (*chat_v2.MetadataRecord, error) {
+	return dp.chatv2.GetChatMetadata(ctx, chatId)
 }
-func (dp *DatabaseProvider) GetChatMemberByIdV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (*chat_v2.MemberRecord, error) {
-	return dp.chatv2.GetMemberById(ctx, chatId, memberId)
+func (dp *DatabaseProvider) GetChatMessageV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error) {
+	return dp.chatv2.GetChatMessageV2(ctx, chatId, messageId)
 }
-func (dp *DatabaseProvider) GetChatMessageByIdV2(ctx context.Context, chatId chat_v2.ChatId, messageId chat_v2.MessageId) (*chat_v2.MessageRecord, error) {
-	return dp.chatv2.GetMessageById(ctx, chatId, messageId)
-}
-func (dp *DatabaseProvider) GetAllChatMembersV2(ctx context.Context, chatId chat_v2.ChatId) ([]*chat_v2.MemberRecord, error) {
-	return dp.chatv2.GetAllMembersByChatId(ctx, chatId)
-}
-func (dp *DatabaseProvider) GetPlatformUserChatMembershipV2(ctx context.Context, idByPlatform map[chat_v2.Platform]string, opts ...query.Option) ([]*chat_v2.MemberRecord, error) {
-	req, err := query.DefaultPaginationHandler(opts...)
-	if err != nil {
-		return nil, err
-	}
-	return dp.chatv2.GetAllMembersByPlatformIds(ctx, idByPlatform, req.Cursor, req.SortBy, req.Limit)
+func (dp *DatabaseProvider) GetAllChatsForUserV2(ctx context.Context, user chat_v2.MemberId, opts ...query.Option) ([]chat_v2.ChatId, error) {
+	return dp.chatv2.GetAllChatsForUserV2(ctx, user, opts...)
 }
 func (dp *DatabaseProvider) GetAllChatMessagesV2(ctx context.Context, chatId chat_v2.ChatId, opts ...query.Option) ([]*chat_v2.MessageRecord, error) {
-	req, err := query.DefaultPaginationHandler(opts...)
-	if err != nil {
-		return nil, err
-	}
-	return dp.chatv2.GetAllMessagesByChatId(ctx, chatId, req.Cursor, req.SortBy, req.Limit)
+	return dp.chatv2.GetAllChatMessagesV2(ctx, chatId, opts...)
 }
-func (dp *DatabaseProvider) GetChatUnreadCountV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, readPointer chat_v2.MessageId) (uint32, error) {
-	return dp.chatv2.GetUnreadCount(ctx, chatId, memberId, readPointer)
+func (dp *DatabaseProvider) GetChatMembersV2(ctx context.Context, chatId chat_v2.ChatId) ([]*chat_v2.MemberRecord, error) {
+	return dp.chatv2.GetChatMembersV2(ctx, chatId)
 }
-func (dp *DatabaseProvider) PutChatV2(ctx context.Context, record *chat_v2.ChatRecord) error {
-	return dp.chatv2.PutChat(ctx, record)
+func (dp *DatabaseProvider) IsChatMember(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId) (bool, error) {
+	return dp.chatv2.IsChatMember(ctx, chatId, memberId)
+}
+func (dp *DatabaseProvider) PutChatV2(ctx context.Context, record *chat_v2.MetadataRecord) error {
+	return dp.chatv2.PutChatV2(ctx, record)
 }
 func (dp *DatabaseProvider) PutChatMemberV2(ctx context.Context, record *chat_v2.MemberRecord) error {
-	return dp.chatv2.PutMember(ctx, record)
+	return dp.chatv2.PutChatMemberV2(ctx, record)
 }
 func (dp *DatabaseProvider) PutChatMessageV2(ctx context.Context, record *chat_v2.MessageRecord) error {
-	return dp.chatv2.PutMessage(ctx, record)
-}
-func (dp *DatabaseProvider) AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) (bool, error) {
-	return dp.chatv2.AdvancePointer(ctx, chatId, memberId, pointerType, pointer)
-}
-func (dp *DatabaseProvider) UpgradeChatMemberIdentityV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, platform chat_v2.Platform, platformId string) error {
-	return dp.chatv2.UpgradeIdentity(ctx, chatId, memberId, platform, platformId)
+	return dp.chatv2.PutChatMessageV2(ctx, record)
 }
 func (dp *DatabaseProvider) SetChatMuteStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isMuted bool) error {
-	return dp.chatv2.SetMuteState(ctx, chatId, memberId, isMuted)
+	return dp.chatv2.SetChatMuteStateV2(ctx, chatId, memberId, isMuted)
 }
-func (dp *DatabaseProvider) SetChatSubscriptionStateV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, isSubscribed bool) error {
-	return dp.chatv2.SetSubscriptionState(ctx, chatId, memberId, isSubscribed)
+func (dp *DatabaseProvider) AdvanceChatPointerV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, pointerType chat_v2.PointerType, pointer chat_v2.MessageId) (bool, error) {
+	return dp.chatv2.AdvanceChatPointerV2(ctx, chatId, memberId, pointerType, pointer)
+}
+func (dp *DatabaseProvider) GetChatUnreadCountV2(ctx context.Context, chatId chat_v2.ChatId, memberId chat_v2.MemberId, readPointer *chat_v2.MessageId) (uint32, error) {
+	return dp.chatv2.GetChatUnreadCountV2(ctx, chatId, memberId, readPointer)
 }
 
 // Badge Count

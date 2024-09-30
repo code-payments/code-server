@@ -9,7 +9,7 @@ import (
 )
 
 type Notifier interface {
-	NotifyMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.ChatMessage)
+	NotifyMessage(ctx context.Context, chatID chat.ChatId, message *chatpb.Message)
 }
 
 type NoopNotifier struct{}
@@ -18,5 +18,5 @@ func NewNoopNotifier() *NoopNotifier {
 	return &NoopNotifier{}
 }
 
-func (n *NoopNotifier) NotifyMessage(_ context.Context, _ chat.ChatId, _ *chatpb.ChatMessage) {
+func (n *NoopNotifier) NotifyMessage(_ context.Context, _ chat.ChatId, _ *chatpb.Message) {
 }

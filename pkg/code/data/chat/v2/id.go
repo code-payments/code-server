@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
@@ -33,22 +33,20 @@ func GetChatIdFromBytes(buffer []byte) (ChatId, error) {
 	return typed, nil
 }
 
-func GetChatId(sender, receiver string, isVerified bool) ChatId {
-	combined := []byte(fmt.Sprintf("%s:%s:%v", sender, receiver, isVerified))
-	if strings.Compare(sender, receiver) > 0 {
-		combined = []byte(fmt.Sprintf("%s:%s:%v", receiver, sender, isVerified))
+// GetTwoWayChatId returns the ChatId for two users.
+func GetTwoWayChatId(sender, receiver []byte) ChatId {
+	var a, b []byte
+	if bytes.Compare(sender, receiver) <= 0 {
+		a, b = sender, receiver
+	} else {
+		a, b = receiver, sender
 	}
+
+	combined := make([]byte, len(a)+len(b))
+	copy(combined, a)
+	copy(combined[len(a):], b)
+
 	return sha256.Sum256(combined)
-}
-
-// GetChatIdFromBytes gets a chat ID from the string representation
-func GetChatIdFromString(value string) (ChatId, error) {
-	decoded, err := hex.DecodeString(value)
-	if err != nil {
-		return ChatId{}, errors.Wrap(err, "value is not a hexadecimal string")
-	}
-
-	return GetChatIdFromBytes(decoded)
 }
 
 // GetChatIdFromProto gets a chat ID from the protobuf variant
@@ -82,21 +80,15 @@ func (c ChatId) String() string {
 	return hex.EncodeToString(c[:])
 }
 
-// Random UUIDv4 ID for chat members
-type MemberId uuid.UUID
-
-// GenerateMemberId generates a new random chat member ID
-func GenerateMemberId() MemberId {
-	return MemberId(uuid.New())
-}
+type MemberId []byte
 
 // GetMemberIdFromBytes gets a member ID from a byte buffer
 func GetMemberIdFromBytes(buffer []byte) (MemberId, error) {
-	if len(buffer) != 16 {
-		return MemberId{}, errors.New("member id must be 16 bytes in length")
+	if len(buffer) != 32 {
+		return MemberId{}, errors.New("member id must be 32 bytes in length")
 	}
 
-	var typed MemberId
+	typed := make(MemberId, len(buffer))
 	copy(typed[:], buffer[:])
 
 	if err := typed.Validate(); err != nil {
@@ -108,16 +100,16 @@ func GetMemberIdFromBytes(buffer []byte) (MemberId, error) {
 
 // GetMemberIdFromString gets a chat member ID from the string representation
 func GetMemberIdFromString(value string) (MemberId, error) {
-	decoded, err := uuid.Parse(value)
+	b, err := base58.Decode(value)
 	if err != nil {
-		return MemberId{}, errors.Wrap(err, "value is not a uuid string")
+		return MemberId{}, errors.Wrap(err, "invalid member id")
 	}
 
-	return GetMemberIdFromBytes(decoded[:])
+	return GetMemberIdFromBytes(b)
 }
 
 // GetMemberIdFromProto gets a member ID from the protobuf variant
-func GetMemberIdFromProto(proto *chatpb.ChatMemberId) (MemberId, error) {
+func GetMemberIdFromProto(proto *chatpb.MemberId) (MemberId, error) {
 	if err := proto.Validate(); err != nil {
 		return MemberId{}, errors.Wrap(err, "proto validation failed")
 	}
@@ -126,16 +118,14 @@ func GetMemberIdFromProto(proto *chatpb.ChatMemberId) (MemberId, error) {
 }
 
 // ToProto converts a message ID to its protobuf variant
-func (m MemberId) ToProto() *chatpb.ChatMemberId {
-	return &chatpb.ChatMemberId{Value: m[:]}
+func (m MemberId) ToProto() *chatpb.MemberId {
+	return &chatpb.MemberId{Value: m[:]}
 }
 
 // Validate validates a chat member ID
 func (m MemberId) Validate() error {
-	casted := uuid.UUID(m)
-
-	if casted.Version() != 4 {
-		return errors.Errorf("invalid uuid version: %s", casted.Version().String())
+	if l := len(m); l < 0 || l > 32 {
+		return fmt.Errorf("member id must be in range 0-32, got: %d", l)
 	}
 
 	return nil
@@ -143,17 +133,17 @@ func (m MemberId) Validate() error {
 
 // Clone clones a chat member ID
 func (m MemberId) Clone() MemberId {
-	var cloned MemberId
+	cloned := make(MemberId, len(m))
 	copy(cloned[:], m[:])
 	return cloned
 }
 
 // String returns the string representation of a MemberId
 func (m MemberId) String() string {
-	return uuid.UUID(m).String()
+	return base58.Encode(m[:])
 }
 
-// Time-based UUIDv7 ID for chat messages
+// MessageId is a time-based UUIDv7 ID for chat messages
 type MessageId uuid.UUID
 
 // GenerateMessageId generates a UUIDv7 message ID using the current time
@@ -184,7 +174,7 @@ func GenerateMessageIdAtTime(ts time.Time) MessageId {
 	randomUUID := uuid.New()
 	copy(uuidBytes[7:], randomUUID[7:])
 
-	return MessageId(uuidBytes)
+	return uuidBytes
 }
 
 // GetMessageIdFromBytes gets a message ID from a byte buffer
@@ -214,7 +204,7 @@ func GetMessageIdFromString(value string) (MessageId, error) {
 }
 
 // GetMessageIdFromProto gets a message ID from the protobuf variant
-func GetMessageIdFromProto(proto *chatpb.ChatMessageId) (MessageId, error) {
+func GetMessageIdFromProto(proto *chatpb.MessageId) (MessageId, error) {
 	if err := proto.Validate(); err != nil {
 		return MessageId{}, errors.Wrap(err, "proto validation failed")
 	}
@@ -223,8 +213,8 @@ func GetMessageIdFromProto(proto *chatpb.ChatMessageId) (MessageId, error) {
 }
 
 // ToProto converts a message ID to its protobuf variant
-func (m MessageId) ToProto() *chatpb.ChatMessageId {
-	return &chatpb.ChatMessageId{Value: m[:]}
+func (m MessageId) ToProto() *chatpb.MessageId {
+	return &chatpb.MessageId{Value: m[:]}
 }
 
 // GetTimestamp gets the encoded timestamp in the message ID
@@ -253,7 +243,7 @@ func (m MessageId) Before(other MessageId) bool {
 	return m.Compare(other) < 0
 }
 
-// Before returns whether the message ID is after the provided value
+// After returns whether the message ID is after the provided value
 func (m MessageId) After(other MessageId) bool {
 	return m.Compare(other) > 0
 }

@@ -422,7 +422,7 @@ func SendChatMessagePushNotificationV2(
 	chatId chat_v2.ChatId,
 	chatTitle string,
 	owner *common.Account,
-	chatMessage *chatv2pb.ChatMessage,
+	chatMessage *chatv2pb.Message,
 ) error {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"method": "SendChatMessagePushNotificationV2",
@@ -512,15 +512,6 @@ func SendChatMessagePushNotificationV2(
 			}
 		case *chatv2pb.Content_NaclBox, *chatv2pb.Content_Text:
 			contentToPush = content
-		case *chatv2pb.Content_ThankYou:
-			contentToPush = &chatv2pb.Content{
-				Type: &chatv2pb.Content_Localized{
-					Localized: &chatv2pb.LocalizedContent{
-						// todo: localize this
-						KeyOrText: "🙏 They thanked you for their tip",
-					},
-				},
-			}
 		}
 
 		if contentToPush == nil {

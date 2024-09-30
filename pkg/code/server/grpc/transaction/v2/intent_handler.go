@@ -475,6 +475,7 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 		IsRemoteSend:   typedProtoMetadata.IsRemoteSend,
 		IsMicroPayment: isMicroPayment,
 		IsTip:          typedProtoMetadata.IsTip,
+		IsChat:         typedProtoMetadata.IsChat,
 	}
 
 	if typedProtoMetadata.IsTip {
@@ -486,6 +487,14 @@ func (h *SendPrivatePaymentIntentHandler) PopulateMetadata(ctx context.Context, 
 			Platform: typedProtoMetadata.TippedUser.Platform,
 			Username: typedProtoMetadata.TippedUser.Username,
 		}
+	}
+
+	if typedProtoMetadata.IsChat {
+		if typedProtoMetadata.ChatId == nil {
+			return newIntentValidationError("chat id is missing")
+		}
+
+		intentRecord.SendPrivatePaymentMetadata.ChatId = base58.Encode(typedProtoMetadata.ChatId.GetValue())
 	}
 
 	if destinationAccountInfo != nil {

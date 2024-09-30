@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -194,6 +195,27 @@ func (a *Account) ToTimelockVault(dataVersion timelock_token_v1.TimelockDataVers
 		return nil, err
 	}
 	return timelockAccounts.Vault, nil
+}
+
+func (a *Account) ToMessagingAccount(mint *Account) (*Account, error) {
+	return a.ToTimelockVault(timelock_token_v1.DataVersion1, mint)
+}
+
+func (a *Account) ToChatMemberId() (chat.MemberId, error) {
+	messagingAccount, err := a.ToMessagingAccount(KinMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	return messagingAccount.PublicKey().ToBytes(), nil
+}
+
+func (a *Account) MustToChatMemberId() chat.MemberId {
+	id, err := a.ToChatMemberId()
+	if err != nil {
+		panic(err)
+	}
+	return id
 }
 
 func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
