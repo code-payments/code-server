@@ -56,3 +56,11 @@ This will evolve as we continue to build out the platform and open up more ways 
 ## Getting Help
 
 If you have any additional questions or need help integrating Code into your website or application, please reach out to us on [Discord](https://discord.gg/T8Tpj8DBFp) or [Twitter](https://twitter.com/getcode).
+
+### Using custom Swap API endpoints
+
+You can set custom URLs via the configuration for any self-hosted Jupiter APIs, like the [V6 Swap API](https://station.jup.ag/docs/apis/self-hosted) or [Paid Hosted APIs](https://station.jup.ag/docs/apis/self-hosted#paid-hosted-apis) Here is an example:
+
+```
+JUPITER_API_BASE_URL=https://quote-api.jup.ag/v6/
+```
