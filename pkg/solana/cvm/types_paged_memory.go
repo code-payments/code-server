@@ -98,7 +98,9 @@ func (obj *PagedMemory) Unmarshal(data []byte) error {
 	var offset int
 
 	obj.Items = make([]AllocatedMemory, obj.capacity)
-	obj.Sectors = make([]Sector, obj.numSectors)
+	for i := 0; i < int(obj.numSectors); i++ {
+		obj.Sectors = append(obj.Sectors, NewSector(obj.numPages, obj.pageSize))
+	}
 
 	for i := 0; i < int(obj.capacity); i++ {
 		getAllocatedMemory(data, &obj.Items[i], &offset)
@@ -117,8 +119,8 @@ func (obj *PagedMemory) String() string {
 	}
 
 	sectorStrings := make([]string, len(obj.Sectors))
-	for i, page := range obj.Sectors {
-		sectorStrings[i] = page.String()
+	for i, sector := range obj.Sectors {
+		sectorStrings[i] = sector.String()
 	}
 
 	return fmt.Sprintf(

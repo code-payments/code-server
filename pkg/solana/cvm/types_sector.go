@@ -49,7 +49,9 @@ func (obj *Sector) Unmarshal(data []byte) error {
 
 	var offset int
 
-	obj.Pages = make([]Page, obj.numPages)
+	for i := 0; i < int(obj.numPages); i++ {
+		obj.Pages = append(obj.Pages, NewPage(obj.pageSize))
+	}
 
 	getUint8(data, &obj.NumAllocated, &offset)
 	for i := 0; i < int(obj.numPages); i++ {
