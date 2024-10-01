@@ -8,7 +8,7 @@ import (
 
 const (
 	AccountMemoryCapacity      = 100 // todo: set to 65536
-	AccountMemorySectors       = 2   // TODO: set to 255
+	AccountMemorySectors       = 2   // todo: set to 255
 	AccountMemoryPages         = 255
 	MixedAccountMemoryPageSize = 32
 

@@ -29,7 +29,7 @@ func GetPageSizeFromMemoryLayout(layout MemoryLayout) uint32 {
 	case MemoryLayoutTimelock:
 		return GetVirtualAccountSizeInMemory(VirtualAccountTypeTimelock)
 	case MemoryLayoutNonce:
-		return GetVirtualAccountSizeInMemory(VirtualDurableNonceSize)
+		return GetVirtualAccountSizeInMemory(VirtualAccountTypeDurableNonce)
 	case MemoryLayoutRelay:
 		return GetVirtualAccountSizeInMemory(VirtualAccountTypeRelay)
 	default:
