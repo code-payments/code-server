@@ -21,7 +21,7 @@ const (
 	// change timelock PDAs and have consequences with existing splitter treasuries.
 	//
 	// todo: configurable
-	realSubsidizerPublicKey = "codeHy87wGD5oMRLG75qKqsSi1vWE3oxNyYmXo5F9YR"
+	realSubsidizerPublicKey = "f1ipTG6xPiWu9uYD6fZ95isG1BscqhxqutPWU94243j"
 
 	// Ensure this is a large enough buffer. The enforcement of a min balance isn't
 	// perfect to say the least.

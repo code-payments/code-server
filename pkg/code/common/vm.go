@@ -2,12 +2,8 @@ package common
 
 var (
 	// The well-known Code VM instance used by the Code app
-	//
-	// todo: real public key once program is deployed and VM instance is initialized
-	CodeVmAccount, _ = NewAccountFromPublicKeyString("BkwoMG33cgSDrc3fEjfhZufqzYC3icXTTMajuueXyYGG")
+	CodeVmAccount, _ = NewAccountFromPublicKeyString("75Sy7zpLUKGARXgDsuJ6MYQSAco9H56PKkeARGwtW1N8")
 
 	// The well-known Code VM instance omnibus used by the Code app
-	//
-	// todo: real public key once program is deployed and VM omnibus instance is initialized
-	CodeVmOmnibusAccount, _ = NewAccountFromPublicKeyString("SqKpQBYg8H69c8dusmSoLsya281cqhfzDVR2EJFHy1P")
+	CodeVmOmnibusAccount, _ = NewAccountFromPublicKeyString("uGKkBSS8runWxcLPGh8WyX9KP6vkiM4GeNHmwu6o4ZP")
 )
