@@ -100,7 +100,7 @@ func (p *service) getRentAmount(ctx context.Context) (uint64, error) {
 	return p.rent, nil
 }
 
-func (p *service) createNonce(ctx context.Context) (*nonce.Record, error) {
+func (p *service) createSolanaMainnetNonce(ctx context.Context) (*nonce.Record, error) {
 	err := common.EnforceMinimumSubsidizerBalance(ctx, p.data)
 	if err != nil {
 		return nil, err
@@ -112,10 +112,12 @@ func (p *service) createNonce(ctx context.Context) (*nonce.Record, error) {
 	}
 
 	res := nonce.Record{
-		Address:   key.PublicKey,
-		Authority: common.GetSubsidizer().PublicKey().ToBase58(),
-		Purpose:   nonce.PurposeClientTransaction, // todo: intelligently set a purpose
-		State:     nonce.StateUnknown,
+		Address:             key.PublicKey,
+		Authority:           common.GetSubsidizer().PublicKey().ToBase58(),
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeOnDemandTransaction, // todo: intelligently set a purpose, but most use cases require this type of nonce
+		State:               nonce.StateUnknown,
 	}
 
 	tx, err := p.createNonceAccountTx(ctx, &res)

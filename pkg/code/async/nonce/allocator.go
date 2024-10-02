@@ -69,8 +69,9 @@ func (p *service) generateNonceAccountsOnSolanaMainnet(serviceCtx context.Contex
 				p.log.Warn("The nonce pool is too small.")
 			}
 
-			_, err = p.createNonce(tracedCtx)
+			_, err = p.createSolanaMainnetNonce(tracedCtx)
 			if err != nil {
+				p.log.WithError(err).Warn("failure creating nonce")
 				return err
 			}
 
