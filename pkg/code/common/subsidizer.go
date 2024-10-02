@@ -27,7 +27,7 @@ const (
 	// perfect to say the least.
 	//
 	// todo: configurable
-	minSubsidizerBalance = 250_000_000_000 // 250 SOL
+	minSubsidizerBalance = 1_000_000_000 // 1 SOL
 )
 
 var (
