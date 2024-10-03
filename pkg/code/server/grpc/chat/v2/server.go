@@ -859,6 +859,10 @@ func (s *Server) NotifyIsTyping(ctx context.Context, req *chatpb.NotifyIsTypingR
 	return &chatpb.NotifyIsTypingResponse{}, nil
 }
 
+func (s *Server) NotifyMessage(_ context.Context, _ chat.ChatId, _ *chatpb.Message) {
+	// TODO: Cleanup this up
+}
+
 // todo: needs to have a 'fill' version
 func (s *Server) getMetadata(ctx context.Context, asMember chat.MemberId, id chat.ChatId) (*chatpb.Metadata, error) {
 	mdRecord, err := s.data.GetChatMetadata(ctx, id)
@@ -935,6 +939,8 @@ func (s *Server) populateMetadata(ctx context.Context, mdRecord *chat.MetadataRe
 		if !bytes.Equal(asMember, memberId) {
 			continue
 		}
+
+		member.IsSelf = true
 
 		// TODO: Do we actually want to compute this feature? It's maybe non-trivial.
 		//       Maybe should have a safety valve at minimum.

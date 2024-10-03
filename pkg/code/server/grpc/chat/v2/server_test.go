@@ -126,6 +126,7 @@ func TestServerHappy(t *testing.T) {
 						DisplayName:   "name-a",
 						ProfilePicUrl: "pp-a",
 					},
+					IsSelf: true,
 				},
 				{
 					MemberId: userB.MustToChatMemberId().ToProto(),
@@ -151,6 +152,10 @@ func TestServerHappy(t *testing.T) {
 		for _, u := range []*common.Account{userA, userB} {
 			getChats := &chatpb.GetChatsRequest{Owner: u.ToProto()}
 			getChats.Signature = signProtoMessage(t, getChats, u, false)
+
+			for _, member := range resp.Chat.Members {
+				member.IsSelf = bytes.Equal(u.MustToChatMemberId(), member.MemberId.Value)
+			}
 
 			chats, err := env.client.GetChats(ctx, getChats)
 			require.NoError(t, err)

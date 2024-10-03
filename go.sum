@@ -423,8 +423,8 @@ github.com/mattn/go-isatty v0.0.12/go.mod h1:cbi8OIDigv2wuxKPP5vlRcQ1OAZbq2CE4Ky
 github.com/mattn/go-sqlite3 v1.14.6 h1:dNPt6NO46WmLVt2DLNpwczCmdV5boIZ6g/tlDrlRUbg=
 github.com/mattn/go-sqlite3 v1.14.6/go.mod h1:NyWgC/yNuGj7Q9rpYnZvas74GogHl5/Z4A/KQRfk6bU=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
-github.com/mfycheng/code-protobuf-api v0.0.0-20240930161350-0d6798fdd5b8 h1:cP0i0oAMtWtyBP0wMOuVOzg2i3dYQZOuq2CtXrgr8iM=
-github.com/mfycheng/code-protobuf-api v0.0.0-20240930161350-0d6798fdd5b8/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
+github.com/mfycheng/code-protobuf-api v0.0.0-20241003150533-14516868a8aa h1:mL+mTGMgq3bFdJ0Z4Mu4m5bL2Lg0LRR6WehBBvYllwE=
+github.com/mfycheng/code-protobuf-api v0.0.0-20241003150533-14516868a8aa/go.mod h1:pHQm75vydD6Cm2qHAzlimW6drysm489Z4tVxC2zHSsU=
 github.com/miekg/dns v1.0.14/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 github.com/mitchellh/cli v1.0.0/go.mod h1:hNIlj7HEI86fIcpObd7a0FcrxTWetlwJDGcceTlRvqc=
 github.com/mitchellh/go-homedir v1.0.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=

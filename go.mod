@@ -132,4 +132,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/code-payments/code-protobuf-api => github.com/mfycheng/code-protobuf-api v0.0.0-20240930161350-0d6798fdd5b8
+replace github.com/code-payments/code-protobuf-api => github.com/mfycheng/code-protobuf-api v0.0.0-20241003150533-14516868a8aa
