@@ -109,9 +109,13 @@ type SendPrivatePaymentMetadata struct {
 	IsRemoteSend   bool
 	IsMicroPayment bool
 	IsTip          bool
+	IsChat         bool
 
 	// Set when IsTip = true
 	TipMetadata *TipMetadata
+
+	// Set when IsChat = true
+	ChatId string
 }
 
 type TipMetadata struct {
@@ -578,8 +582,10 @@ func (m *SendPrivatePaymentMetadata) Clone() SendPrivatePaymentMetadata {
 		IsRemoteSend:   m.IsRemoteSend,
 		IsMicroPayment: m.IsMicroPayment,
 		IsTip:          m.IsTip,
+		IsChat:         m.IsChat,
 
 		TipMetadata: tipMetadata,
+		ChatId:      m.ChatId,
 	}
 }
 
@@ -605,8 +611,10 @@ func (m *SendPrivatePaymentMetadata) CopyTo(dst *SendPrivatePaymentMetadata) {
 	dst.IsRemoteSend = m.IsRemoteSend
 	dst.IsMicroPayment = m.IsMicroPayment
 	dst.IsTip = m.IsTip
+	dst.IsChat = m.IsChat
 
 	dst.TipMetadata = tipMetadata
+	dst.ChatId = m.ChatId
 }
 
 func (m *SendPrivatePaymentMetadata) Validate() error {
@@ -648,6 +656,14 @@ func (m *SendPrivatePaymentMetadata) Validate() error {
 		}
 	} else if m.TipMetadata != nil {
 		return errors.New("tip metadata can only be set for tips")
+	}
+
+	if m.IsChat {
+		if len(m.ChatId) == 0 {
+			return errors.New("chat_id required for chat")
+		}
+	} else if m.ChatId != "" {
+		return errors.New("chat_id can only be set for chats")
 	}
 
 	return nil
