@@ -47,13 +47,15 @@ const (
 			is_issuer_voiding_gift_card BOOL NOT NULL,
 			is_micro_payment BOOL NOT NULL,
 			is_tip BOOL NOT NULL,
+			is_chat BOOL NOT NULL,
 
 			relationship_to TEXT NULL,
 
 			tip_platform INTEGER NULL,
 			tipped_username TEXT NULL,
 
-			phone_number text NULL,
+			chat_id TEXT NULL,
+			phone_number TEXT NULL,
 
 			state integer NOT NULL,
 
