@@ -773,9 +773,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			if fulfillmentWithMetadata.requiresClientSignature {
 				nonceToReserve := reservedNonces[i]
 				if isIntentUpdateOperation {
-					err = nonceToReserve.UpdateSignature(ctx, *fulfillmentWithMetadata.record.Signature)
+					err = nonceToReserve.UpdateSignature(ctx, *fulfillmentWithMetadata.record.VirtualSignature)
 				} else {
-					err = nonceToReserve.MarkReservedWithSignature(ctx, *fulfillmentWithMetadata.record.Signature)
+					err = nonceToReserve.MarkReservedWithSignature(ctx, *fulfillmentWithMetadata.record.VirtualSignature)
 				}
 				if err != nil {
 					log.WithError(err).Warn("failure reserving nonce with fulfillment signature")
