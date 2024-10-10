@@ -3,14 +3,14 @@ package cvm
 type Opcode uint8
 
 const (
-	OpcodeTimelockTransferToInternal Opcode = 10
-	OpcodeTimelockTransferToExternal Opcode = 11
+	OpcodeTimelockTransferToExternal Opcode = 10
+	OpcodeTimelockTransferToInternal Opcode = 11
 	OpcodeTimelockTransferToRelay    Opcode = 12
-	OpcodeTimelockWithdrawToInternal Opcode = 13
-	OpcodeTimelockWithdrawToExternal Opcode = 14
+	OpcodeTimelockWithdrawToExternal Opcode = 13
+	OpcodeTimelockWithdrawToInternal Opcode = 14
 
-	OpcodeSplitterTransferToInternal Opcode = 20
-	OpcodeSplitterTransferToExternal Opcode = 21
+	OpcodeSplitterTransferToExternal Opcode = 20
+	OpcodeSplitterTransferToInternal Opcode = 21
 )
 
 func putOpcode(dst []byte, v Opcode, offset *int) {
