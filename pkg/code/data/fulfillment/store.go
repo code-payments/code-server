@@ -59,6 +59,9 @@ type Store interface {
 	// GetBySignature finds the fulfillment record for a given signature.
 	GetBySignature(ctx context.Context, signature string) (*Record, error)
 
+	// GetByVirtualSignature finds the fulfillment record for a given virtual signature.
+	GetByVirtualSignature(ctx context.Context, signature string) (*Record, error)
+
 	// MarkAsActivelyScheduled marks a fulfillment as actively scheduled
 	MarkAsActivelyScheduled(ctx context.Context, id uint64) error
 

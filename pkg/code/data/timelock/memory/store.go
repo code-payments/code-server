@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/database/query"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
 type store struct {
@@ -48,11 +48,6 @@ func (s *store) Save(_ context.Context, data *timelock.Record) error {
 			value := *data.UnlockAt
 			unlockAt = &value
 		}
-
-		item.DataVersion = data.DataVersion
-
-		item.CloseAuthority = data.CloseAuthority
-		item.TimeAuthority = data.TimeAuthority
 
 		item.VaultState = data.VaultState
 		item.UnlockAt = unlockAt

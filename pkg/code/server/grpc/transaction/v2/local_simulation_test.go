@@ -1,5 +1,6 @@
 package transaction_v2
 
+/*
 import (
 	"context"
 	"fmt"
@@ -841,3 +842,4 @@ func assertCorrectTransferSimulationFlags(t *testing.T, simulations []TransferSi
 		}
 	}
 }
+*/

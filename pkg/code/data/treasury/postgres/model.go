@@ -8,10 +8,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	q "github.com/code-payments/code-server/pkg/database/query"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
 )
 
 const (
@@ -23,7 +22,7 @@ const (
 type treasuryPoolModel struct {
 	Id sql.NullInt64 `db:"id"`
 
-	DataVersion uint `db:"data_version"`
+	Vm string `db:"vm"`
 
 	Name string `db:"name"`
 
@@ -81,7 +80,7 @@ func toTreasuryPoolModel(obj *treasury.Record) (*treasuryPoolModel, error) {
 	}
 
 	return &treasuryPoolModel{
-		DataVersion: uint(obj.DataVersion),
+		Vm: obj.Vm,
 
 		Name: obj.Name,
 
@@ -116,7 +115,7 @@ func fromTreasuryPoolModel(obj *treasuryPoolModel) *treasury.Record {
 	return &treasury.Record{
 		Id: uint64(obj.Id.Int64),
 
-		DataVersion: splitter_token.DataVersion(obj.DataVersion),
+		Vm: obj.Vm,
 
 		Name: obj.Name,
 
@@ -147,18 +146,18 @@ func (m *treasuryPoolModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 		m.LastUpdatedAt = time.Now()
 
 		query := `INSERT INTO ` + treasuryPoolTableName + `
-			(data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at)
+			(vm, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			ON CONFLICT (address)
 			DO UPDATE
 				SET current_index = $9, solana_block = $11, last_updated_at = $13
 				WHERE ` + treasuryPoolTableName + `.address = $3 AND ` + treasuryPoolTableName + `.vault = $5 AND ` + treasuryPoolTableName + `.solana_block < $11
-			RETURNING id, data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at
+			RETURNING id, vm, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at
 		`
 		err := tx.QueryRowxContext(
 			ctx,
 			query,
-			m.DataVersion,
+			m.Vm,
 			m.Name,
 			m.Address,
 			m.Bump,
@@ -178,7 +177,7 @@ func (m *treasuryPoolModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 
 		query = `INSERT INTO ` + recentRootTableName + `
 			(pool, index, recent_root, at_solana_block)
-			VALUES ($1,$2,$3, $4)
+			VALUES ($1,$2,$3,$4)
 			RETURNING id, pool, index, recent_root, at_solana_block
 		`
 		for _, historyItem := range m.HistoryList {
@@ -265,7 +264,7 @@ func (m *fundingModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 
 func dbGetByName(ctx context.Context, db *sqlx.DB, name string) (*treasuryPoolModel, error) {
 	var res treasuryPoolModel
-	query := `SELECT id, data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at FROM ` + treasuryPoolTableName + `
+	query := `SELECT id, vm, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at FROM ` + treasuryPoolTableName + `
 		WHERE name = $1
 	`
 	err := db.GetContext(ctx, &res, query, name)
@@ -283,7 +282,7 @@ func dbGetByName(ctx context.Context, db *sqlx.DB, name string) (*treasuryPoolMo
 
 func dbGetByAddress(ctx context.Context, db *sqlx.DB, address string) (*treasuryPoolModel, error) {
 	var res treasuryPoolModel
-	query := `SELECT id, data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at FROM ` + treasuryPoolTableName + `
+	query := `SELECT id, vm, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at FROM ` + treasuryPoolTableName + `
 		WHERE address = $1
 	`
 	err := db.GetContext(ctx, &res, query, address)
@@ -301,7 +300,7 @@ func dbGetByAddress(ctx context.Context, db *sqlx.DB, address string) (*treasury
 
 func dbGetByVault(ctx context.Context, db *sqlx.DB, vault string) (*treasuryPoolModel, error) {
 	var res treasuryPoolModel
-	query := `SELECT id, data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at FROM ` + treasuryPoolTableName + `
+	query := `SELECT id, vm, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at FROM ` + treasuryPoolTableName + `
 		WHERE vault = $1
 	`
 	err := db.GetContext(ctx, &res, query, vault)
@@ -320,7 +319,7 @@ func dbGetByVault(ctx context.Context, db *sqlx.DB, vault string) (*treasuryPool
 func dbGetAllByState(ctx context.Context, db *sqlx.DB, state treasury.TreasuryPoolState, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*treasuryPoolModel, error) {
 	res := []*treasuryPoolModel{}
 
-	query := `SELECT id, data_version, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at
+	query := `SELECT id, vm, name, address, bump, vault, vault_bump, authority, merkle_tree_levels, current_index, history_list_size, solana_block, state, last_updated_at
 		FROM ` + treasuryPoolTableName + `
 		WHERE (state = $1)
 	`

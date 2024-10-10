@@ -27,7 +27,6 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 
 	// Setup workers to watch for commitment state changes on the Solana side
 	for _, item := range []commitment.State{
-		commitment.StateReadyToOpen,
 		commitment.StateOpen,
 		commitment.StateClosed,
 

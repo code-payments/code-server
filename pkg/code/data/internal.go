@@ -16,6 +16,7 @@ import (
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	pg "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -29,6 +30,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
 	"github.com/code-payments/code-server/pkg/code/data/contact"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	cvm_ram "github.com/code-payments/code-server/pkg/code/data/cvm/ram"
+	cvm_storage "github.com/code-payments/code-server/pkg/code/data/cvm/storage"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/event"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
@@ -63,6 +66,8 @@ import (
 	commitment_memory_client "github.com/code-payments/code-server/pkg/code/data/commitment/memory"
 	contact_memory_client "github.com/code-payments/code-server/pkg/code/data/contact/memory"
 	currency_memory_client "github.com/code-payments/code-server/pkg/code/data/currency/memory"
+	cvm_ram_memory_client "github.com/code-payments/code-server/pkg/code/data/cvm/ram/memory"
+	cvm_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/cvm/storage/memory"
 	deposit_memory_client "github.com/code-payments/code-server/pkg/code/data/deposit/memory"
 	event_memory_client "github.com/code-payments/code-server/pkg/code/data/event/memory"
 	fulfillment_memory_client "github.com/code-payments/code-server/pkg/code/data/fulfillment/memory"
@@ -98,6 +103,8 @@ import (
 	commitment_postgres_client "github.com/code-payments/code-server/pkg/code/data/commitment/postgres"
 	contact_postgres_client "github.com/code-payments/code-server/pkg/code/data/contact/postgres"
 	currency_postgres_client "github.com/code-payments/code-server/pkg/code/data/currency/postgres"
+	cvm_ram_postgres_client "github.com/code-payments/code-server/pkg/code/data/cvm/ram/postgres"
+	cvm_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/cvm/storage/postgres"
 	deposit_postgres_client "github.com/code-payments/code-server/pkg/code/data/deposit/postgres"
 	event_postgres_client "github.com/code-payments/code-server/pkg/code/data/event/postgres"
 	fulfillment_postgres_client "github.com/code-payments/code-server/pkg/code/data/fulfillment/postgres"
@@ -175,17 +182,18 @@ type DatabaseData interface {
 	// Nonce
 	// --------------------------------------------------------------------------------
 	GetNonce(ctx context.Context, address string) (*nonce.Record, error)
-	GetNonceCount(ctx context.Context) (uint64, error)
-	GetNonceCountByState(ctx context.Context, state nonce.State) (uint64, error)
-	GetNonceCountByStateAndPurpose(ctx context.Context, state nonce.State, purpose nonce.Purpose) (uint64, error)
-	GetAllNonceByState(ctx context.Context, state nonce.State, opts ...query.Option) ([]*nonce.Record, error)
-	GetRandomAvailableNonceByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error)
+	GetNonceCount(ctx context.Context, env nonce.Environment, instance string) (uint64, error)
+	GetNonceCountByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State) (uint64, error)
+	GetNonceCountByStateAndPurpose(ctx context.Context, env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) (uint64, error)
+	GetAllNonceByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State, opts ...query.Option) ([]*nonce.Record, error)
+	GetRandomAvailableNonceByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error)
 	SaveNonce(ctx context.Context, record *nonce.Record) error
 
 	// Fulfillment
 	// --------------------------------------------------------------------------------
 	GetFulfillmentById(ctx context.Context, id uint64) (*fulfillment.Record, error)
 	GetFulfillmentBySignature(ctx context.Context, signature string) (*fulfillment.Record, error)
+	GetFulfillmentByVirtualSignature(ctx context.Context, signature string) (*fulfillment.Record, error)
 	GetFulfillmentCount(ctx context.Context) (uint64, error)
 	GetFulfillmentCountByState(ctx context.Context, state fulfillment.State) (uint64, error)
 	GetFulfillmentCountByStateGroupedByType(ctx context.Context, state fulfillment.State) (map[fulfillment.Type]uint64, error)
@@ -324,7 +332,7 @@ type DatabaseData interface {
 	GetUsedTreasuryPoolDeficitFromCommitments(ctx context.Context, treasuryPool string) (uint64, error)
 	GetTotalTreasuryPoolDeficitFromCommitments(ctx context.Context, treasuryPool string) (uint64, error)
 	CountCommitmentsByState(ctx context.Context, state commitment.State) (uint64, error)
-	CountCommitmentRepaymentsDivertedToVault(ctx context.Context, vault string) (uint64, error)
+	CountPendingCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error)
 
 	// Treasury Pool
 	// --------------------------------------------------------------------------------
@@ -435,6 +443,19 @@ type DatabaseData interface {
 	IsTweetProcessed(ctx context.Context, tweetId string) (bool, error)
 	MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error
 
+	// CVM RAM
+	// --------------------------------------------------------------------------------
+	InitializeVmMemory(ctx context.Context, record *cvm_ram.Record) error
+	FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error
+	FreeVmMemoryByAddress(ctx context.Context, address string) error
+	ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error)
+
+	// CVM Storage
+	// --------------------------------------------------------------------------------
+	InitializeVmStorage(ctx context.Context, record *cvm_storage.Record) error
+	FindAnyVmStorageWithAvailableCapacity(ctx context.Context, vm string, purpose cvm_storage.Purpose, minCapacity uint64) (*cvm_storage.Record, error)
+	ReserveVmStorage(ctx context.Context, vm string, purpose cvm_storage.Purpose, address string) (string, error)
+
 	// ExecuteInTx executes fn with a single DB transaction that is scoped to the call.
 	// This enables more complex transactions that can span many calls across the provider.
 	//
@@ -478,6 +499,8 @@ type DatabaseProvider struct {
 	preferences    preferences.Store
 	airdrop        airdrop.Store
 	twitter        twitter.Store
+	cvmRam         cvm_ram.Store
+	cvmStorage     cvm_storage.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -540,6 +563,8 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		preferences:    preferences_postgres_client.New(db),
 		airdrop:        airdrop_postgres_client.New(db),
 		twitter:        twitter_postgres_client.New(db),
+		cvmRam:         cvm_ram_postgres_client.New(db),
+		cvmStorage:     cvm_storage_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -583,6 +608,8 @@ func NewTestDatabaseProvider() DatabaseData {
 		preferences:    preferences_memory_client.New(),
 		airdrop:        airdrop_memory_client.New(),
 		twitter:        twitter_memory_client.New(),
+		cvmRam:         cvm_ram_memory_client.New(),
+		cvmStorage:     cvm_storage_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -723,25 +750,25 @@ func (dp *DatabaseProvider) SaveKey(ctx context.Context, record *vault.Record) e
 func (dp *DatabaseProvider) GetNonce(ctx context.Context, address string) (*nonce.Record, error) {
 	return dp.nonces.Get(ctx, address)
 }
-func (dp *DatabaseProvider) GetNonceCount(ctx context.Context) (uint64, error) {
-	return dp.nonces.Count(ctx)
+func (dp *DatabaseProvider) GetNonceCount(ctx context.Context, env nonce.Environment, instance string) (uint64, error) {
+	return dp.nonces.Count(ctx, env, instance)
 }
-func (dp *DatabaseProvider) GetNonceCountByState(ctx context.Context, state nonce.State) (uint64, error) {
-	return dp.nonces.CountByState(ctx, state)
+func (dp *DatabaseProvider) GetNonceCountByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State) (uint64, error) {
+	return dp.nonces.CountByState(ctx, env, instance, state)
 }
-func (dp *DatabaseProvider) GetNonceCountByStateAndPurpose(ctx context.Context, state nonce.State, purpose nonce.Purpose) (uint64, error) {
-	return dp.nonces.CountByStateAndPurpose(ctx, state, purpose)
+func (dp *DatabaseProvider) GetNonceCountByStateAndPurpose(ctx context.Context, env nonce.Environment, instance string, state nonce.State, purpose nonce.Purpose) (uint64, error) {
+	return dp.nonces.CountByStateAndPurpose(ctx, env, instance, state, purpose)
 }
-func (dp *DatabaseProvider) GetAllNonceByState(ctx context.Context, state nonce.State, opts ...query.Option) ([]*nonce.Record, error) {
+func (dp *DatabaseProvider) GetAllNonceByState(ctx context.Context, env nonce.Environment, instance string, state nonce.State, opts ...query.Option) ([]*nonce.Record, error) {
 	req, err := query.DefaultPaginationHandler(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return dp.nonces.GetAllByState(ctx, state, req.Cursor, req.Limit, req.SortBy)
+	return dp.nonces.GetAllByState(ctx, env, instance, state, req.Cursor, req.Limit, req.SortBy)
 }
-func (dp *DatabaseProvider) GetRandomAvailableNonceByPurpose(ctx context.Context, purpose nonce.Purpose) (*nonce.Record, error) {
-	return dp.nonces.GetRandomAvailableByPurpose(ctx, purpose)
+func (dp *DatabaseProvider) GetRandomAvailableNonceByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error) {
+	return dp.nonces.GetRandomAvailableByPurpose(ctx, env, instance, purpose)
 }
 func (dp *DatabaseProvider) SaveNonce(ctx context.Context, record *nonce.Record) error {
 	return dp.nonces.Save(ctx, record)
@@ -754,6 +781,9 @@ func (dp *DatabaseProvider) GetFulfillmentById(ctx context.Context, id uint64) (
 }
 func (dp *DatabaseProvider) GetFulfillmentBySignature(ctx context.Context, signature string) (*fulfillment.Record, error) {
 	return dp.fulfillments.GetBySignature(ctx, signature)
+}
+func (dp *DatabaseProvider) GetFulfillmentByVirtualSignature(ctx context.Context, signature string) (*fulfillment.Record, error) {
+	return dp.fulfillments.GetByVirtualSignature(ctx, signature)
 }
 func (dp *DatabaseProvider) GetFulfillmentCount(ctx context.Context) (uint64, error) {
 	return dp.fulfillments.Count(ctx)
@@ -1283,8 +1313,8 @@ func (dp *DatabaseProvider) GetTotalTreasuryPoolDeficitFromCommitments(ctx conte
 func (dp *DatabaseProvider) CountCommitmentsByState(ctx context.Context, state commitment.State) (uint64, error) {
 	return dp.commitment.CountByState(ctx, state)
 }
-func (dp *DatabaseProvider) CountCommitmentRepaymentsDivertedToVault(ctx context.Context, vault string) (uint64, error) {
-	return dp.commitment.CountRepaymentsDivertedToVault(ctx, vault)
+func (dp *DatabaseProvider) CountPendingCommitmentRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
+	return dp.commitment.CountPendingRepaymentsDivertedToCommitment(ctx, address)
 }
 
 // Treasury Pool
@@ -1546,4 +1576,31 @@ func (dp *DatabaseProvider) IsTweetProcessed(ctx context.Context, tweetId string
 }
 func (dp *DatabaseProvider) MarkTwitterNonceAsUsed(ctx context.Context, tweetId string, nonce uuid.UUID) error {
 	return dp.twitter.MarkNonceAsUsed(ctx, tweetId, nonce)
+}
+
+// VM RAM
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) InitializeVmMemory(ctx context.Context, record *cvm_ram.Record) error {
+	return dp.cvmRam.InitializeMemory(ctx, record)
+}
+func (dp *DatabaseProvider) FreeVmMemoryByIndex(ctx context.Context, memoryAccount string, index uint16) error {
+	return dp.cvmRam.FreeMemoryByIndex(ctx, memoryAccount, index)
+}
+func (dp *DatabaseProvider) FreeVmMemoryByAddress(ctx context.Context, address string) error {
+	return dp.cvmRam.FreeMemoryByAddress(ctx, address)
+}
+func (dp *DatabaseProvider) ReserveVmMemory(ctx context.Context, vm string, accountType cvm.VirtualAccountType, address string) (string, uint16, error) {
+	return dp.cvmRam.ReserveMemory(ctx, vm, accountType, address)
+}
+
+// VM Storage
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) InitializeVmStorage(ctx context.Context, record *cvm_storage.Record) error {
+	return dp.cvmStorage.InitializeStorage(ctx, record)
+}
+func (dp *DatabaseProvider) FindAnyVmStorageWithAvailableCapacity(ctx context.Context, vm string, purpose cvm_storage.Purpose, minCapacity uint64) (*cvm_storage.Record, error) {
+	return dp.cvmStorage.FindAnyWithAvailableCapacity(ctx, vm, purpose, minCapacity)
+}
+func (dp *DatabaseProvider) ReserveVmStorage(ctx context.Context, vm string, purpose cvm_storage.Purpose, address string) (string, error) {
+	return dp.cvmStorage.ReserveStorage(ctx, vm, purpose, address)
 }

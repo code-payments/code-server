@@ -7,7 +7,7 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
 type TreasuryPoolState uint8
@@ -29,7 +29,7 @@ const (
 type Record struct {
 	Id uint64
 
-	DataVersion splitter_token.DataVersion
+	Vm string
 
 	Name string
 
@@ -90,11 +90,7 @@ func (r *Record) ContainsRecentRoot(recentRoot string) (bool, int) {
 	return false, 0
 }
 
-func (r *Record) Update(data *splitter_token.PoolAccount, solanaBlock uint64) error {
-	if data.DataVersion != splitter_token.DataVersion1 {
-		return errors.New("data version must be 1")
-	}
-
+func (r *Record) Update(data *cvm.RelayAccount, solanaBlock uint64) error {
 	// Sanity check we're updating the right record by computing and checking
 	// the expected vault address
 
@@ -103,14 +99,14 @@ func (r *Record) Update(data *splitter_token.PoolAccount, solanaBlock uint64) er
 		return errors.Wrap(err, "error decoding address")
 	}
 
-	vaultAddressBytes, _, err := splitter_token.GetPoolVaultAddress(&splitter_token.GetPoolVaultAddressArgs{
-		Pool: addressBytes,
+	vaultAddressBytes, _, err := cvm.GetRelayVaultAddress(&cvm.GetRelayVaultAddressArgs{
+		RelayOrProof: addressBytes,
 	})
 	if err != nil {
 		return errors.Wrap(err, "error getting vault address")
 	}
 
-	if !bytes.Equal(vaultAddressBytes, data.Vault) {
+	if !bytes.Equal(vaultAddressBytes, data.Treasury.Vault) {
 		return errors.New("updating wrong pool record")
 	}
 
@@ -120,10 +116,10 @@ func (r *Record) Update(data *splitter_token.PoolAccount, solanaBlock uint64) er
 		return ErrStaleTreasuryPoolState
 	}
 
-	if r.CurrentIndex == data.CurrentIndex {
+	if r.CurrentIndex == data.RecentRoots.Offset {
 		var hasUpdatedHistoryList bool
 		for i := 0; i < int(r.HistoryListSize); i++ {
-			if r.HistoryList[i] != data.HistoryList[i].ToString() {
+			if r.HistoryList[i] != data.RecentRoots.Items[i].String() {
 				hasUpdatedHistoryList = true
 				break
 			}
@@ -136,11 +132,11 @@ func (r *Record) Update(data *splitter_token.PoolAccount, solanaBlock uint64) er
 
 	// It's now safe to update the record
 
-	r.CurrentIndex = data.CurrentIndex
+	r.CurrentIndex = data.RecentRoots.Offset
 
 	historyList := make([]string, r.HistoryListSize)
-	for i, recentRoot := range data.HistoryList {
-		historyList[i] = recentRoot.ToString()
+	for i, recentRoot := range data.RecentRoots.Items {
+		historyList[i] = recentRoot.String()
 	}
 	r.HistoryList = historyList
 
@@ -150,8 +146,8 @@ func (r *Record) Update(data *splitter_token.PoolAccount, solanaBlock uint64) er
 }
 
 func (r *Record) Validate() error {
-	if r.DataVersion != splitter_token.DataVersion1 {
-		return errors.New("data version must be 1")
+	if len(r.Vm) == 0 {
+		return errors.New("vm is required")
 	}
 
 	if len(r.Name) == 0 {
@@ -202,7 +198,7 @@ func (r *Record) Clone() *Record {
 	return &Record{
 		Id: r.Id,
 
-		DataVersion: r.DataVersion,
+		Vm: r.Vm,
 
 		Name: r.Name,
 
@@ -231,7 +227,7 @@ func (r *Record) Clone() *Record {
 func (r *Record) CopyTo(dst *Record) {
 	dst.Id = r.Id
 
-	dst.DataVersion = r.DataVersion
+	dst.Vm = r.Vm
 
 	dst.Name = r.Name
 

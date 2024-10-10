@@ -5,10 +5,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/code-payments/code-server/pkg/phone"
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/phone"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 var (
@@ -27,14 +27,14 @@ const (
 	TemporaryPrivacyTransferWithAuthority
 	PermanentPrivacyTransferWithAuthority
 	TransferWithCommitment
-	CloseEmptyTimelockAccount
-	CloseDormantTimelockAccount
+	CloseEmptyTimelockAccount   // Technically a compression with the new VM flows
+	CloseDormantTimelockAccount // Deprecated by the VM
 	SaveRecentRoot
-	InitializeCommitmentProof
-	UploadCommitmentProof
-	VerifyCommitmentProof // Deprecated, since we bundle verification with OpenCommitmentVault
-	OpenCommitmentVault
-	CloseCommitmentVault
+	InitializeCommitmentProof // Deprecated with new VM flows
+	UploadCommitmentProof     // Deprecated with new VM flows
+	VerifyCommitmentProof     // Deprecated with new VM flows
+	OpenCommitmentVault       // Deprecated with new VM flows
+	CloseCommitment
 )
 
 type State uint8
@@ -62,6 +62,13 @@ type Record struct {
 
 	Nonce     *string
 	Blockhash *string
+
+	// todo: For virtual instructions, assumes a single one per fulfillment.
+	//       We'll need new modelling when we get around to batching virtual
+	//       instructions, but we're starting with the easiest implementation.
+	VirtualSignature *string
+	VirtualNonce     *string
+	VirtualBlockhash *string
 
 	Source      string  // Source token account involved in the transaction
 	Destination *string // Destination token account involved in the transaction, when it makes sense (eg. transfers)
@@ -141,6 +148,9 @@ func (r *Record) Clone() Record {
 		Signature:                pointer.StringCopy(r.Signature),
 		Nonce:                    pointer.StringCopy(r.Nonce),
 		Blockhash:                pointer.StringCopy(r.Blockhash),
+		VirtualSignature:         pointer.StringCopy(r.VirtualSignature),
+		VirtualNonce:             pointer.StringCopy(r.VirtualNonce),
+		VirtualBlockhash:         pointer.StringCopy(r.VirtualBlockhash),
 		Source:                   r.Source,
 		Destination:              pointer.StringCopy(r.Destination),
 		IntentOrderingIndex:      r.IntentOrderingIndex,
@@ -164,6 +174,9 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Signature = r.Signature
 	dst.Nonce = r.Nonce
 	dst.Blockhash = r.Blockhash
+	dst.VirtualSignature = pointer.StringCopy(r.VirtualSignature)
+	dst.VirtualNonce = pointer.StringCopy(r.VirtualNonce)
+	dst.VirtualBlockhash = pointer.StringCopy(r.VirtualBlockhash)
 	dst.Source = r.Source
 	dst.Destination = r.Destination
 	dst.IntentOrderingIndex = r.IntentOrderingIndex
@@ -210,6 +223,22 @@ func (r *Record) Validate() error {
 
 	if (r.Nonce == nil) != (r.Blockhash == nil) {
 		return errors.New("nonce and blockhash must be set or not set at the same time")
+	}
+
+	if r.VirtualSignature != nil && len(*r.VirtualSignature) == 0 {
+		return errors.New("virtual signature is required when set")
+	}
+
+	if r.VirtualNonce != nil && len(*r.VirtualNonce) == 0 {
+		return errors.New("virtual nonce is required when set")
+	}
+
+	if r.VirtualBlockhash != nil && len(*r.VirtualBlockhash) == 0 {
+		return errors.New("virtual blockhash is required when set")
+	}
+
+	if (r.VirtualNonce == nil) != (r.VirtualBlockhash == nil) {
+		return errors.New("virtual nonce and virtual blockhash must be set or not set at the same time")
 	}
 
 	if len(r.Source) == 0 {
@@ -288,8 +317,8 @@ func (s Type) String() string {
 		return "verify_commitment_proof"
 	case OpenCommitmentVault:
 		return "open_commitment_vault"
-	case CloseCommitmentVault:
-		return "close_commitment_vault"
+	case CloseCommitment:
+		return "close_commitment"
 	}
 
 	return "unknown"

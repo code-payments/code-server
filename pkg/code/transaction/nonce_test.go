@@ -10,31 +10,34 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestNonce_SelectAvailableNonce(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	allNonces := generateAvailableNonces(t, env, nonce.PurposeClientTransaction, 10)
+	allNonces := generateAvailableNonces(t, env, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 10)
 	noncesByAddress := make(map[string]*nonce.Record)
 	for _, nonceRecord := range allNonces {
 		noncesByAddress[nonceRecord.Address] = nonceRecord
 	}
 
-	_, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeInternalServerProcess)
+	_, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
+	assert.Equal(t, ErrNoAvailableNonces, err)
+
+	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, testutil.NewRandomAccount(t).PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 	assert.Equal(t, ErrNoAvailableNonces, err)
 
 	selectedNonces := make(map[string]struct{})
 	for i := 0; i < len(noncesByAddress); i++ {
-		selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+		selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 		require.NoError(t, err)
 
 		_, ok := selectedNonces[selectedNonce.Account.PublicKey().ToBase58()]
@@ -55,36 +58,37 @@ func TestNonce_SelectAvailableNonce(t *testing.T) {
 	}
 	assert.Len(t, selectedNonces, len(noncesByAddress))
 
-	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 	assert.Equal(t, ErrNoAvailableNonces, err)
 
-	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.PurposeInternalServerProcess)
+	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 	assert.Equal(t, ErrNoAvailableNonces, err)
+
 }
 
 func TestNonce_SelectNonceFromFulfillmentToUpgrade_HappyPath(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonces(t, env, nonce.PurposeClientTransaction, 2)
+	generateAvailableNonces(t, env, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction, 2)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 
 	fulfillmentToUpgrade := &fulfillment.Record{
-		Nonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
-		Blockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
-		Signature: pointer.String("signature"),
+		VirtualNonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
+		VirtualBlockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
+		VirtualSignature: pointer.String("signature"),
 	}
 
-	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.Signature))
+	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.VirtualSignature))
 
 	selectedNonce.Unlock()
 
-	selectedNonce, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	selectedNonce, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	require.NoError(t, err)
 
-	assert.Equal(t, *fulfillmentToUpgrade.Nonce, selectedNonce.Account.PublicKey().ToBase58())
-	assert.Equal(t, *fulfillmentToUpgrade.Blockhash, base58.Encode(selectedNonce.Blockhash[:]))
+	assert.Equal(t, *fulfillmentToUpgrade.VirtualNonce, selectedNonce.Account.PublicKey().ToBase58())
+	assert.Equal(t, *fulfillmentToUpgrade.VirtualBlockhash, base58.Encode(selectedNonce.Blockhash[:]))
 
 	require.NoError(t, selectedNonce.UpdateSignature(env.ctx, "new_signature"))
 
@@ -95,25 +99,25 @@ func TestNonce_SelectNonceFromFulfillmentToUpgrade_HappyPath(t *testing.T) {
 
 	selectedNonce.Unlock()
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 }
 
-func TestNonce_SelectNonceFromFulfillmentToUpgrade_DangerousPath(t *testing.T) {
+func TestNonce_SelectVirtualNonceFromFulfillmentToUpgrade_DangerousPath(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonces(t, env, nonce.PurposeClientTransaction, 2)
+	generateAvailableNonces(t, env, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction, 2)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 
 	fulfillmentToUpgrade := &fulfillment.Record{
-		Nonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
-		Blockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
-		Signature: pointer.String("signature"),
+		VirtualNonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
+		VirtualBlockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
+		VirtualSignature: pointer.String("signature"),
 	}
 
-	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.Signature))
+	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, *fulfillmentToUpgrade.VirtualSignature))
 
 	selectedNonce.Unlock()
 
@@ -124,30 +128,30 @@ func TestNonce_SelectNonceFromFulfillmentToUpgrade_DangerousPath(t *testing.T) {
 	nonceRecord.Blockhash = "Cmui8pHYbKKox8g7n7xa2Qaxh1TSJsHpr3xCeNaEisdy"
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 
 	nonceRecord.Blockhash = originalBlockhash
 	nonceRecord.State = nonce.StateAvailable
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 
 	nonceRecord.State = nonce.StateReserved
 	nonceRecord.Signature = "other_signature"
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 
-	_, err = SelectNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
+	_, err = SelectVirtualNonceFromFulfillmentToUpgrade(env.ctx, env.data, fulfillmentToUpgrade)
 	assert.Error(t, err)
 }
 
 func TestNonce_MarkReservedWithSignature(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonce(t, env, nonce.PurposeClientTransaction)
+	generateAvailableNonce(t, env, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 
 	assert.Error(t, selectedNonce.MarkReservedWithSignature(env.ctx, ""))
@@ -164,9 +168,9 @@ func TestNonce_MarkReservedWithSignature(t *testing.T) {
 func TestNonce_UpdateSignature(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonce(t, env, nonce.PurposeClientTransaction)
+	generateAvailableNonce(t, env, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 	require.NoError(t, selectedNonce.MarkReservedWithSignature(env.ctx, "signature1"))
 
@@ -183,9 +187,9 @@ func TestNonce_UpdateSignature(t *testing.T) {
 func TestNonce_ReleaseIfNotReserved(t *testing.T) {
 	env := setupNonceTestEnv(t)
 
-	generateAvailableNonce(t, env, nonce.PurposeClientTransaction)
+	generateAvailableNonce(t, env, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 
-	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
 	require.NoError(t, err)
 
 	require.NoError(t, selectedNonce.ReleaseIfNotReserved())
@@ -222,7 +226,7 @@ func setupNonceTestEnv(t *testing.T) nonceTestEnv {
 	}
 }
 
-func generateAvailableNonce(t *testing.T, env nonceTestEnv, useCase nonce.Purpose) *nonce.Record {
+func generateAvailableNonce(t *testing.T, env nonceTestEnv, nonceEnv nonce.Environment, instance string, useCase nonce.Purpose) *nonce.Record {
 	nonceAccount := testutil.NewRandomAccount(t)
 
 	var bh solana.Blockhash
@@ -235,21 +239,23 @@ func generateAvailableNonce(t *testing.T, env nonceTestEnv, useCase nonce.Purpos
 		CreatedAt:  time.Now(),
 	}
 	nonceRecord := &nonce.Record{
-		Address:   nonceAccount.PublicKey().ToBase58(),
-		Authority: common.GetSubsidizer().PublicKey().ToBase58(),
-		Blockhash: base58.Encode(bh[:]),
-		Purpose:   nonce.PurposeClientTransaction,
-		State:     nonce.StateAvailable,
+		Address:             nonceAccount.PublicKey().ToBase58(),
+		Authority:           common.GetSubsidizer().PublicKey().ToBase58(),
+		Blockhash:           base58.Encode(bh[:]),
+		Environment:         nonceEnv,
+		EnvironmentInstance: instance,
+		Purpose:             nonce.PurposeClientTransaction,
+		State:               nonce.StateAvailable,
 	}
 	require.NoError(t, env.data.SaveKey(env.ctx, nonceKey))
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 	return nonceRecord
 }
 
-func generateAvailableNonces(t *testing.T, env nonceTestEnv, useCase nonce.Purpose, count int) []*nonce.Record {
+func generateAvailableNonces(t *testing.T, env nonceTestEnv, nonceEnv nonce.Environment, instance string, useCase nonce.Purpose, count int) []*nonce.Record {
 	var nonces []*nonce.Record
 	for i := 0; i < count; i++ {
-		nonces = append(nonces, generateAvailableNonce(t, env, useCase))
+		nonces = append(nonces, generateAvailableNonce(t, env, nonceEnv, instance, useCase))
 	}
 	return nonces
 }

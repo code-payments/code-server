@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mr-tron/base58/base58"
+	"github.com/mr-tron/base58"
 
 	commitment_worker "github.com/code-payments/code-server/pkg/code/async/commitment"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -202,7 +202,7 @@ func getProofForPrivacyUpgrade(ctx context.Context, data code_data.Provider, upg
 		return nil, err
 	}
 
-	newCommitmentVaultAccount, err := common.NewAccountFromPublicKeyString(upgradingTo.newCommitmentRecord.Vault)
+	newCommitmentVaultAccount, err := common.NewAccountFromPublicKeyString(upgradingTo.newCommitmentRecord.VaultAddress)
 	if err != nil {
 		return nil, err
 	}

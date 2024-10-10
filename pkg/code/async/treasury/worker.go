@@ -8,11 +8,11 @@ import (
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 
+	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	"github.com/code-payments/code-server/pkg/code/data/treasury"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
 const (
@@ -106,17 +106,13 @@ func (p *service) handleAvailable(ctx context.Context, record *treasury.Record) 
 }
 
 func (p *service) updateAccountState(ctx context.Context, record *treasury.Record) error {
-	if record.DataVersion != splitter_token.DataVersion1 {
-		return errors.New("unsupported data version")
-	}
-
 	// todo: Use a smarter block. Perhaps from the last finalized payment?
 	data, solanaBlock, err := p.data.GetBlockchainAccountDataAfterBlock(ctx, record.Address, record.SolanaBlock)
 	if err != nil {
 		return errors.Wrap(err, "error querying latest account data from blockchain")
 	}
 
-	var unmarshalled splitter_token.PoolAccount
+	var unmarshalled cvm.RelayAccount
 	err = unmarshalled.Unmarshal(data)
 	if err != nil {
 		return errors.Wrap(err, "error unmarshalling account data")

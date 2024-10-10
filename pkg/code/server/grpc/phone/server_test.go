@@ -587,7 +587,7 @@ func TestGetAssociatedPhoneNumber_UnlockedTimelockAccount(t *testing.T) {
 		LastVerifiedAt: time.Now(),
 	}))
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	require.NoError(t, err)
 	timelockRecord := timelockAccounts.ToDBRecord()
 	require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
@@ -596,7 +596,7 @@ func TestGetAssociatedPhoneNumber_UnlockedTimelockAccount(t *testing.T) {
 		OwnerAccount:     timelockRecord.VaultOwner,
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
-		MintAccount:      timelockRecord.Mint,
+		MintAccount:      timelockAccounts.Mint.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))

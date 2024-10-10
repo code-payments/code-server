@@ -15,7 +15,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 type Source uint8
@@ -96,12 +95,6 @@ func CalculateFromCache(ctx context.Context, data code_data.Provider, tokenAccou
 	strategies := []Strategy{
 		FundingFromExternalDeposits(ctx, data),
 		NetBalanceFromIntentActions(ctx, data),
-	}
-	if timelockRecord.DataVersion == timelock_token.DataVersionLegacy {
-		strategies = []Strategy{
-			FundingFromExternalDepositsForPrePrivacy2022Accounts(ctx, data),
-			NetBalanceFromPrePrivacy2022Intents(ctx, data),
-		}
 	}
 
 	balance, err := Calculate(
@@ -219,24 +212,6 @@ func NetBalanceFromIntentActions(ctx context.Context, data code_data.Provider) S
 	}
 }
 
-func NetBalanceFromPrePrivacy2022Intents(ctx context.Context, data code_data.Provider) Strategy {
-	return func(ctx context.Context, tokenAccount *common.Account, state *State) (*State, error) {
-		log := logrus.StandardLogger().WithFields(logrus.Fields{
-			"method":  "NetBalanceFromPrePrivacy2022Intents",
-			"account": tokenAccount.PublicKey().ToBase58(),
-		})
-
-		netBalance, err := data.GetNetBalanceFromPrePrivacy2022Intents(ctx, tokenAccount.PublicKey().ToBase58())
-		if err != nil {
-			log.WithError(err).Warn("failure getting net balance from pre-privacy intents")
-			return nil, errors.Wrap(err, "error getting net balance from pre-privacy intents")
-		}
-
-		state.current += netBalance
-		return state, nil
-	}
-}
-
 // FundingFromExternalDeposits is a balance calculation strategy that adds funding
 // from deposits from external accounts.
 func FundingFromExternalDeposits(ctx context.Context, data code_data.Provider) Strategy {
@@ -247,24 +222,6 @@ func FundingFromExternalDeposits(ctx context.Context, data code_data.Provider) S
 		})
 
 		amount, err := data.GetTotalExternalDepositedAmountInQuarks(ctx, tokenAccount.PublicKey().ToBase58())
-		if err != nil {
-			log.WithError(err).Warn("failure getting external deposit amount")
-			return nil, errors.Wrap(err, "error getting external deposit amount")
-		}
-		state.current += int64(amount)
-
-		return state, nil
-	}
-}
-
-func FundingFromExternalDepositsForPrePrivacy2022Accounts(ctx context.Context, data code_data.Provider) Strategy {
-	return func(ctx context.Context, tokenAccount *common.Account, state *State) (*State, error) {
-		log := logrus.StandardLogger().WithFields(logrus.Fields{
-			"method":  "FundingFromLegacyExternalDeposits",
-			"account": tokenAccount.PublicKey().ToBase58(),
-		})
-
-		amount, err := data.GetLegacyTotalExternalDepositAmountFromPrePrivacy2022Accounts(ctx, tokenAccount.PublicKey().ToBase58())
 		if err != nil {
 			log.WithError(err).Warn("failure getting external deposit amount")
 			return nil, errors.Wrap(err, "error getting external deposit amount")
@@ -367,13 +324,7 @@ func defaultBatchCalculationFromCache(ctx context.Context, data code_data.Provid
 			return nil, ErrNotManagedByCode
 		}
 
-		// We only support post-privacy accounts
-		switch timelockRecord.DataVersion {
-		case timelock_token.DataVersion1:
-			tokenAccounts = append(tokenAccounts, timelockRecord.VaultAddress)
-		default:
-			return nil, ErrUnhandledAccount
-		}
+		tokenAccounts = append(tokenAccounts, timelockRecord.VaultAddress)
 	}
 
 	return CalculateBatch(

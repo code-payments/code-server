@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -49,8 +49,8 @@ func (s *store) GetByAddress(ctx context.Context, address string) (*commitment.R
 }
 
 // GetByVault implements commitment.Store.GetByVault
-func (s *store) GetByVault(ctx context.Context, vault string) (*commitment.Record, error) {
-	model, err := dbGetByVault(ctx, s.db, vault)
+func (s *store) GetByVault(ctx context.Context, address string) (*commitment.Record, error) {
+	model, err := dbGetByVault(ctx, s.db, address)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (s *store) CountByState(ctx context.Context, state commitment.State) (uint6
 	return dbCountByState(ctx, s.db, state)
 }
 
-// CountRepaymentsDivertedToVault implements commitment.Store.CountRepaymentsDivertedToVault
-func (s *store) CountRepaymentsDivertedToVault(ctx context.Context, vault string) (uint64, error) {
-	return dbCountRepaymentsDivertedToVault(ctx, s.db, vault)
+// CountPendingRepaymentsDivertedToCommitment implements commitment.Store.CountPendingRepaymentsDivertedToCommitment
+func (s *store) CountPendingRepaymentsDivertedToCommitment(ctx context.Context, address string) (uint64, error) {
+	return dbCountPendingRepaymentsDivertedToCommitment(ctx, s.db, address)
 }
