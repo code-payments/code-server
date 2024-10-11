@@ -129,6 +129,6 @@ func GetVirtualWithdrawTransaction(
 
 func getVirtualTransactionHash(txn *solana.Transaction) cvm.Hash {
 	hasher := sha256.New()
-	hasher.Write(txn.Marshal())
+	hasher.Write(txn.Message.Marshal())
 	return cvm.Hash(hasher.Sum(nil))
 }

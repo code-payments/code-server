@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
@@ -105,9 +106,10 @@ func MakeInternalWithdrawTransaction(
 	source *common.TimelockAccounts,
 	destination *common.Account,
 ) (solana.Transaction, error) {
-	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
-	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
+	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
 
 	vixn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -135,14 +137,14 @@ func MakeInternalWithdrawTransaction(
 		&cvm.VmExecInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:          vm.PublicKey().ToBytes(),
-			VmMemA:      &memoryAPublicKeyBytes,
-			VmMemB:      &memoryBPublicKeyBytes,
-			VmMemC:      &memoryCPublicKeyBytes,
+			VmMemA:      mergedMemoryBanks.A,
+			VmMemB:      mergedMemoryBanks.B,
+			VmMemC:      mergedMemoryBanks.C,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
-			MemBanks:   []uint8{0, 1, 2},
+			MemBanks:   mergedMemoryBanks.Indices,
 			Data:       vixn.Data,
 		},
 	)
@@ -167,8 +169,10 @@ func MakeExternalWithdrawTransaction(
 	source *common.TimelockAccounts,
 	destination *common.Account,
 ) (solana.Transaction, error) {
-	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
+	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
 
 	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
 
@@ -198,14 +202,14 @@ func MakeExternalWithdrawTransaction(
 		&cvm.VmExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
-			VmMemA:          &memoryAPublicKeyBytes,
-			VmMemB:          &memoryBPublicKeyBytes,
+			VmMemA:          mergedMemoryBanks.A,
+			VmMemB:          mergedMemoryBanks.B,
 			ExternalAddress: &destinationPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex},
-			MemBanks:   []uint8{0, 1},
+			MemBanks:   mergedMemoryBanks.Indices,
 			Data:       vixn.Data,
 		},
 	)
@@ -233,9 +237,10 @@ func MakeInternalTransferWithAuthorityTransaction(
 	destination *common.Account,
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
-	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
-	memoryCPublicKeyBytes := ed25519.PublicKey(destinationMemory.PublicKey().ToBytes())
+	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
 
 	vixn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -263,14 +268,14 @@ func MakeInternalTransferWithAuthorityTransaction(
 		&cvm.VmExecInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:          vm.PublicKey().ToBytes(),
-			VmMemA:      &memoryAPublicKeyBytes,
-			VmMemB:      &memoryBPublicKeyBytes,
-			VmMemC:      &memoryCPublicKeyBytes,
+			VmMemA:      mergedMemoryBanks.A,
+			VmMemB:      mergedMemoryBanks.B,
+			VmMemC:      mergedMemoryBanks.C,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
-			MemBanks:   []uint8{0, 1, 2},
+			MemBanks:   mergedMemoryBanks.Indices,
 			Data:       vixn.Data,
 		},
 	)
@@ -296,8 +301,10 @@ func MakeExternalTransferWithAuthorityTransaction(
 	destination *common.Account,
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
-	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
+	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
 
 	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
 
@@ -327,14 +334,14 @@ func MakeExternalTransferWithAuthorityTransaction(
 		&cvm.VmExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
-			VmMemA:          &memoryAPublicKeyBytes,
-			VmMemB:          &memoryBPublicKeyBytes,
+			VmMemA:          mergedMemoryBanks.A,
+			VmMemB:          mergedMemoryBanks.B,
 			ExternalAddress: &destinationPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex},
-			MemBanks:   []uint8{0, 1},
+			MemBanks:   mergedMemoryBanks.Indices,
 			Data:       vixn.Data,
 		},
 	)
@@ -360,11 +367,13 @@ func MakeInternalTreasuryAdvanceTransaction(
 	transcript []byte,
 	recentRoot []byte,
 ) (solana.Transaction, error) {
-	memoryAPublicKeyBytes := ed25519.PublicKey(accountMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(relayMemory.PublicKey().ToBytes())
-
 	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
 	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
+
+	mergedMemoryBanks, err := mergeMemoryBanks(accountMemory, relayMemory)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
 
 	vixn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -384,15 +393,15 @@ func MakeInternalTreasuryAdvanceTransaction(
 		&cvm.VmExecInstructionAccounts{
 			VmAuthority:  common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:           vm.PublicKey().ToBytes(),
-			VmMemA:       &memoryAPublicKeyBytes,
-			VmMemB:       &memoryBPublicKeyBytes,
+			VmMemA:       mergedMemoryBanks.A,
+			VmMemB:       mergedMemoryBanks.B,
 			VmRelay:      &treasuryPoolPublicKeyBytes,
 			VmRelayVault: &treasuryPoolVaultPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{accountIndex, relayIndex},
-			MemBanks:   []uint8{0, 1},
+			MemBanks:   mergedMemoryBanks.Indices,
 			Data:       vixn.Data,
 		},
 	)
@@ -483,12 +492,13 @@ func MakeCashChequeTransaction(
 ) (solana.Transaction, error) {
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
-	memoryAPublicKeyBytes := ed25519.PublicKey(nonceMemory.PublicKey().ToBytes())
-	memoryBPublicKeyBytes := ed25519.PublicKey(sourceMemory.PublicKey().ToBytes())
-	memoryCPublicKeyBytes := ed25519.PublicKey(relayMemory.PublicKey().ToBytes())
-
 	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
 	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
+
+	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, relayMemory)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
 
 	vixn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -516,9 +526,9 @@ func MakeCashChequeTransaction(
 		&cvm.VmExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
-			VmMemA:          &memoryAPublicKeyBytes,
-			VmMemB:          &memoryBPublicKeyBytes,
-			VmMemC:          &memoryCPublicKeyBytes,
+			VmMemA:          mergedMemoryBanks.A,
+			VmMemB:          mergedMemoryBanks.B,
+			VmMemC:          mergedMemoryBanks.C,
 			VmOmnibus:       &vmOmnibusPublicKeyBytes,
 			VmRelay:         &treasuryPoolPublicKeyBytes,
 			VmRelayVault:    &treasuryPoolVaultPublicKeyBytes,
@@ -527,10 +537,51 @@ func MakeCashChequeTransaction(
 		&cvm.VmExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, relayIndex},
-			MemBanks:   []uint8{0, 1, 2},
+			MemBanks:   mergedMemoryBanks.Indices,
 			Data:       vixn.Data,
 		},
 	)
 
 	return MakeNoncedTransaction(nonce, bh, execInstruction)
+}
+
+type mergedMemoryBankResult struct {
+	A       *ed25519.PublicKey
+	B       *ed25519.PublicKey
+	C       *ed25519.PublicKey
+	D       *ed25519.PublicKey
+	Indices []uint8
+}
+
+func mergeMemoryBanks(accounts ...*common.Account) (*mergedMemoryBankResult, error) {
+	indices := make([]uint8, len(accounts))
+	orderedBanks := make([]*ed25519.PublicKey, 4)
+
+	for i, account := range accounts {
+		for j, bank := range orderedBanks {
+			if bank == nil {
+				publicKey := ed25519.PublicKey(account.PublicKey().ToBytes())
+				orderedBanks[j] = &publicKey
+				indices[i] = uint8(j)
+				break
+			}
+
+			if bytes.Equal(*bank, account.PublicKey().ToBytes()) {
+				indices[i] = uint8(j)
+				break
+			}
+
+			if j == len(orderedBanks)-1 {
+				return nil, errors.New("too many memory banks")
+			}
+		}
+	}
+
+	return &mergedMemoryBankResult{
+		A:       orderedBanks[0],
+		B:       orderedBanks[1],
+		C:       orderedBanks[2],
+		D:       orderedBanks[3],
+		Indices: indices,
+	}, nil
 }
