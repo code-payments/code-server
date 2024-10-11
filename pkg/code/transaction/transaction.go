@@ -314,15 +314,15 @@ func MakeExternalTransferWithAuthorityTransaction(
 			Address: virtualNonce.PublicKey().ToBytes(),
 			Nonce:   cvm.Hash(virtualBlockhash),
 		},
-		cvm.NewTimelockTransferInternalVirtualInstructionCtor(
-			&cvm.TimelockTransferInternalVirtualInstructionAccounts{
+		cvm.NewTimelockTransferExternalVirtualInstructionCtor(
+			&cvm.TimelockTransferExternalVirtualInstructionAccounts{
 				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
 				VirtualTimelock:      source.State.PublicKey().ToBytes(),
 				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
 				Owner:                source.VaultOwner.PublicKey().ToBytes(),
 				Destination:          destination.PublicKey().ToBytes(),
 			},
-			&cvm.TimelockTransferInternalVirtualInstructionArgs{
+			&cvm.TimelockTransferExternalVirtualInstructionArgs{
 				TimelockBump: source.StateBump,
 				Amount:       kinAmountInQuarks,
 				Signature:    cvm.Signature(virtualSignature),
