@@ -389,6 +389,8 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			solana.Blockhash(virtualBlockhashBytes),
 
 			common.CodeVmAccount,
+			common.CodeVmOmnibusAccount,
+
 			nonceMemory,
 			nonceIndex,
 			sourceMemory,
@@ -574,6 +576,8 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			solana.Blockhash(virtualBlockhashBytes),
 
 			common.CodeVmAccount,
+			common.CodeVmOmnibusAccount,
+
 			nonceMemory,
 			nonceIndex,
 			sourceMemory,

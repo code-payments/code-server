@@ -161,6 +161,8 @@ func MakeExternalWithdrawTransaction(
 	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
+	vmOmnibus *common.Account,
+
 	nonceMemory *common.Account,
 	nonceIndex uint16,
 	sourceMemory *common.Account,
@@ -173,6 +175,8 @@ func MakeExternalWithdrawTransaction(
 	if err != nil {
 		return solana.Transaction{}, err
 	}
+
+	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
 	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
 
@@ -204,6 +208,7 @@ func MakeExternalWithdrawTransaction(
 			Vm:              vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
 			VmMemB:          mergedMemoryBanks.B,
+			VmOmnibus:       &vmOmnibusPublicKeyBytes,
 			ExternalAddress: &destinationPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
@@ -292,6 +297,8 @@ func MakeExternalTransferWithAuthorityTransaction(
 	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
+	vmOmnibus *common.Account,
+
 	nonceMemory *common.Account,
 	nonceIndex uint16,
 	sourceMemory *common.Account,
@@ -307,6 +314,8 @@ func MakeExternalTransferWithAuthorityTransaction(
 	}
 
 	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
+
+	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
 	vixn := cvm.NewVirtualInstruction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
@@ -336,6 +345,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 			Vm:              vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
 			VmMemB:          mergedMemoryBanks.B,
+			VmOmnibus:       &vmOmnibusPublicKeyBytes,
 			ExternalAddress: &destinationPublicKeyBytes,
 		},
 		&cvm.VmExecInstructionArgs{
