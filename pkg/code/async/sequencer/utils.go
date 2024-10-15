@@ -63,11 +63,6 @@ func (p *service) markFulfillmentFailed(ctx context.Context, record *fulfillment
 		return err
 	}
 
-	err = p.markVirtualNonceReleasedDueToSubmittedTransaction(ctx, record)
-	if err != nil {
-		return err
-	}
-
 	record.State = fulfillment.StateFailed
 	record.Data = nil
 	return p.data.UpdateFulfillment(ctx, record)
