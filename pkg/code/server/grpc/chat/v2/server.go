@@ -18,11 +18,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
-	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -53,7 +51,7 @@ type Server struct {
 	push push.Provider
 
 	streamsMu sync.RWMutex
-	streams   map[string]*chatEventStream
+	streams   map[string]eventStream
 
 	chatLocks      *sync_util.StripedLock
 	chatEventChans *sync_util.StripedChannel
@@ -73,7 +71,7 @@ func NewChatServer(
 		auth: auth,
 		push: push,
 
-		streams: make(map[string]*chatEventStream),
+		streams: make(map[string]eventStream),
 
 		chatLocks:      sync_util.NewStripedLock(64),             // todo: configurable parameters
 		chatEventChans: sync_util.NewStripedChannel(64, 100_000), // todo: configurable parameters
@@ -240,151 +238,6 @@ func (s *Server) GetMessages(ctx context.Context, req *chatpb.GetMessagesRequest
 	}, nil
 }
 
-func (s *Server) StreamChatEvents(streamer chatpb.Chat_StreamChatEventsServer) error {
-	ctx := streamer.Context()
-
-	log := s.log.WithField("method", "StreamChatEvents")
-	log = client.InjectLoggingMetadata(ctx, log)
-
-	req, err := boundedStreamChatEventsRecv(ctx, streamer, 250*time.Millisecond)
-	if err != nil {
-		return err
-	}
-
-	if req.GetOpenStream() == nil {
-		return status.Error(codes.InvalidArgument, "StreamChatEventsRequest.Type must be OpenStreamRequest")
-	}
-
-	owner, err := common.NewAccountFromProto(req.GetOpenStream().Owner)
-	if err != nil {
-		log.WithError(err).Warn("invalid owner account")
-		return status.Error(codes.Internal, "")
-	}
-	log = log.WithField("owner", owner.PublicKey().ToBase58())
-
-	chatId, err := chat.GetChatIdFromProto(req.GetOpenStream().ChatId)
-	if err != nil {
-		log.WithError(err).Warn("invalid chat id")
-		return status.Error(codes.Internal, "")
-	}
-	log = log.WithField("chat_id", chatId.String())
-
-	memberId, err := owner.ToChatMemberId()
-	if err != nil {
-		log.WithError(err).Warn("failed to derive messaging account")
-		return status.Error(codes.Internal, "")
-	}
-	log = log.WithField("member_id", memberId.String())
-
-	signature := req.GetOpenStream().Signature
-	req.GetOpenStream().Signature = nil
-	if err := s.auth.Authenticate(streamer.Context(), owner, req.GetOpenStream(), signature); err != nil {
-		return err
-	}
-
-	isMember, err := s.data.IsChatMember(ctx, chatId, memberId)
-	if err != nil {
-		log.WithError(err).Warn("failed to derive messaging account")
-		return status.Error(codes.Internal, "")
-	}
-	if !isMember {
-		return streamer.Send(&chatpb.StreamChatEventsResponse{
-			Type: &chatpb.StreamChatEventsResponse_Error{
-				Error: &chatpb.ChatStreamEventError{Code: chatpb.ChatStreamEventError_DENIED},
-			},
-		})
-	}
-
-	streamKey := fmt.Sprintf("%s:%s", chatId.String(), memberId.String())
-
-	s.streamsMu.Lock()
-
-	stream, exists := s.streams[streamKey]
-	if exists {
-		s.streamsMu.Unlock()
-		// There's an existing stream on this Server that must be terminated first.
-		// Warn to see how often this happens in practice
-		log.Warnf("existing stream detected on this Server (stream=%p) ; aborting", stream)
-		return status.Error(codes.Aborted, "stream already exists")
-	}
-
-	stream = newChatEventStream(streamBufferSize)
-
-	// The race detector complains when reading the stream pointer ref outside of the lock.
-	streamRef := fmt.Sprintf("%p", stream)
-	log.Tracef("setting up new stream (stream=%s)", streamRef)
-	s.streams[streamKey] = stream
-
-	s.streamsMu.Unlock()
-
-	defer func() {
-		s.streamsMu.Lock()
-
-		log.Tracef("closing streamer (stream=%s)", streamRef)
-
-		// We check to see if the current active stream is the one that we created.
-		// If it is, we can just remove it since it's closed. Otherwise, we leave it
-		// be, as another StreamChatEvents() call is handling it.
-		liveStream, exists := s.streams[streamKey]
-		if exists && liveStream == stream {
-			delete(s.streams, streamKey)
-		}
-
-		s.streamsMu.Unlock()
-	}()
-
-	sendPingCh := time.After(0)
-	streamHealthCh := monitorChatEventStreamHealth(ctx, log, streamRef, streamer)
-
-	// todo: We should also "flush" pointers for each chat member
-	go s.flushMessages(ctx, chatId, owner, stream)
-
-	for {
-		select {
-		case event, ok := <-stream.streamCh:
-			if !ok {
-				log.Tracef("stream closed ; ending stream (stream=%s)", streamRef)
-				return status.Error(codes.Aborted, "stream closed")
-			}
-
-			err := streamer.Send(&chatpb.StreamChatEventsResponse{
-				Type: &chatpb.StreamChatEventsResponse_Events{
-					Events: &chatpb.ChatStreamEventBatch{
-						Events: []*chatpb.ChatStreamEvent{event},
-					},
-				},
-			})
-			if err != nil {
-				log.WithError(err).Info("failed to forward chat message")
-				return err
-			}
-		case <-sendPingCh:
-			log.Tracef("sending ping to client (stream=%s)", streamRef)
-
-			sendPingCh = time.After(streamPingDelay)
-
-			err := streamer.Send(&chatpb.StreamChatEventsResponse{
-				Type: &chatpb.StreamChatEventsResponse_Ping{
-					Ping: &commonpb.ServerPing{
-						Timestamp: timestamppb.Now(),
-						PingDelay: durationpb.New(streamPingDelay),
-					},
-				},
-			})
-			if err != nil {
-				log.Tracef("stream is unhealthy ; aborting (stream=%s)", streamRef)
-				return status.Error(codes.Aborted, "terminating unhealthy stream")
-			}
-		case <-streamHealthCh:
-			log.Tracef("stream is unhealthy ; aborting (stream=%s)", streamRef)
-			return status.Error(codes.Aborted, "terminating unhealthy stream")
-		case <-ctx.Done():
-			log.Tracef("stream context cancelled ; ending stream (stream=%s)", streamRef)
-			return status.Error(codes.Canceled, "")
-		}
-	}
-}
-
 func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*chatpb.StartChatResponse, error) {
 	log := s.log.WithField("method", "StartChat")
 	log = client.InjectLoggingMetadata(ctx, log)
@@ -454,9 +307,7 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 
 		switch intentRecord.State {
 		case intent.StatePending:
-			return &chatpb.StartChatResponse{
-				Result: chatpb.StartChatResponse_PENDING,
-			}, nil
+			log.Info("Payment intent is pending")
 		case intent.StateConfirmed:
 		default:
 			log.WithField("state", intentRecord.State).Info("PayToChat intent did not succeed")
@@ -569,6 +420,14 @@ func (s *Server) StartChat(ctx context.Context, req *chatpb.StartChatRequest) (*
 		if err != nil {
 			log.WithError(err).Warn("failure populating metadata")
 			return nil, status.Error(codes.Internal, "")
+		}
+
+		event := &chatEventNotification{
+			chatId:     chatId,
+			chatUpdate: md,
+		}
+		if err = s.asyncNotifyAll(chatId, event); err != nil {
+			log.WithError(err).Warn("failed to notify event stream")
 		}
 
 		return &chatpb.StartChatResponse{
@@ -735,10 +594,9 @@ func (s *Server) AdvancePointer(ctx context.Context, req *chatpb.AdvancePointerR
 	}
 
 	if isAdvanced {
-		event := &chatpb.ChatStreamEvent{
-			Type: &chatpb.ChatStreamEvent_Pointer{
-				Pointer: req.Pointer,
-			},
+		event := &chatEventNotification{
+			chatId:        chatId,
+			pointerUpdate: req.Pointer,
 		}
 		if err := s.asyncNotifyAll(chatId, event); err != nil {
 			log.WithError(err).Warn("failure notifying chat event")
@@ -843,12 +701,15 @@ func (s *Server) NotifyIsTyping(ctx context.Context, req *chatpb.NotifyIsTypingR
 		return &chatpb.NotifyIsTypingResponse{Result: chatpb.NotifyIsTypingResponse_DENIED}, nil
 	}
 
-	event := &chatpb.ChatStreamEvent{
-		Type: &chatpb.ChatStreamEvent_IsTyping{
-			IsTyping: &chatpb.IsTyping{
-				MemberId: memberId.ToProto(),
-				IsTyping: req.IsTyping,
-			},
+	// Internalize the event
+	// notifyAll sends to both(depending on type)
+	// notifyAll then determines the actual assembly
+
+	event := &chatEventNotification{
+		chatId: chatId,
+		isTyping: &chatpb.IsTyping{
+			MemberId: memberId.ToProto(),
+			IsTyping: req.IsTyping,
 		},
 	}
 
@@ -952,87 +813,6 @@ func (s *Server) populateMetadata(ctx context.Context, mdRecord *chat.MetadataRe
 
 	return md, nil
 }
-
-func (s *Server) flushMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, stream *chatEventStream) {
-	log := s.log.WithFields(logrus.Fields{
-		"method":        "flushMessages",
-		"chat_id":       chatId.String(),
-		"owner_account": owner.PublicKey().ToBase58(),
-	})
-
-	protoChatMessages, err := s.getProtoChatMessages(
-		ctx,
-		chatId,
-		owner,
-		query.WithCursor(query.EmptyCursor),
-		query.WithDirection(query.Descending),
-		query.WithLimit(flushMessageCount),
-	)
-	if err != nil {
-		log.WithError(err).Warn("failure getting chat messages")
-		return
-	}
-
-	for _, protoChatMessage := range protoChatMessages {
-		event := &chatpb.ChatStreamEvent{
-			Type: &chatpb.ChatStreamEvent_Message{
-				Message: protoChatMessage,
-			},
-		}
-		if err := stream.notify(event, streamNotifyTimeout); err != nil {
-			log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
-			return
-		}
-	}
-}
-
-func (s *Server) flushPointers(ctx context.Context, chatId chat.ChatId, stream *chatEventStream) {
-	log := s.log.WithFields(logrus.Fields{
-		"method":  "flushPointers",
-		"chat_id": chatId.String(),
-	})
-
-	memberRecords, err := s.data.GetChatMembersV2(ctx, chatId)
-	if err != nil {
-		log.WithError(err).Warn("failure getting chat members")
-		return
-	}
-
-	for _, memberRecord := range memberRecords {
-		for _, optionalPointer := range []struct {
-			kind  chat.PointerType
-			value *chat.MessageId
-		}{
-			{chat.PointerTypeDelivered, memberRecord.DeliveryPointer},
-			{chat.PointerTypeRead, memberRecord.ReadPointer},
-		} {
-			if optionalPointer.value == nil {
-				continue
-			}
-
-			memberId, err := chat.GetMemberIdFromString(memberRecord.MemberId)
-			if err != nil {
-				log.WithError(err).Warnf("failure getting memberId from %s", memberRecord.MemberId)
-				return
-			}
-
-			event := &chatpb.ChatStreamEvent{
-				Type: &chatpb.ChatStreamEvent_Pointer{
-					Pointer: &chatpb.Pointer{
-						Type:     optionalPointer.kind.ToProto(),
-						Value:    optionalPointer.value.ToProto(),
-						MemberId: memberId.ToProto(),
-					},
-				},
-			}
-			if err := stream.notify(event, streamNotifyTimeout); err != nil {
-				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
-				return
-			}
-		}
-	}
-}
-
 func (s *Server) getProtoChatMessages(ctx context.Context, chatId chat.ChatId, owner *common.Account, queryOptions ...query.Option) ([]*chatpb.Message, error) {
 	messageRecords, err := s.data.GetAllChatMessagesV2(ctx, chatId, queryOptions...)
 	if err != nil {
@@ -1133,10 +913,9 @@ func (s *Server) persistChatMessage(ctx context.Context, chatId chat.ChatId, pro
 }
 
 func (s *Server) onPersistChatMessage(log *logrus.Entry, chatId chat.ChatId, chatMessage *chatpb.Message) {
-	event := &chatpb.ChatStreamEvent{
-		Type: &chatpb.ChatStreamEvent_Message{
-			Message: chatMessage,
-		},
+	event := &chatEventNotification{
+		chatId:        chatId,
+		messageUpdate: chatMessage,
 	}
 
 	if err := s.asyncNotifyAll(chatId, event); err != nil {

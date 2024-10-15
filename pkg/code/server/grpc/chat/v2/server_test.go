@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"slices"
 	"testing"
 	"time"
@@ -94,6 +95,51 @@ func TestServerHappy(t *testing.T) {
 		require.Equal(t, chatpb.GetChatsResponse_OK, chats.Result)
 		require.Empty(t, chats.Chats)
 	})
+
+	eventCtx, eventCancel := context.WithTimeout(ctx, time.Minute)
+	defer eventCancel()
+
+	eventClient, err := env.client.StreamChatEvents(eventCtx)
+	require.NoError(t, err)
+
+	req := &chatpb.StreamChatEventsRequest_Params{
+		Owner: userA.ToProto(),
+	}
+	req.Signature = signProtoMessage(t, req, userA, false)
+
+	err = eventClient.Send(&chatpb.StreamChatEventsRequest{
+		Type: &chatpb.StreamChatEventsRequest_Params_{
+			Params: req,
+		},
+	})
+	eventCh := make(chan *chatpb.StreamChatEventsResponse_EventBatch, 1024)
+
+	go func() {
+		defer close(eventCh)
+
+		for {
+			msg, err := eventClient.Recv()
+			if err != nil {
+				env.log.WithError(err).Error("Failed to receive event stream")
+				return
+			}
+
+			switch typed := msg.Type.(type) {
+			case *chatpb.StreamChatEventsResponse_Ping:
+				_ = eventClient.Send(&chatpb.StreamChatEventsRequest{
+					Type: &chatpb.StreamChatEventsRequest_Pong{
+						Pong: &commonpb.ClientPong{
+							Timestamp: timestamppb.Now(),
+						},
+					},
+				})
+			case *chatpb.StreamChatEventsResponse_Error:
+				env.log.WithError(err).WithField("code", typed.Error.Code).Warn("failed to receive update event")
+			case *chatpb.StreamChatEventsResponse_Events:
+				eventCh <- typed.Events
+			}
+		}
+	}()
 
 	t.Run("StartChat", func(t *testing.T) {
 		req := &chatpb.StartChatRequest{
@@ -267,23 +313,48 @@ func TestServerHappy(t *testing.T) {
 		}
 	})
 
-	t.Run("Stream", func(t *testing.T) {
+	eventCancel()
+	t.Run("Event Stream", func(t *testing.T) {
+		var events []*chatpb.StreamChatEventsResponse_ChatUpdate
+		for batch := range eventCh {
+			for _, e := range batch.Updates {
+				events = append(events, e)
+			}
+		}
+
+		require.Equal(t, 13, len(events))
+
+		// Chat creation
+		require.NotNil(t, events[0].Metadata)
+
+		// 10 messages
+		for i := 1; i < 10+1; i++ {
+			require.NotNil(t, events[i].LastMessage)
+		}
+
+		// Pointer updates
+		for i := 1 + 10; i < 13; i++ {
+			require.NotNil(t, events[i].Pointer)
+		}
+	})
+
+	t.Run("Message Stream", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, time.Minute)
 		defer cancel()
 
-		client, err := env.client.StreamChatEvents(ctx)
+		client, err := env.client.StreamMessages(ctx)
 		require.NoError(t, err)
 
-		req := &chatpb.OpenChatEventStream{
+		req := &chatpb.StreamMessagesRequest_Params{
 			ChatId:    chatId.ToProto(),
 			Owner:     userA.ToProto(),
 			Signature: nil,
 		}
 		req.Signature = signProtoMessage(t, req, userA, false)
 
-		err = client.Send(&chatpb.StreamChatEventsRequest{
-			Type: &chatpb.StreamChatEventsRequest_OpenStream{
-				OpenStream: req,
+		err = client.Send(&chatpb.StreamMessagesRequest{
+			Type: &chatpb.StreamMessagesRequest_Params_{
+				Params: req,
 			},
 		})
 		require.NoError(t, err)
@@ -295,22 +366,20 @@ func TestServerHappy(t *testing.T) {
 			require.NoError(t, err)
 
 			switch typed := resp.Type.(type) {
-			case *chatpb.StreamChatEventsResponse_Error:
+			case *chatpb.StreamMessagesResponse_Error:
 				require.FailNow(t, typed.Error.String())
-			case *chatpb.StreamChatEventsResponse_Ping:
-				_ = client.Send(&chatpb.StreamChatEventsRequest{
-					Type: &chatpb.StreamChatEventsRequest_Pong{
+			case *chatpb.StreamMessagesResponse_Ping:
+				_ = client.Send(&chatpb.StreamMessagesRequest{
+					Type: &chatpb.StreamMessagesRequest_Pong{
 						Pong: &commonpb.ClientPong{Timestamp: timestamppb.Now()},
 					},
 				})
 
-			case *chatpb.StreamChatEventsResponse_Events:
-				for _, e := range typed.Events.Events {
-					if m := e.GetMessage(); m != nil {
-						streamedMessages = append(streamedMessages, m)
-						if len(streamedMessages) == len(messages) {
-							break
-						}
+			case *chatpb.StreamMessagesResponse_Messages:
+				for _, m := range typed.Messages.Messages {
+					streamedMessages = append(streamedMessages, m)
+					if len(streamedMessages) == len(messages) {
+						break
 					}
 				}
 
@@ -331,6 +400,7 @@ func TestServerHappy(t *testing.T) {
 }
 
 type testEnv struct {
+	log    *logrus.Logger
 	ctx    context.Context
 	client chatpb.ChatClient
 	server *Server
@@ -342,6 +412,7 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 	require.NoError(t, err)
 
 	env = &testEnv{
+		log:    logrus.StandardLogger(),
 		ctx:    context.Background(),
 		client: chatpb.NewChatClient(conn),
 		data:   data.NewTestDataProvider(),

@@ -2,18 +2,15 @@ package chat_v2
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-
-	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v2"
-	chat "github.com/code-payments/code-server/pkg/code/data/chat/v2"
 )
 
 const (
@@ -24,148 +21,115 @@ const (
 	streamNotifyTimeout        = time.Second
 )
 
-type chatEventStream struct {
-	sync.Mutex
-
-	closed   bool
-	streamCh chan *chatpb.ChatStreamEvent
+type eventStream interface {
+	notify(notification *chatEventNotification, timeout time.Duration) error
 }
 
-func newChatEventStream(bufferSize int) *chatEventStream {
-	return &chatEventStream{
-		streamCh: make(chan *chatpb.ChatStreamEvent, bufferSize),
+type protoEventStream[T proto.Message] struct {
+	sync.Mutex
+
+	closed    bool
+	ch        chan T
+	transform func(*chatEventNotification) (T, bool)
+}
+
+func newEventStream[T proto.Message](
+	bufferSize int,
+	selector func(notification *chatEventNotification) (T, bool),
+) *protoEventStream[T] {
+	return &protoEventStream[T]{
+		ch:        make(chan T, bufferSize),
+		transform: selector,
 	}
 }
 
-func (s *chatEventStream) notify(event *chatpb.ChatStreamEvent, timeout time.Duration) error {
-	m := proto.Clone(event).(*chatpb.ChatStreamEvent)
+func (e *protoEventStream[T]) notify(event *chatEventNotification, timeout time.Duration) error {
+	msg, ok := e.transform(event)
+	if !ok {
+		return nil
+	}
 
-	s.Lock()
-
-	if s.closed {
-		s.Unlock()
+	e.Lock()
+	if e.closed {
+		e.Unlock()
 		return errors.New("cannot notify closed stream")
 	}
 
 	select {
-	case s.streamCh <- m:
+	case e.ch <- msg:
 	case <-time.After(timeout):
-		s.Unlock()
-		s.close()
+		e.Unlock()
+		e.close()
 		return errors.New("timed out sending message to streamCh")
 	}
 
-	s.Unlock()
+	e.Unlock()
 	return nil
 }
 
-func (s *chatEventStream) close() {
-	s.Lock()
-	defer s.Unlock()
+func (e *protoEventStream[T]) close() {
+	e.Lock()
+	defer e.Unlock()
 
-	if s.closed {
+	if e.closed {
 		return
 	}
 
-	s.closed = true
-	close(s.streamCh)
+	e.closed = true
+	close(e.ch)
 }
 
-func boundedStreamChatEventsRecv(
+type ptr[T any] interface {
+	proto.Message
+	*T
+}
+
+func boundedReceive[Req any, ReqPtr ptr[Req]](
 	ctx context.Context,
-	streamer chatpb.Chat_StreamChatEventsServer,
+	stream grpc.ServerStream,
 	timeout time.Duration,
-) (req *chatpb.StreamChatEventsRequest, err error) {
-	done := make(chan struct{})
+) (ReqPtr, error) {
+	var err error
+	var req = new(Req)
+	doneCh := make(chan struct{})
+
 	go func() {
-		req, err = streamer.Recv()
-		close(done)
+		err = stream.RecvMsg(req)
+		close(doneCh)
 	}()
 
 	select {
-	case <-done:
+	case <-doneCh:
 		return req, err
 	case <-ctx.Done():
-		return nil, status.Error(codes.Canceled, "")
+		return req, status.Error(codes.Canceled, "")
 	case <-time.After(timeout):
-		return nil, status.Error(codes.DeadlineExceeded, "timed out receiving message")
+		return req, status.Error(codes.DeadlineExceeded, "timeout receiving message")
 	}
 }
 
-type chatEventNotification struct {
-	chatId chat.ChatId
-	event  *chatpb.ChatStreamEvent
-	ts     time.Time
-}
-
-func (s *Server) asyncNotifyAll(chatId chat.ChatId, event *chatpb.ChatStreamEvent) error {
-	m := proto.Clone(event).(*chatpb.ChatStreamEvent)
-	ok := s.chatEventChans.Send(chatId[:], &chatEventNotification{chatId, m, time.Now()})
-	if !ok {
-		return errors.New("chat event channel is full")
-	}
-	return nil
-}
-
-func (s *Server) asyncChatEventStreamNotifier(workerId int, channel <-chan interface{}) {
-	log := s.log.WithFields(logrus.Fields{
-		"method": "asyncChatEventStreamNotifier",
-		"worker": workerId,
-	})
-
-	for value := range channel {
-		typedValue, ok := value.(*chatEventNotification)
-		if !ok {
-			log.Warn("channel did not receive expected struct")
-			continue
-		}
-
-		log := log.WithField("chat_id", typedValue.chatId.String())
-
-		if time.Since(typedValue.ts) > time.Second {
-			log.Warn("channel notification latency is elevated")
-		}
-
-		s.streamsMu.RLock()
-		for key, stream := range s.streams {
-			if !strings.HasPrefix(key, typedValue.chatId.String()) {
-				continue
-			}
-
-			if err := stream.notify(typedValue.event, streamNotifyTimeout); err != nil {
-				log.WithError(err).Warnf("failed to notify session stream, closing streamer (stream=%p)", stream)
-			}
-		}
-		s.streamsMu.RUnlock()
-	}
-}
-
-// Very naive implementation to start
-func monitorChatEventStreamHealth(
+func monitorStreamHealth[Req any, ReqPtr ptr[Req]](
 	ctx context.Context,
 	log *logrus.Entry,
 	ssRef string,
-	streamer chatpb.Chat_StreamChatEventsServer,
+	streamer grpc.ServerStream,
+	validFn func(ReqPtr) bool,
 ) <-chan struct{} {
-	streamHealthChan := make(chan struct{})
+	healthCh := make(chan struct{})
 	go func() {
-		defer close(streamHealthChan)
+		defer close(healthCh)
 
 		for {
-			// todo: configurable timeout
-			req, err := boundedStreamChatEventsRecv(ctx, streamer, streamKeepAliveRecvTimeout)
+			req, err := boundedReceive[Req, ReqPtr](ctx, streamer, streamKeepAliveRecvTimeout)
 			if err != nil {
 				return
 			}
 
-			switch req.Type.(type) {
-			case *chatpb.StreamChatEventsRequest_Pong:
-				log.Tracef("received pong from client (stream=%s)", ssRef)
-			default:
-				// Client sent something unexpected. Terminate the stream
+			if !validFn(req) {
 				return
 			}
+			log.Tracef("received pong from client (stream=%s)", ssRef)
 		}
 	}()
-	return streamHealthChan
+	return healthCh
 }
