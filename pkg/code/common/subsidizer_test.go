@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func TestEstimateUsedSubsidizerBalance(t *testing.T) {
@@ -46,6 +46,8 @@ func TestEstimateUsedSubsidizerBalance(t *testing.T) {
 	}
 	for _, nonceRecord := range nonceRecords {
 		nonceRecord.Authority = "code"
+		nonceRecord.Environment = nonce.EnvironmentSolana
+		nonceRecord.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
 		nonceRecord.Purpose = nonce.PurposeClientTransaction
 		require.NoError(t, data.SaveNonce(ctx, nonceRecord))
 	}

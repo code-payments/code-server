@@ -17,7 +17,7 @@ func (p *service) generateKey(ctx context.Context) (*vault.Record, error) {
 	// Perhaps this should be done outside this box.
 
 	// Grind for a vanity key (slow)
-	key, err := vault.GrindKey(p.prefix)
+	key, err := vault.GrindKey(p.conf.solanaMainnetNoncePubkeyPrefix.Get(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (p *service) generateKeys(ctx context.Context) error {
 				return err
 			}
 
-			reserveSize := (uint64(p.size) * 2)
+			reserveSize := (p.conf.solanaMainnetNoncePoolSize.Get(ctx) * 2)
 
 			// If we have sufficient keys, don't generate any more.
 			if res >= reserveSize {

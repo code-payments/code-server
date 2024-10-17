@@ -10,7 +10,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 type LocalSimulationResult struct {
@@ -93,36 +92,6 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 					OpenAction:   action,
 				},
 			)
-		case *transactionpb.Action_CloseEmptyAccount:
-			closed, err := common.NewAccountFromProto(typedAction.CloseEmptyAccount.Token)
-			if err != nil {
-				return nil, err
-			}
-			derivedTimelockVault = closed
-
-			authority, err = common.NewAccountFromProto(typedAction.CloseEmptyAccount.Authority)
-			if err != nil {
-				return nil, err
-			}
-
-			simulations = append(
-				simulations,
-				TokenAccountSimulation{
-					TokenAccount: closed,
-					Closed:       true,
-					CloseAction:  action,
-				},
-			)
-		case *transactionpb.Action_CloseDormantAccount:
-			derivedTimelockVault, err = common.NewAccountFromProto(typedAction.CloseDormantAccount.Token)
-			if err != nil {
-				return nil, err
-			}
-
-			authority, err = common.NewAccountFromProto(typedAction.CloseDormantAccount.Authority)
-			if err != nil {
-				return nil, err
-			}
 		case *transactionpb.Action_NoPrivacyTransfer:
 			source, err := common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Source)
 			if err != nil {
@@ -352,7 +321,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 		}
 
 		// Validate authorities and respective derived timelock vault accounts match.
-		timelockAccounts, err := authority.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+		timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		if err != nil {
 			return nil, err
 		}

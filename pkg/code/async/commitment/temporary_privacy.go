@@ -20,7 +20,7 @@ var (
 )
 
 // GetDeadlineToUpgradePrivacy figures out at what point in time the temporary
-// private transfer to the commitmetn vault should be played out. If no deadline
+// private transfer to the commitment should be played out. If no deadline
 // exists, then ErrNoPrivacyUpgradeDeadline is returned.
 //
 // todo: move this someplace more common?

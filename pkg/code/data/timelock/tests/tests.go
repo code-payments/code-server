@@ -17,7 +17,6 @@ import (
 func RunTests(t *testing.T, s timelock.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s timelock.Store){
 		testHappyPath,
-		testMultiVersionRecords,
 		testBatchedMethods,
 		testGetAllByState,
 		testGetCountByState,
@@ -34,8 +33,6 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 		ctx := context.Background()
 
 		expected := &timelock.Record{
-			DataVersion: timelock_token.DataVersion1,
-
 			Address: "state",
 			Bump:    254,
 
@@ -43,13 +40,6 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 			VaultBump:    255,
 			VaultOwner:   "owner",
 			VaultState:   timelock_token.StateUnknown,
-
-			TimeAuthority:  "time_authority",
-			CloseAuthority: "close_authority",
-
-			Mint: "mint",
-
-			NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
 			Block: 123456,
 		}
@@ -82,15 +72,10 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 
 		previousLastUpdatedTs := expected.LastUpdatedAt
 
-		expected.DataVersion = timelock_token.DataVersionClosed
-
 		unlockedAt := uint64(time.Now().Unix())
 		expected.UnlockAt = &unlockedAt
 
 		expected.VaultState = timelock_token.StateUnlocked
-
-		expected.TimeAuthority = "time_authority_attacker"
-		expected.CloseAuthority = "close_authority_attacker"
 
 		// Try to save the record with old blockchain data, which should fail
 
@@ -120,74 +105,6 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 	})
 }
 
-func testMultiVersionRecords(t *testing.T, s timelock.Store) {
-	t.Run("testMultiVersionRecords", func(t *testing.T) {
-		ctx := context.Background()
-
-		owner := "owner"
-
-		legacyRecord := &timelock.Record{
-			DataVersion: timelock_token.DataVersionLegacy,
-
-			Address: "state-legacy",
-			Bump:    254,
-
-			VaultAddress: "vault-legacy",
-			VaultBump:    255,
-			VaultOwner:   owner,
-			VaultState:   timelock_token.StateUnknown,
-
-			TimeAuthority:  "time_authority",
-			CloseAuthority: "close_authority",
-
-			Mint: "mint",
-
-			NumDaysLocked: timelock_token.DefaultNumDaysLocked,
-
-			Block: 123456,
-		}
-		require.NoError(t, s.Save(ctx, legacyRecord))
-
-		v1Record := &timelock.Record{
-			DataVersion: timelock_token.DataVersion1,
-
-			Address: "state-v1",
-			Bump:    253,
-
-			VaultAddress: "vault-v1",
-			VaultBump:    252,
-			VaultOwner:   owner,
-			VaultState:   timelock_token.StateUnknown,
-
-			TimeAuthority:  "time_authority",
-			CloseAuthority: "close_authority",
-
-			Mint: "mint",
-
-			NumDaysLocked: timelock_token.DefaultNumDaysLocked,
-
-			Block: 123456,
-		}
-		require.NoError(t, s.Save(ctx, v1Record))
-
-		actual, err := s.GetByAddress(ctx, legacyRecord.Address)
-		require.NoError(t, err)
-		assertEquivalentRecords(t, legacyRecord, actual)
-
-		actual, err = s.GetByVault(ctx, legacyRecord.VaultAddress)
-		require.NoError(t, err)
-		assertEquivalentRecords(t, legacyRecord, actual)
-
-		actual, err = s.GetByAddress(ctx, v1Record.Address)
-		require.NoError(t, err)
-		assertEquivalentRecords(t, v1Record, actual)
-
-		actual, err = s.GetByVault(ctx, v1Record.VaultAddress)
-		require.NoError(t, err)
-		assertEquivalentRecords(t, v1Record, actual)
-	})
-}
-
 func testBatchedMethods(t *testing.T, s timelock.Store) {
 	t.Run("testBatchedMethods", func(t *testing.T) {
 		ctx := context.Background()
@@ -195,8 +112,6 @@ func testBatchedMethods(t *testing.T, s timelock.Store) {
 		var records []*timelock.Record
 		for i := 0; i < 100; i++ {
 			record := &timelock.Record{
-				DataVersion: timelock_token.DataVersion1,
-
 				Address: fmt.Sprintf("state%d", i),
 				Bump:    254,
 
@@ -204,13 +119,6 @@ func testBatchedMethods(t *testing.T, s timelock.Store) {
 				VaultBump:    255,
 				VaultOwner:   fmt.Sprintf("owner%d", i),
 				VaultState:   timelock_token.StateUnknown,
-
-				TimeAuthority:  "time_authority",
-				CloseAuthority: "close_authority",
-
-				Mint: "mint",
-
-				NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
 				Block: uint64(i),
 			}
@@ -250,8 +158,6 @@ func testGetAllByState(t *testing.T, s timelock.Store) {
 		var expected []*timelock.Record
 		for i := 0; i < 100; i++ {
 			record := &timelock.Record{
-				DataVersion: timelock_token.DataVersion1,
-
 				Address: fmt.Sprintf("state%d", i),
 				Bump:    254,
 
@@ -259,13 +165,6 @@ func testGetAllByState(t *testing.T, s timelock.Store) {
 				VaultBump:    255,
 				VaultOwner:   fmt.Sprintf("owner%d", i),
 				VaultState:   timelock_token.StateUnknown,
-
-				TimeAuthority:  "time_authority",
-				CloseAuthority: "close_authority",
-
-				Mint: "mint",
-
-				NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 
 				Block: uint64(i),
 			}
@@ -328,8 +227,6 @@ func testGetCountByState(t *testing.T, s timelock.Store) {
 		} {
 			for i := 0; i < int(state); i++ {
 				record := &timelock.Record{
-					DataVersion: timelock_token.DataVersion1,
-
 					Address: fmt.Sprintf("state-%s-%d", state, i),
 					Bump:    254,
 
@@ -337,13 +234,6 @@ func testGetCountByState(t *testing.T, s timelock.Store) {
 					VaultBump:    255,
 					VaultOwner:   fmt.Sprintf("owner-%s-%d", state, i),
 					VaultState:   state,
-
-					TimeAuthority:  "time_authority",
-					CloseAuthority: "close_authority",
-
-					Mint: "mint",
-
-					NumDaysLocked: timelock_token.DefaultNumDaysLocked,
 				}
 
 				require.NoError(t, s.Save(ctx, record))
@@ -357,8 +247,6 @@ func testGetCountByState(t *testing.T, s timelock.Store) {
 }
 
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *timelock.Record) {
-	assert.Equal(t, obj1.DataVersion, obj2.DataVersion)
-
 	assert.Equal(t, obj1.Address, obj2.Address)
 	assert.Equal(t, obj1.Bump, obj2.Bump)
 
@@ -367,12 +255,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *timelock.Record) {
 	assert.Equal(t, obj1.VaultOwner, obj2.VaultOwner)
 	assert.Equal(t, obj1.VaultState, obj2.VaultState)
 
-	assert.Equal(t, obj1.TimeAuthority, obj2.TimeAuthority)
-	assert.Equal(t, obj1.CloseAuthority, obj2.CloseAuthority)
-
-	assert.Equal(t, obj1.Mint, obj2.Mint)
-
-	assert.Equal(t, obj1.NumDaysLocked, obj2.NumDaysLocked)
 	assert.EqualValues(t, obj1.UnlockAt, obj2.UnlockAt)
 
 	assert.Equal(t, obj1.Block, obj2.Block)

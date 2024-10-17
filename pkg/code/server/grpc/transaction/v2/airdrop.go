@@ -2,24 +2,23 @@ package transaction_v2
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/mr-tron/base58"
+	"github.com/mr-tron/base58/base58"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/code/balance"
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -29,14 +28,11 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	event_util "github.com/code-payments/code-server/pkg/code/event"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	push_util "github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // This is a quick and dirty file to get an initial airdrop feature out
@@ -63,8 +59,7 @@ var (
 )
 
 var (
-	cachedAirdropStatus        = cache.NewCache(10_000)
-	cachedFirstReceivesByOwner = cache.NewCache(10_000)
+	cachedAirdropStatus = cache.NewCache(10_000)
 )
 
 func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.AirdropRequest) (*transactionpb.AirdropResponse, error) {
@@ -179,173 +174,7 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 	}, nil
 }
 
-func (s *transactionServer) maybeAirdropForSubmittingIntent(ctx context.Context, intentRecord *intent.Record, submitActionsOwnerMetadata *common.OwnerMetadata) {
-	if false {
-		// Disabled
-		s.maybeAirdropForSendingUserTheirFirstKin(ctx, intentRecord)
-	}
-}
-
-func (s *transactionServer) maybeAirdropForSendingUserTheirFirstKin(ctx context.Context, intentRecord *intent.Record) error {
-	log := s.log.WithFields(logrus.Fields{
-		"method":      "maybeAirdropForSendingUserTheirFirstKin",
-		"intent":      intentRecord.IntentId,
-		"intent_type": intentRecord.IntentType,
-	})
-
-	var ownerToAirdrop *common.Account
-	var ownerToCheckForFirstReceive *common.Account
-	var quarksGivenByReferrer uint64
-	var exchangedIn currency_lib.Code
-	var nativeAmount float64
-	var err error
-	switch intentRecord.IntentType {
-	case intent.SendPrivatePayment:
-		// Not a direct payment to a Code user
-		if len(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount) == 0 {
-			return nil
-		}
-
-		// Private movement of funds within the same owner
-		if intentRecord.InitiatorOwnerAccount == intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount {
-			return nil
-		}
-
-		ownerToAirdrop, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to airdrop")
-			return err
-		}
-
-		ownerToCheckForFirstReceive, err = common.NewAccountFromPublicKeyString(intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to check for first receive")
-			return err
-		}
-
-		quarksGivenByReferrer = intentRecord.SendPrivatePaymentMetadata.Quantity
-		exchangedIn = intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-		nativeAmount = intentRecord.SendPrivatePaymentMetadata.NativeAmount
-	case intent.SendPublicPayment:
-		// Not a direct payment to a Code user
-		if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
-			return nil
-		}
-
-		// Public movement of funds within the same owner
-		if intentRecord.InitiatorOwnerAccount == intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount {
-			return nil
-		}
-
-		ownerToAirdrop, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to airdrop")
-			return err
-		}
-
-		ownerToCheckForFirstReceive, err = common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to check for first receive")
-			return err
-		}
-
-		quarksGivenByReferrer = intentRecord.SendPublicPaymentMetadata.Quantity
-		exchangedIn = intentRecord.SendPublicPaymentMetadata.ExchangeCurrency
-		nativeAmount = intentRecord.SendPublicPaymentMetadata.NativeAmount
-	case intent.ReceivePaymentsPublicly:
-		// Not receiving a gift card
-		if !intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
-			return nil
-		}
-
-		// Gift card is being voided
-		if intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard {
-			return nil
-		}
-
-		giftCardIssuedIntentRecord, err := s.data.GetOriginalGiftCardIssuedIntent(ctx, intentRecord.ReceivePaymentsPubliclyMetadata.Source)
-		if err != nil {
-			log.WithError(err).Warn("failure getting gift card issued intent")
-			return err
-		}
-
-		// The same user is claiming their gift card
-		if giftCardIssuedIntentRecord.InitiatorOwnerAccount == intentRecord.InitiatorOwnerAccount {
-			return nil
-		}
-
-		ownerToAirdrop, err = common.NewAccountFromPublicKeyString(giftCardIssuedIntentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to airdrop")
-			return err
-		}
-
-		ownerToCheckForFirstReceive, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner to check for first receive")
-			return err
-		}
-
-		quarksGivenByReferrer = intentRecord.ReceivePaymentsPubliclyMetadata.Quantity
-		exchangedIn = giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-		nativeAmount = giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.NativeAmount
-	default:
-		return nil
-	}
-
-	log = log.WithFields(logrus.Fields{
-		"owner_to_airdrop":                 ownerToAirdrop.PublicKey().ToBase58(),
-		"owner_to_check_for_first_receive": ownerToCheckForFirstReceive.PublicKey().ToBase58(),
-	})
-
-	for _, owner := range []*common.Account{ownerToAirdrop, ownerToCheckForFirstReceive} {
-		isEligible, err := s.data.IsEligibleForAirdrop(ctx, owner.PublicKey().ToBase58())
-		if err != nil {
-			log.WithError(err).Warn("failure getting airdrop eligibility for owner account")
-			return err
-		}
-		if !isEligible {
-			return nil
-		}
-	}
-
-	isFirstReceive, err := s.isFirstReceiveFromOtherCodeUser(ctx, intentRecord.IntentId, ownerToCheckForFirstReceive)
-	if err != nil {
-		log.WithError(err).Warn("failure checking if intent is user's first receive from someone else")
-		return err
-	} else if !isFirstReceive {
-		return nil
-	}
-
-	if !s.conf.disableAntispamChecks.Get(ctx) {
-		allow, err := s.antispamGuard.AllowReferralBonus(
-			ctx,
-			ownerToAirdrop,
-			ownerToCheckForFirstReceive,
-			s.airdropper.VaultOwner,
-			quarksGivenByReferrer,
-			exchangedIn,
-			nativeAmount,
-		)
-		if err != nil {
-			log.WithError(err).Warn("failure performing antispam check")
-			return err
-		} else if !allow {
-			return nil
-		}
-	}
-
-	intentId := GetNewAirdropIntentId(AirdropTypeGiveFirstKin, intentRecord.IntentId)
-	_, err = s.airdrop(ctx, intentId, ownerToAirdrop, AirdropTypeGiveFirstKin)
-	if err != nil {
-		log.Warn("failure giving airdrop")
-		return err
-	}
-
-	return nil
-}
-
-// airdrop gives Kin airdrops denominated in USD for performing certain
+// airdrop gives Kin airdrops denominated in Kin for performing certain
 // actions in the Code app. This funciton is idempotent with the given
 // intent ID.
 func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner *common.Account, airdropType AirdropType) (*intent.Record, error) {
@@ -363,15 +192,14 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		return nil, err
 	}
 
-	var usdValue float64
+	var quarkAmount uint64
 	switch airdropType {
-	case AirdropTypeGiveFirstKin:
-		usdValue = 5.0
 	case AirdropTypeGetFirstKin:
-		usdValue = 1.0
+		quarkAmount = kin.ToQuarks(1)
 	default:
 		return nil, errors.New("unhandled airdrop type")
 	}
+	kinAmount := float64(kin.FromQuarks(quarkAmount))
 
 	// Find the destination account, which will be the user's primary account
 	primaryAccountInfoRecord, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
@@ -388,16 +216,11 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		return nil, err
 	}
 
-	// Calculate the amount of quarks to send
 	usdRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
 	if err != nil {
 		log.WithError(err).Warn("failure getting usd rate")
 		return nil, err
 	}
-	quarks := kin.ToQuarks(uint64(usdValue / usdRateRecord.Rate))
-
-	// Add an additional Kin, so we can always have enough to send the full fiat amount
-	quarks += kin.ToQuarks(1)
 
 	var isAirdropperManuallyUnlocked bool
 	s.airdropperLock.Lock()
@@ -422,10 +245,10 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	if err != nil {
 		log.WithError(err).Warn("failure getting airdropper balance")
 		return nil, err
-	} else if balance < quarks {
+	} else if balance < quarkAmount {
 		log.WithFields(logrus.Fields{
 			"balance":  balance,
-			"required": quarks,
+			"required": quarkAmount,
 		}).Warn("airdropper has insufficient balance")
 		return nil, ErrInsufficientAirdropperBalance
 	}
@@ -438,7 +261,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	//       Instead of constructing and validating everything manually, we could
 	//       have a proper client call SubmitIntent in a worker.
 
-	selectedNonce, err := transaction.SelectAvailableNonce(ctx, s.data, nonce.PurposeClientTransaction)
+	selectedNonce, err := transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return nil, err
@@ -448,23 +271,18 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		selectedNonce.Unlock()
 	}()
 
-	txn, err := transaction.MakeTransferWithAuthorityTransaction(
+	vixnHash, err := transaction.GetVirtualTransferWithAuthorityHash(
 		selectedNonce.Account,
 		selectedNonce.Blockhash,
 		s.airdropper,
 		destination,
-		quarks,
+		quarkAmount,
 	)
 	if err != nil {
 		log.WithError(err).Warn("failure making solana transaction")
 		return nil, err
 	}
-
-	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes(), s.airdropper.VaultOwner.PrivateKey().ToBytes())
-	if err != nil {
-		log.WithError(err).Warn("failure signing solana transaction")
-		return nil, err
-	}
+	virtualSig := ed25519.Sign(s.airdropper.VaultOwner.PrivateKey().ToBytes(), vixnHash[:])
 
 	intentRecord := &intent.Record{
 		IntentId:   intentId,
@@ -473,12 +291,12 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 			DestinationOwnerAccount: owner.PublicKey().ToBase58(),
 			DestinationTokenAccount: destination.PublicKey().ToBase58(),
-			Quantity:                quarks,
+			Quantity:                quarkAmount,
 
-			ExchangeCurrency: currency_lib.USD,
-			ExchangeRate:     usdRateRecord.Rate,
-			NativeAmount:     usdValue,
-			UsdMarketValue:   usdValue,
+			ExchangeCurrency: currency_lib.KIN,
+			ExchangeRate:     1.0,
+			NativeAmount:     kinAmount,
+			UsdMarketValue:   usdRateRecord.Rate * kinAmount,
 
 			IsWithdrawal: true,
 		},
@@ -500,7 +318,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		Source:      s.airdropper.Vault.PublicKey().ToBase58(),
 		Destination: pointer.String(destination.PublicKey().ToBase58()),
 
-		Quantity: pointer.Uint64(quarks),
+		Quantity: pointer.Uint64(quarkAmount),
 
 		State: action.StatePending,
 
@@ -515,11 +333,10 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		ActionType: actionRecord.ActionType,
 
 		FulfillmentType: fulfillment.NoPrivacyTransferWithAuthority,
-		Data:            txn.Marshal(),
-		Signature:       pointer.String(base58.Encode(txn.Signature())),
 
-		Nonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
-		Blockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
+		VirtualNonce:     pointer.String(selectedNonce.Account.PublicKey().ToBase58()),
+		VirtualBlockhash: pointer.String(base58.Encode(selectedNonce.Blockhash[:])),
+		VirtualSignature: pointer.String(base58.Encode(virtualSig)),
 
 		Source:      actionRecord.Source,
 		Destination: pointer.StringCopy(actionRecord.Destination),
@@ -556,23 +373,6 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	}
 	event_util.InjectClientDetails(ctx, s.maxmind, eventRecord, true)
 
-	var chatMessage *chatpb.ChatMessage
-	switch airdropType {
-	case AirdropTypeGetFirstKin:
-		chatMessage, err = chat_util.ToWelcomeBonusMessage(intentRecord)
-		if err != nil {
-			return nil, err
-		}
-	case AirdropTypeGiveFirstKin:
-		chatMessage, err = chat_util.ToReferralBonusMessage(intentRecord)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, errors.Errorf("no chat message defined for %s airdrop", airdropType.String())
-	}
-
-	var canPushChatMessage bool
 	err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 		err := s.data.SaveIntent(ctx, intentRecord)
 		if err != nil {
@@ -590,17 +390,12 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			return err
 		}
 
-		err = selectedNonce.MarkReservedWithSignature(ctx, *fulfillmentRecord.Signature)
+		err = selectedNonce.MarkReservedWithSignature(ctx, *fulfillmentRecord.VirtualSignature)
 		if err != nil {
 			return err
 		}
 
 		err = s.data.SaveEvent(ctx, eventRecord)
-		if err != nil {
-			return err
-		}
-
-		canPushChatMessage, err = chat_util.SendCodeTeamMessage(ctx, s.data, owner, chatMessage)
 		if err != nil {
 			return err
 		}
@@ -618,116 +413,9 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	s.airdropperLock.Unlock()
 	isAirdropperManuallyUnlocked = true
 
-	if canPushChatMessage {
-		// Best-effort send a push
-		push_util.SendChatMessagePushNotification(
-			ctx,
-			s.data,
-			s.pusher,
-			chat_util.CodeTeamName,
-			owner,
-			chatMessage,
-		)
-	}
-
-	recordAirdropEvent(ctx, owner, airdropType, usdValue)
+	recordAirdropEvent(ctx, owner, airdropType)
 
 	return intentRecord, nil
-}
-
-func (s *transactionServer) isFirstReceiveFromOtherCodeUser(ctx context.Context, intentToCheck string, owner *common.Account) (bool, error) {
-	log := s.log.WithFields(logrus.Fields{
-		"method": "isFirstReceiveFromOtherCodeUser",
-		"intent": intentToCheck,
-		"owner":  owner.PublicKey().ToBase58(),
-	})
-
-	cached, ok := cachedFirstReceivesByOwner.Retrieve(owner.PublicKey().ToBase58())
-	if ok {
-		return intentToCheck == cached.(string), nil
-	}
-
-	verificationRecord, err := s.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
-	if err != nil {
-		log.WithError(err).Warn("failure getting phone verification record")
-		return false, err
-	}
-	log = log.WithField("phone", verificationRecord.PhoneNumber)
-
-	// Staff are excluded since they can have multiple accounts per phone number,
-	// and shouldn't be counted regardless.
-	userIdentityRecord, err := s.data.GetUserByPhoneView(ctx, verificationRecord.PhoneNumber)
-	if err != nil {
-		log.WithError(err).Warn("failure getting user identity record")
-		return false, err
-	} else if userIdentityRecord.IsStaffUser {
-		return false, nil
-	}
-
-	// Take a small view of the user's initial intent history from the very beginning
-	history, err := s.data.GetAllIntentsByOwner(
-		ctx,
-		owner.PublicKey().ToBase58(),
-		query.WithLimit(100),
-		query.WithDirection(query.Ascending),
-	)
-	if err != nil {
-		log.WithError(err).Warn("failure loading owner history")
-		return false, err
-	}
-
-	var firstReceive *intent.Record
-	createdGiftCards := make(map[string]struct{})
-	for _, historyItem := range history {
-		switch historyItem.IntentType {
-		case intent.SendPrivatePayment, intent.SendPublicPayment:
-			// The owner iniated the send
-			if historyItem.InitiatorOwnerAccount == owner.PublicKey().ToBase58() {
-				// Keep track of any gift cards the user created for future gift card receives
-				if historyItem.IntentType == intent.SendPrivatePayment && historyItem.SendPrivatePaymentMetadata.IsRemoteSend {
-					createdGiftCards[historyItem.SendPrivatePaymentMetadata.DestinationTokenAccount] = struct{}{}
-				}
-
-				continue
-			}
-
-			// The airdropper initiated the send
-			if historyItem.InitiatorOwnerAccount == s.airdropper.VaultOwner.PublicKey().ToBase58() {
-				continue
-			}
-
-			firstReceive = historyItem
-		case intent.ReceivePaymentsPublicly:
-			// Not receiving a gift card
-			if !historyItem.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
-				continue
-			}
-
-			_, ok := createdGiftCards[historyItem.ReceivePaymentsPubliclyMetadata.Source]
-			if !ok {
-				// User didn't create this gift card
-				firstReceive = historyItem
-			}
-		case intent.MigrateToPrivacy2022:
-			// User received their first Kin at some point with pre-privacy account
-			if historyItem.MigrateToPrivacy2022Metadata.Quantity > 0 {
-				firstReceive = historyItem
-			}
-		}
-
-		if firstReceive != nil {
-			break
-		}
-	}
-
-	// Highly unlikely to happen. At this point we can say the user onboarded
-	// themself sufficiently anways.
-	if firstReceive == nil {
-		return false, nil
-	}
-
-	cachedFirstReceivesByOwner.Insert(owner.PublicKey().ToBase58(), firstReceive.IntentId, 1)
-	return firstReceive.IntentId == intentToCheck, nil
 }
 
 func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
@@ -747,7 +435,7 @@ func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
 			return err
 		}
 
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(timelock_token_v1.DataVersion1, common.KinMintAccount)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		if err != nil {
 			return err
 		}

@@ -45,11 +45,10 @@ func recordSubmitIntentLatencyBreakdownEvent(ctx context.Context, section string
 	})
 }
 
-func recordAirdropEvent(ctx context.Context, owner *common.Account, airdropType AirdropType, usdValue float64) {
+func recordAirdropEvent(ctx context.Context, owner *common.Account, airdropType AirdropType) {
 	metrics.RecordEvent(ctx, airdropEventName, map[string]interface{}{
 		"owner":        owner.PublicKey().ToBase58(),
 		"airdrop_type": airdropType.String(),
-		"usd_value":    usdValue,
 	})
 }
 

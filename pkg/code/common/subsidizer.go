@@ -7,12 +7,14 @@ import (
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/solana"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/solana"
 )
+
+// todo: always assumes mainnet
 
 const (
 	// Important Note: Be very careful changing this value, as it will completely
@@ -47,7 +49,7 @@ var (
 		fulfillment.UploadCommitmentProof:                 5000,     // 0.000005 SOL (5000 lamports per signature)
 		fulfillment.VerifyCommitmentProof:                 5000,     // 0.000005 SOL (5000 lamports per signature)
 		fulfillment.OpenCommitmentVault:                   2050000,  // 0.00205 SOL
-		fulfillment.CloseCommitmentVault:                  5000,     // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.CloseCommitment:                       5000,     // 0.000005 SOL (5000 lamports per signature)
 	}
 	lamportsPerCreateNonceAccount uint64 = 1450000 // 0.00145 SOL
 )
@@ -154,7 +156,7 @@ func EstimateUsedSubsidizerBalance(ctx context.Context, data code_data.Provider)
 		fees += uint64(count) * lamportsConsumed
 	}
 
-	numNoncesBeingCreated, err := data.GetNonceCountByState(ctx, nonce.StateUnknown)
+	numNoncesBeingCreated, err := data.GetNonceCountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown)
 	if err != nil {
 		return 0, err
 	}

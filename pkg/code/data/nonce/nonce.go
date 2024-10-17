@@ -7,6 +7,20 @@ import (
 	"github.com/mr-tron/base58"
 )
 
+type Environment uint8
+
+const (
+	EnvironmentUnknown Environment = iota
+	EnvironmentSolana              // Environment instance is the cluster name (ie. mainnet, devnet, testnet, etc)
+	EnvironmentCvm                 // Environment instance is the VM public key
+)
+
+const (
+	EnvironmentInstanceSolanaMainnet = "mainnet"
+	EnvironmentInstanceSolanaDevnet  = "devnet"
+	EnvironmentInstanceSolanaTestnet = "testnet"
+)
+
 var (
 	ErrNonceNotFound = errors.New("no records could be found")
 	ErrInvalidNonce  = errors.New("invalid nonce")
@@ -17,8 +31,8 @@ type State uint8
 const (
 	StateUnknown   State = iota
 	StateReleased        // The nonce is almost ready but we don't know its blockhash yet.
-	StateAvailable       // The nonce is available to be used by a payment intent, subscription, or other nonce-related transaction.
-	StateReserved        // The nonce is reserved by a payment intent, subscription, or other nonce-related transaction.
+	StateAvailable       // The nonce is available to be used by a payment intent, subscription, or other nonce-related transaction/instruction.
+	StateReserved        // The nonce is reserved by a payment intent, subscription, or other nonce-related transaction/instruction.
 	StateInvalid         // The nonce account is invalid (e.g. insufficient funds, etc).
 )
 
@@ -43,8 +57,12 @@ type Record struct {
 	Address   string
 	Authority string
 	Blockhash string
-	Purpose   Purpose
-	State     State
+
+	Environment         Environment
+	EnvironmentInstance string
+
+	Purpose Purpose
+	State   State
 
 	Signature string
 }
@@ -55,13 +73,15 @@ func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {
 
 func (r *Record) Clone() Record {
 	return Record{
-		Id:        r.Id,
-		Address:   r.Address,
-		Authority: r.Authority,
-		Blockhash: r.Blockhash,
-		Purpose:   r.Purpose,
-		State:     r.State,
-		Signature: r.Signature,
+		Id:                  r.Id,
+		Address:             r.Address,
+		Authority:           r.Authority,
+		Blockhash:           r.Blockhash,
+		Environment:         r.Environment,
+		EnvironmentInstance: r.EnvironmentInstance,
+		Purpose:             r.Purpose,
+		State:               r.State,
+		Signature:           r.Signature,
 	}
 }
 
@@ -70,6 +90,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Address = r.Address
 	dst.Authority = r.Authority
 	dst.Blockhash = r.Blockhash
+	dst.Environment = r.Environment
+	dst.EnvironmentInstance = r.EnvironmentInstance
 	dst.Purpose = r.Purpose
 	dst.State = r.State
 	dst.Signature = r.Signature
@@ -84,10 +106,31 @@ func (v *Record) Validate() error {
 		return errors.New("authority address is required")
 	}
 
+	if v.Environment == EnvironmentUnknown {
+		return errors.New("nonce environment must be set")
+	}
+
+	if len(v.EnvironmentInstance) == 0 {
+		return errors.New("nonce environment instance must be set")
+	}
+
 	if v.Purpose == PurposeUnknown {
 		return errors.New("nonce purpose must be set")
 	}
+
 	return nil
+}
+
+func (e Environment) String() string {
+	switch e {
+	case EnvironmentUnknown:
+		return "unknown"
+	case EnvironmentSolana:
+		return "solana"
+	case EnvironmentCvm:
+		return "cvm"
+	}
+	return "unknown"
 }
 
 func (s State) String() string {

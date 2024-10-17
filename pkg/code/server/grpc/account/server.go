@@ -231,14 +231,6 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	legacyPrimary2022Records, err := common.GetLegacyPrimary2022AccountRecordsIfNotMigrated(ctx, s.data, owner)
-	if err != common.ErrNoPrivacyMigration2022 && err != nil {
-		log.WithError(err).Warn("failure getting legacy 2022 account records")
-		return nil, status.Error(codes.Internal, "")
-	} else if err == nil {
-		recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022] = []*common.AccountRecords{legacyPrimary2022Records}
-	}
-
 	// Trigger a deposit sync with the blockchain for the primary account, if it exists
 	if primaryRecords, ok := recordsByType[commonpb.AccountType_PRIMARY]; ok {
 		if !primaryRecords[0].General.RequiresDepositSync {
@@ -440,18 +432,6 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_CLOSED
 		default:
 			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNKNOWN
-		}
-
-		// Should never happen and is a precautionary check. We can't manage timelock
-		// accounts where we aren't the time authority.
-		if records.Timelock.TimeAuthority != common.GetSubsidizer().PublicKey().ToBase58() {
-			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
-		}
-
-		// Should never happen and is a precautionary check. We can't manage timelock
-		// accounts where we aren't the close authority.
-		if records.Timelock.CloseAuthority != common.GetSubsidizer().PublicKey().ToBase58() {
-			managementState = accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE
 		}
 	}
 

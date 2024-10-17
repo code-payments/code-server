@@ -22,7 +22,7 @@ const (
 		CREATE TABLE codewallet__core_treasurypool(
 			id SERIAL NOT NULL PRIMARY KEY,
 
-			data_version INTEGER NOT NULL,
+			vm TEXT NOT NULL,
 
 			name TEXT NOT NULL,
 

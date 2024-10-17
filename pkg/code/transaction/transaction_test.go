@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-server/pkg/code/common"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/system"
 	"github.com/code-payments/code-server/pkg/solana/token"
 	"github.com/code-payments/code-server/pkg/testutil"
-	"github.com/code-payments/code-server/pkg/code/common"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
 )
 
 func TestTransaction_MakeNoncedTransaction_HappyPath(t *testing.T) {
@@ -76,5 +76,26 @@ func TestTransaction_MakeNoncedTransaction_NoInstructions(t *testing.T) {
 	copy(typedBlockhash[:], untypedBlockhash)
 
 	_, err = MakeNoncedTransaction(nonceAccount, typedBlockhash)
+	assert.Error(t, err)
+}
+
+func TestVmTransaction_MergedMemoryBanks_HappyPath(t *testing.T) {
+	account1 := testutil.NewRandomAccount(t)
+	account2 := testutil.NewRandomAccount(t)
+	account3 := testutil.NewRandomAccount(t)
+
+	res, err := mergeMemoryBanks(account1, account1, account2, account3, account2)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, account1.PublicKey().ToBytes(), *res.A)
+	assert.EqualValues(t, account2.PublicKey().ToBytes(), *res.B)
+	assert.EqualValues(t, account3.PublicKey().ToBytes(), *res.C)
+	assert.Nil(t, res.D)
+
+	assert.Equal(t, []uint8{0, 0, 1, 2, 1}, res.Indices)
+}
+
+func TestVmTransaction_MergedMemoryBanks_TooManyAccounts(t *testing.T) {
+	_, err := mergeMemoryBanks(testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t))
 	assert.Error(t, err)
 }

@@ -9,10 +9,6 @@ import (
 	"github.com/mr-tron/base58"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
@@ -22,6 +18,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
 // This method is expected to be extremely safe due to the implications of saving
@@ -184,7 +184,7 @@ func (p *service) maybeSaveRecentRoot(ctx context.Context, treasuryPoolRecord *t
 		State: action.StatePending,
 	}
 
-	selectedNonce, err := transaction.SelectAvailableNonce(ctx, p.data, nonce.PurposeInternalServerProcess)
+	selectedNonce, err := transaction.SelectAvailableNonce(ctx, p.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeInternalServerProcess)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return err
@@ -299,21 +299,24 @@ func (p *service) openTreasuryAdvanceFloodGates(ctx context.Context, treasuryPoo
 }
 
 func makeSaveRecentRootTransaction(selectedNonce *transaction.SelectedNonce, record *treasury.Record) (solana.Transaction, error) {
+	vmAddressBytes, err := base58.Decode(record.Vm)
+	if err != nil {
+		return solana.Transaction{}, err
+	}
+
 	treasuryAddressBytes, err := base58.Decode(record.Address)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
 
-	saveRecentRootInstruction := splitter_token.NewSaveRecentRootInstruction(
-		&splitter_token.SaveRecentRootInstructionAccounts{
-			Pool:      treasuryAddressBytes,
-			Authority: common.GetSubsidizer().PublicKey().ToBytes(),
-			Payer:     common.GetSubsidizer().PublicKey().ToBytes(),
+	saveRecentRootInstruction := cvm.NewRelaySaveRecentRootInstruction(
+		&cvm.RelaySaveRecentRootInstructionAccounts{
+			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
+			Vm:          vmAddressBytes,
+			Relay:       treasuryAddressBytes,
 		},
-		&splitter_token.SaveRecentRootInstructionArgs{
-			PoolBump: record.Bump,
-		},
-	).ToLegacyInstruction()
+		&cvm.RelaySaveRecentRootInstructionArgs{},
+	)
 
 	// Always use a nonce for this type of transaction. It's way too risky without it,
 	// given the implications if we play this out too many times by accident.
