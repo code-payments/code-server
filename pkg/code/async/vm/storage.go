@@ -98,7 +98,7 @@ func (p *service) initStorageAccountOnBlockchain(ctx context.Context, vm *common
 
 	txn := solana.NewTransaction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
-		compute_budget.SetComputeUnitLimit(10_000),
+		compute_budget.SetComputeUnitLimit(100_000),
 		compute_budget.SetComputeUnitPrice(10_000),
 		cvm.NewVmStorageInitInstruction(
 			&cvm.VmStorageInitInstructionAccounts{
@@ -132,8 +132,8 @@ func (p *service) initStorageAccountOnBlockchain(ctx context.Context, vm *common
 
 		time.Sleep(4 * time.Second)
 
-		_, err = p.data.GetBlockchainTransaction(ctx, base58.Encode(sig[:]), solana.CommitmentFinalized)
-		if err == nil {
+		finalizedTxn, err := p.data.GetBlockchainTransaction(ctx, base58.Encode(sig[:]), solana.CommitmentFinalized)
+		if err == nil && finalizedTxn.Err == nil && finalizedTxn.Meta.Err == nil {
 			return record, nil
 		}
 	}
