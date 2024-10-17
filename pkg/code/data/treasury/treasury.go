@@ -118,7 +118,7 @@ func (r *Record) Update(data *cvm.RelayAccount, solanaBlock uint64) error {
 
 	if r.CurrentIndex == data.RecentRoots.Offset {
 		var hasUpdatedHistoryList bool
-		for i := 0; i < int(r.HistoryListSize); i++ {
+		for i := 0; i < len(data.RecentRoots.Items); i++ {
 			if r.HistoryList[i] != data.RecentRoots.Items[i].String() {
 				hasUpdatedHistoryList = true
 				break
@@ -137,6 +137,11 @@ func (r *Record) Update(data *cvm.RelayAccount, solanaBlock uint64) error {
 	historyList := make([]string, r.HistoryListSize)
 	for i, recentRoot := range data.RecentRoots.Items {
 		historyList[i] = recentRoot.String()
+	}
+	for i, hash := range historyList {
+		if len(hash) == 0 {
+			historyList[i] = historyList[0]
+		}
 	}
 	r.HistoryList = historyList
 
