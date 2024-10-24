@@ -113,23 +113,26 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
 		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
-	case *transactionpb.Metadata_SendPrivatePayment:
-		log = log.WithField("intent_type", "send_private_payment")
-		intentHandler = NewSendPrivatePaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.amlGuard, s.maxmind)
-		intentRequiresNewTreasuryPoolFunds = true
-	case *transactionpb.Metadata_ReceivePaymentsPrivately:
-		log = log.WithField("intent_type", "receive_payments_privately")
-		intentHandler = NewReceivePaymentsPrivatelyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
-		intentRequiresNewTreasuryPoolFunds = true
-	case *transactionpb.Metadata_UpgradePrivacy:
-		log = log.WithField("intent_type", "upgrade_privacy")
-		intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
-	case *transactionpb.Metadata_ReceivePaymentsPublicly:
-		log = log.WithField("intent_type", "receive_payments_publicly")
-		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard, s.maxmind)
-	case *transactionpb.Metadata_EstablishRelationship:
-		log = log.WithField("intent_type", "establish_relationship")
-		intentHandler = NewEstablishRelationshipIntentHandler(s.conf, s.data, s.antispamGuard)
+	/*
+		case *transactionpb.Metadata_SendPrivatePayment:
+			log = log.WithField("intent_type", "send_private_payment")
+			intentHandler = NewSendPrivatePaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.amlGuard, s.maxmind)
+			intentRequiresNewTreasuryPoolFunds = true
+		case *transactionpb.Metadata_ReceivePaymentsPrivately:
+			log = log.WithField("intent_type", "receive_payments_privately")
+			intentHandler = NewReceivePaymentsPrivatelyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
+			intentRequiresNewTreasuryPoolFunds = true
+		case *transactionpb.Metadata_UpgradePrivacy:
+			log = log.WithField("intent_type", "upgrade_privacy")
+			intentHandler = NewUpgradePrivacyIntentHandler(s.conf, s.data)
+		case *transactionpb.Metadata_ReceivePaymentsPublicly:
+			log = log.WithField("intent_type", "receive_payments_publicly")
+			intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard, s.maxmind)
+		case *transactionpb.Metadata_EstablishRelationship:
+			log = log.WithField("intent_type", "establish_relationship")
+			intentHandler = NewEstablishRelationshipIntentHandler(s.conf, s.data, s.antispamGuard)
+	*/
+
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}
