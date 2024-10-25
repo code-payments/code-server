@@ -7,7 +7,8 @@ const (
 )
 
 const (
-	MemoryLayoutMixed MemoryLayout = iota
+	MemoryLayoutUnknown MemoryLayout = iota
+	MemoryLayoutMixed
 	MemoryLayoutTimelock
 	MemoryLayoutNonce
 	MemoryLayoutRelay
