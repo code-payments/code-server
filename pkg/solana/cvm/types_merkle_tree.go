@@ -3,7 +3,8 @@ package cvm
 import "fmt"
 
 const (
-	MinMerkleTreeSize = 1
+	minMerkleTreeSize = (HashSize + // root
+		8) // next_index
 )
 
 var (
@@ -11,55 +12,44 @@ var (
 )
 
 type MerkleTree struct {
-	Root      Hash
-	Levels    uint8
-	NextIndex uint64
-
+	Root           Hash
 	FilledSubtrees HashArray
 	ZeroValues     HashArray
+	NextIndex      uint64
 }
 
-func (obj *MerkleTree) Unmarshal(data []byte) error {
-	if len(data) < MinMerkleTreeSize {
+func (obj *MerkleTree) Unmarshal(data []byte, levels int) error {
+	if len(data) < GetMerkleTreeSize(levels) {
 		return ErrInvalidAccountData
 	}
 
 	var offset int
 
 	getHash(data, &obj.Root, &offset)
-	getUint8(data, &obj.Levels, &offset)
-
-	if len(data) < GetMerkleTreeSize(int(obj.Levels)) {
-		return ErrInvalidAccountData
-	}
-
+	getStaticHashArray(data, &obj.FilledSubtrees, levels, &offset)
+	getStaticHashArray(data, &obj.ZeroValues, levels, &offset)
 	getUint64(data, &obj.NextIndex, &offset)
-	getHashArray(data, &obj.FilledSubtrees, &offset)
-	getHashArray(data, &obj.ZeroValues, &offset)
 
 	return nil
 }
 
 func (obj *MerkleTree) String() string {
 	return fmt.Sprintf(
-		"MerkleTree{root=%s,levels=%d,next_index=%d,filled_subtrees=%s,zero_values=%s}",
+		"MerkleTree{root=%s,filled_subtrees=%s,zero_values=%s,next_index=%d}",
 		obj.Root.String(),
-		obj.Levels,
-		obj.NextIndex,
 		obj.FilledSubtrees.String(),
 		obj.ZeroValues.String(),
+		obj.NextIndex,
 	)
 }
 
-func getMerkleTree(src []byte, dst *MerkleTree, offset *int) {
-	dst.Unmarshal(src[*offset:])
-	*offset += GetMerkleTreeSize(int(dst.Levels))
+func getMerkleTree(src []byte, dst *MerkleTree, levels int, offset *int) {
+	dst.Unmarshal(src[*offset:], levels)
+	*offset += GetMerkleTreeSize(int(levels))
 }
 
 func GetMerkleTreeSize(levels int) int {
-	return (HashSize + // root
-		1 + // levels
-		8 + // next_index
-		4 + levels*HashSize + // filled_subtrees
-		4 + levels*HashSize) // zero_values
+	return (minMerkleTreeSize +
+		levels*HashSize + // filled_subtrees
+		levels*HashSize) // zero_values
 }

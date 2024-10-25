@@ -26,6 +26,13 @@ func getHash(src []byte, dst *Hash, offset *int) {
 
 type HashArray []Hash
 
+func getStaticHashArray(src []byte, dst *HashArray, length int, offset *int) {
+	*dst = make([]Hash, length)
+	for i := 0; i < int(length); i++ {
+		getHash(src, &(*dst)[i], offset)
+	}
+}
+
 func getHashArray(src []byte, dst *HashArray, offset *int) {
 	length := binary.LittleEndian.Uint32(src[*offset:])
 	*offset += 4

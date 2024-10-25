@@ -9,33 +9,31 @@ import (
 )
 
 const (
-	// todo: func for real size
-	minCodeVmAccountSize = (8 + //discriminator
+	CodeVmAccountSize = (8 + //discriminator
 		32 + // authority
 		32 + // mint
+		8 + // slot
+		HashSize + // poh
 		TokenPoolSize + // omnibus
 		1 + // lock_duration
 		1 + // bump
-		8 + // slot
-		HashSize + // poh
-		7) // padding
+		5) // padding
 )
 
-var CodeVmAccountDiscriminator = []byte{0xed, 0x82, 0x60, 0x0b, 0xbb, 0x2c, 0xc7, 0x55}
+var CodeVmAccountDiscriminator = []byte{byte(AccountTypeCodeVm), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 type CodeVmAccount struct {
 	Authority    ed25519.PublicKey
 	Mint         ed25519.PublicKey
+	Slot         uint64
+	Poh          Hash
 	Omnibus      TokenPool
 	LockDuration uint8
 	Bump         uint8
-	Slot         uint64
-	Poh          Hash
-	ChangeLog    PagedMemory
 }
 
 func (obj *CodeVmAccount) Unmarshal(data []byte) error {
-	if len(data) < minCodeVmAccountSize {
+	if len(data) < CodeVmAccountSize {
 		return ErrInvalidAccountData
 	}
 
@@ -49,28 +47,25 @@ func (obj *CodeVmAccount) Unmarshal(data []byte) error {
 
 	getKey(data, &obj.Authority, &offset)
 	getKey(data, &obj.Mint, &offset)
+	getUint64(data, &obj.Slot, &offset)
+	getHash(data, &obj.Poh, &offset)
 	getTokenPool(data, &obj.Omnibus, &offset)
 	getUint8(data, &obj.LockDuration, &offset)
 	getUint8(data, &obj.Bump, &offset)
-	getUint64(data, &obj.Slot, &offset)
-	getHash(data, &obj.Poh, &offset)
-	offset += 5
-	obj.ChangeLog = NewChangelogMemory()
-	getPagedMemory(data, &obj.ChangeLog, &offset)
+	offset += 5 // padding
 
 	return nil
 }
 
 func (obj *CodeVmAccount) String() string {
 	return fmt.Sprintf(
-		"CodeVmAccount{authority=%s,mint=%s,omnibus=%s,lock_duration=%d,bump=%d,slot=%d,poh=%s,changelog=%s}",
+		"CodeVmAccount{authority=%s,mint=%s,slot=%d,poh=%s,omnibus=%s,lock_duration=%d,bump=%d}",
 		base58.Encode(obj.Authority),
 		base58.Encode(obj.Mint),
+		obj.Slot,
+		obj.Poh.String(),
 		obj.Omnibus.String(),
 		obj.LockDuration,
 		obj.Bump,
-		obj.Slot,
-		obj.Poh.String(),
-		obj.ChangeLog.String(),
 	)
 }

@@ -9,36 +9,42 @@ import (
 )
 
 const (
+	DefaultRelayMerkleTreeDepth = 63
+	DefaultRelayHistorySize     = 32
+
 	MaxRelayAccountNameSize = 32
 )
 
-const (
-	minRelayAccountSize = (8 + //discriminator
+var (
+	RelayAccountSize = (8 + //discriminator
 		32 + // vm
-		1 + // bump
 		MaxRelayAccountNameSize + // name
+		TokenPoolSize + // treasury
+		1 + // bump
 		1 + // num_levels
 		1 + // num_history
-		TokenPoolSize) // treasury
+		4 + // padding
+		GetRecentRootsSize(DefaultRelayHistorySize) + // recent_roots
+		GetMerkleTreeSize(DefaultRelayHistorySize)) // history
 )
 
-var RelayAccountDiscriminator = []byte{0xf2, 0xbb, 0xef, 0x5f, 0x89, 0xe1, 0xf5, 0x5c}
+var RelayAccountDiscriminator = []byte{byte(AccountTypeRelay), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 type RelayAccount struct {
 	Vm   ed25519.PublicKey
-	Bump uint8
+	Name string
 
-	Name       string
+	Treasury   TokenPool
+	Bump       uint8
 	NumLevels  uint8
 	NumHistory uint8
 
-	Treasury    TokenPool
 	History     MerkleTree
 	RecentRoots RecentRoots
 }
 
 func (obj *RelayAccount) Unmarshal(data []byte) error {
-	if len(data) < minRelayAccountSize {
+	if len(data) < RelayAccountSize {
 		return ErrInvalidAccountData
 	}
 
@@ -51,38 +57,28 @@ func (obj *RelayAccount) Unmarshal(data []byte) error {
 	}
 
 	getKey(data, &obj.Vm, &offset)
+	getFixedString(data, &obj.Name, MaxRelayAccountNameSize, &offset)
+	getTokenPool(data, &obj.Treasury, &offset)
 	getUint8(data, &obj.Bump, &offset)
-	getString(data, &obj.Name, &offset)
 	getUint8(data, &obj.NumLevels, &offset)
 	getUint8(data, &obj.NumHistory, &offset)
-
-	if len(data) < GetRelayAccountSize(int(obj.NumLevels), int(obj.NumHistory)) {
-		return ErrInvalidAccountData
-	}
-
-	getTokenPool(data, &obj.Treasury, &offset)
-	getMerkleTree(data, &obj.History, &offset)
-	getRecentRoots(data, &obj.RecentRoots, &offset)
+	offset += 4 // padding
+	getRecentRoots(data, &obj.RecentRoots, DefaultRelayHistorySize, &offset)
+	getMerkleTree(data, &obj.History, DefaultRelayMerkleTreeDepth, &offset)
 
 	return nil
 }
 
 func (obj *RelayAccount) String() string {
 	return fmt.Sprintf(
-		"RelayAccount{vm=%s,bump=%d,name=%s,num_levels=%d,num_history=%d,treasury=%s,history=%s,recent_roots=%s}",
+		"RelayAccount{vm=%s,name=%s,treasury=%s,bump=%d,num_levels=%d,num_history=%d,recent_roots=%s,history=%s}",
 		base58.Encode(obj.Vm),
-		obj.Bump,
 		obj.Name,
+		obj.Treasury.String(),
+		obj.Bump,
 		obj.NumLevels,
 		obj.NumHistory,
-		obj.Treasury.String(),
-		obj.History.String(),
 		obj.RecentRoots.String(),
+		obj.History.String(),
 	)
-}
-
-func GetRelayAccountSize(numLevels, numHistory int) int {
-	return (minRelayAccountSize +
-		+GetMerkleTreeSize(numLevels) + // history
-		+GetRecentRootsSize(numHistory)) // recent_roots
 }
