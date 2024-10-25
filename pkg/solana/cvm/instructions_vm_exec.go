@@ -120,11 +120,6 @@ func NewVmExecInstruction(
 				IsWritable: false,
 				IsSigner:   false,
 			},
-			{
-				PublicKey:  SYSVAR_IXNS_PUBKEY,
-				IsWritable: false,
-				IsSigner:   false,
-			},
 		},
 	}
 }
