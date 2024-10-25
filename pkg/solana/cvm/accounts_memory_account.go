@@ -25,7 +25,7 @@ type MemoryAccountWithData struct {
 	Name   string
 	Bump   uint8
 	Layout MemoryLayout
-	Data   PagedMemory // todo: update to simple implementation
+	Data   SimpleMemoryAllocator // todo: support other implementations
 }
 
 const MemoryAccountSize = (8 + // discriminator
@@ -87,17 +87,32 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 	getUint8(data, &obj.Bump, &offset)
 	getMemoryLayout(data, &obj.Layout, &offset)
 	offset += 6 // padding
+
 	switch obj.Layout {
 	case MemoryLayoutTimelock:
-		obj.Data = NewTimelockAccountMemory()
+		capacity := CompactStateItems
+		itemSize := int(GetVirtualAccountSizeInMemory(VirtualAccountTypeTimelock))
+		if len(data) < MemoryAccountSize+GetSimpleMemoryAllocatorSize(capacity, itemSize) {
+			return ErrInvalidAccountData
+		}
+		getSimpleMemoryAllocator(data, &obj.Data, capacity, itemSize, &offset)
 	case MemoryLayoutNonce:
-		obj.Data = NewNonceAccountMemory()
+		capacity := CompactStateItems
+		itemSize := int(GetVirtualAccountSizeInMemory(VirtualDurableNonceSize))
+		if len(data) < MemoryAccountSize+GetSimpleMemoryAllocatorSize(capacity, itemSize) {
+			return ErrInvalidAccountData
+		}
+		getSimpleMemoryAllocator(data, &obj.Data, capacity, itemSize, &offset)
 	case MemoryLayoutRelay:
-		obj.Data = NewRelayAccountMemory()
+		capacity := CompactStateItems
+		itemSize := int(GetVirtualAccountSizeInMemory(VirtualAccountTypeRelay))
+		if len(data) < MemoryAccountSize+GetSimpleMemoryAllocatorSize(capacity, itemSize) {
+			return ErrInvalidAccountData
+		}
+		getSimpleMemoryAllocator(data, &obj.Data, capacity, itemSize, &offset)
 	default:
-		return errors.New("unexpected memory layout")
+		return errors.New("unsupported memory layout")
 	}
-	getPagedMemory(data, &obj.Data, &offset)
 
 	return nil
 }
