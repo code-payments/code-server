@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	DefaultRelayMerkleTreeDepth = 63
-	DefaultRelayHistorySize     = 32
+	DefaultRelayStateDepth   = 63
+	DefaultRelayHistoryItems = 32
 
 	MaxRelayAccountNameSize = 32
 )
@@ -24,8 +24,8 @@ var (
 		1 + // num_levels
 		1 + // num_history
 		4 + // padding
-		GetRecentRootsSize(DefaultRelayHistorySize) + // recent_roots
-		GetMerkleTreeSize(DefaultRelayHistorySize)) // history
+		GetRecentRootsSize(DefaultRelayHistoryItems) + // recent_roots
+		GetMerkleTreeSize(DefaultRelayStateDepth)) // history
 )
 
 var RelayAccountDiscriminator = []byte{byte(AccountTypeRelay), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
@@ -63,8 +63,8 @@ func (obj *RelayAccount) Unmarshal(data []byte) error {
 	getUint8(data, &obj.NumLevels, &offset)
 	getUint8(data, &obj.NumHistory, &offset)
 	offset += 4 // padding
-	getRecentRoots(data, &obj.RecentRoots, DefaultRelayHistorySize, &offset)
-	getMerkleTree(data, &obj.History, DefaultRelayMerkleTreeDepth, &offset)
+	getRecentRoots(data, &obj.RecentRoots, DefaultRelayHistoryItems, &offset)
+	getMerkleTree(data, &obj.History, DefaultRelayStateDepth, &offset)
 
 	return nil
 }
