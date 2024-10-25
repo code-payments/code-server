@@ -6,26 +6,22 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var SystemAccountDecompressInstructionDiscriminator = []byte{
-	0x63, 0x05, 0x07, 0x80, 0x20, 0x84, 0x86, 0x53,
-}
-
 const (
-	MinSystemAccountDecompressInstructionArgsSize = (8 + // discriminator
+	MinDecompressInstructionArgsSize = (8 + // discriminator
 		2 + // account_index
 		4 + // len(packed_va)
 		4 + // len(proof)
 		SignatureSize) // signature
 )
 
-type SystemAccountDecompressInstructionArgs struct {
+type DecompressInstructionArgs struct {
 	AccountIndex uint16
 	PackedVa     []uint8
 	Proof        HashArray
 	Signature    Signature
 }
 
-type SystemAccountDecompressInstructionAccounts struct {
+type DecompressInstructionAccounts struct {
 	VmAuthority     ed25519.PublicKey
 	Vm              ed25519.PublicKey
 	VmMemory        ed25519.PublicKey
@@ -34,18 +30,16 @@ type SystemAccountDecompressInstructionAccounts struct {
 	WithdrawReceipt *ed25519.PublicKey
 }
 
-func NewSystemAccountDecompressInstruction(
-	accounts *SystemAccountDecompressInstructionAccounts,
-	args *SystemAccountDecompressInstructionArgs,
+func NewDecompressInstruction(
+	accounts *DecompressInstructionAccounts,
+	args *DecompressInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(SystemAccountDecompressInstructionDiscriminator)+
-			GetSystemAccountDecompressInstructionArgsSize(args))
+	data := make([]byte, 1+GetDecompressInstructionArgsSize(args))
 
-	putDiscriminator(data, SystemAccountDecompressInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionDecompress, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 	putUint8Array(data, args.PackedVa, &offset)
 	putHashArray(data, args.Proof, &offset)
@@ -93,8 +87,8 @@ func NewSystemAccountDecompressInstruction(
 	}
 }
 
-func GetSystemAccountDecompressInstructionArgsSize(args *SystemAccountDecompressInstructionArgs) int {
-	return (MinSystemAccountDecompressInstructionArgsSize +
+func GetDecompressInstructionArgsSize(args *DecompressInstructionArgs) int {
+	return (MinDecompressInstructionArgsSize +
 		len(args.PackedVa) + // packed_va
 		HashSize*len(args.Proof)) // proof
 }

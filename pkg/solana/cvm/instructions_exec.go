@@ -6,23 +6,19 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var VmExecInstructionDiscriminator = []byte{
-	0xe5, 0xcf, 0x51, 0x74, 0xed, 0x96, 0xba, 0x3e,
+type ExecArgsAndAccounts struct {
+	Args     ExecInstructionArgs
+	Accounts ExecInstructionAccounts
 }
 
-type VmExecArgsAndAccounts struct {
-	Args     VmExecInstructionArgs
-	Accounts VmExecInstructionAccounts
-}
-
-type VmExecInstructionArgs struct {
+type ExecInstructionArgs struct {
 	Opcode     Opcode
 	MemIndices []uint16
 	MemBanks   []uint8
 	Data       []uint8
 }
 
-type VmExecInstructionAccounts struct {
+type ExecInstructionAccounts struct {
 	VmAuthority     ed25519.PublicKey
 	Vm              ed25519.PublicKey
 	VmMemA          *ed25519.PublicKey
@@ -35,18 +31,16 @@ type VmExecInstructionAccounts struct {
 	ExternalAddress *ed25519.PublicKey
 }
 
-func NewVmExecInstruction(
-	accounts *VmExecInstructionAccounts,
-	args *VmExecInstructionArgs,
+func NewExecInstruction(
+	accounts *ExecInstructionAccounts,
+	args *ExecInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(VmExecInstructionDiscriminator)+
-			getVmExecInstructionArgSize(args))
+	data := make([]byte, 1+getExecInstructionArgSize(args))
 
-	putDiscriminator(data, VmExecInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionExec, &offset)
 	putOpcode(data, args.Opcode, &offset)
 	putUint16Array(data, args.MemIndices, &offset)
 	putUint8Array(data, args.MemBanks, &offset)
@@ -124,7 +118,7 @@ func NewVmExecInstruction(
 	}
 }
 
-func getVmExecInstructionArgSize(args *VmExecInstructionArgs) int {
+func getExecInstructionArgSize(args *ExecInstructionArgs) int {
 	return (1 + // opcode
 		4 + 2*len(args.MemIndices) + // mem_indices
 		4 + len(args.MemBanks) + // mem_banks

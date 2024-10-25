@@ -6,39 +6,33 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var SystemAccountCompressInstructionDiscriminator = []byte{
-	0x50, 0xc8, 0x0f, 0x6c, 0xb5, 0x1d, 0x7d, 0x9c,
-}
-
 const (
-	SystemAccountCompressInstructionArgsSize = (2 + // account_index
+	CompressInstructionArgsSize = (2 + // account_index
 		SignatureSize) // signature
 )
 
-type SystemAccountCompressInstructionArgs struct {
+type CompressInstructionArgs struct {
 	AccountIndex uint16
 	Signature    Signature
 }
 
-type SystemAccountCompressInstructionAccounts struct {
+type CompressInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
 	VmMemory    ed25519.PublicKey
 	VmStorage   ed25519.PublicKey
 }
 
-func NewSystemAccountCompressInstruction(
-	accounts *SystemAccountCompressInstructionAccounts,
-	args *SystemAccountCompressInstructionArgs,
+func NewCompressInstruction(
+	accounts *CompressInstructionAccounts,
+	args *CompressInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(SystemAccountCompressInstructionDiscriminator)+
-			SystemAccountCompressInstructionArgsSize)
+	data := make([]byte, 1+CompressInstructionArgsSize)
 
-	putDiscriminator(data, SystemAccountCompressInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionCompress, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 	putSignature(data, args.Signature, &offset)
 

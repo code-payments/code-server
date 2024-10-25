@@ -6,40 +6,38 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var VmMemoryInitInstructionDiscriminator = []byte{
-	0x05, 0xd3, 0xfb, 0x74, 0x39, 0xbc, 0xc1, 0xad,
-}
-
 const (
-	VmMemoryInitInstructionArgsSize = (4 + MaxMemoryAccountNameLength + // name
-		1) // layout
+	MaxStorageAccountNameLength = 32
 )
 
-type VmMemoryInitInstructionArgs struct {
-	Name   string
-	Layout MemoryLayout
+const (
+	InitStorageInstructionArgsSize = (MaxStorageAccountNameLength + // name
+		1) // vm_storage_bump
+)
+
+type InitStorageInstructionArgs struct {
+	Name          string
+	VmStorageBump uint8
 }
 
-type VmMemoryInitInstructionAccounts struct {
+type InitStorageInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
-	VmMemory    ed25519.PublicKey
+	VmStorage   ed25519.PublicKey
 }
 
-func NewVmMemoryInitInstruction(
-	accounts *VmMemoryInitInstructionAccounts,
-	args *VmMemoryInitInstructionArgs,
+func NewInitStorageInstruction(
+	accounts *InitStorageInstructionAccounts,
+	args *InitStorageInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(VmMemoryInitInstructionDiscriminator)+
-			VmMemoryInitInstructionArgsSize)
+	data := make([]byte, 1+InitStorageInstructionArgsSize)
 
-	putDiscriminator(data, VmMemoryInitInstructionDiscriminator, &offset)
-	putString(data, args.Name, &offset)
-	putMemoryLayout(data, args.Layout, &offset)
+	putCodeInstruction(data, CodeInstructionInitStorage, &offset)
+	putFixedString(data, args.Name, MaxStorageAccountNameLength, &offset)
+	putUint8(data, args.VmStorageBump, &offset)
 
 	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
@@ -60,7 +58,7 @@ func NewVmMemoryInitInstruction(
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.VmMemory,
+				PublicKey:  accounts.VmStorage,
 				IsWritable: true,
 				IsSigner:   false,
 			},

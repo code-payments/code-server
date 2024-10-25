@@ -6,43 +6,37 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var SystemTimelockInitInstructionDiscriminator = []byte{
-	0x07, 0x0b, 0xf5, 0xc5, 0x68, 0xfe, 0xb7, 0xb6,
-}
-
 const (
-	SystemTimelockInitInstructionArgsSize = (2 + // account_index
+	InitTimelockInstructionArgsSize = (2 + // account_index
 		1 + // virtual_timelock_bump
 		1 + // virtual_vault_bump
 		1) // vm_unlock_pda_bump
 )
 
-type SystemTimelockInitInstructionArgs struct {
+type InitTimelockInstructionArgs struct {
 	AccountIndex        uint16
 	VirtualTimelockBump uint8
 	VirtualVaultBump    uint8
 	VmUnlockPdaBump     uint8
 }
 
-type SystemTimelockInitInstructionAccounts struct {
+type InitTimelockInstructionAccounts struct {
 	VmAuthority         ed25519.PublicKey
 	Vm                  ed25519.PublicKey
 	VmMemory            ed25519.PublicKey
 	VirtualAccountOwner ed25519.PublicKey
 }
 
-func NewSystemTimelockInitInstruction(
-	accounts *SystemTimelockInitInstructionAccounts,
-	args *SystemTimelockInitInstructionArgs,
+func NewInitTimelockInstruction(
+	accounts *InitTimelockInstructionAccounts,
+	args *InitTimelockInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(SystemTimelockInitInstructionDiscriminator)+
-			SystemTimelockInitInstructionArgsSize)
+	data := make([]byte, 1+InitTimelockInstructionArgsSize)
 
-	putDiscriminator(data, SystemTimelockInitInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionInitTimelock, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 	putUint8(data, args.VirtualTimelockBump, &offset)
 	putUint8(data, args.VirtualVaultBump, &offset)
