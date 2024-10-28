@@ -148,9 +148,9 @@ func TestGetTimelockAccounts(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedUnlockAddress, expectedUnlockBump, err := cvm.GetVmUnlockStateAccountAddress(&cvm.GetVmUnlockStateAccountAddressArgs{
-		Owner:           ownerAccount.PublicKey().ToBytes(),
-		VirtualTimelock: expectedStateAddress,
-		Vm:              vmAccount.PublicKey().ToBytes(),
+		VirtualAccountOwner: ownerAccount.PublicKey().ToBytes(),
+		VirtualAccount:      expectedStateAddress,
+		Vm:                  vmAccount.PublicKey().ToBytes(),
 	})
 	require.NoError(t, err)
 

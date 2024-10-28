@@ -99,7 +99,7 @@ func (r *Record) Update(data *cvm.RelayAccount, solanaBlock uint64) error {
 		return errors.Wrap(err, "error decoding address")
 	}
 
-	vaultAddressBytes, _, err := cvm.GetRelayVaultAddress(&cvm.GetRelayVaultAddressArgs{
+	vaultAddressBytes, _, err := cvm.GetRelayDestinationAddress(&cvm.GetRelayDestinationAddressArgs{
 		RelayOrProof: addressBytes,
 	})
 	if err != nil {

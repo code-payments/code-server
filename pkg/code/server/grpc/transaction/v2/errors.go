@@ -202,7 +202,7 @@ func toInvalidTxnSignatureErrorDetails(
 
 func toInvalidVirtualIxnSignatureErrorDetails(
 	actionId uint32,
-	virtualIxnHash cvm.Hash,
+	virtualIxnHash cvm.CompactMessage,
 	signature *commonpb.Signature,
 ) *transactionpb.ErrorDetails {
 	return &transactionpb.ErrorDetails{

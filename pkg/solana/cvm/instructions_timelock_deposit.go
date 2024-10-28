@@ -6,23 +6,19 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var TimelockDepositFromPdaInstructionDiscriminator = []byte{
-	0x4c, 0xc5, 0xd9, 0x18, 0xb3, 0xe0, 0xdd, 0x9d,
-}
-
 const (
-	TimelockDepositFromPdaInstructionArgsSize = (2 + // account_index
+	DepositInstructionArgsSize = (2 + // account_index
 		8 + //amount
 		1) // bump
 )
 
-type TimelockDepositFromPdaInstructionArgs struct {
+type DepositInstructionArgs struct {
 	AccountIndex uint16
 	Amount       uint64
 	Bump         uint8
 }
 
-type TimelockDepositFromPdaInstructionAccounts struct {
+type DepositInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
 	VmMemory    ed25519.PublicKey
@@ -32,18 +28,16 @@ type TimelockDepositFromPdaInstructionAccounts struct {
 	VmOmnibus   ed25519.PublicKey
 }
 
-func NewTimelockDepositFromPdaInstruction(
-	accounts *TimelockDepositFromPdaInstructionAccounts,
-	args *TimelockDepositFromPdaInstructionArgs,
+func NewDepositInstruction(
+	accounts *DepositInstructionAccounts,
+	args *DepositInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(TimelockDepositFromPdaInstructionDiscriminator)+
-			TimelockDepositFromPdaInstructionArgsSize)
+	data := make([]byte, 1+DepositInstructionArgsSize)
 
-	putDiscriminator(data, TimelockDepositFromPdaInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionDeposit, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 	putUint64(data, args.Amount, &offset)
 	putUint8(data, args.Bump, &offset)

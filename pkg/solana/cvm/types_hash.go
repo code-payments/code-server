@@ -26,15 +26,13 @@ func getHash(src []byte, dst *Hash, offset *int) {
 
 type HashArray []Hash
 
-func getHashArray(src []byte, dst *HashArray, offset *int) {
-	length := binary.LittleEndian.Uint32(src[*offset:])
-	*offset += 4
-
+func getStaticHashArray(src []byte, dst *HashArray, length int, offset *int) {
 	*dst = make([]Hash, length)
 	for i := 0; i < int(length); i++ {
 		getHash(src, &(*dst)[i], offset)
 	}
 }
+
 func putHashArray(dst []byte, v HashArray, offset *int) {
 	binary.LittleEndian.PutUint32(dst[*offset:], uint32(len(v)))
 	*offset += 4

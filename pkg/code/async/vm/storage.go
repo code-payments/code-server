@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	// todo: make these configurable
-	maxStorageAccountLevels   = 20     // maximum for decompression under a single tx
 	minStorageAccountCapacity = 50_000 // mimumum capacity for a storage until we decide we need a new one
 )
 
@@ -76,9 +74,8 @@ func (p *service) maybeInitStorageAccount(ctx context.Context) error {
 
 func (p *service) initStorageAccountOnBlockchain(ctx context.Context, vm *common.Account, purpose storage.Purpose) (*storage.Record, error) {
 	name := fmt.Sprintf("storage-%d-%s", purpose, strings.Split(uuid.New().String(), "-")[0])
-	levels := uint8(maxStorageAccountLevels)
 
-	address, _, err := cvm.GetStorageAccountAddress(&cvm.GetMemoryAccountAddressArgs{
+	address, bump, err := cvm.GetStorageAccountAddress(&cvm.GetMemoryAccountAddressArgs{
 		Name: name,
 		Vm:   vm.PublicKey().ToBytes(),
 	})
@@ -91,8 +88,8 @@ func (p *service) initStorageAccountOnBlockchain(ctx context.Context, vm *common
 
 		Name:              name,
 		Address:           base58.Encode(address),
-		Levels:            levels,
-		AvailableCapacity: storage.GetMaxCapacity(levels),
+		Levels:            cvm.DefaultCompressedStateDepth,
+		AvailableCapacity: storage.GetMaxCapacity(cvm.DefaultCompressedStateDepth),
 		Purpose:           purpose,
 	}
 
@@ -100,15 +97,15 @@ func (p *service) initStorageAccountOnBlockchain(ctx context.Context, vm *common
 		common.GetSubsidizer().PublicKey().ToBytes(),
 		compute_budget.SetComputeUnitLimit(100_000),
 		compute_budget.SetComputeUnitPrice(10_000),
-		cvm.NewVmStorageInitInstruction(
-			&cvm.VmStorageInitInstructionAccounts{
+		cvm.NewInitStorageInstruction(
+			&cvm.InitStorageInstructionAccounts{
 				VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 				Vm:          vm.PublicKey().ToBytes(),
 				VmStorage:   address,
 			},
-			&cvm.VmStorageInitInstructionArgs{
-				Name:   name,
-				Levels: levels,
+			&cvm.InitStorageInstructionArgs{
+				Name:          name,
+				VmStorageBump: bump,
 			},
 		),
 	)

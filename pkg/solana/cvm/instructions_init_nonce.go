@@ -6,37 +6,31 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var SystemNonceInitInstructionDiscriminator = []byte{
-	0x0d, 0xb2, 0x98, 0x60, 0xa7, 0x2c, 0x96, 0x30,
-}
-
 const (
-	SystemNonceInitInstructionArgsSize = 2 // account_index
+	InitNonceInstructionArgsSize = 2 // account_index
 )
 
-type SystemNonceInitInstructionArgs struct {
+type InitNonceInstructionArgs struct {
 	AccountIndex uint16
 }
 
-type SystemNonceInitInstructionAccounts struct {
+type InitNonceInstructionAccounts struct {
 	VmAuthority         ed25519.PublicKey
 	Vm                  ed25519.PublicKey
 	VmMemory            ed25519.PublicKey
 	VirtualAccountOwner ed25519.PublicKey
 }
 
-func NewSystemNonceInitInstruction(
-	accounts *SystemNonceInitInstructionAccounts,
-	args *SystemNonceInitInstructionArgs,
+func NewInitNonceInstruction(
+	accounts *InitNonceInstructionAccounts,
+	args *InitNonceInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(SystemNonceInitInstructionDiscriminator)+
-			SystemNonceInitInstructionArgsSize)
+	data := make([]byte, 1+InitNonceInstructionArgsSize)
 
-	putDiscriminator(data, SystemNonceInitInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionInitNonce, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 
 	return solana.Instruction{

@@ -71,14 +71,14 @@ func MakeCompressAccountTransaction(
 
 	signature := ed25519.Sign(common.GetSubsidizer().PrivateKey().ToBytes(), hashedVirtualAccountState)
 
-	compressInstruction := cvm.NewSystemAccountCompressInstruction(
-		&cvm.SystemAccountCompressInstructionAccounts{
+	compressInstruction := cvm.NewCompressInstruction(
+		&cvm.CompressInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:          vm.PublicKey().ToBytes(),
 			VmMemory:    memory.PublicKey().ToBytes(),
 			VmStorage:   storage.PublicKey().ToBytes(),
 		},
-		&cvm.SystemAccountCompressInstructionArgs{
+		&cvm.CompressInstructionArgs{
 			AccountIndex: accountIndex,
 			Signature:    cvm.Signature(signature),
 		},
@@ -92,8 +92,6 @@ func MakeInternalWithdrawTransaction(
 	bh solana.Blockhash,
 
 	virtualSignature solana.Signature,
-	virtualNonce *common.Account,
-	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
 	nonceMemory *common.Account,
@@ -102,46 +100,25 @@ func MakeInternalWithdrawTransaction(
 	sourceIndex uint16,
 	destinationMemory *common.Account,
 	destinationIndex uint16,
-
-	source *common.TimelockAccounts,
-	destination *common.Account,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		&cvm.VirtualDurableNonce{
-			Address: virtualNonce.PublicKey().ToBytes(),
-			Nonce:   cvm.Hash(virtualBlockhash),
-		},
-		cvm.NewTimelockWithdrawInternalVirtualInstructionCtor(
-			&cvm.TimelockWithdrawInternalVirtualInstructionAccounts{
-				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
-				VirtualTimelock:      source.State.PublicKey().ToBytes(),
-				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
-				Owner:                source.VaultOwner.PublicKey().ToBytes(),
-				Destination:          destination.PublicKey().ToBytes(),
-				Mint:                 source.Mint.PublicKey().ToBytes(),
-			},
-			&cvm.TimelockWithdrawInternalVirtualInstructionArgs{
-				TimelockBump: source.StateBump,
-				Signature:    cvm.Signature(virtualSignature),
-			},
-		),
-	)
+	vixn := cvm.NewWithdrawVirtualInstruction(&cvm.WithdrawVirtualInstructionArgs{
+		Signature: cvm.Signature(virtualSignature),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:          vm.PublicKey().ToBytes(),
 			VmMemA:      mergedMemoryBanks.A,
 			VmMemB:      mergedMemoryBanks.B,
 			VmMemC:      mergedMemoryBanks.C,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
 			MemBanks:   mergedMemoryBanks.Indices,
@@ -157,8 +134,6 @@ func MakeExternalWithdrawTransaction(
 	bh solana.Blockhash,
 
 	virtualSignature solana.Signature,
-	virtualNonce *common.Account,
-	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
 	vmOmnibus *common.Account,
@@ -168,8 +143,7 @@ func MakeExternalWithdrawTransaction(
 	sourceMemory *common.Account,
 	sourceIndex uint16,
 
-	source *common.TimelockAccounts,
-	destination *common.Account,
+	externalDestination *common.Account,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory)
 	if err != nil {
@@ -178,40 +152,22 @@ func MakeExternalWithdrawTransaction(
 
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
-	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
+	externalAddressPublicKeyBytes := ed25519.PublicKey(externalDestination.PublicKey().ToBytes())
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		&cvm.VirtualDurableNonce{
-			Address: virtualNonce.PublicKey().ToBytes(),
-			Nonce:   cvm.Hash(virtualBlockhash),
-		},
-		cvm.NewTimelockWithdrawExternalVirtualInstructionCtor(
-			&cvm.TimelockWithdrawExternalVirtualInstructionAccounts{
-				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
-				VirtualTimelock:      source.State.PublicKey().ToBytes(),
-				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
-				Owner:                source.VaultOwner.PublicKey().ToBytes(),
-				Destination:          destination.PublicKey().ToBytes(),
-				Mint:                 source.Mint.PublicKey().ToBytes(),
-			},
-			&cvm.TimelockWithdrawExternalVirtualInstructionArgs{
-				TimelockBump: source.StateBump,
-				Signature:    cvm.Signature(virtualSignature),
-			},
-		),
-	)
+	vixn := cvm.NewWithdrawVirtualInstruction(&cvm.WithdrawVirtualInstructionArgs{
+		Signature: cvm.Signature(virtualSignature),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
 			VmMemB:          mergedMemoryBanks.B,
 			VmOmnibus:       &vmOmnibusPublicKeyBytes,
-			ExternalAddress: &destinationPublicKeyBytes,
+			ExternalAddress: &externalAddressPublicKeyBytes,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex},
 			MemBanks:   mergedMemoryBanks.Indices,
@@ -227,8 +183,6 @@ func MakeInternalTransferWithAuthorityTransaction(
 	bh solana.Blockhash,
 
 	virtualSignature solana.Signature,
-	virtualNonce *common.Account,
-	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
 	nonceMemory *common.Account,
@@ -238,8 +192,6 @@ func MakeInternalTransferWithAuthorityTransaction(
 	destinationMemory *common.Account,
 	destinationIndex uint16,
 
-	source *common.TimelockAccounts,
-	destination *common.Account,
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
@@ -247,37 +199,20 @@ func MakeInternalTransferWithAuthorityTransaction(
 		return solana.Transaction{}, err
 	}
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		&cvm.VirtualDurableNonce{
-			Address: virtualNonce.PublicKey().ToBytes(),
-			Nonce:   cvm.Hash(virtualBlockhash),
-		},
-		cvm.NewTimelockTransferInternalVirtualInstructionCtor(
-			&cvm.TimelockTransferInternalVirtualInstructionAccounts{
-				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
-				VirtualTimelock:      source.State.PublicKey().ToBytes(),
-				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
-				Owner:                source.VaultOwner.PublicKey().ToBytes(),
-				Destination:          destination.PublicKey().ToBytes(),
-			},
-			&cvm.TimelockTransferInternalVirtualInstructionArgs{
-				TimelockBump: source.StateBump,
-				Amount:       kinAmountInQuarks,
-				Signature:    cvm.Signature(virtualSignature),
-			},
-		),
-	)
+	vixn := cvm.NewTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
+		Amount:    kinAmountInQuarks,
+		Signature: cvm.Signature(virtualSignature),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:          vm.PublicKey().ToBytes(),
 			VmMemA:      mergedMemoryBanks.A,
 			VmMemB:      mergedMemoryBanks.B,
 			VmMemC:      mergedMemoryBanks.C,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, destinationIndex},
 			MemBanks:   mergedMemoryBanks.Indices,
@@ -293,8 +228,6 @@ func MakeExternalTransferWithAuthorityTransaction(
 	bh solana.Blockhash,
 
 	virtualSignature solana.Signature,
-	virtualNonce *common.Account,
-	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
 	vmOmnibus *common.Account,
@@ -304,8 +237,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 	sourceMemory *common.Account,
 	sourceIndex uint16,
 
-	source *common.TimelockAccounts,
-	destination *common.Account,
+	externalDestination *common.Account,
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory)
@@ -313,42 +245,25 @@ func MakeExternalTransferWithAuthorityTransaction(
 		return solana.Transaction{}, err
 	}
 
-	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
+	externalAddressPublicKeyBytes := ed25519.PublicKey(externalDestination.PublicKey().ToBytes())
 
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		&cvm.VirtualDurableNonce{
-			Address: virtualNonce.PublicKey().ToBytes(),
-			Nonce:   cvm.Hash(virtualBlockhash),
-		},
-		cvm.NewTimelockTransferExternalVirtualInstructionCtor(
-			&cvm.TimelockTransferExternalVirtualInstructionAccounts{
-				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
-				VirtualTimelock:      source.State.PublicKey().ToBytes(),
-				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
-				Owner:                source.VaultOwner.PublicKey().ToBytes(),
-				Destination:          destination.PublicKey().ToBytes(),
-			},
-			&cvm.TimelockTransferExternalVirtualInstructionArgs{
-				TimelockBump: source.StateBump,
-				Amount:       kinAmountInQuarks,
-				Signature:    cvm.Signature(virtualSignature),
-			},
-		),
-	)
+	vixn := cvm.NewExternalTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
+		Amount:    kinAmountInQuarks,
+		Signature: cvm.Signature(virtualSignature),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
 			VmMemB:          mergedMemoryBanks.B,
 			VmOmnibus:       &vmOmnibusPublicKeyBytes,
-			ExternalAddress: &destinationPublicKeyBytes,
+			ExternalAddress: &externalAddressPublicKeyBytes,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex},
 			MemBanks:   mergedMemoryBanks.Indices,
@@ -371,7 +286,6 @@ func MakeInternalTreasuryAdvanceTransaction(
 
 	treasuryPool *common.Account,
 	treasuryPoolVault *common.Account,
-	destination *common.Account,
 	commitment *common.Account,
 	kinAmountInQuarks uint64,
 	transcript []byte,
@@ -385,22 +299,15 @@ func MakeInternalTreasuryAdvanceTransaction(
 		return solana.Transaction{}, err
 	}
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		nil,
-		cvm.NewRelayTransferInternalVirtualInstructionCtor(
-			&cvm.RelayTransferInternalVirtualInstructionAccounts{},
-			&cvm.RelayTransferInternalVirtualInstructionArgs{
-				Transcript: cvm.Hash(transcript),
-				RecentRoot: cvm.Hash(recentRoot),
-				Commitment: cvm.Hash(commitment.PublicKey().ToBytes()),
-				Amount:     kinAmountInQuarks,
-			},
-		),
-	)
+	vixn := cvm.NewRelayVirtualInstruction(&cvm.RelayVirtualInstructionArgs{
+		Amount:     kinAmountInQuarks,
+		Transcript: cvm.Hash(transcript),
+		RecentRoot: cvm.Hash(recentRoot),
+		Commitment: cvm.Hash(commitment.PublicKey().ToBytes()),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority:  common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:           vm.PublicKey().ToBytes(),
 			VmMemA:       mergedMemoryBanks.A,
@@ -408,7 +315,7 @@ func MakeInternalTreasuryAdvanceTransaction(
 			VmRelay:      &treasuryPoolPublicKeyBytes,
 			VmRelayVault: &treasuryPoolVaultPublicKeyBytes,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{accountIndex, relayIndex},
 			MemBanks:   mergedMemoryBanks.Indices,
@@ -440,32 +347,25 @@ func MakeExternalTreasuryAdvanceTransaction(
 	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
 	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
 
-	destinationPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
+	externalAddressPublicKeyBytes := ed25519.PublicKey(destination.PublicKey().ToBytes())
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		nil,
-		cvm.NewRelayTransferExternalVirtualInstructionCtor(
-			&cvm.RelayTransferExternalVirtualInstructionAccounts{},
-			&cvm.RelayTransferExternalVirtualInstructionArgs{
-				Transcript: cvm.Hash(transcript),
-				RecentRoot: cvm.Hash(recentRoot),
-				Commitment: cvm.Hash(commitment.PublicKey().ToBytes()),
-				Amount:     kinAmountInQuarks,
-			},
-		),
-	)
+	vixn := cvm.NewExternalRelayVirtualInstruction(&cvm.ExternalRelayVirtualInstructionArgs{
+		Amount:     kinAmountInQuarks,
+		Transcript: cvm.Hash(transcript),
+		RecentRoot: cvm.Hash(recentRoot),
+		Commitment: cvm.Hash(commitment.PublicKey().ToBytes()),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
 			VmMemA:          &memoryAPublicKeyBytes,
 			VmRelay:         &treasuryPoolPublicKeyBytes,
 			VmRelayVault:    &treasuryPoolVaultPublicKeyBytes,
-			ExternalAddress: &destinationPublicKeyBytes,
+			ExternalAddress: &externalAddressPublicKeyBytes,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{relayIndex},
 			MemBanks:   []uint8{0},
@@ -481,8 +381,6 @@ func MakeCashChequeTransaction(
 	bh solana.Blockhash,
 
 	virtualSignature solana.Signature,
-	virtualNonce *common.Account,
-	virtualBlockhash solana.Blockhash,
 
 	vm *common.Account,
 	vmOmnibus *common.Account,
@@ -494,10 +392,8 @@ func MakeCashChequeTransaction(
 	relayMemory *common.Account,
 	relayIndex uint16,
 
-	source *common.TimelockAccounts,
 	treasuryPool *common.Account,
 	treasuryPoolVault *common.Account,
-	commitmentVault *common.Account,
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
@@ -510,30 +406,13 @@ func MakeCashChequeTransaction(
 		return solana.Transaction{}, err
 	}
 
-	vixn := cvm.NewVirtualInstruction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		&cvm.VirtualDurableNonce{
-			Address: virtualNonce.PublicKey().ToBytes(),
-			Nonce:   cvm.Hash(virtualBlockhash),
-		},
-		cvm.NewTimelockTransferRelayVirtualInstructionCtor(
-			&cvm.TimelockTransferRelayVirtualInstructionAccounts{
-				VmAuthority:          common.GetSubsidizer().PublicKey().ToBytes(),
-				VirtualTimelock:      source.State.PublicKey().ToBytes(),
-				VirtualTimelockVault: source.Vault.PublicKey().ToBytes(),
-				Owner:                source.VaultOwner.PublicKey().ToBytes(),
-				RelayVault:           commitmentVault.PublicKey().ToBytes(),
-			},
-			&cvm.TimelockTransferRelayVirtualInstructionArgs{
-				TimelockBump: source.StateBump,
-				Amount:       kinAmountInQuarks,
-				Signature:    cvm.Signature(virtualSignature),
-			},
-		),
-	)
+	vixn := cvm.NewConditionalTransferVirtualInstruction(&cvm.ConditionalTransferVirtualInstructionArgs{
+		Amount:    kinAmountInQuarks,
+		Signature: cvm.Signature(virtualSignature),
+	})
 
-	execInstruction := cvm.NewVmExecInstruction(
-		&cvm.VmExecInstructionAccounts{
+	execInstruction := cvm.NewExecInstruction(
+		&cvm.ExecInstructionAccounts{
 			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
 			Vm:              vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
@@ -544,7 +423,7 @@ func MakeCashChequeTransaction(
 			VmRelayVault:    &treasuryPoolVaultPublicKeyBytes,
 			ExternalAddress: &treasuryPoolVaultPublicKeyBytes,
 		},
-		&cvm.VmExecInstructionArgs{
+		&cvm.ExecInstructionArgs{
 			Opcode:     vixn.Opcode,
 			MemIndices: []uint16{nonceIndex, sourceIndex, relayIndex},
 			MemBanks:   mergedMemoryBanks.Indices,

@@ -6,45 +6,38 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var RelayInitInstructionDiscriminator = []byte{
-	0x72, 0x6a, 0x94, 0xd1, 0x3c, 0x83, 0xb4, 0xe1,
-}
-
 const (
-	RelayInitInstructionArgsSize = (1 + // num_levels
-		1 + // num_history
-		MaxRelayAccountNameSize) // name
+	InitVmInstructionArgsSize = (1 + // lock_duration
+		1 + // vm_bump
+		1) // vm_omnibus_bump
 )
 
-type RelayInitInstructionArgs struct {
-	NumLevels  uint8
-	NumHistory uint8
-	Name       string
+type InitVmInstructionArgs struct {
+	LockDuration  uint8
+	VmBump        uint8
+	VmOmnibusBump uint8
 }
 
-type RelayInitInstructionAccounts struct {
+type InitVmInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
-	Relay       ed25519.PublicKey
-	RelayVault  ed25519.PublicKey
+	VmOmnibus   ed25519.PublicKey
 	Mint        ed25519.PublicKey
 }
 
-func NewRelayInitInstruction(
-	accounts *RelayInitInstructionAccounts,
-	args *RelayInitInstructionArgs,
+func NewInitVmInstruction(
+	accounts *InitVmInstructionAccounts,
+	args *InitVmInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(RelayInitInstructionDiscriminator)+
-			RelayInitInstructionArgsSize)
+	data := make([]byte, 1+InitVmInstructionArgsSize)
 
-	putDiscriminator(data, RelayInitInstructionDiscriminator, &offset)
-	putUint8(data, args.NumLevels, &offset)
-	putUint8(data, args.NumHistory, &offset)
-	putString(data, args.Name, &offset)
+	putCodeInstruction(data, CodeInstructionInitVm, &offset)
+	putUint8(data, args.LockDuration, &offset)
+	putUint8(data, args.VmBump, &offset)
+	putUint8(data, args.VmOmnibusBump, &offset)
 
 	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
@@ -65,12 +58,7 @@ func NewRelayInitInstruction(
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.Relay,
-				IsWritable: true,
-				IsSigner:   false,
-			},
-			{
-				PublicKey:  accounts.RelayVault,
+				PublicKey:  accounts.VmOmnibus,
 				IsWritable: true,
 				IsSigner:   false,
 			},
