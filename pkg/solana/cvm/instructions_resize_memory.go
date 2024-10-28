@@ -6,35 +6,31 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var RelaySaveRecentRootInstructionDiscriminator = []byte{
-	0x9a, 0x54, 0x94, 0x43, 0x6e, 0xcc, 0x63, 0xcc,
-}
-
 const (
-	RelaySaveRecentRootInstructionArgsSize = 0
+	ResizeMemoryInstructionArgsSize = 4 // account_size
 )
 
-type RelaySaveRecentRootInstructionArgs struct {
+type ResizeMemoryInstructionArgs struct {
+	AccountSize uint32
 }
 
-type RelaySaveRecentRootInstructionAccounts struct {
+type ResizeMemoryInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
-	Relay       ed25519.PublicKey
+	VmMemory    ed25519.PublicKey
 }
 
-func NewRelaySaveRecentRootInstruction(
-	accounts *RelaySaveRecentRootInstructionAccounts,
-	args *RelaySaveRecentRootInstructionArgs,
+func NewResizeMemoryInstruction(
+	accounts *ResizeMemoryInstructionAccounts,
+	args *ResizeMemoryInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte,
-		len(RelaySaveRecentRootInstructionDiscriminator)+
-			RelaySaveRecentRootInstructionArgsSize)
+	data := make([]byte, 1+ResizeMemoryInstructionArgsSize)
 
-	putDiscriminator(data, RelaySaveRecentRootInstructionDiscriminator, &offset)
+	putCodeInstruction(data, CodeInstructionResizeMemory, &offset)
+	putUint32(data, args.AccountSize, &offset)
 
 	return solana.Instruction{
 		Program: PROGRAM_ADDRESS,
@@ -55,7 +51,7 @@ func NewRelaySaveRecentRootInstruction(
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.Relay,
+				PublicKey:  accounts.VmMemory,
 				IsWritable: true,
 				IsSigner:   false,
 			},

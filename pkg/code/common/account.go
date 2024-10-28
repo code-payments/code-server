@@ -209,9 +209,9 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 	}
 
 	unlockAddress, unlockBump, err := cvm.GetVmUnlockStateAccountAddress(&cvm.GetVmUnlockStateAccountAddressArgs{
-		Owner:           a.publicKey.ToBytes(),
-		VirtualTimelock: stateAddress,
-		Vm:              vm.publicKey.ToBytes(),
+		VirtualAccountOwner: a.publicKey.ToBytes(),
+		VirtualAccount:      stateAddress,
+		Vm:                  vm.publicKey.ToBytes(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting unlock address")
@@ -344,14 +344,14 @@ func (a *TimelockAccounts) GetDBRecord(ctx context.Context, data code_data.Provi
 
 // GetInitializeInstruction gets a SystemTimelockInitInstruction instruction for a timelock account
 func (a *TimelockAccounts) GetInitializeInstruction(memory *Account, accountIndex uint16) (solana.Instruction, error) {
-	return cvm.NewSystemTimelockInitInstruction(
-		&cvm.SystemTimelockInitInstructionAccounts{
+	return cvm.NewInitTimelockInstruction(
+		&cvm.InitTimelockInstructionAccounts{
 			VmAuthority:         GetSubsidizer().publicKey.ToBytes(),
 			Vm:                  a.Vm.PublicKey().ToBytes(),
 			VmMemory:            memory.PublicKey().ToBytes(),
 			VirtualAccountOwner: a.VaultOwner.PublicKey().ToBytes(),
 		},
-		&cvm.SystemTimelockInitInstructionArgs{
+		&cvm.InitTimelockInstructionArgs{
 			AccountIndex:        accountIndex,
 			VirtualTimelockBump: a.StateBump,
 			VirtualVaultBump:    a.VaultBump,

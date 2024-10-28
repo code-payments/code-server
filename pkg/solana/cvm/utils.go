@@ -50,6 +50,10 @@ func getString(data []byte, dst *string, offset *int) {
 	*offset += length
 }
 
+func putFixedString(dst []byte, v string, length int, offset *int) {
+	copy(dst[*offset:], toFixedString(v, length))
+	*offset += length
+}
 func getFixedString(data []byte, dst *string, length int, offset *int) {
 	*dst = string(data[*offset : *offset+length])
 	*dst = removeFixedStringPadding(*dst)

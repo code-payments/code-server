@@ -162,9 +162,7 @@ func getVirtualRelayAccountStateInMemory(ctx context.Context, vmIndexerClient in
 
 	protoAccount := resp.Item.Account
 	state := cvm.VirtualRelayAccount{
-		Address:     protoAccount.Address.Value,
-		Commitment:  cvm.Hash(protoAccount.Commitment.Value),
-		RecentRoot:  cvm.Hash(protoAccount.RecentRoot.Value),
+		Target:      protoAccount.Target.Value,
 		Destination: protoAccount.Destination.Value,
 	}
 

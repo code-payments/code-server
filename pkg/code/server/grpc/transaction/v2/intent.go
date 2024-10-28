@@ -409,7 +409,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		requiresClientSignature bool
 		expectedSigner          *common.Account
-		virtualIxnHash          *cvm.Hash
+		virtualIxnHash          *cvm.CompactMessage
 	}
 
 	// Convert all actions into a set of fulfillments
@@ -1415,28 +1415,8 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 		}
 		fulfillmentToUpgrade := fulfillmentRecords[0]
 
-		nonce, err := common.NewAccountFromPublicKeyString(*fulfillmentToUpgrade.VirtualNonce)
-		if err != nil {
-			return nil, err
-		}
-
-		bh, err := base58.Decode(*fulfillmentToUpgrade.VirtualBlockhash)
-		if err != nil {
-			return nil, err
-		}
-
 		// todo: this can be heavily cached
 		sourceAccountInfo, err := data.GetAccountInfoByTokenAddress(ctx, fulfillmentToUpgrade.Source)
-		if err != nil {
-			return nil, err
-		}
-
-		sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfo.AuthorityAccount)
-		if err != nil {
-			return nil, err
-		}
-
-		sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		if err != nil {
 			return nil, err
 		}
@@ -1456,27 +1436,13 @@ func toUpgradeableIntentProto(ctx context.Context, data code_data.Provider, inte
 			return nil, err
 		}
 
-		txn, err := transaction.GetVirtualTransferWithAuthorityTransaction(
-			nonce,
-			solana.Blockhash(bh),
-
-			sourceTimelockAccounts,
-			originalDestination,
-			commitmentRecord.Amount,
-		)
-		if err != nil {
-			return nil, err
-		}
-
 		clientSignature, err := base58.Decode(*fulfillmentToUpgrade.VirtualSignature)
 		if err != nil {
 			return nil, err
 		}
 
 		action := &transactionpb.UpgradeableIntent_UpgradeablePrivateAction{
-			TransactionBlob: &commonpb.Transaction{
-				Value: txn.Marshal(),
-			},
+			TransactionBlob: nil, // todo: need a solution or can we get rid of this?
 			ClientSignature: &commonpb.Signature{
 				Value: clientSignature,
 			},

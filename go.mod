@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v0.17.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
 	github.com/code-payments/code-protobuf-api v1.18.1-0.20240912180853-8e16dd113886
-	github.com/code-payments/code-vm-indexer v0.1.0
+	github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba
 	github.com/dghubble/oauth1 v0.7.3
 	github.com/emirpasic/gods v1.12.0
 	github.com/envoyproxy/protoc-gen-validate v1.0.4

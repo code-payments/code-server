@@ -4,42 +4,48 @@ import (
 	"fmt"
 )
 
+const (
+	minRecentRootsSize = (1 + // offset
+		1 + // num_items
+		6) // padding
+)
+
 type RecentRoots struct {
-	Capacity uint8
-	Offset   uint8
 	Items    HashArray
+	Offset   uint8
+	NumItems uint8
 }
 
-func (obj *RecentRoots) Unmarshal(data []byte) error {
+func (obj *RecentRoots) Unmarshal(data []byte, length int) error {
 	if len(data) < 1 {
 		return ErrInvalidAccountData
 	}
 
 	var offset int
 
-	getUint8(data, &obj.Capacity, &offset)
+	getStaticHashArray(data, &obj.Items, length, &offset)
 	getUint8(data, &obj.Offset, &offset)
-	getHashArray(data, &obj.Items, &offset)
+	getUint8(data, &obj.NumItems, &offset)
+	offset += 6 // padding
 
 	return nil
 }
 
 func (obj *RecentRoots) String() string {
 	return fmt.Sprintf(
-		"RecentRoots{capacity=%d,offset=%d,items=%s}",
-		obj.Capacity,
-		obj.Offset,
+		"RecentRoots{items=%s,offset=%d,num_items=%d}",
 		obj.Items.String(),
+		obj.Offset,
+		obj.NumItems,
 	)
 }
 
-func getRecentRoots(src []byte, dst *RecentRoots, offset *int) {
-	dst.Unmarshal(src[*offset:])
+func getRecentRoots(src []byte, dst *RecentRoots, length int, offset *int) {
+	dst.Unmarshal(src[*offset:], length)
 	*offset += GetRecentRootsSize(len(dst.Items))
 }
 
-func GetRecentRootsSize(numItems int) int {
-	return (1 + // capacity
-		1 + // offset
-		4 + numItems*HashSize) // items
+func GetRecentRootsSize(length int) int {
+	return (minRecentRootsSize +
+		length*HashSize) // items
 }

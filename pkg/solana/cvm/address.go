@@ -2,7 +2,6 @@ package cvm
 
 import (
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/binary"
 
 	"github.com/code-payments/code-server/pkg/solana"
@@ -13,19 +12,20 @@ const (
 )
 
 var (
-	CodeVmPrefix                   = []byte("code-vm")
-	RelayCommitmentPrefix          = []byte("relay_commitment")
-	TimelockStatePrefix            = []byte("timelock_state")
-	TimelockVaultPrefix            = []byte("timelock_vault")
-	VmMemoryAccountPrefix          = []byte("vm_memory_account")
-	VmOmnibusPrefix                = []byte("vm_omnibus")
-	VmDepositPdaPrefix             = []byte("vm_deposit_pda")
-	VmProofAccountPrefix           = []byte("vm_proof_account")
-	VmRelayAccountPrefix           = []byte("vm_relay_account")
-	VmRelayVaultPrefix             = []byte("vm_relay_vault")
-	VmStorageAccountPrefix         = []byte("vm_storage_account")
-	VmUnlockPdaAccountPrefix       = []byte("vm_unlock_pda_account")
-	VmWithdrawReceiptAccountPrefix = []byte("vm_withdraw_receipt_account")
+	CodeVmPrefix            = []byte("code_vm")
+	VmOmnibusPrefix         = []byte("vm_omnibus")
+	VmMemoryPrefix          = []byte("vm_memory_account")
+	VmStoragePrefix         = []byte("vm_storage_account")
+	VmDurableNoncePrefix    = []byte("vm_durable_nonce")
+	VmUnlockPdaPrefix       = []byte("vm_unlock_pda_account")
+	VmWithdrawReceiptPrefix = []byte("vm_withdraw_receipt_account")
+	VmDepositPdaPrefix      = []byte("vm_deposit_pda")
+	VmRelayPrefix           = []byte("vm_relay_account")
+	VmRelayProofPrefix      = []byte("vm_proof_account")
+	VmRelayVaultPrefix      = []byte("vm_relay_vault")
+	VmRelayCommitmentPrefix = []byte("relay_commitment")
+	VmTimelockStatePrefix   = []byte("timelock_state")
+	VmTimelockVaultPrefix   = []byte("timelock_vault")
 )
 
 type GetVmAddressArgs struct {
@@ -45,9 +45,7 @@ func GetVmAddress(args *GetVmAddressArgs) (ed25519.PublicKey, uint8, error) {
 }
 
 type GetVmObnibusAddressArgs struct {
-	Mint         ed25519.PublicKey
-	VmAuthority  ed25519.PublicKey
-	LockDuration uint8
+	Vm ed25519.PublicKey
 }
 
 func GetVmObnibusAddress(args *GetVmObnibusAddressArgs) (ed25519.PublicKey, uint8, error) {
@@ -55,9 +53,7 @@ func GetVmObnibusAddress(args *GetVmObnibusAddressArgs) (ed25519.PublicKey, uint
 		PROGRAM_ID,
 		CodeVmPrefix,
 		VmOmnibusPrefix,
-		args.Mint,
-		args.VmAuthority,
-		[]byte{args.LockDuration},
+		args.Vm,
 	)
 }
 
@@ -70,7 +66,7 @@ func GetMemoryAccountAddress(args *GetMemoryAccountAddressArgs) (ed25519.PublicK
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		VmMemoryAccountPrefix,
+		VmMemoryPrefix,
 		[]byte(toFixedString(args.Name, MaxMemoryAccountNameLength)),
 		args.Vm,
 	)
@@ -85,8 +81,8 @@ func GetStorageAccountAddress(args *GetMemoryAccountAddressArgs) (ed25519.Public
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		VmStorageAccountPrefix,
-		[]byte(args.Name),
+		VmStoragePrefix,
+		[]byte(toFixedString(args.Name, MaxStorageAccountNameSize)),
 		args.Vm,
 	)
 }
@@ -100,22 +96,9 @@ func GetRelayAccountAddress(args *GetRelayAccountAddressArgs) (ed25519.PublicKey
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		VmRelayAccountPrefix,
-		[]byte(args.Name),
+		VmRelayPrefix,
+		[]byte(toFixedString(args.Name, MaxRelayAccountNameSize)),
 		args.Vm,
-	)
-}
-
-type GetRelayVaultAddressArgs struct {
-	RelayOrProof ed25519.PublicKey
-}
-
-func GetRelayVaultAddress(args *GetRelayVaultAddressArgs) (ed25519.PublicKey, uint8, error) {
-	return solana.FindProgramAddressAndBump(
-		PROGRAM_ID,
-		CodeVmPrefix,
-		VmRelayVaultPrefix,
-		args.RelayOrProof,
 	)
 }
 
@@ -129,7 +112,7 @@ func GetRelayProofAddress(args *GetRelayProofAddressArgs) (ed25519.PublicKey, ui
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		VmProofAccountPrefix,
+		VmRelayProofPrefix,
 		args.Relay,
 		args.MerkleRoot[:],
 		args.Commitment[:],
@@ -151,7 +134,7 @@ func GetRelayCommitmentAddress(args *GetRelayCommitmentAddressArgs) (ed25519.Pub
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		RelayCommitmentPrefix,
+		VmRelayCommitmentPrefix,
 		args.Relay,
 		args.MerkleRoot[:],
 		args.Transcript[:],
@@ -160,19 +143,17 @@ func GetRelayCommitmentAddress(args *GetRelayCommitmentAddressArgs) (ed25519.Pub
 	)
 }
 
-type GetVirtualDurableNonceAddressArgs struct {
-	Seed  ed25519.PublicKey
-	Value Hash
+type GetRelayDestinationAddressArgs struct {
+	RelayOrProof ed25519.PublicKey
 }
 
-func GetVirtualDurableNonceAddress(args *GetVirtualDurableNonceAddressArgs) ed25519.PublicKey {
-	var combined [64]byte
-	copy(combined[0:32], args.Seed)
-	copy(combined[32:64], args.Value[:])
-
-	h := sha256.New()
-	h.Write(combined[:])
-	return h.Sum(nil)
+func GetRelayDestinationAddress(args *GetRelayDestinationAddressArgs) (ed25519.PublicKey, uint8, error) {
+	return solana.FindProgramAddressAndBump(
+		SPLITTER_PROGRAM_ID,
+		CodeVmPrefix,
+		VmRelayVaultPrefix,
+		args.RelayOrProof,
+	)
 }
 
 type GetVirtualTimelockAccountAddressArgs struct {
@@ -185,7 +166,7 @@ type GetVirtualTimelockAccountAddressArgs struct {
 func GetVirtualTimelockAccountAddress(args *GetVirtualTimelockAccountAddressArgs) (ed25519.PublicKey, uint8, error) {
 	return solana.FindProgramAddressAndBump(
 		TIMELOCK_PROGRAM_ID,
-		TimelockStatePrefix,
+		VmTimelockStatePrefix,
 		args.Mint,
 		args.VmAuthority,
 		args.Owner,
@@ -200,7 +181,7 @@ type GetVirtualTimelockVaultAddressArgs struct {
 func GetVirtualTimelockVaultAddress(args *GetVirtualTimelockVaultAddressArgs) (ed25519.PublicKey, uint8, error) {
 	return solana.FindProgramAddressAndBump(
 		TIMELOCK_PROGRAM_ID,
-		TimelockVaultPrefix,
+		VmTimelockVaultPrefix,
 		args.VirtualTimelock,
 		[]byte{byte(TimelockDataVersion1)},
 	)
@@ -222,18 +203,18 @@ func GetVmDepositAddress(args *GetVmDepositAddressArgs) (ed25519.PublicKey, uint
 }
 
 type GetVmUnlockStateAccountAddressArgs struct {
-	Owner           ed25519.PublicKey
-	VirtualTimelock ed25519.PublicKey
-	Vm              ed25519.PublicKey
+	VirtualAccountOwner ed25519.PublicKey
+	VirtualAccount      ed25519.PublicKey
+	Vm                  ed25519.PublicKey
 }
 
 func GetVmUnlockStateAccountAddress(args *GetVmUnlockStateAccountAddressArgs) (ed25519.PublicKey, uint8, error) {
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		VmUnlockPdaAccountPrefix,
-		args.Owner,
-		args.VirtualTimelock,
+		VmUnlockPdaPrefix,
+		args.VirtualAccountOwner,
+		args.VirtualAccount,
 		args.Vm,
 	)
 }
@@ -248,9 +229,26 @@ func GetWithdrawReceiptAccountAddress(args *GetWithdrawReceiptAccountAddressArgs
 	return solana.FindProgramAddressAndBump(
 		PROGRAM_ID,
 		CodeVmPrefix,
-		VmWithdrawReceiptAccountPrefix,
+		VmWithdrawReceiptPrefix,
 		args.UnlockAccount,
 		args.Nonce[:],
+		args.Vm,
+	)
+}
+
+type GetVirtualDurableNonceAddressArgs struct {
+	Seed ed25519.PublicKey
+	Poh  Hash
+	Vm   ed25519.PublicKey
+}
+
+func GetVirtualDurableNonceAddress(args *GetVirtualDurableNonceAddressArgs) (ed25519.PublicKey, uint8, error) {
+	return solana.FindProgramAddressAndBump(
+		PROGRAM_ID,
+		CodeVmPrefix,
+		VmDurableNoncePrefix,
+		args.Seed,
+		args.Poh[:],
 		args.Vm,
 	)
 }
