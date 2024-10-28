@@ -329,10 +329,11 @@ func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 	switch index {
 	case 0:
 		virtualIxnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
-			Source:      h.source.Vault.PublicKey().ToBytes(),
-			Destination: h.destination.PublicKey().ToBytes(),
-			Amount:      h.amount,
-			Nonce:       cvm.Hash(bh),
+			Source:       h.source.Vault.PublicKey().ToBytes(),
+			Destination:  h.destination.PublicKey().ToBytes(),
+			Amount:       h.amount,
+			NonceAddress: nonce.PublicKey().ToBytes(),
+			NonceValue:   cvm.Hash(bh),
 		})
 
 		return &newFulfillmentMetadata{
@@ -431,9 +432,10 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 	switch index {
 	case 0:
 		virtualIxnHash := cvm.GetCompactWithdrawMessage(&cvm.GetCompactWithdrawMessageArgs{
-			Source:      h.source.Vault.PublicKey().ToBytes(),
-			Destination: h.destination.PublicKey().ToBytes(),
-			Nonce:       cvm.Hash(bh),
+			Source:       h.source.Vault.PublicKey().ToBytes(),
+			Destination:  h.destination.PublicKey().ToBytes(),
+			NonceAddress: nonce.PublicKey().ToBytes(),
+			NonceValue:   cvm.Hash(bh),
 		})
 
 		return &newFulfillmentMetadata{
@@ -688,10 +690,11 @@ func (h *TemporaryPrivacyTransferActionHandler) GetFulfillmentMetadata(
 		}, nil
 	case 1:
 		virtualIxnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
-			Source:      h.source.Vault.PublicKey().ToBytes(),
-			Destination: h.commitmentVault.PublicKey().ToBytes(),
-			Amount:      h.unsavedCommitmentRecord.Amount,
-			Nonce:       cvm.Hash(bh),
+			Source:       h.source.Vault.PublicKey().ToBytes(),
+			Destination:  h.commitmentVault.PublicKey().ToBytes(),
+			Amount:       h.unsavedCommitmentRecord.Amount,
+			NonceAddress: nonce.PublicKey().ToBytes(),
+			NonceValue:   cvm.Hash(bh),
 		})
 
 		return &newFulfillmentMetadata{
@@ -827,10 +830,11 @@ func (h *PermanentPrivacyUpgradeActionHandler) GetFulfillmentMetadata(
 	bh solana.Blockhash,
 ) (*newFulfillmentMetadata, error) {
 	virtualIxnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
-		Source:      h.source.Vault.PublicKey().ToBytes(),
-		Destination: h.privacyUpgradeProof.newCommitmentVault.PublicKey().ToBytes(),
-		Amount:      h.commitmentBeingUpgraded.Amount,
-		Nonce:       cvm.Hash(bh),
+		Source:       h.source.Vault.PublicKey().ToBytes(),
+		Destination:  h.privacyUpgradeProof.newCommitmentVault.PublicKey().ToBytes(),
+		Amount:       h.commitmentBeingUpgraded.Amount,
+		NonceAddress: nonce.PublicKey().ToBytes(),
+		NonceValue:   cvm.Hash(bh),
 	})
 
 	return &newFulfillmentMetadata{
