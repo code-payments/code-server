@@ -273,10 +273,11 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	}()
 
 	vixnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
-		Source:      s.airdropper.Vault.PublicKey().ToBytes(),
-		Destination: destination.PublicKey().ToBytes(),
-		Amount:      quarkAmount,
-		Nonce:       cvm.Hash(selectedNonce.Blockhash),
+		Source:       s.airdropper.Vault.PublicKey().ToBytes(),
+		Destination:  destination.PublicKey().ToBytes(),
+		Amount:       quarkAmount,
+		NonceAddress: selectedNonce.Account.PublicKey().ToBytes(),
+		NonceValue:   cvm.Hash(selectedNonce.Blockhash),
 	})
 	virtualSig := ed25519.Sign(s.airdropper.VaultOwner.PrivateKey().ToBytes(), vixnHash[:])
 

@@ -12,7 +12,7 @@ const VirtualDurableNonceSize = (32 + // address
 
 type VirtualDurableNonce struct {
 	Address ed25519.PublicKey
-	Nonce   Hash
+	Value   Hash
 }
 
 func (obj *VirtualDurableNonce) Marshal() []byte {
@@ -21,7 +21,7 @@ func (obj *VirtualDurableNonce) Marshal() []byte {
 	var offset int
 
 	putKey(data, obj.Address, &offset)
-	putHash(data, obj.Nonce, &offset)
+	putHash(data, obj.Value, &offset)
 
 	return data
 }
@@ -34,7 +34,7 @@ func (obj *VirtualDurableNonce) UnmarshalDirectly(data []byte) error {
 	var offset int
 
 	getKey(data, &obj.Address, &offset)
-	getHash(data, &obj.Nonce, &offset)
+	getHash(data, &obj.Value, &offset)
 
 	return nil
 }
@@ -53,8 +53,8 @@ func (obj *VirtualDurableNonce) UnmarshalFromMemory(data []byte) error {
 
 func (obj *VirtualDurableNonce) String() string {
 	return fmt.Sprintf(
-		"VirtualDurableNonce{address=%s,nonce=%s}",
+		"VirtualDurableNonce{address=%s,value=%s}",
 		base58.Encode(obj.Address),
-		obj.Nonce.String(),
+		obj.Value.String(),
 	)
 }

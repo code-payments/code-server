@@ -133,7 +133,7 @@ func getVirtualDurableNonceAccountStateInMemory(ctx context.Context, vmIndexerCl
 	protoAccount := resp.Item.Account
 	state := cvm.VirtualDurableNonce{
 		Address: protoAccount.Address.Value,
-		Nonce:   cvm.Hash(protoAccount.Nonce.Value),
+		Value:   cvm.Hash(protoAccount.Nonce.Value),
 	}
 
 	return &state, memory, uint16(protoMemory.Index), nil

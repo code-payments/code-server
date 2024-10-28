@@ -11,10 +11,11 @@ type Message []byte
 type CompactMessage Hash
 
 type GetCompactTransferMessageArgs struct {
-	Source      ed25519.PublicKey
-	Destination ed25519.PublicKey
-	Amount      uint64
-	Nonce       Hash
+	Source       ed25519.PublicKey
+	Destination  ed25519.PublicKey
+	Amount       uint64
+	NonceAddress ed25519.PublicKey
+	NonceValue   Hash
 }
 
 func GetCompactTransferMessage(args *GetCompactTransferMessageArgs) CompactMessage {
@@ -26,14 +27,16 @@ func GetCompactTransferMessage(args *GetCompactTransferMessageArgs) CompactMessa
 	message = append(message, args.Source...)
 	message = append(message, args.Destination...)
 	message = append(message, amountBytes...)
-	message = append(message, args.Nonce[:]...)
+	message = append(message, args.NonceAddress...)
+	message = append(message, args.NonceValue[:]...)
 	return hashMessage(message)
 }
 
 type GetCompactWithdrawMessageArgs struct {
-	Source      ed25519.PublicKey
-	Destination ed25519.PublicKey
-	Nonce       Hash
+	Source       ed25519.PublicKey
+	Destination  ed25519.PublicKey
+	NonceAddress ed25519.PublicKey
+	NonceValue   Hash
 }
 
 func GetCompactWithdrawMessage(args *GetCompactWithdrawMessageArgs) CompactMessage {
@@ -41,8 +44,8 @@ func GetCompactWithdrawMessage(args *GetCompactWithdrawMessageArgs) CompactMessa
 	message = append(message, []byte("withdraw_and_close")...)
 	message = append(message, args.Source...)
 	message = append(message, args.Destination...)
-
-	message = append(message, args.Nonce[:]...)
+	message = append(message, args.NonceAddress...)
+	message = append(message, args.NonceValue[:]...)
 	return hashMessage(message)
 }
 
