@@ -33,6 +33,7 @@ import (
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
 // This is a quick and dirty file to get an initial airdrop feature out
@@ -271,17 +272,12 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		selectedNonce.Unlock()
 	}()
 
-	vixnHash, err := transaction.GetVirtualTransferWithAuthorityHash(
-		selectedNonce.Account,
-		selectedNonce.Blockhash,
-		s.airdropper,
-		destination,
-		quarkAmount,
-	)
-	if err != nil {
-		log.WithError(err).Warn("failure making solana transaction")
-		return nil, err
-	}
+	vixnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
+		Source:      s.airdropper.Vault.PublicKey().ToBytes(),
+		Destination: destination.PublicKey().ToBytes(),
+		Amount:      quarkAmount,
+		Nonce:       cvm.Hash(selectedNonce.Blockhash),
+	})
 	virtualSig := ed25519.Sign(s.airdropper.VaultOwner.PrivateKey().ToBytes(), vixnHash[:])
 
 	intentRecord := &intent.Record{

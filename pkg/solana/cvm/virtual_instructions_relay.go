@@ -14,7 +14,7 @@ type RelayVirtualInstructionArgs struct {
 	Commitment Hash
 }
 
-func NewRelayVirtualInstructionCtor(
+func NewRelayVirtualInstruction(
 	args *RelayVirtualInstructionArgs,
 ) VirtualInstruction {
 	var offset int

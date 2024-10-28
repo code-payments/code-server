@@ -14,7 +14,7 @@ type ExternalRelayVirtualInstructionArgs struct {
 	Commitment Hash
 }
 
-func NewExternalRelayVirtualInstructionCtor(
+func NewExternalRelayVirtualInstruction(
 	args *ExternalRelayVirtualInstructionArgs,
 ) VirtualInstruction {
 	var offset int

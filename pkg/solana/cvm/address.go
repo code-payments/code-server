@@ -144,7 +144,7 @@ func GetRelayCommitmentAddress(args *GetRelayCommitmentAddressArgs) (ed25519.Pub
 }
 
 type GetRelayDestinationAddressArgs struct {
-	Proof ed25519.PublicKey
+	RelayOrProof ed25519.PublicKey
 }
 
 func GetRelayDestinationAddress(args *GetRelayDestinationAddressArgs) (ed25519.PublicKey, uint8, error) {
@@ -152,7 +152,7 @@ func GetRelayDestinationAddress(args *GetRelayDestinationAddressArgs) (ed25519.P
 		SPLITTER_PROGRAM_ID,
 		CodeVmPrefix,
 		VmRelayVaultPrefix,
-		args.Proof,
+		args.RelayOrProof,
 	)
 }
 
@@ -204,7 +204,7 @@ func GetVmDepositAddress(args *GetVmDepositAddressArgs) (ed25519.PublicKey, uint
 
 type GetVmUnlockStateAccountAddressArgs struct {
 	VirtualAccountOwner ed25519.PublicKey
-	VirtualAccouunt     ed25519.PublicKey
+	VirtualAccount      ed25519.PublicKey
 	Vm                  ed25519.PublicKey
 }
 
@@ -214,7 +214,7 @@ func GetVmUnlockStateAccountAddress(args *GetVmUnlockStateAccountAddressArgs) (e
 		CodeVmPrefix,
 		VmUnlockPdaPrefix,
 		args.VirtualAccountOwner,
-		args.VirtualAccouunt,
+		args.VirtualAccount,
 		args.Vm,
 	)
 }

@@ -291,11 +291,6 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 		return nil, err
 	}
 
-	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
-	if err != nil {
-		return nil, err
-	}
-
 	actionRecord, err := h.data.GetActionById(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
@@ -312,11 +307,6 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 	}
 
 	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -364,8 +354,6 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			selectedNonce.Blockhash,
 
 			solana.Signature(virtualSignatureBytes),
-			virtualNonce,
-			solana.Blockhash(virtualBlockhashBytes),
 
 			common.CodeVmAccount,
 			nonceMemory,
@@ -375,8 +363,6 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			destinationeMemory,
 			destinationIndex,
 
-			sourceTimelockAccounts,
-			destinationTokenAccount,
 			*actionRecord.Quantity,
 		)
 	} else {
@@ -385,8 +371,6 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			selectedNonce.Blockhash,
 
 			solana.Signature(virtualSignatureBytes),
-			virtualNonce,
-			solana.Blockhash(virtualBlockhashBytes),
 
 			common.CodeVmAccount,
 			common.CodeVmOmnibusAccount,
@@ -396,7 +380,6 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			sourceMemory,
 			sourceIndex,
 
-			sourceTimelockAccounts,
 			destinationTokenAccount,
 			*actionRecord.Quantity,
 		)
@@ -484,11 +467,6 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 		return nil, err
 	}
 
-	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
-	if err != nil {
-		return nil, err
-	}
-
 	sourceVault, err := common.NewAccountFromPublicKeyString(fulfillmentRecord.Source)
 	if err != nil {
 		return nil, err
@@ -500,11 +478,6 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 	}
 
 	sourceAuthority, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.AuthorityAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -552,8 +525,6 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			selectedNonce.Blockhash,
 
 			solana.Signature(virtualSignatureBytes),
-			virtualNonce,
-			solana.Blockhash(virtualBlockhashBytes),
 
 			common.CodeVmAccount,
 			nonceMemory,
@@ -562,9 +533,6 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			sourceIndex,
 			destinationeMemory,
 			destinationIndex,
-
-			sourceTimelockAccounts,
-			destinationTokenAccount,
 		)
 	} else {
 		txn, makeTxnErr = transaction_util.MakeExternalWithdrawTransaction(
@@ -572,8 +540,6 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			selectedNonce.Blockhash,
 
 			solana.Signature(virtualSignatureBytes),
-			virtualNonce,
-			solana.Blockhash(virtualBlockhashBytes),
 
 			common.CodeVmAccount,
 			common.CodeVmOmnibusAccount,
@@ -583,7 +549,6 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			sourceMemory,
 			sourceIndex,
 
-			sourceTimelockAccounts,
 			destinationTokenAccount,
 		)
 	}
@@ -711,11 +676,6 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		return nil, err
 	}
 
-	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
-	if err != nil {
-		return nil, err
-	}
-
 	commitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
@@ -751,11 +711,6 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		return nil, err
 	}
 
-	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
-	if err != nil {
-		return nil, err
-	}
-
 	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
 	if err != nil {
 		return nil, err
@@ -776,8 +731,6 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		selectedNonce.Blockhash,
 
 		solana.Signature(virtualSignatureBytes),
-		virtualNonce,
-		solana.Blockhash(virtualBlockhashBytes),
 
 		common.CodeVmAccount,
 		common.CodeVmOmnibusAccount,
@@ -789,10 +742,8 @@ func (h *TemporaryPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		relayMemory,
 		relayIndex,
 
-		sourceTimelockAccounts,
 		treasuryPool,
 		treasuryPoolVault,
-		commitmentVault,
 		commitmentRecord.Amount,
 	)
 	if err != nil {
@@ -933,11 +884,6 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		return nil, err
 	}
 
-	virtualBlockhashBytes, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
-	if err != nil {
-		return nil, err
-	}
-
 	oldCommitmentRecord, err := h.data.GetCommitmentByAction(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
@@ -978,11 +924,6 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		return nil, err
 	}
 
-	sourceTimelockAccounts, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
-	if err != nil {
-		return nil, err
-	}
-
 	_, nonceMemory, nonceIndex, err := getVirtualDurableNonceAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, virtualNonce)
 	if err != nil {
 		return nil, err
@@ -1003,8 +944,6 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		selectedNonce.Blockhash,
 
 		solana.Signature(virtualSignatureBytes),
-		virtualNonce,
-		solana.Blockhash(virtualBlockhashBytes),
 
 		common.CodeVmAccount,
 		common.CodeVmOmnibusAccount,
@@ -1016,10 +955,8 @@ func (h *PermanentPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTr
 		relayMemory,
 		relayIndex,
 
-		sourceTimelockAccounts,
 		treasuryPool,
 		treasuryPoolVault,
-		commitmentVault,
 		oldCommitmentRecord.Amount,
 	)
 	if err != nil {
@@ -1231,7 +1168,6 @@ func (h *TransferWithCommitmentFulfillmentHandler) MakeOnDemandTransaction(ctx c
 
 			treasuryPool,
 			treasuryPoolVault,
-			destination,
 			commitment,
 			commitmentRecord.Amount,
 			transcript,

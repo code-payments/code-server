@@ -20,7 +20,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
-	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
@@ -29,8 +28,8 @@ type newFulfillmentMetadata struct {
 	// Signature metadata
 
 	requiresClientSignature bool
-	expectedSigner          *common.Account // Must be null if the requiresClientSignature is false
-	virtualIxnHash          *cvm.Hash       // Must be null if the requiresClientSignature is false
+	expectedSigner          *common.Account     // Must be null if the requiresClientSignature is false
+	virtualIxnHash          *cvm.CompactMessage // Must be null if the requiresClientSignature is false
 
 	// Additional metadata to add to the action and fulfillment record, which relates
 	// specifically to the transaction or virtual instruction within the context of
@@ -329,21 +328,17 @@ func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 ) (*newFulfillmentMetadata, error) {
 	switch index {
 	case 0:
-		virtualIxnHash, err := transaction_util.GetVirtualTransferWithAuthorityHash(
-			nonce,
-			bh,
-			h.source,
-			h.destination,
-			h.amount,
-		)
-		if err != nil {
-			return nil, err
-		}
+		virtualIxnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
+			Source:      h.source.Vault.PublicKey().ToBytes(),
+			Destination: h.destination.PublicKey().ToBytes(),
+			Amount:      h.amount,
+			Nonce:       cvm.Hash(bh),
+		})
 
 		return &newFulfillmentMetadata{
 			requiresClientSignature: true,
 			expectedSigner:          h.source.VaultOwner,
-			virtualIxnHash:          virtualIxnHash,
+			virtualIxnHash:          &virtualIxnHash,
 
 			fulfillmentType:          fulfillment.NoPrivacyTransferWithAuthority,
 			source:                   h.source.Vault,
@@ -435,20 +430,16 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 ) (*newFulfillmentMetadata, error) {
 	switch index {
 	case 0:
-		virtualIxnHash, err := transaction_util.GetVirtualCloseAccountWithBalanceHash(
-			nonce,
-			bh,
-			h.source,
-			h.destination,
-		)
-		if err != nil {
-			return nil, err
-		}
+		virtualIxnHash := cvm.GetCompactWithdrawMessage(&cvm.GetCompactWithdrawMessageArgs{
+			Source:      h.source.Vault.PublicKey().ToBytes(),
+			Destination: h.destination.PublicKey().ToBytes(),
+			Nonce:       cvm.Hash(bh),
+		})
 
 		return &newFulfillmentMetadata{
 			requiresClientSignature: true,
 			expectedSigner:          h.source.VaultOwner,
-			virtualIxnHash:          virtualIxnHash,
+			virtualIxnHash:          &virtualIxnHash,
 
 			fulfillmentType:          fulfillment.NoPrivacyWithdraw,
 			source:                   h.source.Vault,
@@ -600,7 +591,7 @@ func NewTemporaryPrivacyTransferActionHandler(
 		return nil, err
 	}
 
-	commitmentVaultAddress, _, err := cvm.GetRelayVaultAddress(&cvm.GetRelayVaultAddressArgs{
+	commitmentVaultAddress, _, err := cvm.GetRelayDestinationAddress(&cvm.GetRelayDestinationAddressArgs{
 		RelayOrProof: proofAddress,
 	})
 	if err != nil {
@@ -696,21 +687,17 @@ func (h *TemporaryPrivacyTransferActionHandler) GetFulfillmentMetadata(
 			disableActiveScheduling:  h.isCollectedForHideInTheCrowdPrivacy,
 		}, nil
 	case 1:
-		virtualIxnHash, err := transaction_util.GetVirtualTransferWithAuthorityHash(
-			nonce,
-			bh,
-			h.source,
-			h.commitmentVault,
-			h.unsavedCommitmentRecord.Amount,
-		)
-		if err != nil {
-			return nil, err
-		}
+		virtualIxnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
+			Source:      h.source.Vault.PublicKey().ToBytes(),
+			Destination: h.commitmentVault.PublicKey().ToBytes(),
+			Amount:      h.unsavedCommitmentRecord.Amount,
+			Nonce:       cvm.Hash(bh),
+		})
 
 		return &newFulfillmentMetadata{
 			requiresClientSignature: true,
 			expectedSigner:          h.source.VaultOwner,
-			virtualIxnHash:          virtualIxnHash,
+			virtualIxnHash:          &virtualIxnHash,
 
 			fulfillmentType:          fulfillment.TemporaryPrivacyTransferWithAuthority,
 			source:                   h.source.Vault,
@@ -839,21 +826,17 @@ func (h *PermanentPrivacyUpgradeActionHandler) GetFulfillmentMetadata(
 	nonce *common.Account,
 	bh solana.Blockhash,
 ) (*newFulfillmentMetadata, error) {
-	virtualIxnHash, err := transaction_util.GetVirtualTransferWithAuthorityHash(
-		nonce,
-		bh,
-		h.source,
-		h.privacyUpgradeProof.newCommitmentVault,
-		h.commitmentBeingUpgraded.Amount,
-	)
-	if err != nil {
-		return nil, err
-	}
+	virtualIxnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
+		Source:      h.source.Vault.PublicKey().ToBytes(),
+		Destination: h.privacyUpgradeProof.newCommitmentVault.PublicKey().ToBytes(),
+		Amount:      h.commitmentBeingUpgraded.Amount,
+		Nonce:       cvm.Hash(bh),
+	})
 
 	return &newFulfillmentMetadata{
 		requiresClientSignature: true,
 		expectedSigner:          h.source.VaultOwner,
-		virtualIxnHash:          virtualIxnHash,
+		virtualIxnHash:          &virtualIxnHash,
 
 		fulfillmentType:          fulfillment.PermanentPrivacyTransferWithAuthority,
 		source:                   h.source.Vault,
