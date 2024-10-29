@@ -17,3 +17,15 @@ func getMemoryLayout(src []byte, dst *MemoryLayout, offset *int) {
 	*dst = MemoryLayout(src[*offset])
 	*offset += 1
 }
+
+func GetPageSizeFromMemoryLayout(layout MemoryLayout) uint32 {
+	switch layout {
+	case MemoryLayoutNonce:
+		return GetVirtualAccountSizeInMemory(VirtualAccountTypeDurableNonce)
+	case MemoryLayoutTimelock:
+		return GetVirtualAccountSizeInMemory(VirtualAccountTypeTimelock)
+	case MemoryLayoutRelay:
+		return GetVirtualAccountSizeInMemory(VirtualAccountTypeRelay)
+	}
+	return 0
+}
