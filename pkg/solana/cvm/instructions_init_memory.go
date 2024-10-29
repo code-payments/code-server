@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	InitMemoryInstructionArgsSize = (4 + MaxMemoryAccountNameLength + // name
+	InitMemoryInstructionArgsSize = (MaxMemoryAccountNameLength + // name
 		1 + // layout
 		1) // vm_memory_bump
 )
