@@ -98,7 +98,7 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 		getSimpleMemoryAllocator(data, &obj.Data, capacity, itemSize, &offset)
 	case MemoryLayoutNonce:
 		capacity := CompactStateItems
-		itemSize := int(GetVirtualAccountSizeInMemory(VirtualDurableNonceSize))
+		itemSize := int(GetVirtualAccountSizeInMemory(VirtualAccountTypeDurableNonce))
 		if len(data) < MemoryAccountSize+GetSimpleMemoryAllocatorSize(capacity, itemSize) {
 			return ErrInvalidAccountData
 		}
