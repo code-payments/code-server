@@ -10,6 +10,9 @@ import (
 	"github.com/code-payments/code-server/pkg/phone"
 )
 
+// todo: Remove this completely. Keeping it here for dependent data packages to build
+//       before we're able to rewrite/refactor.
+
 // UserID uniquely identifies a user
 type UserID struct {
 	id uuid.UUID

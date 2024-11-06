@@ -77,17 +77,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	//
-	// Section: Antispam
-	//
-
-	allow, err := s.antispamGuard.AllowSwap(ctx, owner)
-	if err != nil {
-		return handleSwapError(streamer, err)
-	} else if !allow {
-		return handleSwapError(streamer, newSwapDeniedError("rate limited"))
-	}
-
-	//
 	// Section: Swap parameter setup and validation (accounts, balances, etc.)
 	//
 
@@ -129,8 +118,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	switch err {
 	case nil:
 		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-			// Should never happen if we're doing phone number validation against
-			// the owner account.
 			return handleSwapError(streamer, newSwapValidationError("owner must be authority to primary account"))
 		}
 	case account.ErrAccountInfoNotFound:

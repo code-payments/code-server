@@ -60,8 +60,6 @@ type Record struct {
 	//       use cases before forming a firm opinion.
 	Quantity *uint64
 
-	InitiatorPhoneNumber *string
-
 	State State
 
 	CreatedAt time.Time
@@ -94,10 +92,6 @@ func (r *Record) Validate() error {
 		return errors.New("quantity is required when set")
 	}
 
-	if r.InitiatorPhoneNumber != nil && len(*r.InitiatorPhoneNumber) == 0 {
-		return errors.New("initiator phone number is required when set")
-	}
-
 	return nil
 }
 
@@ -114,8 +108,6 @@ func (r *Record) Clone() Record {
 		Source:      r.Source,
 		Destination: pointer.StringCopy(r.Destination),
 		Quantity:    pointer.Uint64Copy(r.Quantity),
-
-		InitiatorPhoneNumber: pointer.StringCopy(r.InitiatorPhoneNumber),
 
 		State: r.State,
 
@@ -135,8 +127,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Source = r.Source
 	dst.Destination = r.Destination
 	dst.Quantity = r.Quantity
-
-	dst.InitiatorPhoneNumber = r.InitiatorPhoneNumber
 
 	dst.State = r.State
 

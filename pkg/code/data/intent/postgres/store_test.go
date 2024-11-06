@@ -55,7 +55,6 @@ const (
 			tipped_username TEXT NULL,
 
 			chat_id TEXT NULL,
-			phone_number TEXT NULL,
 
 			state integer NOT NULL,
 

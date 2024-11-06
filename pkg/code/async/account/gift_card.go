@@ -308,7 +308,6 @@ func insertAutoReturnPaymentHistoryItem(ctx context.Context, data code_data.Prov
 		IntentType: intent.ReceivePaymentsPublicly,
 
 		InitiatorOwnerAccount: giftCardIssuedIntent.InitiatorOwnerAccount,
-		InitiatorPhoneNumber:  giftCardIssuedIntent.InitiatorPhoneNumber,
 
 		ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{
 			Source:       giftCardIssuedIntent.SendPrivatePaymentMetadata.DestinationTokenAccount,

@@ -29,10 +29,6 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testLoginRoundTrip,
 		testUpdate,
 		testGetLatestByInitiatorAndType,
-		testGetCountForAntispam,
-		testGetOwnerInteractionCountForAntispam,
-		testGetTransactedAmountForAntiMoneyLaundering,
-		testGetDepositedAmountForAntiMoneyLaundering,
 		testGetNetBalanceFromPrePrivacyIntents,
 		testGetLatestSaveRecentRootIntentForTreasury,
 		testGetOriginalGiftCardIssuedIntent,
@@ -53,12 +49,10 @@ func testLegacyPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.LegacyPayment,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			MoneyTransferMetadata: &intent.MoneyTransferMetadata{
 				Source:           "test_source",
 				Destination:      "test_destination",
@@ -80,7 +74,6 @@ func testLegacyPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.MoneyTransferMetadata)
 		assert.Equal(t, cloned.MoneyTransferMetadata.Source, actual.MoneyTransferMetadata.Source)
 		assert.Equal(t, cloned.MoneyTransferMetadata.Destination, actual.MoneyTransferMetadata.Destination)
@@ -104,12 +97,10 @@ func testLegacyCreateAccountRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.LegacyCreateAccount,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			AccountManagementMetadata: &intent.AccountManagementMetadata{
 				TokenAccount: "test_account",
 			},
@@ -125,7 +116,6 @@ func testLegacyCreateAccountRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.AccountManagementMetadata)
 		assert.Equal(t, cloned.AccountManagementMetadata.TokenAccount, actual.AccountManagementMetadata.TokenAccount)
 		assert.Equal(t, cloned.State, actual.State)
@@ -143,12 +133,10 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.OpenAccounts,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			OpenAccountsMetadata:  &intent.OpenAccountsMetadata{},
 			State:                 intent.StateUnknown,
 			CreatedAt:             time.Now(),
@@ -162,7 +150,6 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.OpenAccountsMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
@@ -179,12 +166,10 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.SendPrivatePayment,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
 				DestinationOwnerAccount: "test_destination_owner",
 				DestinationTokenAccount: "test_destination_token",
@@ -217,7 +202,6 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.SendPrivatePaymentMetadata)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.DestinationOwnerAccount, actual.SendPrivatePaymentMetadata.DestinationOwnerAccount)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.DestinationTokenAccount, actual.SendPrivatePaymentMetadata.DestinationTokenAccount)
@@ -248,12 +232,10 @@ func testReceivePaymentsPrivatelyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.ReceivePaymentsPrivately,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{
 				Source:         "test_source",
 				Quantity:       12345,
@@ -272,7 +254,6 @@ func testReceivePaymentsPrivatelyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.ReceivePaymentsPrivatelyMetadata)
 		assert.Equal(t, cloned.ReceivePaymentsPrivatelyMetadata.Source, actual.ReceivePaymentsPrivatelyMetadata.Source)
 		assert.Equal(t, cloned.ReceivePaymentsPrivatelyMetadata.Quantity, actual.ReceivePaymentsPrivatelyMetadata.Quantity)
@@ -313,7 +294,6 @@ func testSaveRecentRootRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Nil(t, actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.SaveRecentRootMetadata)
 		assert.Equal(t, cloned.SaveRecentRootMetadata.TreasuryPool, actual.SaveRecentRootMetadata.TreasuryPool)
 		assert.Equal(t, cloned.SaveRecentRootMetadata.PreviousMostRecentRoot, actual.SaveRecentRootMetadata.PreviousMostRecentRoot)
@@ -332,12 +312,10 @@ func testMigrateToPrivacy2022RoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.MigrateToPrivacy2022,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			MigrateToPrivacy2022Metadata: &intent.MigrateToPrivacy2022Metadata{
 				Quantity: 123,
 			},
@@ -353,7 +331,6 @@ func testMigrateToPrivacy2022RoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.MigrateToPrivacy2022Metadata)
 		assert.Equal(t, cloned.MigrateToPrivacy2022Metadata.Quantity, actual.MigrateToPrivacy2022Metadata.Quantity)
 		assert.Equal(t, cloned.State, actual.State)
@@ -393,7 +370,6 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Nil(t, actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.ExternalDepositMetadata)
 		assert.Equal(t, cloned.ExternalDepositMetadata.DestinationOwnerAccount, actual.ExternalDepositMetadata.DestinationOwnerAccount)
 		assert.Equal(t, cloned.ExternalDepositMetadata.DestinationTokenAccount, actual.ExternalDepositMetadata.DestinationTokenAccount)
@@ -414,12 +390,10 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.SendPublicPayment,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 				DestinationOwnerAccount: "test_destination_owner",
 				DestinationTokenAccount: "test_destination_token",
@@ -443,7 +417,6 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.SendPublicPaymentMetadata)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.DestinationOwnerAccount, actual.SendPublicPaymentMetadata.DestinationOwnerAccount)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.DestinationTokenAccount, actual.SendPublicPaymentMetadata.DestinationTokenAccount)
@@ -468,12 +441,10 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.ReceivePaymentsPublicly,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{
 				Source:                   "test_source",
 				Quantity:                 12345,
@@ -497,7 +468,6 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.ReceivePaymentsPubliclyMetadata)
 		assert.Equal(t, cloned.ReceivePaymentsPubliclyMetadata.Source, actual.ReceivePaymentsPubliclyMetadata.Source)
 		assert.Equal(t, cloned.ReceivePaymentsPubliclyMetadata.Quantity, actual.ReceivePaymentsPubliclyMetadata.Quantity)
@@ -523,12 +493,10 @@ func testEstablishRelationshipRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.EstablishRelationship,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			EstablishRelationshipMetadata: &intent.EstablishRelationshipMetadata{
 				RelationshipTo: "relationship_to",
 			},
@@ -544,7 +512,6 @@ func testEstablishRelationshipRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.EstablishRelationshipMetadata)
 		assert.Equal(t, cloned.EstablishRelationshipMetadata.RelationshipTo, actual.EstablishRelationshipMetadata.RelationshipTo)
 		assert.Equal(t, cloned.State, actual.State)
@@ -562,12 +529,10 @@ func testLoginRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 		assert.Nil(t, actual)
 
-		phoneNumberValue := "+12223334444"
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.Login,
 			InitiatorOwnerAccount: "test_owner",
-			InitiatorPhoneNumber:  &phoneNumberValue,
 			LoginMetadata: &intent.LoginMetadata{
 				App:    "app",
 				UserId: "test_user",
@@ -584,7 +549,6 @@ func testLoginRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
-		assert.Equal(t, *cloned.InitiatorPhoneNumber, *actual.InitiatorPhoneNumber)
 		require.NotNil(t, actual.LoginMetadata)
 		assert.Equal(t, cloned.LoginMetadata.App, actual.LoginMetadata.App)
 		assert.Equal(t, cloned.LoginMetadata.UserId, actual.LoginMetadata.UserId)
@@ -654,208 +618,6 @@ func testGetLatestByInitiatorAndType(t *testing.T, s intent.Store) {
 		assert.Equal(t, "t4", actual.IntentId)
 	})
 
-}
-
-func testGetCountForAntispam(t *testing.T, s intent.Store) {
-	t.Run("testGetCountForAntispam", func(t *testing.T) {
-		ctx := context.Background()
-
-		phoneNumber := "+12223334444"
-		otherPhoneNumber := "+18005550000"
-
-		records := []intent.Record{
-			{IntentId: "i1", IntentType: intent.LegacyCreateAccount, InitiatorOwnerAccount: "o1", InitiatorPhoneNumber: &phoneNumber, AccountManagementMetadata: &intent.AccountManagementMetadata{TokenAccount: "t1"}, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
-			{IntentId: "i2", IntentType: intent.LegacyCreateAccount, InitiatorOwnerAccount: "o2", InitiatorPhoneNumber: &phoneNumber, AccountManagementMetadata: &intent.AccountManagementMetadata{TokenAccount: "t2"}, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
-			{IntentId: "i3", IntentType: intent.LegacyCreateAccount, InitiatorOwnerAccount: "o3", InitiatorPhoneNumber: &phoneNumber, AccountManagementMetadata: &intent.AccountManagementMetadata{TokenAccount: "t3"}, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
-			{IntentId: "i4", IntentType: intent.LegacyCreateAccount, InitiatorOwnerAccount: "o4", InitiatorPhoneNumber: &phoneNumber, AccountManagementMetadata: &intent.AccountManagementMetadata{TokenAccount: "t4"}, State: intent.StateFailed, CreatedAt: time.Now().Add(-4 * time.Minute)},
-			{IntentId: "i5", IntentType: intent.LegacyCreateAccount, InitiatorOwnerAccount: "o5", InitiatorPhoneNumber: &phoneNumber, AccountManagementMetadata: &intent.AccountManagementMetadata{TokenAccount: "t5"}, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-		}
-
-		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
-		}
-
-		allStates := []intent.State{
-			intent.StateUnknown,
-			intent.StatePending,
-			intent.StateConfirmed,
-			intent.StateFailed,
-			intent.StateRevoked,
-		}
-
-		// Capture all intents for the phone number
-		count, err := s.CountForAntispam(ctx, intent.LegacyCreateAccount, phoneNumber, allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 5, count)
-
-		// Capture a subset of intents based on time
-		count, err = s.CountForAntispam(ctx, intent.LegacyCreateAccount, phoneNumber, allStates, time.Now().Add(-90*time.Second))
-		require.NoError(t, err)
-		assert.EqualValues(t, 1, count)
-
-		// Capture a subset of intents based on state
-		count, err = s.CountForAntispam(ctx, intent.LegacyCreateAccount, phoneNumber, []intent.State{intent.StateUnknown, intent.StatePending}, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 2, count)
-
-		// Capture no intents because the type mismatches
-		count, err = s.CountForAntispam(ctx, intent.LegacyPayment, phoneNumber, allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, count)
-
-		// Capture no intents because the phone number mismatches
-		count, err = s.CountForAntispam(ctx, intent.LegacyCreateAccount, otherPhoneNumber, allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, count)
-	})
-}
-
-func testGetOwnerInteractionCountForAntispam(t *testing.T, s intent.Store) {
-	t.Run("testGetOwnerInteractionCountForAntispam", func(t *testing.T) {
-		ctx := context.Background()
-
-		phoneNumber := "+12223334444"
-		records := []intent.Record{
-			{IntentId: "i1", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o1", InitiatorPhoneNumber: &phoneNumber, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "t2", Quantity: 1, ExchangeCurrency: currency.KIN, ExchangeRate: 1.0, NativeAmount: 1.0, UsdMarketValue: 1.0}, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
-			{IntentId: "i2", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o1", InitiatorPhoneNumber: &phoneNumber, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "t2", Quantity: 1, ExchangeCurrency: currency.KIN, ExchangeRate: 1.0, NativeAmount: 1.0, UsdMarketValue: 1.0}, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
-			{IntentId: "i3", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o1", InitiatorPhoneNumber: &phoneNumber, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "t2", Quantity: 1, ExchangeCurrency: currency.KIN, ExchangeRate: 1.0, NativeAmount: 1.0, UsdMarketValue: 1.0}, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
-			{IntentId: "i4", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", InitiatorPhoneNumber: &phoneNumber, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "t2", Quantity: 1, ExchangeCurrency: currency.KIN, ExchangeRate: 1.0, NativeAmount: 1.0, UsdMarketValue: 1.0}, State: intent.StateFailed, CreatedAt: time.Now().Add(-4 * time.Minute)},
-			{IntentId: "i5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", InitiatorPhoneNumber: &phoneNumber, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "t2", Quantity: 1, ExchangeCurrency: currency.KIN, ExchangeRate: 1.0, NativeAmount: 1.0, UsdMarketValue: 1.0}, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-		}
-
-		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
-		}
-
-		allStates := []intent.State{
-			intent.StateUnknown,
-			intent.StatePending,
-			intent.StateConfirmed,
-			intent.StateFailed,
-			intent.StateRevoked,
-		}
-
-		// Capture all intents for the owner pair
-		count, err := s.CountOwnerInteractionsForAntispam(ctx, "o1", "o2", allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 5, count)
-
-		// Capture no intents for incorrect owner pairs
-
-		count, err = s.CountOwnerInteractionsForAntispam(ctx, "o2", "o1", allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, count)
-
-		count, err = s.CountOwnerInteractionsForAntispam(ctx, "o1", "o1", allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, count)
-
-		count, err = s.CountOwnerInteractionsForAntispam(ctx, "o2", "o2", allStates, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, count)
-
-		// Capture a subset of intents for the owner pair based on time
-		count, err = s.CountOwnerInteractionsForAntispam(ctx, "o1", "o2", allStates, time.Now().Add(-90*time.Second))
-		require.NoError(t, err)
-		assert.EqualValues(t, 1, count)
-
-		// Capture a subset of intents for the owner pair based on state
-		count, err = s.CountOwnerInteractionsForAntispam(ctx, "o1", "o2", []intent.State{intent.StateUnknown, intent.StatePending}, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 2, count)
-	})
-}
-
-func testGetTransactedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store) {
-	t.Run("testGetTransactedAmountForAntiMoneyLaundering", func(t *testing.T) {
-		ctx := context.Background()
-
-		phoneNumber := "+12223334444"
-
-		// No intents results in zero transacted values
-		quarks, usdMarketValue, err := s.GetTransactedAmountForAntiMoneyLaundering(ctx, phoneNumber, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, quarks)
-		assert.EqualValues(t, 0, usdMarketValue)
-
-		records := []intent.Record{
-			{IntentId: "t1", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o1", SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2, UsdMarketValue: 2}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
-			{IntentId: "t2", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o2", SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20, UsdMarketValue: 20}, InitiatorPhoneNumber: &phoneNumber, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
-			{IntentId: "t3", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o3", SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o3", DestinationTokenAccount: "a3", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 200, UsdMarketValue: 200}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
-			{IntentId: "t4", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o4", SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o4", DestinationTokenAccount: "a4", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000, UsdMarketValue: 2000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateFailed, CreatedAt: time.Now().Add(-4 * time.Minute)},
-			{IntentId: "t5", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o5", SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o5", DestinationTokenAccount: "a5", Quantity: 10000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20000, UsdMarketValue: 20000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-			{IntentId: "t6", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o6", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{Source: "a6", Quantity: 100000, UsdMarketValue: 200000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateConfirmed, CreatedAt: time.Now()},
-			{IntentId: "t7", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o7", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o7", DestinationTokenAccount: "a7", Quantity: 1000000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000000, UsdMarketValue: 20000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateConfirmed, CreatedAt: time.Now()},
-		}
-
-		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
-		}
-
-		// Capture all intents for the phone number
-		quarks, usdMarketValue, err = s.GetTransactedAmountForAntiMoneyLaundering(ctx, phoneNumber, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 1111, quarks)
-		assert.EqualValues(t, 2222, usdMarketValue)
-
-		// Capture a subset of intents based on time
-		quarks, usdMarketValue, err = s.GetTransactedAmountForAntiMoneyLaundering(ctx, phoneNumber, time.Now().Add(-150*time.Second))
-		require.NoError(t, err)
-		assert.EqualValues(t, 11, quarks)
-		assert.EqualValues(t, 22, usdMarketValue)
-
-		// Capture no intents because the phone number mismatches
-		quarks, usdMarketValue, err = s.GetTransactedAmountForAntiMoneyLaundering(ctx, "+18005550000", time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, quarks)
-		assert.EqualValues(t, 0, usdMarketValue)
-	})
-}
-
-func testGetDepositedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store) {
-	t.Run("testGetDepositedAmountForAntiMoneyLaundering", func(t *testing.T) {
-		ctx := context.Background()
-
-		phoneNumber := "+12223334444"
-
-		// No intents results in zero transacted values
-		quarks, usdMarketValue, err := s.GetTransactedAmountForAntiMoneyLaundering(ctx, phoneNumber, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, quarks)
-		assert.EqualValues(t, 0, usdMarketValue)
-
-		records := []intent.Record{
-			{IntentId: "t1", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o1", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{IsDeposit: true, Source: "a1", Quantity: 1, UsdMarketValue: 2}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
-			{IntentId: "t2", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o2", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{IsDeposit: true, Source: "a2", Quantity: 10, UsdMarketValue: 20}, InitiatorPhoneNumber: &phoneNumber, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
-			{IntentId: "t3", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o3", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{IsDeposit: true, Source: "a3", Quantity: 100, UsdMarketValue: 200}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
-			{IntentId: "t4", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o4", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{IsDeposit: true, Source: "a4", Quantity: 1000, UsdMarketValue: 2000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateFailed, CreatedAt: time.Now().Add(-4 * time.Minute)},
-			{IntentId: "t5", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o5", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{IsDeposit: true, Source: "a5", Quantity: 10000, UsdMarketValue: 20000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-			{IntentId: "t6", IntentType: intent.ReceivePaymentsPrivately, InitiatorOwnerAccount: "o6", ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{IsDeposit: false, Source: "a6", Quantity: 100000, UsdMarketValue: 200000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-			{IntentId: "t7", IntentType: intent.SendPrivatePayment, InitiatorOwnerAccount: "o7", SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{DestinationOwnerAccount: "o7", DestinationTokenAccount: "a7", Quantity: 1000000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000000, UsdMarketValue: 2000000}, InitiatorPhoneNumber: &phoneNumber, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-		}
-
-		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
-		}
-
-		// Capture all intents for the phone number
-		quarks, usdMarketValue, err = s.GetDepositedAmountForAntiMoneyLaundering(ctx, phoneNumber, time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 1111, quarks)
-		assert.EqualValues(t, 2222, usdMarketValue)
-
-		// Capture a subset of intents based on time
-		quarks, usdMarketValue, err = s.GetDepositedAmountForAntiMoneyLaundering(ctx, phoneNumber, time.Now().Add(-150*time.Second))
-		require.NoError(t, err)
-		assert.EqualValues(t, 11, quarks)
-		assert.EqualValues(t, 22, usdMarketValue)
-
-		// Capture no intents because the phone number mismatches
-		quarks, usdMarketValue, err = s.GetDepositedAmountForAntiMoneyLaundering(ctx, "+18005550000", time.Now().Add(-24*time.Hour))
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, quarks)
-		assert.EqualValues(t, 0, usdMarketValue)
-	})
 }
 
 func testGetNetBalanceFromPrePrivacyIntents(t *testing.T, s intent.Store) {

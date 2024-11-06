@@ -15,11 +15,6 @@ const (
 	defaultPaymentsPerFiveMinutes = 25
 	defaultTimePerPayment         = time.Second / 4
 
-	defaultPhoneVerificationInterval       = 10 * time.Minute
-	defaultPhoneVerificationsPerInterval   = 5
-	defaultTimePerSmsVerificationCodeSend  = 30 * time.Second
-	defaultTimePerSmsVerificationCodeCheck = time.Second
-
 	defaultMaxNewRelationshipsPerDay = 50
 
 	defaultMinReferralAmount  = 100 * kin.QuarksPerKin
@@ -31,11 +26,6 @@ type conf struct {
 	paymentsPerHour        uint64
 	paymentsPerFiveMinutes uint64
 	timePerPayment         time.Duration
-
-	phoneVerificationInterval       time.Duration
-	phoneVerificationsPerInternval  uint64
-	timePerSmsVerificationCodeSend  time.Duration
-	timePerSmsVerificationCodeCheck time.Duration
 
 	maxNewRelationshipsPerDay uint64
 
@@ -83,42 +73,6 @@ func WithFiveMinutePaymentLimit(limit uint64) Option {
 func WithPaymentRateLimit(d time.Duration) Option {
 	return func(c *conf) {
 		c.timePerPayment = d
-	}
-}
-
-// WithPhoneVerificationInterval overrides the default phone verification interval.
-// The value specifies the time window at which unique verifications are evaluated
-// per phone number.
-func WithPhoneVerificationInterval(d time.Duration) Option {
-	return func(c *conf) {
-		c.phoneVerificationInterval = d
-	}
-}
-
-// WithPhoneVerificationsPerInterval overrides the default number of phone verifications
-// in an interval. The value specifies the number of unique phone verifications that can
-// happen within the configurable time window per phone number.
-func WithPhoneVerificationsPerInterval(limit uint64) Option {
-	return func(c *conf) {
-		c.phoneVerificationsPerInternval = limit
-	}
-}
-
-// WithTimePerSmsVerificationCodeSend overrides the default time per SMS verifications codes
-// sent. The value specifies the minimum time that must be waited to send consecutive SMS
-// verification codes per phone number.
-func WithTimePerSmsVerificationCodeSend(d time.Duration) Option {
-	return func(c *conf) {
-		c.timePerSmsVerificationCodeSend = d
-	}
-}
-
-// WithTimePerSmsVerificationCheck overrides the default time per SMS verifications codes
-// checked. The value specifies the minimum time that must be waited to consecutively check
-// SMS verification codes per phone number.
-func WithTimePerSmsVerificationCheck(d time.Duration) Option {
-	return func(c *conf) {
-		c.timePerSmsVerificationCodeCheck = d
 	}
 }
 
@@ -191,11 +145,6 @@ func applyOptions(opts ...Option) *conf {
 		paymentsPerHour:        defaultPaymentsPerHour,
 		paymentsPerFiveMinutes: defaultPaymentsPerFiveMinutes,
 		timePerPayment:         defaultTimePerPayment,
-
-		phoneVerificationInterval:       defaultPhoneVerificationInterval,
-		phoneVerificationsPerInternval:  defaultPhoneVerificationsPerInterval,
-		timePerSmsVerificationCodeSend:  defaultTimePerSmsVerificationCodeSend,
-		timePerSmsVerificationCodeCheck: defaultTimePerSmsVerificationCodeCheck,
 
 		maxNewRelationshipsPerDay: defaultMaxNewRelationshipsPerDay,
 

@@ -3,8 +3,6 @@ package push
 import (
 	"context"
 
-	"github.com/pkg/errors"
-
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	push_data "github.com/code-payments/code-server/pkg/code/data/push"
@@ -12,23 +10,26 @@ import (
 )
 
 func getPushTokensForOwner(ctx context.Context, data code_data.Provider, owner *common.Account) ([]*push_data.Record, error) {
-	verificationRecord, err := data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
-	if err != nil {
-		return nil, errors.Wrap(err, "error getting latest phone verification record")
-	}
+	/*
+		verificationRecord, err := data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting latest phone verification record")
+		}
 
-	dataContainerRecord, err := data.GetUserDataContainerByPhone(ctx, owner.PublicKey().ToBase58(), verificationRecord.PhoneNumber)
-	if err != nil {
-		return nil, errors.Wrap(err, "error getting data container record")
-	}
+		dataContainerRecord, err := data.GetUserDataContainerByPhone(ctx, owner.PublicKey().ToBase58(), verificationRecord.PhoneNumber)
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting data container record")
+		}
 
-	pushTokenRecords, err := data.GetAllValidPushTokensdByDataContainer(ctx, dataContainerRecord.ID)
-	if err == push_data.ErrTokenNotFound {
-		return nil, nil
-	} else if err != nil {
-		return nil, errors.Wrap(err, "error getting push token records")
-	}
-	return pushTokenRecords, nil
+		pushTokenRecords, err := data.GetAllValidPushTokensdByDataContainer(ctx, dataContainerRecord.ID)
+		if err == push_data.ErrTokenNotFound {
+			return nil, nil
+		} else if err != nil {
+			return nil, errors.Wrap(err, "error getting push token records")
+		}
+		return pushTokenRecords, nil
+	*/
+	return nil, nil
 }
 
 func onPushError(ctx context.Context, data code_data.Provider, pusher push_lib.Provider, pushTokenRecord *push_data.Record) (bool, error) {

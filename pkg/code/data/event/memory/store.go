@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/event"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type store struct {
@@ -32,7 +32,6 @@ func (s *store) Save(_ context.Context, data *event.Record) error {
 	s.last++
 	if item := s.find(data); item != nil {
 		item.DestinationCodeAccount = pointer.StringCopy(data.DestinationCodeAccount)
-		item.DestinationIdentity = pointer.StringCopy(data.DestinationIdentity)
 
 		item.DestinationClientIp = pointer.StringCopy(data.DestinationClientIp)
 		item.DestinationClientCity = pointer.StringCopy(data.DestinationClientCity)

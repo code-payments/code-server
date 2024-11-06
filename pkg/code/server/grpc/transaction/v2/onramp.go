@@ -13,7 +13,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/onramp"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/limit"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
@@ -44,18 +43,22 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 		return nil, err
 	}
 
-	verificationRecord, err := s.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
+	ownerMetadata, err := common.GetOwnerMetadata(ctx, s.data, owner)
 	switch err {
 	case nil:
-	case phone.ErrVerificationNotFound:
+		if ownerMetadata.Type != common.OwnerTypeUser12Words {
+			return &transactionpb.DeclareFiatOnrampPurchaseAttemptResponse{
+				Result: transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_INVALID_OWNER,
+			}, nil
+		}
+	case common.ErrOwnerNotFound:
 		return &transactionpb.DeclareFiatOnrampPurchaseAttemptResponse{
 			Result: transactionpb.DeclareFiatOnrampPurchaseAttemptResponse_INVALID_OWNER,
 		}, nil
 	default:
-		log.WithError(err).Warn("failure getting phone verification record")
+		log.WithError(err).Warn("failure getting owner metadata")
 		return nil, status.Error(codes.Internal, "")
 	}
-	log = log.WithField("phone_number", verificationRecord.PhoneNumber)
 
 	currency := currency_lib.Code(strings.ToLower(req.PurchaseAmount.Currency))
 	amount := req.PurchaseAmount.NativeAmount

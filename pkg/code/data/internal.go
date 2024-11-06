@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/pkg/errors"
 	"golang.org/x/text/language"
 
 	"github.com/code-payments/code-server/pkg/cache"
@@ -28,7 +27,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/balance"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/commitment"
-	"github.com/code-payments/code-server/pkg/code/data/contact"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	cvm_ram "github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	cvm_storage "github.com/code-payments/code-server/pkg/code/data/cvm/storage"
@@ -43,7 +41,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/payment"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/paywall"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/push"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
@@ -51,9 +48,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/treasury"
 	"github.com/code-payments/code-server/pkg/code/data/twitter"
-	"github.com/code-payments/code-server/pkg/code/data/user"
-	"github.com/code-payments/code-server/pkg/code/data/user/identity"
-	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
 
@@ -64,7 +58,6 @@ import (
 	balance_memory_client "github.com/code-payments/code-server/pkg/code/data/balance/memory"
 	chat_memory_client "github.com/code-payments/code-server/pkg/code/data/chat/memory"
 	commitment_memory_client "github.com/code-payments/code-server/pkg/code/data/commitment/memory"
-	contact_memory_client "github.com/code-payments/code-server/pkg/code/data/contact/memory"
 	currency_memory_client "github.com/code-payments/code-server/pkg/code/data/currency/memory"
 	cvm_ram_memory_client "github.com/code-payments/code-server/pkg/code/data/cvm/ram/memory"
 	cvm_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/cvm/storage/memory"
@@ -81,7 +74,6 @@ import (
 	payment_memory_client "github.com/code-payments/code-server/pkg/code/data/payment/memory"
 	paymentrequest_memory_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/memory"
 	paywall_memory_client "github.com/code-payments/code-server/pkg/code/data/paywall/memory"
-	phone_memory_client "github.com/code-payments/code-server/pkg/code/data/phone/memory"
 	preferences_memory_client "github.com/code-payments/code-server/pkg/code/data/preferences/memory"
 	push_memory_client "github.com/code-payments/code-server/pkg/code/data/push/memory"
 	rendezvous_memory_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/memory"
@@ -89,8 +81,6 @@ import (
 	transaction_memory_client "github.com/code-payments/code-server/pkg/code/data/transaction/memory"
 	treasury_memory_client "github.com/code-payments/code-server/pkg/code/data/treasury/memory"
 	twitter_memory_client "github.com/code-payments/code-server/pkg/code/data/twitter/memory"
-	user_identity_memory_client "github.com/code-payments/code-server/pkg/code/data/user/identity/memory"
-	user_storage_memory_client "github.com/code-payments/code-server/pkg/code/data/user/storage/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
 	webhook_memory_client "github.com/code-payments/code-server/pkg/code/data/webhook/memory"
 
@@ -101,7 +91,6 @@ import (
 	balance_postgres_client "github.com/code-payments/code-server/pkg/code/data/balance/postgres"
 	chat_postgres_client "github.com/code-payments/code-server/pkg/code/data/chat/postgres"
 	commitment_postgres_client "github.com/code-payments/code-server/pkg/code/data/commitment/postgres"
-	contact_postgres_client "github.com/code-payments/code-server/pkg/code/data/contact/postgres"
 	currency_postgres_client "github.com/code-payments/code-server/pkg/code/data/currency/postgres"
 	cvm_ram_postgres_client "github.com/code-payments/code-server/pkg/code/data/cvm/ram/postgres"
 	cvm_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/cvm/storage/postgres"
@@ -117,7 +106,6 @@ import (
 	payment_postgres_client "github.com/code-payments/code-server/pkg/code/data/payment/postgres"
 	paymentrequest_postgres_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/postgres"
 	paywall_postgres_client "github.com/code-payments/code-server/pkg/code/data/paywall/postgres"
-	phone_postgres_client "github.com/code-payments/code-server/pkg/code/data/phone/postgres"
 	preferences_postgres_client "github.com/code-payments/code-server/pkg/code/data/preferences/postgres"
 	push_postgres_client "github.com/code-payments/code-server/pkg/code/data/push/postgres"
 	rendezvous_postgres_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/postgres"
@@ -125,8 +113,6 @@ import (
 	transaction_postgres_client "github.com/code-payments/code-server/pkg/code/data/transaction/postgres"
 	treasury_postgres_client "github.com/code-payments/code-server/pkg/code/data/treasury/postgres"
 	twitter_postgres_client "github.com/code-payments/code-server/pkg/code/data/twitter/postgres"
-	user_identity_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/identity/postgres"
-	user_storage_postgres_client "github.com/code-payments/code-server/pkg/code/data/user/storage/postgres"
 	vault_postgres_client "github.com/code-payments/code-server/pkg/code/data/vault/postgres"
 	webhook_postgres_client "github.com/code-payments/code-server/pkg/code/data/webhook/postgres"
 )
@@ -225,10 +211,6 @@ type DatabaseData interface {
 	GetIntentBySignature(ctx context.Context, signature string) (*intent.Record, error)
 	GetLatestIntentByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error)
 	GetAllIntentsByOwner(ctx context.Context, owner string, opts ...query.Option) ([]*intent.Record, error)
-	GetIntentCountForAntispam(ctx context.Context, intentType intent.Type, phoneNumber string, states []intent.State, since time.Time) (uint64, error)
-	GetIntentCountWithOwnerInteractionsForAntispam(ctx context.Context, sourceOwner, destinationOwner string, states []intent.State, since time.Time) (uint64, error)
-	GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error)
-	GetDepositedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error)
 	GetNetBalanceFromPrePrivacy2022Intents(ctx context.Context, account string) (int64, error)
 	GetLatestSaveRecentRootIntentForTreasury(ctx context.Context, treasury string) (*intent.Record, error)
 	GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
@@ -266,45 +248,6 @@ type DatabaseData interface {
 	GetMessages(ctx context.Context, account string) ([]*messaging.Record, error)
 	DeleteMessage(ctx context.Context, account string, messageID uuid.UUID) error
 
-	// Phone
-	// --------------------------------------------------------------------------------
-	SavePhoneVerification(ctx context.Context, v *phone.Verification) error
-	GetPhoneVerification(ctx context.Context, account, phoneNumber string) (*phone.Verification, error)
-	GetLatestPhoneVerificationForAccount(ctx context.Context, account string) (*phone.Verification, error)
-	GetLatestPhoneVerificationForNumber(ctx context.Context, phoneNumber string) (*phone.Verification, error)
-	GetAllPhoneVerificationsForNumber(ctx context.Context, phoneNumber string) ([]*phone.Verification, error)
-	SavePhoneLinkingToken(ctx context.Context, token *phone.LinkingToken) error
-	UsePhoneLinkingToken(ctx context.Context, phoneNumber, code string) error
-	FilterVerifiedPhoneNumbers(ctx context.Context, phoneNumbers []string) ([]string, error)
-	SaveOwnerAccountPhoneSetting(ctx context.Context, phoneNumber string, newSettings *phone.OwnerAccountSetting) error
-	IsPhoneNumberLinkedToAccount(ctx context.Context, phoneNumber string, tokenAccount string) (bool, error)
-	IsPhoneNumberEnabledForRemoteSendToAccount(ctx context.Context, phoneNumber string, tokenAccount string) (bool, error)
-	PutPhoneEvent(ctx context.Context, event *phone.Event) error
-	GetLatestPhoneEventForNumberByType(ctx context.Context, phoneNumber string, eventType phone.EventType) (*phone.Event, error)
-	GetPhoneEventCountForVerificationByType(ctx context.Context, verification string, eventType phone.EventType) (uint64, error)
-	GetPhoneEventCountForNumberByTypeSinceTimestamp(ctx context.Context, phoneNumber string, eventType phone.EventType, since time.Time) (uint64, error)
-	GetUniquePhoneVerificationIdCountForNumberSinceTimestamp(ctx context.Context, phoneNumber string, since time.Time) (uint64, error)
-
-	// Contact
-	// --------------------------------------------------------------------------------
-	AddContact(ctx context.Context, owner *user.DataContainerID, contact string) error
-	BatchAddContacts(ctx context.Context, owner *user.DataContainerID, contacts []string) error
-	RemoveContact(ctx context.Context, owner *user.DataContainerID, contact string) error
-	BatchRemoveContacts(ctx context.Context, owner *user.DataContainerID, contacts []string) error
-	GetContacts(ctx context.Context, owner *user.DataContainerID, limit uint32, pageToken []byte) (contacts []string, nextPageToken []byte, err error)
-
-	// User Identity
-	// --------------------------------------------------------------------------------
-	PutUser(ctx context.Context, record *identity.Record) error
-	GetUserByID(ctx context.Context, id *user.UserID) (*identity.Record, error)
-	GetUserByPhoneView(ctx context.Context, phoneNumber string) (*identity.Record, error)
-
-	// User Storage Management
-	// --------------------------------------------------------------------------------
-	PutUserDataContainer(ctx context.Context, container *storage.Record) error
-	GetUserDataContainerByID(ctx context.Context, id *user.DataContainerID) (*storage.Record, error)
-	GetUserDataContainerByPhone(ctx context.Context, tokenAccount, phoneNumber string) (*storage.Record, error)
-
 	// Timelock
 	// --------------------------------------------------------------------------------
 	SaveTimelock(ctx context.Context, record *timelock.Record) error
@@ -319,7 +262,6 @@ type DatabaseData interface {
 	PutPushToken(ctx context.Context, record *push.Record) error
 	MarkPushTokenAsInvalid(ctx context.Context, pushToken string) error
 	DeletePushToken(ctx context.Context, pushToken string) error
-	GetAllValidPushTokensdByDataContainer(ctx context.Context, id *user.DataContainerID) ([]*push.Record, error)
 
 	// Commitment
 	// --------------------------------------------------------------------------------
@@ -425,7 +367,6 @@ type DatabaseData interface {
 	// User Preferences
 	// --------------------------------------------------------------------------------
 	SaveUserPreferences(ctx context.Context, record *preferences.Record) error
-	GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error)
 	GetUserLocale(ctx context.Context, owner string) (language.Tag, error)
 
 	// Airdrop
@@ -476,10 +417,6 @@ type DatabaseProvider struct {
 	payments       payment.Store
 	transactions   transaction.Store
 	messages       messaging.Store
-	phone          phone.Store
-	contact        contact.Store
-	userIdentity   identity.Store
-	userStorage    storage.Store
 	timelock       timelock.Store
 	push           push.Store
 	commitment     commitment.Store
@@ -539,10 +476,6 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		payments:       payment_postgres_client.New(db),
 		transactions:   transaction_postgres_client.New(db),
 		messages:       messaging_postgres_client.New(db),
-		phone:          phone_postgres_client.New(db),
-		contact:        contact_postgres_client.New(db),
-		userIdentity:   user_identity_postgres_client.New(db),
-		userStorage:    user_storage_postgres_client.New(db),
 		timelock:       timelock_postgres_client.New(db),
 		vault:          vault_postgres_client.New(db),
 		push:           push_postgres_client.New(db),
@@ -583,10 +516,6 @@ func NewTestDatabaseProvider() DatabaseData {
 		actions:        action_memory_client.New(),
 		payments:       payment_memory_client.New(),
 		transactions:   transaction_memory_client.New(),
-		phone:          phone_memory_client.New(),
-		contact:        contact_memory_client.New(),
-		userIdentity:   user_identity_memory_client.New(),
-		userStorage:    user_storage_memory_client.New(),
 		timelock:       timelock_memory_client.New(),
 		vault:          vault_memory_client.New(),
 		push:           push_memory_client.New(),
@@ -891,18 +820,6 @@ func (dp *DatabaseProvider) GetAllIntentsByOwner(ctx context.Context, owner stri
 
 	return dp.intents.GetAllByOwner(ctx, owner, req.Cursor, req.Limit, req.SortBy)
 }
-func (dp *DatabaseProvider) GetIntentCountForAntispam(ctx context.Context, intentType intent.Type, phoneNumber string, states []intent.State, since time.Time) (uint64, error) {
-	return dp.intents.CountForAntispam(ctx, intentType, phoneNumber, states, since)
-}
-func (dp *DatabaseProvider) GetIntentCountWithOwnerInteractionsForAntispam(ctx context.Context, sourceOwner, destinationOwner string, states []intent.State, since time.Time) (uint64, error) {
-	return dp.intents.CountOwnerInteractionsForAntispam(ctx, sourceOwner, destinationOwner, states, since)
-}
-func (dp *DatabaseProvider) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error) {
-	return dp.intents.GetTransactedAmountForAntiMoneyLaundering(ctx, phoneNumber, since)
-}
-func (dp *DatabaseProvider) GetDepositedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error) {
-	return dp.intents.GetDepositedAmountForAntiMoneyLaundering(ctx, phoneNumber, since)
-}
 func (dp *DatabaseProvider) GetNetBalanceFromPrePrivacy2022Intents(ctx context.Context, account string) (int64, error) {
 	return dp.intents.GetNetBalanceFromPrePrivacy2022Intents(ctx, account)
 }
@@ -1043,127 +960,6 @@ func (dp *DatabaseProvider) DeleteMessage(ctx context.Context, account string, m
 	return dp.messages.Delete(ctx, account, messageID)
 }
 
-// Phone
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) SavePhoneVerification(ctx context.Context, v *phone.Verification) error {
-	return dp.phone.SaveVerification(ctx, v)
-}
-func (dp *DatabaseProvider) GetPhoneVerification(ctx context.Context, account, phoneNumber string) (*phone.Verification, error) {
-	return dp.phone.GetVerification(ctx, account, phoneNumber)
-}
-func (dp *DatabaseProvider) GetLatestPhoneVerificationForAccount(ctx context.Context, account string) (*phone.Verification, error) {
-	return dp.phone.GetLatestVerificationForAccount(ctx, account)
-}
-func (dp *DatabaseProvider) GetLatestPhoneVerificationForNumber(ctx context.Context, phoneNumber string) (*phone.Verification, error) {
-	return dp.phone.GetLatestVerificationForNumber(ctx, phoneNumber)
-}
-func (dp *DatabaseProvider) GetAllPhoneVerificationsForNumber(ctx context.Context, phoneNumber string) ([]*phone.Verification, error) {
-	return dp.phone.GetAllVerificationsForNumber(ctx, phoneNumber)
-}
-func (dp *DatabaseProvider) SavePhoneLinkingToken(ctx context.Context, token *phone.LinkingToken) error {
-	return dp.phone.SaveLinkingToken(ctx, token)
-}
-func (dp *DatabaseProvider) UsePhoneLinkingToken(ctx context.Context, phoneNumber, code string) error {
-	return dp.phone.UseLinkingToken(ctx, phoneNumber, code)
-}
-func (dp *DatabaseProvider) FilterVerifiedPhoneNumbers(ctx context.Context, phoneNumbers []string) ([]string, error) {
-	return dp.phone.FilterVerifiedNumbers(ctx, phoneNumbers)
-}
-func (dp *DatabaseProvider) SaveOwnerAccountPhoneSetting(ctx context.Context, phoneNumber string, newSettings *phone.OwnerAccountSetting) error {
-	return dp.phone.SaveOwnerAccountSetting(ctx, phoneNumber, newSettings)
-}
-func (dp *DatabaseProvider) IsPhoneNumberLinkedToAccount(ctx context.Context, phoneNumber string, ownerAccount string) (bool, error) {
-	verification, err := dp.GetLatestPhoneVerificationForNumber(ctx, phoneNumber)
-	if err != nil {
-		return false, err
-	} else if verification.OwnerAccount != ownerAccount {
-		return false, nil
-	}
-
-	phoneSettings, err := dp.phone.GetSettings(ctx, phoneNumber)
-	if err != nil {
-		return false, err
-	}
-
-	tokenAccountSettings, ok := phoneSettings.ByOwnerAccount[ownerAccount]
-	if !ok {
-		return true, nil
-	}
-
-	if tokenAccountSettings.IsUnlinked == nil {
-		return true, nil
-	}
-	return !*tokenAccountSettings.IsUnlinked, nil
-}
-func (dp *DatabaseProvider) IsPhoneNumberEnabledForRemoteSendToAccount(ctx context.Context, phoneNumber string, ownerAccount string) (bool, error) {
-	// These are equivalent at the time of writing this
-	return dp.IsPhoneNumberLinkedToAccount(ctx, phoneNumber, ownerAccount)
-}
-func (dp *DatabaseProvider) PutPhoneEvent(ctx context.Context, event *phone.Event) error {
-	return dp.phone.PutEvent(ctx, event)
-}
-func (dp *DatabaseProvider) GetLatestPhoneEventForNumberByType(ctx context.Context, phoneNumber string, eventType phone.EventType) (*phone.Event, error) {
-	return dp.phone.GetLatestEventForNumberByType(ctx, phoneNumber, eventType)
-}
-func (dp *DatabaseProvider) GetPhoneEventCountForVerificationByType(ctx context.Context, verification string, eventType phone.EventType) (uint64, error) {
-	return dp.phone.CountEventsForVerificationByType(ctx, verification, eventType)
-}
-func (dp *DatabaseProvider) GetPhoneEventCountForNumberByTypeSinceTimestamp(ctx context.Context, phoneNumber string, eventType phone.EventType, since time.Time) (uint64, error) {
-	return dp.phone.CountEventsForNumberByTypeSinceTimestamp(ctx, phoneNumber, eventType, since)
-}
-func (dp *DatabaseProvider) GetUniquePhoneVerificationIdCountForNumberSinceTimestamp(ctx context.Context, phoneNumber string, since time.Time) (uint64, error) {
-	return dp.phone.CountUniqueVerificationIdsForNumberSinceTimestamp(ctx, phoneNumber, since)
-}
-
-// Contact
-// --------------------------------------------------------------------------------
-
-func (dp *DatabaseProvider) AddContact(ctx context.Context, owner *user.DataContainerID, contact string) error {
-	return dp.contact.Add(ctx, owner, contact)
-}
-func (dp *DatabaseProvider) BatchAddContacts(ctx context.Context, owner *user.DataContainerID, contacts []string) error {
-	return dp.contact.BatchAdd(ctx, owner, contacts)
-}
-func (dp *DatabaseProvider) RemoveContact(ctx context.Context, owner *user.DataContainerID, contact string) error {
-	return dp.contact.Remove(ctx, owner, contact)
-}
-func (dp *DatabaseProvider) GetContacts(ctx context.Context, owner *user.DataContainerID, limit uint32, pageToken []byte) (contacts []string, nextPageToken []byte, err error) {
-	return dp.contact.Get(ctx, owner, limit, pageToken)
-}
-func (dp *DatabaseProvider) BatchRemoveContacts(ctx context.Context, owner *user.DataContainerID, contacts []string) error {
-	return dp.contact.BatchRemove(ctx, owner, contacts)
-}
-
-// User Identity
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) PutUser(ctx context.Context, record *identity.Record) error {
-	return dp.userIdentity.Put(ctx, record)
-}
-func (dp *DatabaseProvider) GetUserByID(ctx context.Context, id *user.UserID) (*identity.Record, error) {
-	return dp.userIdentity.GetByID(ctx, id)
-}
-func (dp *DatabaseProvider) GetUserByPhoneView(ctx context.Context, phoneNumber string) (*identity.Record, error) {
-	view := &user.View{
-		PhoneNumber: &phoneNumber,
-	}
-	return dp.userIdentity.GetByView(ctx, view)
-}
-
-// User Storage Management
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) PutUserDataContainer(ctx context.Context, record *storage.Record) error {
-	return dp.userStorage.Put(ctx, record)
-}
-func (dp *DatabaseProvider) GetUserDataContainerByID(ctx context.Context, id *user.DataContainerID) (*storage.Record, error) {
-	return dp.userStorage.GetByID(ctx, id)
-}
-func (dp *DatabaseProvider) GetUserDataContainerByPhone(ctx context.Context, tokenAccount, phoneNumber string) (*storage.Record, error) {
-	identifyingFeatures := &user.IdentifyingFeatures{
-		PhoneNumber: &phoneNumber,
-	}
-	return dp.userStorage.GetByFeatures(ctx, tokenAccount, identifyingFeatures)
-}
-
 // Timelock
 // --------------------------------------------------------------------------------
 func (dp *DatabaseProvider) SaveTimelock(ctx context.Context, record *timelock.Record) error {
@@ -1274,9 +1070,6 @@ func (dp *DatabaseProvider) MarkPushTokenAsInvalid(ctx context.Context, pushToke
 }
 func (dp *DatabaseProvider) DeletePushToken(ctx context.Context, pushToken string) error {
 	return dp.push.Delete(ctx, pushToken)
-}
-func (dp *DatabaseProvider) GetAllValidPushTokensdByDataContainer(ctx context.Context, id *user.DataContainerID) ([]*push.Record, error) {
-	return dp.push.GetAllValidByDataContainer(ctx, id)
 }
 
 // Commitment
@@ -1520,29 +1313,8 @@ func (dp *DatabaseProvider) GetFiatOnrampPurchase(ctx context.Context, nonce uui
 func (dp *DatabaseProvider) SaveUserPreferences(ctx context.Context, record *preferences.Record) error {
 	return dp.preferences.Save(ctx, record)
 }
-func (dp *DatabaseProvider) GetUserPreferences(ctx context.Context, id *user.DataContainerID) (*preferences.Record, error) {
-	return dp.preferences.Get(ctx, id)
-}
 func (dp *DatabaseProvider) GetUserLocale(ctx context.Context, owner string) (language.Tag, error) {
-	verificationRecord, err := dp.GetLatestPhoneVerificationForAccount(ctx, owner)
-	if err != nil {
-		return language.Und, errors.Wrap(err, "error getting latest phone verification record")
-	}
-
-	dataContainerRecord, err := dp.GetUserDataContainerByPhone(ctx, owner, verificationRecord.PhoneNumber)
-	if err != nil {
-		return language.Und, errors.Wrap(err, "error getting data container record")
-	}
-
-	userPreferencesRecord, err := dp.GetUserPreferences(ctx, dataContainerRecord.ID)
-	switch err {
-	case nil:
-		return userPreferencesRecord.Locale, nil
-	case preferences.ErrPreferencesNotFound:
-		return preferences.GetDefaultLocale(), nil
-	default:
-		return language.Und, errors.Wrap(err, "error getting user preferences record")
-	}
+	return preferences.GetDefaultLocale(), nil
 }
 
 // Airdrop

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/event"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s event.Store, teardown func()) {
@@ -34,9 +34,6 @@ func testHappyPath(t *testing.T, s event.Store) {
 			SourceCodeAccount:      "source_code_account",
 			DestinationCodeAccount: pointer.String("destination_code_account"),
 			ExternalTokenAccount:   pointer.String("external_token_account"),
-
-			SourceIdentity:      "source_identity",
-			DestinationIdentity: pointer.String("destination_identity"),
 
 			SourceClientIp:           pointer.String("source_client_ip"),
 			SourceClientCity:         pointer.String("source_client_city"),
@@ -67,7 +64,6 @@ func testHappyPath(t *testing.T, s event.Store) {
 		assertEquivalentRecords(t, &cloned, actual)
 
 		expected.DestinationCodeAccount = pointer.String("destination_code_account_updated")
-		expected.DestinationIdentity = pointer.String("destination_identity_updated")
 		expected.DestinationClientIp = pointer.String("destination_client_ip_updated")
 		expected.DestinationClientCity = pointer.String("destination_client_city_updated")
 		expected.DestinationClientCountry = pointer.String("destination_client_country_updated")
@@ -92,9 +88,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *event.Record) {
 	assert.Equal(t, obj1.SourceCodeAccount, obj2.SourceCodeAccount)
 	assert.EqualValues(t, obj1.DestinationCodeAccount, obj2.DestinationCodeAccount)
 	assert.EqualValues(t, obj1.ExternalTokenAccount, obj2.ExternalTokenAccount)
-
-	assert.Equal(t, obj1.SourceIdentity, obj2.SourceIdentity)
-	assert.EqualValues(t, obj1.DestinationIdentity, obj2.DestinationIdentity)
 
 	assert.EqualValues(t, obj1.SourceClientIp, obj2.SourceClientIp)
 	assert.EqualValues(t, obj1.SourceClientCity, obj2.SourceClientCity)

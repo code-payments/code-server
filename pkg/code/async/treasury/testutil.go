@@ -325,7 +325,6 @@ func (e *testEnv) assertIntentCreated(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, intentRecord.IntentType, intent.SaveRecentRoot)
 	assert.Equal(t, e.subsidizer.PublicKey().ToBase58(), intentRecord.InitiatorOwnerAccount)
-	assert.Nil(t, intentRecord.InitiatorPhoneNumber)
 	assert.Equal(t, intent.StatePending, intentRecord.State)
 	require.NotNil(t, intentRecord.SaveRecentRootMetadata)
 	assert.Equal(t, e.treasuryPool.Address, intentRecord.SaveRecentRootMetadata.TreasuryPool)
@@ -342,7 +341,6 @@ func (e *testEnv) assertIntentCreated(t *testing.T) {
 	assert.Equal(t, e.treasuryPool.Vault, actionRecord.Source)
 	assert.Nil(t, actionRecord.Destination)
 	assert.Nil(t, actionRecord.Quantity)
-	assert.Nil(t, actionRecord.InitiatorPhoneNumber)
 	assert.Equal(t, action.StatePending, actionRecord.State)
 
 	fulfillmentRecords, err := e.data.GetAllFulfillmentsByIntent(e.ctx, intentRecord.IntentId)
@@ -360,7 +358,6 @@ func (e *testEnv) assertIntentCreated(t *testing.T) {
 	assert.EqualValues(t, 0, fulfillmentRecord.ActionOrderingIndex)
 	assert.EqualValues(t, 0, fulfillmentRecord.FulfillmentOrderingIndex)
 	assert.False(t, fulfillmentRecord.DisableActiveScheduling)
-	assert.Nil(t, fulfillmentRecord.InitiatorPhoneNumber)
 	assert.Equal(t, fulfillment.StateUnknown, fulfillmentRecord.State)
 
 	var txn solana.Transaction

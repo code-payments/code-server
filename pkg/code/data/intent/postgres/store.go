@@ -3,10 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -77,31 +76,6 @@ func (s *store) GetAllByOwner(ctx context.Context, owner string, cursor query.Cu
 	}
 
 	return intents, nil
-}
-
-// CountForAntispam gets a count of intents for antispam purposes. It calculates the
-// number of intents by type and state for a phone number since a timestamp.
-func (s *store) CountForAntispam(ctx context.Context, intentType intent.Type, phoneNumber string, states []intent.State, since time.Time) (uint64, error) {
-	return dbGetCountForAntispam(ctx, s.db, intentType, phoneNumber, states, since)
-}
-
-// CountOwnerInteractionsForAntispam gets a count of intents for antispam purposes. It
-// calculates the number of times a source owner is involved in an intent with the
-// destination owner since a timestamp.
-func (s *store) CountOwnerInteractionsForAntispam(ctx context.Context, sourceOwner, destinationOwner string, states []intent.State, since time.Time) (uint64, error) {
-	return dbGetCountOwnerInteractionsForAntispam(ctx, s.db, sourceOwner, destinationOwner, states, since)
-}
-
-// GetTransactedAmountForAntiMoneyLaundering gets the total transacted Kin in quarks and the
-// corresponding USD market value for a phone number since a timestamp.
-func (s *store) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error) {
-	return dbGetTransactedAmountForAntiMoneyLaundering(ctx, s.db, phoneNumber, since)
-}
-
-// GetDepositedAmountForAntiMoneyLaundering gets the total deposited Kin in quarks and the
-// corresponding USD market value for a phone number since a timestamp.
-func (s *store) GetDepositedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error) {
-	return dbGetDepositedAmountForAntiMoneyLaundering(ctx, s.db, phoneNumber, since)
 }
 
 // GetNetBalanceFromPrePrivacy2022Intents gets the net balance of Kin in quarks after appying

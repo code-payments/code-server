@@ -50,7 +50,6 @@ type transactionServer struct {
 	intentLocks   *sync_util.StripedLock
 	ownerLocks    *sync_util.StripedLock
 	giftCardLocks *sync_util.StripedLock
-	phoneLocks    *sync_util.StripedLock
 
 	airdropperLock sync.Mutex
 	airdropper     *common.TimelockAccounts
@@ -98,7 +97,6 @@ func NewTransactionServer(
 		intentLocks:   sync_util.NewStripedLock(stripedLockParallelization),
 		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
-		phoneLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 	}
 
 	s.treasuryPoolNameByBaseAmount = map[uint64]string{

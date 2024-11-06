@@ -29,9 +29,6 @@ const (
 			destination_code_account TEXT NULL,
 			external_token_account TEXT NULL,
 
-			source_identity TEXT NOT NULL,
-			destination_identity TEXT NULL,
-
 			source_client_ip TEXT NOT NULL,
 			source_client_city TEXT NULL,
 			source_client_country TEXT NULL,

@@ -42,8 +42,6 @@ import (
 // use an actual client that hits SubmitIntent directly, or update this code to for an
 // intenral server process (eg. by using the correct nonce pool to avoid race conditions
 // without distributed locks).
-//
-// Important Note: We generally assumes 1 account per phone number for simplicity
 
 type AirdropType uint8
 
@@ -185,13 +183,6 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		"intent":       intentId,
 		"airdrop_type": airdropType.String(),
 	})
-
-	// Check whether the phone number allowed to receive an airdrop broadly
-	verificationRecord, err := s.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
-	if err != nil {
-		log.WithError(err).Warn("failure getting phone verification record")
-		return nil, err
-	}
 
 	var quarkAmount uint64
 	switch airdropType {
@@ -362,7 +353,6 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		EventType: eventType,
 
 		SourceCodeAccount: owner.PublicKey().ToBase58(),
-		SourceIdentity:    verificationRecord.PhoneNumber,
 
 		SpamConfidence: 0,
 

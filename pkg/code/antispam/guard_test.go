@@ -1,5 +1,6 @@
 package antispam
 
+/*
 import (
 	"context"
 	"fmt"
@@ -17,7 +18,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/currency"
 	memory_device_verifier "github.com/code-payments/code-server/pkg/device/memory"
-	phone_lib "github.com/code-payments/code-server/pkg/phone"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -40,11 +40,6 @@ func setup(t *testing.T) (env testEnv) {
 		WithDailyPaymentLimit(5),
 		WithPaymentRateLimit(time.Second),
 		WithMaxNewRelationshipsPerDay(5),
-
-		// Phone verification limits
-		WithPhoneVerificationsPerInterval(3),
-		WithTimePerSmsVerificationCodeSend(time.Second),
-		WithTimePerSmsVerificationCheck(time.Second),
 	)
 
 	return env
@@ -638,166 +633,6 @@ func TestAllowEstablishNewRelationship_StaffUser(t *testing.T) {
 	}
 }
 
-func TestAllowNewPhoneVerification_HappyPath(t *testing.T) {
-	env := setup(t)
-
-	phoneNumber := "+12223334444"
-	otherPhoneNumber := "+18005550000"
-
-	// New verifications are always allowed when the phone has never started one
-	// and has a valid device token
-	for i := 0; i < 5; i++ {
-		allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-
-	// New verifications are always denied when using a fake or unverifiable device.
-	for i := 0; i < 5; i++ {
-		allow, reason, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.InvalidDeviceToken))
-		require.NoError(t, err)
-		assert.False(t, allow)
-		assert.Equal(t, ReasonUnsupportedDevice, reason)
-
-		allow, reason, err = env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
-		require.NoError(t, err)
-		assert.False(t, allow)
-		assert.Equal(t, ReasonUnsupportedDevice, reason)
-	}
-
-	// New verifications are allowed when we're under the time interval limit,
-	// regardless of the number of SMS codes sent within those verifications.
-	for i := 0; i < 2; i++ {
-		for j := 0; j < 3; j++ {
-			simulateSmsCodeSent(t, env, phoneNumber, fmt.Sprintf("verification%d", i))
-
-			allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
-			require.NoError(t, err)
-			assert.True(t, allow)
-		}
-	}
-
-	// New verifications are always denied when the phone breaches the time
-	// interval limit.
-	simulateSmsCodeSent(t, env, phoneNumber, "last_allowed_verification")
-	for i := 0; i < 5; i++ {
-		allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
-		require.NoError(t, err)
-		assert.False(t, allow)
-	}
-
-	// Phone numbers are not affected by limits enforced on other phone numbers
-	allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, otherPhoneNumber, pointer.String(memory_device_verifier.ValidDeviceToken))
-	require.NoError(t, err)
-	assert.True(t, allow)
-}
-
-func TestAllowNewPhoneVerification_StaffUser(t *testing.T) {
-	env := setup(t)
-
-	phoneNumber := "+12223334444"
-
-	require.NoError(t, env.data.PutUser(env.ctx, &identity.Record{
-		ID: user.NewUserID(),
-		View: &user.View{
-			PhoneNumber: &phoneNumber,
-		},
-		IsStaffUser: true,
-		CreatedAt:   time.Now(),
-	}))
-
-	// Staff users should not be subject to any denials for new verifications
-	for i := 0; i < 5; i++ {
-		for j := 0; j < 3; j++ {
-			simulateSmsCodeSent(t, env, phoneNumber, fmt.Sprintf("verification%d", i))
-
-			allow, _, err := env.guard.AllowNewPhoneVerification(env.ctx, phoneNumber, nil)
-			require.NoError(t, err)
-			assert.True(t, allow)
-		}
-	}
-}
-
-func TestAllowSendSmsVerificationCode(t *testing.T) {
-	env := setup(t)
-
-	phoneNumber := "+12223334444"
-	otherPhoneNumber := "+18005550000"
-	verificationId := "verification"
-
-	// New SMS codes are always allowed to be sent when the phone has never previously sent one
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowSendSmsVerificationCode(env.ctx, phoneNumber)
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-
-	// New SMS codes are denied when the minimum time between sends is breached
-	simulateSmsCodeSent(t, env, phoneNumber, verificationId)
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowSendSmsVerificationCode(env.ctx, phoneNumber)
-		require.NoError(t, err)
-		assert.False(t, allow)
-	}
-
-	// Phone numbers are not affected by limits enforced on other phone numbers
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowSendSmsVerificationCode(env.ctx, otherPhoneNumber)
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-
-	// New SMS codes are allowed after waiting the minimum times between sends
-	//
-	// todo: need a better way to test with time than waiting
-	time.Sleep(time.Second)
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowSendSmsVerificationCode(env.ctx, phoneNumber)
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-}
-
-func TestAllowCheckSmsVerificationCode(t *testing.T) {
-	env := setup(t)
-
-	phoneNumber := "+12223334444"
-	otherPhoneNumber := "+18005550000"
-	verificationId := "verification"
-
-	// New SMS code checks are always allowed when the phone has never checked one
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowCheckSmsVerificationCode(env.ctx, phoneNumber)
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-
-	// New SMS code checks are denied when the minimum time between checks is breached
-	simulateSmsCodeChecked(t, env, phoneNumber, verificationId)
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowCheckSmsVerificationCode(env.ctx, phoneNumber)
-		require.NoError(t, err)
-		assert.False(t, allow)
-	}
-
-	// Phone numbers are not affected by limits enforced on other phone numbers
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowCheckSmsVerificationCode(env.ctx, otherPhoneNumber)
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-
-	// New SMS codes checks are allowed after waiting the minimum times between checks
-	//
-	// todo: need a better way to test with time than waiting
-	time.Sleep(time.Second)
-	for i := 0; i < 5; i++ {
-		allow, err := env.guard.AllowCheckSmsVerificationCode(env.ctx, phoneNumber)
-		require.NoError(t, err)
-		assert.True(t, allow)
-	}
-}
-
 func simulateSentPayment(t *testing.T, env testEnv, ownerAccount *common.Account, isPublic bool, state intent.State) {
 	verificationRecord, err := env.data.GetLatestPhoneVerificationForAccount(env.ctx, ownerAccount.PublicKey().ToBase58())
 	require.NoError(t, err)
@@ -917,29 +752,4 @@ func simulateRelationshipEstablished(t *testing.T, env testEnv, ownerAccount *co
 	}
 	require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
 }
-
-func simulateSmsCodeSent(t *testing.T, env testEnv, phoneNumber, verification string) {
-	event := &phone.Event{
-		Type:           phone.EventTypeVerificationCodeSent,
-		VerificationId: verification,
-		PhoneNumber:    phoneNumber,
-		PhoneMetadata: &phone_lib.Metadata{
-			PhoneNumber: phoneNumber,
-		},
-		CreatedAt: time.Now(),
-	}
-	require.NoError(t, env.data.PutPhoneEvent(env.ctx, event))
-}
-
-func simulateSmsCodeChecked(t *testing.T, env testEnv, phoneNumber, verification string) {
-	event := &phone.Event{
-		Type:           phone.EventTypeCheckVerificationCode,
-		VerificationId: verification,
-		PhoneNumber:    phoneNumber,
-		PhoneMetadata: &phone_lib.Metadata{
-			PhoneNumber: phoneNumber,
-		},
-		CreatedAt: time.Now(),
-	}
-	require.NoError(t, env.data.PutPhoneEvent(env.ctx, event))
-}
+*/

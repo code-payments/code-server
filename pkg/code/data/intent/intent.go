@@ -7,7 +7,6 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/phone"
 )
 
 var (
@@ -51,7 +50,6 @@ type Record struct {
 	IntentType Type
 
 	InitiatorOwnerAccount string
-	InitiatorPhoneNumber  *string
 
 	// Intents v2 metadatum
 	OpenAccountsMetadata             *OpenAccountsMetadata
@@ -266,12 +264,6 @@ func (r *Record) Clone() Record {
 		loginMetadata = &cloned
 	}
 
-	var initiatorPhoneNumber *string
-	if r.InitiatorPhoneNumber != nil {
-		value := *r.InitiatorPhoneNumber
-		initiatorPhoneNumber = &value
-	}
-
 	return Record{
 		Id: r.Id,
 
@@ -279,7 +271,6 @@ func (r *Record) Clone() Record {
 		IntentType: r.IntentType,
 
 		InitiatorOwnerAccount: r.InitiatorOwnerAccount,
-		InitiatorPhoneNumber:  initiatorPhoneNumber,
 
 		OpenAccountsMetadata:             openAccountsMetadata,
 		SendPrivatePaymentMetadata:       sendPrivatePaymentMetadata,
@@ -308,7 +299,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IntentType = r.IntentType
 
 	dst.InitiatorOwnerAccount = r.InitiatorOwnerAccount
-	dst.InitiatorPhoneNumber = r.InitiatorPhoneNumber
 
 	dst.OpenAccountsMetadata = r.OpenAccountsMetadata
 	dst.SendPrivatePaymentMetadata = r.SendPrivatePaymentMetadata
@@ -339,10 +329,6 @@ func (r *Record) Validate() error {
 
 	if len(r.InitiatorOwnerAccount) == 0 {
 		return errors.New("initiator owner account is required")
-	}
-
-	if r.InitiatorPhoneNumber != nil && !phone.IsE164Format(*r.InitiatorPhoneNumber) {
-		return errors.New("initiator phone number doesn't match E.164 format")
 	}
 
 	if r.IntentType == LegacyPayment {

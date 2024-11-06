@@ -85,7 +85,6 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 		IntentType: intent.SendPrivatePayment,
 
 		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		InitiatorPhoneNumber:  pointer.String("+12223334444"),
 
 		SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
 			DestinationTokenAccount: accountInfoRecord.TokenAccount,
@@ -204,7 +203,6 @@ func (e *testEnv) assertGiftCardAutoReturned(t *testing.T, giftCard *testGiftCar
 	assert.Equal(t, intentId, historyRecord.IntentId)
 	assert.Equal(t, intent.ReceivePaymentsPublicly, historyRecord.IntentType)
 	assert.Equal(t, giftCard.issuedIntentRecord.InitiatorOwnerAccount, historyRecord.InitiatorOwnerAccount)
-	assert.EqualValues(t, giftCard.issuedIntentRecord.InitiatorPhoneNumber, historyRecord.InitiatorPhoneNumber)
 	require.NotNil(t, historyRecord.ReceivePaymentsPubliclyMetadata)
 	assert.Equal(t, giftCard.accountInfoRecord.TokenAccount, historyRecord.ReceivePaymentsPubliclyMetadata.Source)
 	assert.Equal(t, giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.Quantity, historyRecord.ReceivePaymentsPubliclyMetadata.Quantity)

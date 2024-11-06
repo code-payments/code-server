@@ -2,7 +2,6 @@ package intent
 
 import (
 	"context"
-	"time"
 
 	"github.com/code-payments/code-server/pkg/database/query"
 )
@@ -25,23 +24,6 @@ type Store interface {
 	//
 	// Returns ErrNotFound if no records are found.
 	GetLatestByInitiatorAndType(ctx context.Context, intentType Type, owner string) (*Record, error)
-
-	// CountForAntispam gets a count of intents for antispam purposes. It calculates the
-	// number of intents by type and state for a phone number since a timestamp.
-	CountForAntispam(ctx context.Context, intentType Type, phoneNumber string, states []State, since time.Time) (uint64, error)
-
-	// CountOwnerInteractionsForAntispam gets a count of intents for antispam purposes. It
-	// calculates the number of times a source owner is involved in an intent with the
-	// destination owner since a timestamp.
-	CountOwnerInteractionsForAntispam(ctx context.Context, sourceOwner, destinationOwner string, states []State, since time.Time) (uint64, error)
-
-	// GetTransactedAmountForAntiMoneyLaundering gets the total transacted Kin in quarks and the
-	// corresponding USD market value for a phone number since a timestamp.
-	GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error)
-
-	// GetDepositedAmountForAntiMoneyLaundering gets the total deposited Kin in quarks and the
-	// corresponding USD market value for a phone number since a timestamp.
-	GetDepositedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error)
 
 	// GetNetBalanceFromPrePrivacy2022Intents gets the net balance of Kin in quarks after appying
 	// pre-privacy legacy payment intents when intents detailed the entirety of the payment.

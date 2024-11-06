@@ -10,12 +10,11 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	devicepb "github.com/code-payments/code-protobuf-api/generated/go/device/v1"
 
-	"github.com/code-payments/code-server/pkg/grpc/client"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/login"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
+	"github.com/code-payments/code-server/pkg/grpc/client"
 )
 
 type server struct {
@@ -62,13 +61,7 @@ func (s *server) RegisterLoggedInAccounts(ctx context.Context, req *devicepb.Reg
 			return nil, err
 		}
 
-		_, err = s.data.GetLatestPhoneVerificationForAccount(ctx, owner.PublicKey().ToBase58())
-		if err == phone.ErrVerificationNotFound {
-			invalidOwners = append(invalidOwners, protoOwner)
-		} else if err != nil {
-			log.WithError(err).Warn("failure checking phone verification status")
-			return nil, status.Error(codes.Internal, "")
-		}
+		// todo: invalid owner detection
 
 		validOwners = append(validOwners, owner.PublicKey().ToBase58())
 	}

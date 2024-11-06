@@ -24,7 +24,6 @@ const (
 var (
 	ErrTimedOutReceivingRequest = errors.New("timed out receiving request")
 
-	ErrNotPhoneVerified         = newIntentDeniedError("not phone verified")
 	ErrTooManyPayments          = newIntentDeniedError("too many payments")
 	ErrTooManyNewRelationships  = newIntentDeniedError("too many new relationships")
 	ErrTransactionLimitExceeded = newIntentDeniedError("dollar value exceeds limit")
@@ -246,8 +245,6 @@ func toDeniedErrorDetails(err error) *transactionpb.ErrorDetails {
 		code = transactionpb.DeniedErrorDetails_UNSUPPORTED_COUNTRY
 	case antispam.ReasonUnsupportedDevice:
 		code = transactionpb.DeniedErrorDetails_UNSUPPORTED_DEVICE
-	case antispam.ReasonTooManyFreeAccountsForPhoneNumber:
-		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_PHONE_NUMBER
 	case antispam.ReasonTooManyFreeAccountsForDevice:
 		code = transactionpb.DeniedErrorDetails_TOO_MANY_FREE_ACCOUNTS_FOR_DEVICE
 	default:

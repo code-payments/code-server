@@ -152,16 +152,12 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	}
 	log = log.WithField("submit_actions_owner_account", submitActionsOwnerAccount.PublicKey().ToBase58())
 
-	// For all allowed cases of owner account types that can call SubmitIntent,
-	// we need to find the phone-verified user's 12 words who initiated the intent.
 	var initiatorOwnerAccount *common.Account
-	var initiatorPhoneNumber *string
 	submitActionsOwnerMetadata, err := common.GetOwnerMetadata(ctx, s.data, submitActionsOwnerAccount)
 	if err == nil {
 		switch submitActionsOwnerMetadata.Type {
 		case common.OwnerTypeUser12Words:
 			initiatorOwnerAccount = submitActionsOwnerAccount
-			initiatorPhoneNumber = &submitActionsOwnerMetadata.VerificationRecord.PhoneNumber
 		case common.OwnerTypeRemoteSendGiftCard:
 			// Remote send gift cards can only be the owner of an intent for a
 			// remote send public receive. In this instance, we need to inspect
@@ -188,13 +184,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 							log.WithError(err).Warn("failure getting user initiator owner account")
 							return handleSubmitIntentError(streamer, err)
 						}
-
-						userOwnerMetadata, err := common.GetOwnerMetadata(ctx, s.data, initiatorOwnerAccount)
-						if err != nil {
-							log.WithError(err).Warn("failure getting user initiator owner account")
-							return handleSubmitIntentError(streamer, err)
-						}
-						initiatorPhoneNumber = &userOwnerMetadata.VerificationRecord.PhoneNumber
 					default:
 						return newActionValidationError(submitActionsReq.Actions[0], "expected a no privacy withdraw action")
 					}
@@ -205,19 +194,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return handleSubmitIntentError(streamer, errors.New("unhandled owner account type"))
 		}
 	} else if err == common.ErrOwnerNotFound {
-		// Caught by later error
+		return handleSubmitIntentError(streamer, newIntentDeniedError("unexpected owner account"))
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting owner account metadata")
 		return handleSubmitIntentError(streamer, err)
 	}
 
-	// All intents must be initiated by a phone-verified user
-	if initiatorOwnerAccount == nil || initiatorPhoneNumber == nil {
-		log.Info("intent not initiated by phone-verified user 12 words")
-		return handleSubmitIntentError(streamer, ErrNotPhoneVerified)
-	}
 	log = log.WithField("initiator_owner_account", initiatorOwnerAccount.PublicKey().ToBase58())
-	log = log.WithField("initiator_phone_number", *initiatorPhoneNumber)
 
 	// Check that all provided signatures in proto messages are valid
 	signature := submitActionsReq.Signature
@@ -260,7 +243,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	intentRecord := &intent.Record{
 		IntentId:              intentId,
 		InitiatorOwnerAccount: initiatorOwnerAccount.PublicKey().ToBase58(),
-		InitiatorPhoneNumber:  initiatorPhoneNumber,
 		State:                 intent.StateUnknown,
 		CreatedAt:             time.Now(),
 	}
@@ -269,15 +251,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	// requirements may not be known until populating intent metadata.
 	intentLock := s.intentLocks.Get([]byte(intentId))
 	initiatorOwnerLock := s.ownerLocks.Get(initiatorOwnerAccount.PublicKey().ToBytes())
-	phoneLock := s.phoneLocks.Get([]byte(*initiatorPhoneNumber))
 	intentLock.Lock()
 	initiatorOwnerLock.Lock()
-	phoneLock.Lock()
-	var phoneLockUnlocked bool // Can be unlocked earlier than RPC end
 	defer func() {
-		if !phoneLockUnlocked {
-			phoneLock.Unlock()
-		}
 		initiatorOwnerLock.Unlock()
 		intentLock.Unlock()
 	}()
@@ -400,10 +376,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		}
 	}
 
-	// Remove the phone lock early, since we only require it for the Allow methods.
-	phoneLock.Unlock()
-	phoneLockUnlocked = true
-
 	type fulfillmentWithSigningMetadata struct {
 		record *fulfillment.Record
 
@@ -501,8 +473,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 				ActionId:   protoAction.Id,
 				ActionType: actionType,
-
-				InitiatorPhoneNumber: intentRecord.InitiatorPhoneNumber,
 
 				State: action.StateUnknown,
 			}
@@ -618,8 +588,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				FulfillmentOrderingIndex: newFulfillmentMetadata.fulfillmentOrderingIndex,
 
 				DisableActiveScheduling: newFulfillmentMetadata.disableActiveScheduling,
-
-				InitiatorPhoneNumber: intentRecord.InitiatorPhoneNumber,
 
 				State: fulfillment.StateUnknown,
 			}

@@ -31,7 +31,6 @@ import (
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/kin"
-	"github.com/code-payments/code-server/pkg/pointer"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 )
 
@@ -312,8 +311,6 @@ func (h *OpenAccountsIntentHandler) OnSaveToDB(ctx context.Context, intentRecord
 		EventType: event.AccountCreated,
 
 		SourceCodeAccount: intentRecord.InitiatorOwnerAccount,
-
-		SourceIdentity: *intentRecord.InitiatorPhoneNumber,
 
 		SpamConfidence: 0,
 
@@ -891,8 +888,6 @@ func (h *SendPrivatePaymentIntentHandler) OnSaveToDB(ctx context.Context, intent
 			SourceCodeAccount:      intentRecord.InitiatorOwnerAccount,
 			DestinationCodeAccount: &intentRecord.SendPrivatePaymentMetadata.DestinationOwnerAccount,
 
-			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
-
 			UsdValue: &intentRecord.SendPrivatePaymentMetadata.UsdMarketValue,
 
 			SpamConfidence: 0,
@@ -906,8 +901,6 @@ func (h *SendPrivatePaymentIntentHandler) OnSaveToDB(ctx context.Context, intent
 
 			SourceCodeAccount: intentRecord.InitiatorOwnerAccount,
 
-			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
-
 			UsdValue: &intentRecord.SendPrivatePaymentMetadata.UsdMarketValue,
 
 			SpamConfidence: 0,
@@ -920,8 +913,6 @@ func (h *SendPrivatePaymentIntentHandler) OnSaveToDB(ctx context.Context, intent
 			EventType: event.MicroPayment,
 
 			SourceCodeAccount: intentRecord.InitiatorOwnerAccount,
-
-			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
 
 			UsdValue: &intentRecord.SendPrivatePaymentMetadata.UsdMarketValue,
 
@@ -939,14 +930,6 @@ func (h *SendPrivatePaymentIntentHandler) OnSaveToDB(ctx context.Context, intent
 
 	if eventRecord != nil {
 		event_util.InjectClientDetails(ctx, h.maxmind, eventRecord, true)
-
-		if eventRecord.DestinationCodeAccount != nil {
-			destinationVerificationRecord, err := h.data.GetLatestPhoneVerificationForAccount(ctx, *eventRecord.DestinationCodeAccount)
-			if err != nil {
-				return err
-			}
-			eventRecord.DestinationIdentity = &destinationVerificationRecord.PhoneNumber
-		}
 
 		err := h.data.SaveEvent(ctx, eventRecord)
 		if err != nil {
@@ -1668,8 +1651,6 @@ func (h *SendPublicPaymentIntentHandler) OnSaveToDB(ctx context.Context, intentR
 			SourceCodeAccount:    intentRecord.InitiatorOwnerAccount,
 			ExternalTokenAccount: &intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount,
 
-			SourceIdentity: *intentRecord.InitiatorPhoneNumber,
-
 			UsdValue: &intentRecord.SendPublicPaymentMetadata.UsdMarketValue,
 
 			SpamConfidence: 0,
@@ -1977,7 +1958,6 @@ func (h *ReceivePaymentsPubliclyIntentHandler) OnSaveToDB(ctx context.Context, i
 		eventRecord, err := h.data.GetEvent(ctx, h.cachedGiftCardIssuedIntentRecord.IntentId)
 		if err == nil {
 			eventRecord.DestinationCodeAccount = &intentRecord.InitiatorOwnerAccount
-			eventRecord.DestinationIdentity = pointer.StringCopy(intentRecord.InitiatorPhoneNumber)
 			event_util.InjectClientDetails(ctx, h.maxmind, eventRecord, false) // Will be AWS if desktop
 
 			err = h.data.SaveEvent(ctx, eventRecord)

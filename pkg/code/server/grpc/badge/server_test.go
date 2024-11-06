@@ -3,7 +3,6 @@ package badge
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,17 +13,12 @@ import (
 	badgepb "github.com/code-payments/code-protobuf-api/generated/go/badge/v1"
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	memory_push "github.com/code-payments/code-server/pkg/push/memory"
-	"github.com/code-payments/code-server/pkg/testutil"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/badgecount"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
-	"github.com/code-payments/code-server/pkg/code/data/push"
-	"github.com/code-payments/code-server/pkg/code/data/user"
-	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
-	user_storage "github.com/code-payments/code-server/pkg/code/data/user/storage"
+	memory_push "github.com/code-payments/code-server/pkg/push/memory"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestResetBadgeCount_HappyPath(t *testing.T) {
@@ -99,43 +93,6 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 }
 
 func (e *testEnv) createUser(t *testing.T, owner *common.Account, phoneNumber string) {
-	phoneVerificationRecord := &phone.Verification{
-		PhoneNumber:    phoneNumber,
-		OwnerAccount:   owner.PublicKey().ToBase58(),
-		LastVerifiedAt: time.Now(),
-		CreatedAt:      time.Now(),
-	}
-	require.NoError(t, e.data.SavePhoneVerification(e.ctx, phoneVerificationRecord))
-
-	userIdentityRecord := &user_identity.Record{
-		ID: user.NewUserID(),
-		View: &user.View{
-			PhoneNumber: &phoneNumber,
-		},
-		CreatedAt: time.Now(),
-	}
-	require.NoError(t, e.data.PutUser(e.ctx, userIdentityRecord))
-
-	userStorageRecord := &user_storage.Record{
-		ID:           user.NewDataContainerID(),
-		OwnerAccount: owner.PublicKey().ToBase58(),
-		IdentifyingFeatures: &user.IdentifyingFeatures{
-			PhoneNumber: &phoneNumber,
-		},
-		CreatedAt: time.Now(),
-	}
-	require.NoError(t, e.data.PutUserDataContainer(e.ctx, userStorageRecord))
-
-	pushTokenRecord := push.Record{
-		DataContainerId: *userStorageRecord.ID,
-
-		PushToken: memory_push.ValidApplePushToken,
-		TokenType: push.TokenTypeFcmApns,
-		IsValid:   true,
-
-		CreatedAt: time.Now(),
-	}
-	require.NoError(t, e.data.PutPushToken(e.ctx, &pushTokenRecord))
 }
 
 func (e *testEnv) assertBadgeCount(t *testing.T, owner *common.Account, expected int) {

@@ -7,9 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/event"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/event"
 )
 
 const (
@@ -25,9 +25,6 @@ type model struct {
 	SourceCodeAccount      string         `db:"source_code_account"`
 	DestinationCodeAccount sql.NullString `db:"destination_code_account"`
 	ExternalTokenAccount   sql.NullString `db:"external_token_account"`
-
-	SourceIdentity      string         `db:"source_identity"`
-	DestinationIdentity sql.NullString `db:"destination_identity"`
 
 	SourceClientIp           sql.NullString `db:"source_client_ip"`
 	SourceClientCity         sql.NullString `db:"source_client_city"`
@@ -60,12 +57,6 @@ func toModel(obj *event.Record) (*model, error) {
 		ExternalTokenAccount: sql.NullString{
 			Valid:  obj.ExternalTokenAccount != nil,
 			String: *pointer.StringOrDefault(obj.ExternalTokenAccount, ""),
-		},
-
-		SourceIdentity: obj.SourceIdentity,
-		DestinationIdentity: sql.NullString{
-			Valid:  obj.DestinationIdentity != nil,
-			String: *pointer.StringOrDefault(obj.DestinationIdentity, ""),
 		},
 
 		SourceClientIp: sql.NullString{
@@ -115,9 +106,6 @@ func fromModel(obj *model) *event.Record {
 		DestinationCodeAccount: pointer.StringIfValid(obj.DestinationCodeAccount.Valid, obj.DestinationCodeAccount.String),
 		ExternalTokenAccount:   pointer.StringIfValid(obj.ExternalTokenAccount.Valid, obj.ExternalTokenAccount.String),
 
-		SourceIdentity:      obj.SourceIdentity,
-		DestinationIdentity: pointer.StringIfValid(obj.DestinationIdentity.Valid, obj.DestinationIdentity.String),
-
 		SourceClientIp:           pointer.StringIfValid(obj.SourceClientIp.Valid, obj.SourceClientIp.String),
 		SourceClientCity:         pointer.StringIfValid(obj.SourceClientCity.Valid, obj.SourceClientCity.String),
 		SourceClientCountry:      pointer.StringIfValid(obj.SourceClientCountry.Valid, obj.SourceClientCountry.String),
@@ -136,13 +124,13 @@ func fromModel(obj *model) *event.Record {
 func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + tableName + `
-			(event_id, event_type, source_code_account, destination_code_account, external_token_account, source_identity, destination_identity, source_client_ip, source_client_city, source_client_country, destination_client_ip, destination_client_city, destination_client_country, usd_value, spam_confidence, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			(event_id, event_type, source_code_account, destination_code_account, external_token_account, source_client_ip, source_client_city, source_client_country, destination_client_ip, destination_client_city, destination_client_country, usd_value, spam_confidence, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 			ON CONFLICT (event_id)
 			DO UPDATE
-				SET destination_code_account = $4, destination_identity = $7, destination_client_ip = $11, destination_client_city = $12, destination_client_country = $13, spam_confidence = $15
+				SET destination_code_account = $4, destination_client_ip = $9, destination_client_city = $10, destination_client_country = $11, spam_confidence = $13
 				WHERE ` + tableName + `.event_id = $1
-			RETURNING id, event_id, event_type, source_code_account, destination_code_account, external_token_account, source_identity, destination_identity, source_client_ip, source_client_city, source_client_country, destination_client_ip, destination_client_city, destination_client_country, usd_value, spam_confidence, created_at`
+			RETURNING id, event_id, event_type, source_code_account, destination_code_account, external_token_account, source_client_ip, source_client_city, source_client_country, destination_client_ip, destination_client_city, destination_client_country, usd_value, spam_confidence, created_at`
 
 		if m.CreatedAt.IsZero() {
 			m.CreatedAt = time.Now()
@@ -158,9 +146,6 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.SourceCodeAccount,
 			m.DestinationCodeAccount,
 			m.ExternalTokenAccount,
-
-			m.SourceIdentity,
-			m.DestinationIdentity,
 
 			m.SourceClientIp,
 			m.SourceClientCity,
@@ -181,7 +166,7 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 func dbGet(ctx context.Context, db *sqlx.DB, id string) (*model, error) {
 	var res model
 
-	query := `SELECT id, event_id, event_type, source_code_account, destination_code_account, external_token_account, source_identity, destination_identity, source_client_ip, source_client_city, source_client_country, destination_client_ip, destination_client_city, destination_client_country, usd_value, spam_confidence, created_at FROM ` + tableName + `
+	query := `SELECT id, event_id, event_type, source_code_account, destination_code_account, external_token_account, source_client_ip, source_client_city, source_client_country, destination_client_ip, destination_client_city, destination_client_country, usd_value, spam_confidence, created_at FROM ` + tableName + `
 		WHERE event_id = $1
 	`
 

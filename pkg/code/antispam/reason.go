@@ -6,6 +6,5 @@ const (
 	ReasonUnspecified Reason = iota
 	ReasonUnsupportedCountry
 	ReasonUnsupportedDevice
-	ReasonTooManyFreeAccountsForPhoneNumber
 	ReasonTooManyFreeAccountsForDevice
 )

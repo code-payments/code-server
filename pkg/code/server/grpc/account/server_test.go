@@ -25,8 +25,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	"github.com/code-payments/code-server/pkg/code/data/user"
-	user_identity "github.com/code-payments/code-server/pkg/code/data/user/identity"
 	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -271,7 +269,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 	// Test cases represent main iterations of a gift card account's state throughout
 	// its lifecycle. All states beyond claimed status are not fully tested here and
 	// are done elsewhere.
-	for i, tc := range []struct {
+	for _, tc := range []struct {
 		balance                  uint64
 		timelockState            timelock_token_v1.TimelockState
 		simulateClaimInCode      bool
@@ -392,7 +390,6 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED,
 		},
 	} {
-		phoneNumber := fmt.Sprintf("+1800555%d", i)
 		ownerAccount := testutil.NewRandomAccount(t)
 		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 		require.NoError(t, err)
@@ -406,15 +403,6 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
 		}
 
-		userIdentityRecord := &user_identity.Record{
-			ID: user.NewUserID(),
-			View: &user.View{
-				PhoneNumber: &phoneNumber,
-			},
-			CreatedAt: time.Now(),
-		}
-		require.NoError(t, env.data.PutUser(env.ctx, userIdentityRecord))
-
 		accountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 
 		giftCardIssuedIntentRecord := &intent.Record{
@@ -422,7 +410,6 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			IntentType: intent.SendPrivatePayment,
 
 			InitiatorOwnerAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
-			InitiatorPhoneNumber:  &phoneNumber,
 
 			SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
 				DestinationTokenAccount: accountRecords.General.TokenAccount,
@@ -456,8 +443,6 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			Destination: pointer.String("primary"),
 			Quantity:    nil,
 
-			InitiatorPhoneNumber: &phoneNumber,
-
 			State: action.StateUnknown,
 		}
 		if tc.simulateAutoReturnInCode {
@@ -476,8 +461,6 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 				Source:      accountRecords.General.TokenAccount,
 				Destination: pointer.String("destination"),
 				Quantity:    pointer.Uint64(tc.balance - 1), // Explicitly less than the actual balance
-
-				InitiatorPhoneNumber: &phoneNumber,
 
 				State: action.StatePending,
 			}

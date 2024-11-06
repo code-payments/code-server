@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
@@ -23,10 +22,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/chat"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/preferences"
 	"github.com/code-payments/code-server/pkg/code/data/user"
-	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/code/localization"
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/testutil"
@@ -903,28 +900,7 @@ func (e *testEnv) sendInternalChatMessage(t *testing.T, msg *chatpb.ChatMessage,
 }
 
 func (e *testEnv) setupUserWithLocale(t *testing.T, owner *common.Account, locale language.Tag) {
-	phoneNumber := "+12223334444"
-	containerId := user.NewDataContainerID()
-
-	phoneVerificationRecord := &phone.Verification{
-		PhoneNumber:    phoneNumber,
-		OwnerAccount:   owner.PublicKey().ToBase58(),
-		LastVerifiedAt: time.Now(),
-		CreatedAt:      time.Now(),
-	}
-	require.NoError(t, e.data.SavePhoneVerification(e.ctx, phoneVerificationRecord))
-
-	containerRecord := &storage.Record{
-		ID:           containerId,
-		OwnerAccount: owner.PublicKey().ToBase58(),
-		IdentifyingFeatures: &user.IdentifyingFeatures{
-			PhoneNumber: &phoneNumber,
-		},
-		CreatedAt: time.Now(),
-	}
-	require.NoError(t, e.data.PutUserDataContainer(e.ctx, containerRecord))
-
-	userPreferencesRecord := preferences.GetDefaultPreferences(containerId)
+	userPreferencesRecord := preferences.GetDefaultPreferences(user.NewDataContainerID())
 	userPreferencesRecord.Locale = locale
 	require.NoError(t, e.data.SaveUserPreferences(e.ctx, userPreferencesRecord))
 }

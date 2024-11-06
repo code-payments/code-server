@@ -7,7 +7,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/phone"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
@@ -88,9 +87,6 @@ type Record struct {
 	// (eg. depedencies), so accidentally making some actively scheduled is ok.
 	DisableActiveScheduling bool
 
-	// Metadata required to help make antispam decisions
-	InitiatorPhoneNumber *string
-
 	State State
 
 	CreatedAt time.Time
@@ -157,7 +153,6 @@ func (r *Record) Clone() Record {
 		ActionOrderingIndex:      r.ActionOrderingIndex,
 		FulfillmentOrderingIndex: r.FulfillmentOrderingIndex,
 		DisableActiveScheduling:  r.DisableActiveScheduling,
-		InitiatorPhoneNumber:     pointer.StringCopy(r.InitiatorPhoneNumber),
 		State:                    r.State,
 		CreatedAt:                r.CreatedAt,
 	}
@@ -182,7 +177,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IntentOrderingIndex = r.IntentOrderingIndex
 	dst.ActionOrderingIndex = r.ActionOrderingIndex
 	dst.FulfillmentOrderingIndex = r.FulfillmentOrderingIndex
-	dst.InitiatorPhoneNumber = r.InitiatorPhoneNumber
 	dst.DisableActiveScheduling = r.DisableActiveScheduling
 	dst.State = r.State
 	dst.CreatedAt = r.CreatedAt
@@ -250,10 +244,6 @@ func (r *Record) Validate() error {
 	}
 
 	// todo: validate intent, action and fulfillment type all align
-
-	if r.InitiatorPhoneNumber != nil && !phone.IsE164Format(*r.InitiatorPhoneNumber) {
-		return errors.New("initiator phone number doesn't match E.164 format")
-	}
 
 	return nil
 }

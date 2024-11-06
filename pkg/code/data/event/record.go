@@ -33,10 +33,6 @@ type Record struct {
 	DestinationCodeAccount *string
 	ExternalTokenAccount   *string
 
-	// Involved identities
-	SourceIdentity      string
-	DestinationIdentity *string
-
 	// Involved IP addresses, and associated metadata
 	//
 	// todo: Requires MaxMind data set. IP metadata be missing until we do.
@@ -78,14 +74,6 @@ func (r *Record) Validate() error {
 
 	if r.ExternalTokenAccount != nil && len(*r.ExternalTokenAccount) == 0 {
 		return errors.New("external token account is required when set")
-	}
-
-	if len(r.SourceIdentity) == 0 {
-		return errors.New("source identity is required")
-	}
-
-	if r.DestinationIdentity != nil && len(*r.DestinationIdentity) == 0 {
-		return errors.New("destination identity is required when set")
 	}
 
 	if r.SourceClientIp != nil && len(*r.SourceClientIp) == 0 {
@@ -134,9 +122,6 @@ func (r *Record) Clone() Record {
 		DestinationCodeAccount: pointer.StringCopy(r.DestinationCodeAccount),
 		ExternalTokenAccount:   pointer.StringCopy(r.ExternalTokenAccount),
 
-		SourceIdentity:      r.SourceIdentity,
-		DestinationIdentity: pointer.StringCopy(r.DestinationIdentity),
-
 		SourceClientIp:           pointer.StringCopy(r.SourceClientIp),
 		SourceClientCity:         pointer.StringCopy(r.SourceClientCity),
 		SourceClientCountry:      pointer.StringCopy(r.SourceClientCountry),
@@ -161,9 +146,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.SourceCodeAccount = r.SourceCodeAccount
 	dst.DestinationCodeAccount = pointer.StringCopy(r.DestinationCodeAccount)
 	dst.ExternalTokenAccount = pointer.StringCopy(r.ExternalTokenAccount)
-
-	dst.SourceIdentity = r.SourceIdentity
-	dst.DestinationIdentity = pointer.StringCopy(r.DestinationIdentity)
 
 	dst.SourceClientIp = pointer.StringCopy(r.SourceClientIp)
 	dst.SourceClientCity = pointer.StringCopy(r.SourceClientCity)

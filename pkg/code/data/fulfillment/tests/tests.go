@@ -69,7 +69,6 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 			ActionOrderingIndex:      2,
 			FulfillmentOrderingIndex: 3,
 			DisableActiveScheduling:  false,
-			InitiatorPhoneNumber:     pointer.String("+12223334444"),
 			State:                    fulfillment.StateConfirmed,
 			CreatedAt:                time.Now(),
 		}
@@ -120,7 +119,6 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 			ActionOrderingIndex:      2,
 			FulfillmentOrderingIndex: 3,
 			DisableActiveScheduling:  true,
-			InitiatorPhoneNumber:     nil,
 			State:                    fulfillment.StateUnknown,
 			CreatedAt:                time.Now(),
 		}
@@ -165,7 +163,6 @@ func testBatchPut(t *testing.T, s fulfillment.Store) {
 				ActionOrderingIndex:      uint32(i),
 				FulfillmentOrderingIndex: uint32(i),
 				DisableActiveScheduling:  false,
-				InitiatorPhoneNumber:     pointer.String(fmt.Sprintf("+1800555%d", i)),
 				State:                    fulfillment.StateConfirmed,
 				CreatedAt:                time.Now(),
 			}
@@ -244,7 +241,6 @@ func testUpdate(t *testing.T, s fulfillment.Store) {
 			Blockhash:                nil,
 			Source:                   "test_source",
 			Destination:              nil,
-			InitiatorPhoneNumber:     pointer.String("+12223334444"),
 			IntentOrderingIndex:      1,
 			ActionOrderingIndex:      2,
 			FulfillmentOrderingIndex: 3,
@@ -1081,7 +1077,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *fulfillment.Record) {
 	assert.Equal(t, obj1.ActionOrderingIndex, obj2.ActionOrderingIndex)
 	assert.Equal(t, obj1.FulfillmentOrderingIndex, obj2.FulfillmentOrderingIndex)
 	assert.Equal(t, obj1.DisableActiveScheduling, obj2.DisableActiveScheduling)
-	assert.EqualValues(t, obj1.InitiatorPhoneNumber, obj2.InitiatorPhoneNumber)
 	assert.Equal(t, obj1.State, obj2.State)
 	assert.Equal(t, obj1.CreatedAt.Unix(), obj2.CreatedAt.Unix())
 }

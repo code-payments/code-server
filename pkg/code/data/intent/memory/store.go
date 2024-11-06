@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -140,78 +140,6 @@ func (s *store) findBySource(source string) []*intent.Record {
 			}
 		case intent.ReceivePaymentsPublicly:
 			if item.ReceivePaymentsPubliclyMetadata.Source == source {
-				res = append(res, item)
-			}
-		}
-	}
-	return res
-}
-
-func (s *store) findByInitiatorPhoneNumberSinceTimestamp(phoneNumber string, since time.Time) []*intent.Record {
-	res := make([]*intent.Record, 0)
-	for _, item := range s.records {
-		if item.CreatedAt.Before(since) {
-			continue
-		}
-
-		if item.InitiatorPhoneNumber != nil && *item.InitiatorPhoneNumber == phoneNumber {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) findForAntispam(intentType intent.Type, phoneNumber string, states []intent.State, since time.Time) []*intent.Record {
-	res := make([]*intent.Record, 0)
-	for _, item := range s.records {
-		if item.IntentType != intentType {
-			continue
-		}
-
-		if item.InitiatorPhoneNumber == nil || *item.InitiatorPhoneNumber != phoneNumber {
-			continue
-		}
-
-		if item.CreatedAt.Before(since) {
-			continue
-		}
-
-		for _, state := range states {
-			if item.State == state {
-				res = append(res, item)
-			}
-		}
-	}
-	return res
-}
-
-func (s *store) findOwnerInteractionsForAntispam(sourceOwner, destinationOwner string, states []intent.State, since time.Time) []*intent.Record {
-	res := make([]*intent.Record, 0)
-	for _, item := range s.records {
-		if item.InitiatorOwnerAccount != sourceOwner {
-			continue
-		}
-
-		var destinationOwnerToCheck string
-		switch item.IntentType {
-		case intent.SendPrivatePayment:
-			destinationOwnerToCheck = item.SendPrivatePaymentMetadata.DestinationOwnerAccount
-		case intent.SendPublicPayment:
-			destinationOwnerToCheck = item.SendPublicPaymentMetadata.DestinationOwnerAccount
-		default:
-			continue
-		}
-
-		if destinationOwnerToCheck != destinationOwner {
-			continue
-		}
-
-		if item.CreatedAt.Before(since) {
-			continue
-		}
-
-		for _, state := range states {
-			if item.State == state {
 				res = append(res, item)
 			}
 		}
@@ -449,42 +377,6 @@ func (s *store) GetAllByOwner(ctx context.Context, owner string, cursor query.Cu
 	}
 
 	return nil, intent.ErrIntentNotFound
-}
-
-func (s *store) CountForAntispam(ctx context.Context, intentType intent.Type, phoneNumber string, states []intent.State, since time.Time) (uint64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findForAntispam(intentType, phoneNumber, states, since)
-	return uint64(len(items)), nil
-}
-
-func (s *store) CountOwnerInteractionsForAntispam(ctx context.Context, sourceOwner, destinationOwner string, states []intent.State, since time.Time) (uint64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findOwnerInteractionsForAntispam(sourceOwner, destinationOwner, states, since)
-	return uint64(len(items)), nil
-}
-
-func (s *store) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findByInitiatorPhoneNumberSinceTimestamp(phoneNumber, since)
-	items = s.filterByState(items, false, intent.StateRevoked)
-	items = s.filterByType(items, intent.SendPrivatePayment)
-	return sumQuarkAmount(items), sumUsdMarketValue(items), nil
-}
-
-func (s *store) GetDepositedAmountForAntiMoneyLaundering(ctx context.Context, phoneNumber string, since time.Time) (uint64, float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findByInitiatorPhoneNumberSinceTimestamp(phoneNumber, since)
-	items = s.filterByState(items, false, intent.StateRevoked)
-	items = s.filterByDeposit(items)
-	return sumQuarkAmount(items), sumUsdMarketValue(items), nil
 }
 
 func (s *store) GetNetBalanceFromPrePrivacy2022Intents(ctx context.Context, account string) (int64, error) {

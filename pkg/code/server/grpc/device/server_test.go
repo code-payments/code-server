@@ -3,7 +3,6 @@ package device
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,11 +13,10 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	devicepb "github.com/code-payments/code-protobuf-api/generated/go/device/v1"
 
-	"github.com/code-payments/code-server/pkg/testutil"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestHappyPath(t *testing.T) {
@@ -27,8 +25,6 @@ func TestHappyPath(t *testing.T) {
 
 	appInstallId := "app-install-id"
 	owner := testutil.NewRandomAccount(t)
-
-	env.setupUser(t, owner)
 
 	getReq := &devicepb.GetLoggedInAccountsRequest{
 		AppInstall: &commonpb.AppInstallId{
@@ -80,6 +76,8 @@ func TestHappyPath(t *testing.T) {
 }
 
 func TestInvalidOwner(t *testing.T) {
+	t.Skip("not implemented")
+
 	env, cleanup := setup(t)
 	defer cleanup()
 
@@ -164,15 +162,6 @@ func setup(t *testing.T) (env *testEnv, cleanup func()) {
 	cleanup, err = serv.Serve()
 	require.NoError(t, err)
 	return env, cleanup
-}
-
-func (e *testEnv) setupUser(t *testing.T, owner *common.Account) {
-	require.NoError(t, e.data.SavePhoneVerification(e.ctx, &phone.Verification{
-		PhoneNumber:    "+12223334444",
-		OwnerAccount:   owner.PublicKey().ToBase58(),
-		CreatedAt:      time.Now(),
-		LastVerifiedAt: time.Now(),
-	}))
 }
 
 func signProtoMessage(t *testing.T, msg proto.Message, signer *common.Account, simulateInvalidSignature bool) *commonpb.Signature {
