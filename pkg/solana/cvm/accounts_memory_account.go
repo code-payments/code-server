@@ -85,8 +85,8 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 	getKey(data, &obj.Vm, &offset)
 	getFixedString(data, &obj.Name, MaxMemoryAccountNameLength, &offset)
 	getUint8(data, &obj.Bump, &offset)
-	getMemoryLayout(data, &obj.Layout, &offset)
 	offset += 6 // padding
+	getMemoryLayout(data, &obj.Layout, &offset)
 
 	switch obj.Layout {
 	case MemoryLayoutTimelock:
