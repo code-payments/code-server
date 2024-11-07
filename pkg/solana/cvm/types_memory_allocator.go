@@ -1,7 +1,7 @@
 package cvm
 
 const (
-	CompactStateItems = 100
+	CompactStateItems = 1000
 )
 
 type MemoryAllocator interface {
