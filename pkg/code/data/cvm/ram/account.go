@@ -15,8 +15,8 @@ type Record struct {
 	Address string
 
 	Capacity   uint16
-	NumSectors uint8
-	NumPages   uint8
+	NumSectors uint16
+	NumPages   uint16
 	PageSize   uint8
 
 	StoredAccountType cvm.VirtualAccountType

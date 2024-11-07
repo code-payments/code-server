@@ -11,8 +11,8 @@ import (
 func TestGetActualCapcity(t *testing.T) {
 	for _, tc := range []struct {
 		capacity   uint16
-		numSectors uint8
-		numPages   uint8
+		numSectors uint16
+		numPages   uint16
 		pageSize   uint8
 		expected   uint16
 	}{
