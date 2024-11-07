@@ -187,7 +187,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	var quarkAmount uint64
 	switch airdropType {
 	case AirdropTypeGetFirstKin:
-		quarkAmount = kin.ToQuarks(1)
+		quarkAmount = kin.ToQuarks(1000)
 	default:
 		return nil, errors.New("unhandled airdrop type")
 	}
