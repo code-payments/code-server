@@ -25,8 +25,8 @@ type accountModel struct {
 	Address string `db:"address"`
 
 	Capacity   uint16 `db:"capacity"`
-	NumSectors uint8  `db:"num_sectors"`
-	NumPages   uint8  `db:"num_pages"`
+	NumSectors uint16 `db:"num_sectors"`
+	NumPages   uint16 `db:"num_pages"`
 	PageSize   uint8  `db:"page_size"`
 
 	StoredAccountType uint8 `db:"stored_account_type"`
