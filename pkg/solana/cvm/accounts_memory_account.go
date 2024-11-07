@@ -32,8 +32,8 @@ const MemoryAccountSize = (8 + // discriminator
 	32 + // vm
 	MaxMemoryAccountNameLength + // name
 	1 + // bump
-	1 + // layout
-	6) // padding
+	6 + // padding
+	1) // layout
 
 var MemoryAccountDiscriminator = []byte{byte(AccountTypeMemory), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
@@ -53,8 +53,8 @@ func (obj *MemoryAccount) Unmarshal(data []byte) error {
 	getKey(data, &obj.Vm, &offset)
 	getFixedString(data, &obj.Name, MaxMemoryAccountNameLength, &offset)
 	getUint8(data, &obj.Bump, &offset)
-	getMemoryLayout(data, &obj.Layout, &offset)
 	offset += 6 // padding
+	getMemoryLayout(data, &obj.Layout, &offset)
 
 	return nil
 }
