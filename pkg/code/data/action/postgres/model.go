@@ -104,7 +104,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 		query := fmt.Sprintf(`UPDATE `+tableName+`
 			SET state = $3%s
 			WHERE intent = $1 AND action_id = $2
-			RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity state, created_at
+			RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		`, quantityUpdateStmt)
 
 		err := tx.QueryRowxContext(
