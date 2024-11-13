@@ -10,9 +10,14 @@ import (
 	"github.com/mr-tron/base58/base58"
 	"github.com/oschwald/maxminddb-golang"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+	flipchat_chatpb "github.com/code-payments/flipchat-protobuf-api/generated/go/chat/v1"
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	"github.com/code-payments/code-server/pkg/code/balance"
@@ -1401,6 +1406,14 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 		intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount = destinationAccountInfo.OwnerAccount
 	}
 
+	if typedProtoMetadata.ExtendedMetadata != nil {
+		marshalled, err := proto.Marshal(typedProtoMetadata.ExtendedMetadata)
+		if err != nil {
+			return err
+		}
+		intentRecord.ExtendedMetadata = marshalled
+	}
+
 	return nil
 }
 
@@ -1514,7 +1527,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 7: Validate the individual actions
 	//
 
-	return h.validateActions(
+	err = h.validateActions(
 		ctx,
 		initiatiorOwnerAccount,
 		initiatorAccountsByType,
@@ -1524,6 +1537,15 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 		actions,
 		simResult,
 	)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 7: Validate extended payment metadata
+	//
+
+	return h.validateExtendedMetadata(ctx, typedMetadata)
 }
 
 func (h *SendPublicPaymentIntentHandler) validateActions(
@@ -1637,6 +1659,36 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 	if len(simResult.GetClosedAccounts()) > 0 {
 		return newIntentValidationError("cannot close any account")
+	}
+
+	return nil
+}
+
+// todo: we'll want something more generic useable across all intent types
+func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(_ context.Context, metadata *transactionpb.SendPublicPaymentMetadata) error {
+	if metadata.ExtendedMetadata == nil {
+		return nil
+	}
+
+	untyped, err := anypb.UnmarshalNew(metadata.ExtendedMetadata.Value, proto.UnmarshalOptions{})
+	if err != nil {
+		return err
+	}
+
+	switch typed := untyped.(type) {
+	case *flipchat_chatpb.JoinChatPaymentMetadata:
+		if err := typed.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+
+		// todo: more generic validation against the FC server
+		if metadata.ExchangeData.Currency != string(currency_lib.KIN) || metadata.ExchangeData.Quarks != kin.ToQuarks(200) {
+			return newIntentValidationError("join chat cost is 200 kin")
+		}
+
+		// todo: more extensive validation against the FC server
+	default:
+		return newIntentValidationError("unsupported extended metadata proto type")
 	}
 
 	return nil

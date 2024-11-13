@@ -62,6 +62,7 @@ type Record struct {
 	ReceivePaymentsPubliclyMetadata  *ReceivePaymentsPubliclyMetadata
 	EstablishRelationshipMetadata    *EstablishRelationshipMetadata
 	LoginMetadata                    *LoginMetadata
+	ExtendedMetadata                 []byte // todo: support this
 
 	// Deprecated intents v1 metadatum
 	MoneyTransferMetadata     *MoneyTransferMetadata
@@ -282,6 +283,7 @@ func (r *Record) Clone() Record {
 		ReceivePaymentsPubliclyMetadata:  receivePaymentsPubliclyMetadata,
 		EstablishRelationshipMetadata:    establishRelationshipMetadata,
 		LoginMetadata:                    loginMetadata,
+		ExtendedMetadata:                 r.ExtendedMetadata,
 
 		MoneyTransferMetadata:     moneyTransferMetadata,
 		AccountManagementMetadata: accountManagementMetadata,
@@ -309,6 +311,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.ReceivePaymentsPubliclyMetadata = r.ReceivePaymentsPubliclyMetadata
 	dst.EstablishRelationshipMetadata = r.EstablishRelationshipMetadata
 	dst.LoginMetadata = r.LoginMetadata
+	dst.ExtendedMetadata = r.ExtendedMetadata
 
 	dst.MoneyTransferMetadata = r.MoneyTransferMetadata
 	dst.AccountManagementMetadata = r.AccountManagementMetadata

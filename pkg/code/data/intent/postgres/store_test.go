@@ -56,6 +56,8 @@ const (
 
 			chat_id TEXT NULL,
 
+			extended_metadata BYTEA NULL,
+
 			state integer NOT NULL,
 
 			created_at timestamp with time zone NOT NULL

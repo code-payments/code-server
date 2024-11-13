@@ -138,6 +138,7 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 			IntentType:            intent.OpenAccounts,
 			InitiatorOwnerAccount: "test_owner",
 			OpenAccountsMetadata:  &intent.OpenAccountsMetadata{},
+			ExtendedMetadata:      []byte("extended_metadata"),
 			State:                 intent.StateUnknown,
 			CreatedAt:             time.Now(),
 		}
@@ -151,6 +152,7 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.OpenAccountsMetadata)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -190,8 +192,9 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 					Username: "tipme",
 				},
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -217,6 +220,7 @@ func testSendPrivatePaymentRoundTrip(t *testing.T, s intent.Store) {
 		require.NotNil(t, actual.SendPrivatePaymentMetadata.TipMetadata)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.TipMetadata.Platform, actual.SendPrivatePaymentMetadata.TipMetadata.Platform)
 		assert.Equal(t, cloned.SendPrivatePaymentMetadata.TipMetadata.Username, actual.SendPrivatePaymentMetadata.TipMetadata.Username)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -242,8 +246,9 @@ func testReceivePaymentsPrivatelyRoundTrip(t *testing.T, s intent.Store) {
 				IsDeposit:      true,
 				UsdMarketValue: 777,
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -259,6 +264,7 @@ func testReceivePaymentsPrivatelyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.ReceivePaymentsPrivatelyMetadata.Quantity, actual.ReceivePaymentsPrivatelyMetadata.Quantity)
 		assert.Equal(t, cloned.ReceivePaymentsPrivatelyMetadata.IsDeposit, actual.ReceivePaymentsPrivatelyMetadata.IsDeposit)
 		assert.Equal(t, cloned.ReceivePaymentsPrivatelyMetadata.UsdMarketValue, actual.ReceivePaymentsPrivatelyMetadata.UsdMarketValue)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -282,8 +288,9 @@ func testSaveRecentRootRoundTrip(t *testing.T, s intent.Store) {
 				TreasuryPool:           "test_treasury_pool",
 				PreviousMostRecentRoot: "test_recent_root",
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -297,6 +304,7 @@ func testSaveRecentRootRoundTrip(t *testing.T, s intent.Store) {
 		require.NotNil(t, actual.SaveRecentRootMetadata)
 		assert.Equal(t, cloned.SaveRecentRootMetadata.TreasuryPool, actual.SaveRecentRootMetadata.TreasuryPool)
 		assert.Equal(t, cloned.SaveRecentRootMetadata.PreviousMostRecentRoot, actual.SaveRecentRootMetadata.PreviousMostRecentRoot)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -319,8 +327,9 @@ func testMigrateToPrivacy2022RoundTrip(t *testing.T, s intent.Store) {
 			MigrateToPrivacy2022Metadata: &intent.MigrateToPrivacy2022Metadata{
 				Quantity: 123,
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -333,6 +342,7 @@ func testMigrateToPrivacy2022RoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.MigrateToPrivacy2022Metadata)
 		assert.Equal(t, cloned.MigrateToPrivacy2022Metadata.Quantity, actual.MigrateToPrivacy2022Metadata.Quantity)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -358,8 +368,9 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 				Quantity:                12345,
 				UsdMarketValue:          1.2345,
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -375,6 +386,7 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.ExternalDepositMetadata.DestinationTokenAccount, actual.ExternalDepositMetadata.DestinationTokenAccount)
 		assert.Equal(t, cloned.ExternalDepositMetadata.Quantity, actual.ExternalDepositMetadata.Quantity)
 		assert.Equal(t, cloned.ExternalDepositMetadata.UsdMarketValue, actual.ExternalDepositMetadata.UsdMarketValue)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -405,8 +417,9 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 				UsdMarketValue:   0.00042,
 				IsWithdrawal:     true,
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -426,6 +439,7 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.NativeAmount, actual.SendPublicPaymentMetadata.NativeAmount)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.UsdMarketValue, actual.SendPublicPaymentMetadata.UsdMarketValue)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.IsWithdrawal, actual.SendPublicPaymentMetadata.IsWithdrawal)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -456,8 +470,9 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 				OriginalNativeAmount:     1234.5,
 				UsdMarketValue:           999.99,
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -478,6 +493,7 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.ReceivePaymentsPubliclyMetadata.OriginalExchangeRate, actual.ReceivePaymentsPubliclyMetadata.OriginalExchangeRate)
 		assert.Equal(t, cloned.ReceivePaymentsPubliclyMetadata.OriginalNativeAmount, actual.ReceivePaymentsPubliclyMetadata.OriginalNativeAmount)
 		assert.Equal(t, cloned.ReceivePaymentsPubliclyMetadata.UsdMarketValue, actual.ReceivePaymentsPubliclyMetadata.UsdMarketValue)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -500,8 +516,9 @@ func testEstablishRelationshipRoundTrip(t *testing.T, s intent.Store) {
 			EstablishRelationshipMetadata: &intent.EstablishRelationshipMetadata{
 				RelationshipTo: "relationship_to",
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -514,6 +531,7 @@ func testEstablishRelationshipRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.EstablishRelationshipMetadata)
 		assert.Equal(t, cloned.EstablishRelationshipMetadata.RelationshipTo, actual.EstablishRelationshipMetadata.RelationshipTo)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
@@ -537,8 +555,9 @@ func testLoginRoundTrip(t *testing.T, s intent.Store) {
 				App:    "app",
 				UserId: "test_user",
 			},
-			State:     intent.StateUnknown,
-			CreatedAt: time.Now(),
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
 		}
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
@@ -552,6 +571,7 @@ func testLoginRoundTrip(t *testing.T, s intent.Store) {
 		require.NotNil(t, actual.LoginMetadata)
 		assert.Equal(t, cloned.LoginMetadata.App, actual.LoginMetadata.App)
 		assert.Equal(t, cloned.LoginMetadata.UserId, actual.LoginMetadata.UserId)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
