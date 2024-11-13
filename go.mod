@@ -6,7 +6,7 @@ require (
 	firebase.google.com/go/v4 v4.8.0
 	github.com/aws/aws-sdk-go-v2 v0.17.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
-	github.com/code-payments/code-protobuf-api v1.18.1-0.20241112143700-a8dcb7a8c875
+	github.com/code-payments/code-protobuf-api v1.18.1-0.20241113143212-e8134a692719
 	github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba
 	github.com/code-payments/flipchat-protobuf-api v0.0.0-20241112145307-68be7b5dd7c2
 	github.com/dghubble/oauth1 v0.7.3
