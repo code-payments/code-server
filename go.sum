@@ -119,8 +119,8 @@ github.com/cncf/xds/go v0.0.0-20210922020428-25de7278fc84/go.mod h1:eXthEFrGJvWH
 github.com/cncf/xds/go v0.0.0-20211011173535-cb28da3451f1/go.mod h1:eXthEFrGJvWHgFFCl3hGmgk+/aYT6PnTQLykKQRLhEs=
 github.com/cockroachdb/apd v1.1.0 h1:3LFP3629v+1aKXU5Q37mxmRxX/pIu1nijXydLShEq5I=
 github.com/cockroachdb/apd v1.1.0/go.mod h1:8Sl8LxpKi29FqWXR16WEFZRNSz3SoPzUzeMeY4+DwBQ=
-github.com/code-payments/code-protobuf-api v1.18.1-0.20241113143212-e8134a692719 h1:bULztcaAk8aOAUqJVxGHWeS09qJlQF1D1s5kcqthpLk=
-github.com/code-payments/code-protobuf-api v1.18.1-0.20241113143212-e8134a692719/go.mod h1:4ZB8HDgE0YEGkjb00v7qfg9lWIQWTmhbbOYkuEOzaa8=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20241113145645-72417e3e3c84 h1:CxxZgr1i9TlqlAMnXQ2FoCnSuH6Ns7Fe5yijfgJPSdg=
+github.com/code-payments/code-protobuf-api v1.18.1-0.20241113145645-72417e3e3c84/go.mod h1:4ZB8HDgE0YEGkjb00v7qfg9lWIQWTmhbbOYkuEOzaa8=
 github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba h1:Bkp+gmeb6Y2PWXfkSCTMBGWkb2P1BujRDSjWeI+0j5I=
 github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba/go.mod h1:jSiifpiBpyBQ8q2R0MGEbkSgWC6sbdRTyDBntmW+j1E=
 github.com/code-payments/flipchat-protobuf-api v0.0.0-20241112145307-68be7b5dd7c2 h1:jUHxkram8ZI562BEF/1mmfSt9P5bNDQy0edcCGgzyME=
