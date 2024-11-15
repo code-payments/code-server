@@ -1662,11 +1662,6 @@ func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(_ context.Cont
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 
-		// todo: more generic validation against the FC server
-		if metadata.ExchangeData.Currency != string(currency_lib.KIN) || metadata.ExchangeData.Quarks != kin.ToQuarks(200) {
-			return newIntentValidationError("join chat cost is 200 kin")
-		}
-
 		// todo: more extensive validation against the FC server
 	default:
 		return newIntentValidationError("unsupported extended metadata proto type")
