@@ -1657,6 +1657,12 @@ func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(_ context.Cont
 	}
 
 	switch typed := untyped.(type) {
+	case *flipchat_chatpb.StartGroupChatPaymentMetadata:
+		if err := typed.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+
+		// todo: more extensive validation against the FC server
 	case *flipchat_chatpb.JoinChatPaymentMetadata:
 		if err := typed.Validate(); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
