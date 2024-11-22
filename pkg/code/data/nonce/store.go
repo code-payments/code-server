@@ -2,6 +2,7 @@ package nonce
 
 import (
 	"context"
+	"time"
 
 	"github.com/code-payments/code-server/pkg/database/query"
 )
@@ -35,4 +36,15 @@ type Store interface {
 	//
 	// Returns ErrNotFound if no records are found.
 	GetRandomAvailableByPurpose(ctx context.Context, purpose Purpose) (*Record, error)
+
+	// BatchClaimAvailableByPurpose batch claims up to the specified limit.
+	//
+	// The returned nonces will be marked as claimed by the current node, with
+	// the specified expiry date.
+	//
+	// Note: Implementations need not randomize the results/selection.
+	// The transactional nature of the call means that any contention exists
+	// on the tx level (which always occurs), and not around fighting over
+	// individual nonces (which was negated in the GetRandomAvailableByPurpose).
+	BatchClaimAvailableByPurpose(ctx context.Context, purpose Purpose, limit int, nodeID string, minExpireAt, maxExpireAt time.Time) ([]*Record, error)
 }

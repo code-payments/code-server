@@ -5,9 +5,10 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -58,27 +59,27 @@ func (s *store) findAddress(address string) *nonce.Record {
 }
 
 func (s *store) findByState(state nonce.State) []*nonce.Record {
-	res := make([]*nonce.Record, 0)
-	for _, item := range s.records {
-		if item.State == state {
-			res = append(res, item)
-		}
-	}
-	return res
+	return s.findFn(func(nonce *nonce.Record) bool {
+		return nonce.State == state
+	}, -1)
 }
 
 func (s *store) findByStateAndPurpose(state nonce.State, purpose nonce.Purpose) []*nonce.Record {
+	return s.findFn(func(record *nonce.Record) bool {
+		return record.State == state && record.Purpose == purpose
+	}, -1)
+}
+
+func (s *store) findFn(f func(nonce *nonce.Record) bool, limit int) []*nonce.Record {
 	res := make([]*nonce.Record, 0)
 	for _, item := range s.records {
-		if item.State != state {
-			continue
+		if f(item) {
+			res = append(res, item)
 		}
 
-		if item.Purpose != purpose {
-			continue
+		if limit >= 0 && len(res) == limit {
+			break
 		}
-
-		res = append(res, item)
 	}
 	return res
 }
@@ -194,11 +195,47 @@ func (s *store) GetRandomAvailableByPurpose(ctx context.Context, purpose nonce.P
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findByStateAndPurpose(nonce.StateAvailable, purpose)
+	items := s.findFn(func(n *nonce.Record) bool {
+		return n.Purpose == purpose && n.IsAvailable()
+	}, -1)
 	if len(items) == 0 {
 		return nil, nonce.ErrNonceNotFound
 	}
 
 	index := rand.Intn(len(items))
 	return items[index], nil
+}
+
+func (s *store) BatchClaimAvailableByPurpose(
+	ctx context.Context,
+	purpose nonce.Purpose,
+	limit int,
+	nodeId string,
+	minExpireAt time.Time,
+	maxExpireAt time.Time,
+) ([]*nonce.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findFn(func(n *nonce.Record) bool {
+		return n.Purpose == purpose && n.IsAvailable()
+	}, limit)
+	if len(items) == 0 {
+		return nil, nil
+	}
+
+	for i, l := 0, len(items); i < l; i++ {
+		j := rand.Intn(l)
+		items[i], items[j] = items[j], items[i]
+	}
+	for i := 0; i < len(items); i++ {
+		window := maxExpireAt.Sub(minExpireAt)
+		expiry := minExpireAt.Add(time.Duration(rand.Intn(int(window))))
+
+		items[i].State = nonce.StateClaimed
+		items[i].ClaimNodeId = nodeId
+		items[i].ClaimExpiresAt = expiry
+	}
+
+	return items, nil
 }

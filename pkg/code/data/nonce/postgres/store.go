@@ -3,10 +3,12 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -92,4 +94,25 @@ func (s *store) GetRandomAvailableByPurpose(ctx context.Context, purpose nonce.P
 		return nil, err
 	}
 	return fromNonceModel(model), nil
+}
+
+func (s *store) BatchClaimAvailableByPurpose(
+	ctx context.Context,
+	purpose nonce.Purpose,
+	limit int,
+	nodeId string,
+	minExpireAt time.Time,
+	maxExpireAt time.Time,
+) ([]*nonce.Record, error) {
+	models, err := dbBatchClaimAvailableByPurpose(ctx, s.db, purpose, limit, nodeId, minExpireAt, maxExpireAt)
+	if err != nil {
+		return nil, err
+	}
+
+	nonces := make([]*nonce.Record, len(models))
+	for i, model := range models {
+		nonces[i] = fromNonceModel(model)
+	}
+
+	return nonces, nil
 }

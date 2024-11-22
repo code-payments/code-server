@@ -3,6 +3,7 @@ package nonce
 import (
 	"crypto/ed25519"
 	"errors"
+	"time"
 
 	"github.com/mr-tron/base58"
 )
@@ -20,14 +21,11 @@ const (
 	StateAvailable       // The nonce is available to be used by a payment intent, subscription, or other nonce-related transaction.
 	StateReserved        // The nonce is reserved by a payment intent, subscription, or other nonce-related transaction.
 	StateInvalid         // The nonce account is invalid (e.g. insufficient funds, etc).
+	StateClaimed         // The nonce is claimed for future use by a process (identified by Node ID).
 )
 
-// Split nonce pool across different use cases. This has an added benefit of:
-//   - Solving for race conditions without distributed locks.
-//   - Avoiding different use cases from starving each other and ending up in a
-//     deadlocked state. Concretely, it would be really bad if clients could starve
-//     internal processes from creating transactions that would allow us to progress
-//     and submit existing transactions.
+// Purpose indicates the intended use purpose of the nonce. By partitioning nonce's by
+// purpose, we help prevent various use cases from starving each other.
 type Purpose uint8
 
 const (
@@ -46,6 +44,17 @@ type Record struct {
 	Purpose   Purpose
 	State     State
 
+	// Contains the NodeId that transitioned the state into StateClaimed.
+	//
+	// Should be ignored if State != StateClaimed.
+	ClaimNodeId string
+
+	// The time at which StateClaimed is no longer valid, and the state should
+	// be considered StateAvailable.
+	//
+	// Should be ignored if State != StateClaimed.
+	ClaimExpiresAt time.Time
+
 	Signature string
 }
 
@@ -53,15 +62,28 @@ func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {
 	return base58.Decode(r.Address)
 }
 
+func (r *Record) IsAvailable() bool {
+	if r.State == StateAvailable {
+		return true
+	}
+	if r.State != StateClaimed {
+		return false
+	}
+
+	return time.Now().After(r.ClaimExpiresAt)
+}
+
 func (r *Record) Clone() Record {
 	return Record{
-		Id:        r.Id,
-		Address:   r.Address,
-		Authority: r.Authority,
-		Blockhash: r.Blockhash,
-		Purpose:   r.Purpose,
-		State:     r.State,
-		Signature: r.Signature,
+		Id:             r.Id,
+		Address:        r.Address,
+		Authority:      r.Authority,
+		Blockhash:      r.Blockhash,
+		Purpose:        r.Purpose,
+		State:          r.State,
+		ClaimNodeId:    r.ClaimNodeId,
+		ClaimExpiresAt: r.ClaimExpiresAt,
+		Signature:      r.Signature,
 	}
 }
 
@@ -72,21 +94,33 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Blockhash = r.Blockhash
 	dst.Purpose = r.Purpose
 	dst.State = r.State
+	dst.ClaimNodeId = r.ClaimNodeId
+	dst.ClaimExpiresAt = r.ClaimExpiresAt
 	dst.Signature = r.Signature
 }
 
-func (v *Record) Validate() error {
-	if len(v.Address) == 0 {
+func (r *Record) Validate() error {
+	if len(r.Address) == 0 {
 		return errors.New("nonce account address is required")
 	}
 
-	if len(v.Authority) == 0 {
+	if len(r.Authority) == 0 {
 		return errors.New("authority address is required")
 	}
 
-	if v.Purpose == PurposeUnknown {
+	if r.Purpose == PurposeUnknown {
 		return errors.New("nonce purpose must be set")
 	}
+
+	if r.State == StateClaimed {
+		if r.ClaimNodeId == "" {
+			return errors.New("missing claim node id")
+		}
+		if r.ClaimExpiresAt == (time.Time{}) || r.ClaimExpiresAt.IsZero() {
+			return errors.New("missing claim expiry date")
+		}
+	}
+
 	return nil
 }
 
@@ -102,6 +136,8 @@ func (s State) String() string {
 		return "reserved"
 	case StateInvalid:
 		return "invalid"
+	case StateClaimed:
+		return "claimed"
 	}
 
 	return "unknown"

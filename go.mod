@@ -19,6 +19,7 @@ require (
 	github.com/jackc/pgx/v4 v4.13.0
 	github.com/jdgcs/ed25519 v0.0.0-20200408034030-96c10d46cdc3
 	github.com/jmoiron/sqlx v1.3.4
+	github.com/jonboulle/clockwork v0.4.0
 	github.com/mr-tron/base58 v1.2.0
 	github.com/newrelic/go-agent/v3 v3.20.1
 	github.com/newrelic/go-agent/v3/integrations/nrpgx v1.0.0
