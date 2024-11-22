@@ -3,10 +3,13 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,6 +18,7 @@ func RunTests(t *testing.T, s nonce.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s nonce.Store){
 		testRoundTrip,
 		testUpdate,
+		testUpdateInvalid,
 		testGetAllByState,
 		testGetCount,
 		testGetRandomAvailableByPurpose,
@@ -78,6 +82,52 @@ func testUpdate(t *testing.T, s nonce.Store) {
 	assert.Equal(t, expected.State, actual.State)
 	assert.Equal(t, expected.Signature, actual.Signature)
 	assert.EqualValues(t, 1, actual.Id)
+}
+
+func testUpdateInvalid(t *testing.T, s nonce.Store) {
+	ctx := context.Background()
+
+	for _, invalid := range []*nonce.Record{
+		{},
+		{
+			Address: "test_address",
+		},
+		{
+			Address:   "test_address",
+			Authority: "test_authority",
+		},
+		{
+			Address:   "test_address",
+			Authority: "test_authority",
+			Blockhash: "block_hash",
+		},
+		{
+			Address:   "test_address",
+			Authority: "test_authority",
+			Blockhash: "test_blockhash",
+			Purpose:   nonce.PurposeClientTransaction,
+			State:     nonce.StateClaimed,
+		},
+		{
+			Address:     "test_address",
+			Authority:   "test_authority",
+			Blockhash:   "test_blockhash",
+			Purpose:     nonce.PurposeClientTransaction,
+			State:       nonce.StateClaimed,
+			ClaimNodeId: "my-node",
+		},
+		{
+			Address:        "test_address",
+			Authority:      "test_authority",
+			Blockhash:      "test_blockhash",
+			Purpose:        nonce.PurposeClientTransaction,
+			State:          nonce.StateClaimed,
+			ClaimExpiresAt: time.Now().Add(time.Hour),
+		},
+	} {
+		require.Error(t, invalid.Validate())
+		assert.Error(t, s.Save(ctx, invalid))
+	}
 }
 
 func testGetAllByState(t *testing.T, s nonce.Store) {
@@ -260,8 +310,9 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 				nonce.StateUnknown,
 				nonce.StateAvailable,
 				nonce.StateReserved,
+				nonce.StateClaimed,
 			} {
-				for i := 0; i < 500; i++ {
+				for i := 0; i < 50; i++ {
 					record := &nonce.Record{
 						Address:   fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
 						Authority: "authority",
@@ -270,27 +321,83 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 						State:     state,
 						Signature: "",
 					}
+					if state == nonce.StateClaimed {
+						record.ClaimNodeId = "my-node-id"
+
+						if i < 25 {
+							record.ClaimExpiresAt = time.Now().Add(-time.Hour)
+						} else {
+							record.ClaimExpiresAt = time.Now().Add(time.Hour)
+						}
+					}
+
 					require.NoError(t, s.Save(ctx, record))
 				}
 			}
 		}
 
+		var sequentialLoads int
+		var availableState, claimedState int
+		var lastNonce *nonce.Record
 		selectedByAddress := make(map[string]struct{})
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 1000; i++ {
 			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeClientTransaction)
 			require.NoError(t, err)
 			assert.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
-			assert.Equal(t, nonce.StateAvailable, actual.State)
-			selectedByAddress[actual.Address] = struct{}{}
-		}
-		assert.True(t, len(selectedByAddress) > 10)
+			assert.True(t, actual.IsAvailable())
 
+			switch actual.State {
+			case nonce.StateAvailable:
+				availableState++
+			case nonce.StateClaimed:
+				claimedState++
+				assert.True(t, time.Now().After(actual.ClaimExpiresAt))
+			default:
+			}
+
+			// We test for randomness by ensuring we're not loading nonce's sequentially.
+			if lastNonce != nil && lastNonce.Purpose == actual.Purpose {
+				lastID, err := strconv.ParseInt(strings.Split(lastNonce.Address, "_")[4], 10, 64)
+				require.NoError(t, err)
+				currentID, _ := strconv.ParseInt(strings.Split(actual.Address, "_")[4], 10, 64)
+				require.NoError(t, err)
+
+				if currentID == lastID+1 {
+					sequentialLoads++
+				}
+			}
+
+			selectedByAddress[actual.Address] = struct{}{}
+			lastNonce = actual
+		}
+		assert.Greater(t, len(selectedByAddress), 10)
+		assert.NotZero(t, availableState)
+		assert.NotZero(t, claimedState)
+
+		// We allocated 50 available nonce's, and 25 expired claim nonces. Given that
+		// we randomly select out of the first available 100 nonces, we expect a ratio
+		// of 2:1 Available vs Expired Claimed nonces.
+		assert.InDelta(t, 2.0, float64(availableState)/float64(claimedState), 0.5)
+
+		assert.Less(t, sequentialLoads, 100)
+
+		availableState, claimedState = 0, 0
 		selectedByAddress = make(map[string]struct{})
 		for i := 0; i < 100; i++ {
 			actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.PurposeInternalServerProcess)
 			require.NoError(t, err)
 			assert.Equal(t, nonce.PurposeInternalServerProcess, actual.Purpose)
-			assert.Equal(t, nonce.StateAvailable, actual.State)
+			assert.True(t, actual.IsAvailable())
+
+			switch actual.State {
+			case nonce.StateAvailable:
+				availableState++
+			case nonce.StateClaimed:
+				claimedState++
+				assert.True(t, time.Now().After(actual.ClaimExpiresAt))
+			default:
+			}
+
 			selectedByAddress[actual.Address] = struct{}{}
 		}
 		assert.True(t, len(selectedByAddress) > 10)

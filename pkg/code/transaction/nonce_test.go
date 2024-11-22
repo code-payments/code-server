@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/testutil"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
+	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestNonce_SelectAvailableNonce(t *testing.T) {
@@ -60,6 +60,32 @@ func TestNonce_SelectAvailableNonce(t *testing.T) {
 
 	_, err = SelectAvailableNonce(env.ctx, env.data, nonce.PurposeInternalServerProcess)
 	assert.Equal(t, ErrNoAvailableNonces, err)
+}
+
+func TestNonce_SelectAvailableNonceClaimed(t *testing.T) {
+	env := setupNonceTestEnv(t)
+
+	// Should ignore (non-expired) claimed nonces.
+	expiredNonces := map[string]*nonce.Record{}
+	for i := 0; i < 10; i++ {
+		n := generateClaimedNonce(t, env, true)
+		expiredNonces[n.Address] = n
+
+		generateClaimedNonce(t, env, false)
+	}
+
+	for i := 0; i < 10; i++ {
+		nonce, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeClientTransaction)
+		require.NoError(t, err)
+
+		_, ok := expiredNonces[nonce.Account.PublicKey().ToBase58()]
+		require.True(t, ok)
+		require.True(t, nonce.record.ClaimExpiresAt.Before(time.Now()))
+		delete(expiredNonces, nonce.Account.PublicKey().ToBase58())
+	}
+
+	_, err := SelectAvailableNonce(env.ctx, env.data, nonce.PurposeInternalServerProcess)
+	require.ErrorIs(t, ErrNoAvailableNonces, err)
 }
 
 func TestNonce_SelectNonceFromFulfillmentToUpgrade_HappyPath(t *testing.T) {
@@ -238,9 +264,40 @@ func generateAvailableNonce(t *testing.T, env nonceTestEnv, useCase nonce.Purpos
 		Address:   nonceAccount.PublicKey().ToBase58(),
 		Authority: common.GetSubsidizer().PublicKey().ToBase58(),
 		Blockhash: base58.Encode(bh[:]),
-		Purpose:   nonce.PurposeClientTransaction,
+		Purpose:   useCase,
 		State:     nonce.StateAvailable,
 	}
+	require.NoError(t, env.data.SaveKey(env.ctx, nonceKey))
+	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
+	return nonceRecord
+}
+
+func generateClaimedNonce(t *testing.T, env nonceTestEnv, expired bool) *nonce.Record {
+	nonceAccount := testutil.NewRandomAccount(t)
+
+	var bh solana.Blockhash
+	rand.Read(bh[:])
+
+	nonceKey := &vault.Record{
+		PublicKey:  nonceAccount.PublicKey().ToBase58(),
+		PrivateKey: nonceAccount.PrivateKey().ToBase58(),
+		State:      vault.StateAvailable,
+		CreatedAt:  time.Now(),
+	}
+	nonceRecord := &nonce.Record{
+		Address:     nonceAccount.PublicKey().ToBase58(),
+		Authority:   common.GetSubsidizer().PublicKey().ToBase58(),
+		Blockhash:   base58.Encode(bh[:]),
+		Purpose:     nonce.PurposeClientTransaction,
+		State:       nonce.StateClaimed,
+		ClaimNodeId: "my-node-id",
+	}
+	if expired {
+		nonceRecord.ClaimExpiresAt = time.Now().Add(-time.Hour)
+	} else {
+		nonceRecord.ClaimExpiresAt = time.Now().Add(time.Hour)
+	}
+
 	require.NoError(t, env.data.SaveKey(env.ctx, nonceKey))
 	require.NoError(t, env.data.SaveNonce(env.ctx, nonceRecord))
 	return nonceRecord
