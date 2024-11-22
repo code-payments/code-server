@@ -20,17 +20,32 @@ const (
 type Signature [ed25519.SignatureSize]byte
 type Blockhash [sha256.Size]byte
 
+type MessageVersion uint8
+
+const (
+	MessageVersionLegacy MessageVersion = iota
+	MessageVersion0
+)
+
 type Header struct {
 	NumSignatures     byte
 	NumReadonlySigned byte
 	NumReadOnly       byte
 }
 
+type MessageAddressTableLookup struct {
+	PublicKey       ed25519.PublicKey
+	WritableIndexes []byte
+	ReadonlyIndexes []byte
+}
+
 type Message struct {
-	Header          Header
-	Accounts        []ed25519.PublicKey
-	RecentBlockhash Blockhash
-	Instructions    []CompiledInstruction
+	version             MessageVersion
+	Header              Header
+	Accounts            []ed25519.PublicKey
+	RecentBlockhash     Blockhash
+	Instructions        []CompiledInstruction
+	AddressTableLookups []MessageAddressTableLookup
 }
 
 type Transaction struct {
@@ -39,6 +54,15 @@ type Transaction struct {
 }
 
 func NewTransaction(payer ed25519.PublicKey, instructions ...Instruction) Transaction {
+	return newTransaction(payer, nil, instructions)
+}
+
+func NewVersionedTransaction(payer ed25519.PublicKey, addressLookupTables []AddressLookupTable, instructions []Instruction) Transaction {
+	return newTransaction(payer, addressLookupTables, instructions)
+}
+
+// todo: consolidate to new constructor
+func newTransaction(payer ed25519.PublicKey, addressLookupTables []AddressLookupTable, instructions []Instruction) Transaction {
 	accounts := []AccountMeta{
 		{
 			PublicKey:  payer,
@@ -65,8 +89,45 @@ func NewTransaction(payer ed25519.PublicKey, instructions ...Instruction) Transa
 	accounts = filterUnique(accounts)
 	sort.Sort(SortableAccountMeta(accounts))
 
+	// Sort address tables to guarantee consistent marshalling
+	sortedAddressLookupTables := make([]AddressLookupTable, len(addressLookupTables))
+	copy(sortedAddressLookupTables, addressLookupTables)
+	sort.Sort(SortableAddressLookupTables(sortedAddressLookupTables))
+
+	writableAddressTableIndexes := make([][]byte, len(sortedAddressLookupTables))
+	readonlyAddressTableIndexes := make([][]byte, len(sortedAddressLookupTables))
+
 	var m Message
 	for _, account := range accounts {
+		// If the account is eligible for dynamic loading, then pull its index
+		// from the first address table where it's defined.
+		var isDynamicallyLoaded bool
+		if !account.isPayer && !account.IsSigner && !account.isProgram {
+			for i, addressLookupTable := range sortedAddressLookupTables {
+				for j, address := range addressLookupTable.Addresses {
+					if bytes.Equal(address, account.PublicKey) {
+						isDynamicallyLoaded = true
+
+						if account.IsWritable {
+							writableAddressTableIndexes[i] = append(writableAddressTableIndexes[i], byte(j))
+						} else {
+							readonlyAddressTableIndexes[i] = append(readonlyAddressTableIndexes[i], byte(j))
+						}
+
+						break
+					}
+				}
+
+				if isDynamicallyLoaded {
+					break
+				}
+			}
+		}
+		if isDynamicallyLoaded {
+			continue
+		}
+
+		// Otherwise, the account is defined statically
 		m.Accounts = append(m.Accounts, account.PublicKey)
 
 		if account.IsSigner {
@@ -80,19 +141,56 @@ func NewTransaction(payer ed25519.PublicKey, instructions ...Instruction) Transa
 		}
 	}
 
+	// Consolidate static and dynamically loaded accounts into an ordered list,
+	// which is used for index references encoded in the message
+	dynamicWritableAccounts := make([]ed25519.PublicKey, 0)
+	dynamicReadonlyAccount := make([]ed25519.PublicKey, 0)
+	for i, writableAddressTableIndexes := range writableAddressTableIndexes {
+		for _, index := range writableAddressTableIndexes {
+			writableAccount := sortedAddressLookupTables[i].Addresses[index]
+			dynamicWritableAccounts = append(dynamicWritableAccounts, writableAccount)
+		}
+	}
+	for i, readonlyAddressTableIndexes := range readonlyAddressTableIndexes {
+		for _, index := range readonlyAddressTableIndexes {
+			readonlyAccount := sortedAddressLookupTables[i].Addresses[index]
+			dynamicReadonlyAccount = append(dynamicReadonlyAccount, readonlyAccount)
+		}
+	}
+	var allAccounts []ed25519.PublicKey
+	allAccounts = append(allAccounts, m.Accounts...)
+	allAccounts = append(allAccounts, dynamicWritableAccounts...)
+	allAccounts = append(allAccounts, dynamicReadonlyAccount...)
+
 	// Generate the compiled instruction, which uses indices instead
 	// of raw account keys.
 	for _, i := range instructions {
 		c := CompiledInstruction{
-			ProgramIndex: byte(indexOf(m.Accounts, i.Program)),
+			ProgramIndex: byte(indexOf(allAccounts, i.Program)),
 			Data:         i.Data,
 		}
 
 		for _, a := range i.Accounts {
-			c.Accounts = append(c.Accounts, byte(indexOf(m.Accounts, a.PublicKey)))
+			c.Accounts = append(c.Accounts, byte(indexOf(allAccounts, a.PublicKey)))
 		}
 
 		m.Instructions = append(m.Instructions, c)
+	}
+
+	// Generate the compiled message address table lookups
+	for i, addressLookupTable := range sortedAddressLookupTables {
+		if len(writableAddressTableIndexes[i]) == 0 && len(readonlyAddressTableIndexes[i]) == 0 {
+			continue
+		}
+
+		m.AddressTableLookups = append(m.AddressTableLookups, MessageAddressTableLookup{
+			PublicKey:       addressLookupTable.PublicKey,
+			WritableIndexes: writableAddressTableIndexes[i],
+			ReadonlyIndexes: readonlyAddressTableIndexes[i],
+		})
+	}
+	if len(m.AddressTableLookups) > 0 {
+		m.version = MessageVersion0
 	}
 
 	for i := range m.Accounts {
@@ -118,11 +216,12 @@ func (t *Transaction) String() string {
 		sb.WriteString(fmt.Sprintf("  %d: %s\n", i, base58.Encode(s[:])))
 	}
 	sb.WriteString("Message:\n")
+	sb.WriteString(fmt.Sprintf("  Version: %s\n", t.Message.version.String()))
 	sb.WriteString("  Header:\n")
 	sb.WriteString(fmt.Sprintf("    NumSignatures: %d\n", t.Message.Header.NumSignatures))
 	sb.WriteString(fmt.Sprintf("    NumReadOnly: %d\n", t.Message.Header.NumReadOnly))
 	sb.WriteString(fmt.Sprintf("    NumReadOnlySigned: %d\n", t.Message.Header.NumReadonlySigned))
-	sb.WriteString("  Accounts:\n")
+	sb.WriteString("  Static Accounts:\n")
 	for i, a := range t.Message.Accounts {
 		sb.WriteString(fmt.Sprintf("    %d: %s\n", i, base58.Encode(a)))
 	}
@@ -133,7 +232,14 @@ func (t *Transaction) String() string {
 		sb.WriteString(fmt.Sprintf("      Accounts: %v\n", t.Message.Instructions[i].Accounts))
 		sb.WriteString(fmt.Sprintf("      Data: %v\n", t.Message.Instructions[i].Data))
 	}
-
+	if len(t.Message.AddressTableLookups) > 0 {
+		sb.WriteString("  Address Table Lookups:\n")
+		for i := range t.Message.AddressTableLookups {
+			sb.WriteString(fmt.Sprintf("    %s:\n", base58.Encode(t.Message.AddressTableLookups[i].PublicKey)))
+			sb.WriteString(fmt.Sprintf("      Writable Indexes: %v\n", t.Message.AddressTableLookups[i].WritableIndexes))
+			sb.WriteString(fmt.Sprintf("      Readonly Indexes: %v\n", t.Message.AddressTableLookups[i].ReadonlyIndexes))
+		}
+	}
 	return sb.String()
 }
 
@@ -197,4 +303,14 @@ func indexOf(slice []ed25519.PublicKey, item ed25519.PublicKey) int {
 	}
 
 	return -1
+}
+
+func (v MessageVersion) String() string {
+	switch v {
+	case MessageVersionLegacy:
+		return "legacy"
+	case MessageVersion0:
+		return "v0"
+	}
+	return "unknown"
 }
