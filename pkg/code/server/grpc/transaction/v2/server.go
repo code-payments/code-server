@@ -19,6 +19,7 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
+	flipchat_intent "github.com/code-payments/flipchat-server/intent"
 )
 
 type transactionServer struct {
@@ -58,6 +59,8 @@ type transactionServer struct {
 
 	feeCollector *common.Account
 
+	customIntentHandlers map[string]flipchat_intent.CustomHandler
+
 	transactionpb.UnimplementedTransactionServer
 }
 
@@ -68,6 +71,7 @@ func NewTransactionServer(
 	messagingClient messaging.InternalMessageClient,
 	maxmind *maxminddb.Reader,
 	antispamGuard *antispam.Guard,
+	customIntentHandlers map[string]flipchat_intent.CustomHandler,
 	configProvider ConfigProvider,
 ) transactionpb.TransactionServer {
 	ctx := context.Background()
@@ -97,6 +101,8 @@ func NewTransactionServer(
 		intentLocks:   sync_util.NewStripedLock(stripedLockParallelization),
 		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
+
+		customIntentHandlers: customIntentHandlers,
 	}
 
 	s.treasuryPoolNameByBaseAmount = map[uint64]string{

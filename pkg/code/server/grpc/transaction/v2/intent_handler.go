@@ -36,6 +36,7 @@ import (
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
 	push_lib "github.com/code-payments/code-server/pkg/push"
+	flipchat_intent "github.com/code-payments/flipchat-server/intent"
 )
 
 var accountTypesToOpen = []commonpb.AccountType{
@@ -1324,11 +1325,12 @@ func (h *UpgradePrivacyIntentHandler) GetCachedUpgradeTarget(protoAction *transa
 }
 
 type SendPublicPaymentIntentHandler struct {
-	conf          *conf
-	data          code_data.Provider
-	pusher        push_lib.Provider
-	antispamGuard *antispam.Guard
-	maxmind       *maxminddb.Reader
+	conf                 *conf
+	data                 code_data.Provider
+	pusher               push_lib.Provider
+	antispamGuard        *antispam.Guard
+	maxmind              *maxminddb.Reader
+	customIntentHandlers map[string]flipchat_intent.CustomHandler
 }
 
 func NewSendPublicPaymentIntentHandler(
@@ -1337,13 +1339,15 @@ func NewSendPublicPaymentIntentHandler(
 	pusher push_lib.Provider,
 	antispamGuard *antispam.Guard,
 	maxmind *maxminddb.Reader,
+	customIntentHandlers map[string]flipchat_intent.CustomHandler,
 ) CreateIntentHandler {
 	return &SendPublicPaymentIntentHandler{
-		conf:          conf,
-		data:          data,
-		pusher:        pusher,
-		antispamGuard: antispamGuard,
-		maxmind:       maxmind,
+		conf:                 conf,
+		data:                 data,
+		pusher:               pusher,
+		antispamGuard:        antispamGuard,
+		maxmind:              maxmind,
+		customIntentHandlers: customIntentHandlers,
 	}
 }
 
@@ -1526,7 +1530,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 7: Validate extended payment metadata
 	//
 
-	return h.validateExtendedMetadata(ctx, typedMetadata)
+	return h.validateExtendedMetadata(ctx, intentRecord)
 }
 
 func (h *SendPublicPaymentIntentHandler) validateActions(
@@ -1646,31 +1650,59 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 }
 
 // todo: we'll want something more generic useable across all intent types
-func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(_ context.Context, metadata *transactionpb.SendPublicPaymentMetadata) error {
-	if metadata.ExtendedMetadata == nil {
+func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(ctx context.Context, intentRecord *intent.Record) error {
+	if len(intentRecord.ExtendedMetadata) == 0 {
 		return nil
 	}
 
-	untyped, err := anypb.UnmarshalNew(metadata.ExtendedMetadata.Value, proto.UnmarshalOptions{})
+	var extendedMetadata transactionpb.ExtendedPaymentMetadata
+	if err := proto.Unmarshal(intentRecord.ExtendedMetadata, &extendedMetadata); err != nil {
+		return err
+	}
+
+	untyped, err := anypb.UnmarshalNew(extendedMetadata.Value, proto.UnmarshalOptions{})
 	if err != nil {
 		return err
 	}
 
+	customMetadataProtoName := string(proto.MessageName(untyped))
+	customHandler, ok := h.customIntentHandlers[customMetadataProtoName]
+	if !ok {
+		return errors.Errorf("custom handler not defined for %s", customMetadataProtoName)
+	}
+
+	// todo: bring these interfaces into code-server for a proper generic solution
+	var customValidationResult *flipchat_intent.ValidationResult
 	switch typed := untyped.(type) {
 	case *flipchat_chatpb.StartGroupChatPaymentMetadata:
 		if err := typed.Validate(); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 
-		// todo: more extensive validation against the FC server
+		customValidationResult, err = customHandler.Validate(ctx, intentRecord, typed)
+		if err != nil {
+			return err
+		}
 	case *flipchat_chatpb.JoinChatPaymentMetadata:
 		if err := typed.Validate(); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 
-		// todo: more extensive validation against the FC server
+		customValidationResult, err = customHandler.Validate(ctx, intentRecord, typed)
+		if err != nil {
+			return err
+		}
 	default:
 		return newIntentValidationError("unsupported extended metadata proto type")
+	}
+
+	switch customValidationResult.StatusCode {
+	case flipchat_intent.SUCCESS:
+		return nil
+	case flipchat_intent.INVALID:
+		return newIntentValidationError(customValidationResult.ErrorDescription)
+	case flipchat_intent.DENIED:
+		return newIntentDeniedError(customValidationResult.ErrorDescription)
 	}
 
 	return nil

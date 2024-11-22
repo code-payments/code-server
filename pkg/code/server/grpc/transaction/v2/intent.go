@@ -114,7 +114,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		intentHasNewOwner = true
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
-		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind)
+		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.pusher, s.antispamGuard, s.maxmind, s.customIntentHandlers)
 	/*
 		case *transactionpb.Metadata_SendPrivatePayment:
 			log = log.WithField("intent_type", "send_private_payment")
