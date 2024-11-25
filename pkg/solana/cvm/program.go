@@ -14,8 +14,7 @@ var (
 )
 
 var (
-	// todo: setup real program address
-	PROGRAM_ADDRESS = mustBase58Decode("vmT2hAx4N2U6DyjYxgQHER4VGC8tHJCfHNsSepBKCJZ")
+	PROGRAM_ADDRESS = mustBase58Decode("vmZ1WUq8SxjBWcaeTCvgJRZbS84R61uniFsQy5YMRTJ")
 	PROGRAM_ID      = ed25519.PublicKey(PROGRAM_ADDRESS)
 )
 
