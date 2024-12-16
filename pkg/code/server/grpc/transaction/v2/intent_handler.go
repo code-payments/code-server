@@ -129,10 +129,11 @@ type OpenAccountsIntentHandler struct {
 	data                    code_data.Provider
 	antispamGuard           *antispam.Guard
 	antispamSuccessCallback func() error
+	customAntispamGuard     flipchat_intent.CustomAntispamGuard
 	maxmind                 *maxminddb.Reader
 }
 
-func NewOpenAccountsIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard, maxmind *maxminddb.Reader) CreateIntentHandler {
+func NewOpenAccountsIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard, customAntispamGuard flipchat_intent.CustomAntispamGuard, maxmind *maxminddb.Reader) CreateIntentHandler {
 	return &OpenAccountsIntentHandler{
 		conf:          conf,
 		data:          data,
@@ -205,6 +206,13 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 			return newIntentDeniedErrorWithAntispamReason(reason, "antispam guard denied account creation")
 		}
 		h.antispamSuccessCallback = successCallback
+
+		allow, reasonString, err := h.customAntispamGuard.AllowOpenAccounts(ctx, initiatiorOwnerAccount)
+		if err != nil {
+			return err
+		} else if !allow {
+			return newIntentDeniedError(reasonString)
+		}
 	}
 
 	//
@@ -1329,6 +1337,7 @@ type SendPublicPaymentIntentHandler struct {
 	data                 code_data.Provider
 	pusher               push_lib.Provider
 	antispamGuard        *antispam.Guard
+	customAntispamGuard  flipchat_intent.CustomAntispamGuard
 	maxmind              *maxminddb.Reader
 	customIntentHandlers map[string]flipchat_intent.CustomHandler
 }
@@ -1338,6 +1347,7 @@ func NewSendPublicPaymentIntentHandler(
 	data code_data.Provider,
 	pusher push_lib.Provider,
 	antispamGuard *antispam.Guard,
+	customAntispamGuard flipchat_intent.CustomAntispamGuard,
 	maxmind *maxminddb.Reader,
 	customIntentHandlers map[string]flipchat_intent.CustomHandler,
 ) CreateIntentHandler {
@@ -1346,6 +1356,7 @@ func NewSendPublicPaymentIntentHandler(
 		data:                 data,
 		pusher:               pusher,
 		antispamGuard:        antispamGuard,
+		customAntispamGuard:  customAntispamGuard,
 		maxmind:              maxmind,
 		customIntentHandlers: customIntentHandlers,
 	}
@@ -1470,6 +1481,13 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 			return err
 		} else if !allow {
 			return ErrTooManyPayments
+		}
+
+		allow, reasonString, err := h.customAntispamGuard.AllowSendPayment(ctx, initiatiorOwnerAccount, true)
+		if err != nil {
+			return err
+		} else if !allow {
+			return newIntentDeniedError(reasonString)
 		}
 	}
 

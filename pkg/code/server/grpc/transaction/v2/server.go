@@ -59,6 +59,7 @@ type transactionServer struct {
 
 	feeCollector *common.Account
 
+	customAntispamGuard  flipchat_intent.CustomAntispamGuard
 	customIntentHandlers map[string]flipchat_intent.CustomHandler
 
 	transactionpb.UnimplementedTransactionServer
@@ -71,6 +72,7 @@ func NewTransactionServer(
 	messagingClient messaging.InternalMessageClient,
 	maxmind *maxminddb.Reader,
 	antispamGuard *antispam.Guard,
+	customAntispamGuard flipchat_intent.CustomAntispamGuard,
 	customIntentHandlers map[string]flipchat_intent.CustomHandler,
 	configProvider ConfigProvider,
 ) transactionpb.TransactionServer {
@@ -102,6 +104,7 @@ func NewTransactionServer(
 		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
 
+		customAntispamGuard:  customAntispamGuard,
 		customIntentHandlers: customIntentHandlers,
 	}
 

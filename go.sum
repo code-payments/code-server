@@ -98,12 +98,10 @@ github.com/code-payments/code-protobuf-api v1.18.1-0.20241113145645-72417e3e3c84
 github.com/code-payments/code-protobuf-api v1.18.1-0.20241113145645-72417e3e3c84/go.mod h1:4ZB8HDgE0YEGkjb00v7qfg9lWIQWTmhbbOYkuEOzaa8=
 github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba h1:Bkp+gmeb6Y2PWXfkSCTMBGWkb2P1BujRDSjWeI+0j5I=
 github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba/go.mod h1:jSiifpiBpyBQ8q2R0MGEbkSgWC6sbdRTyDBntmW+j1E=
-github.com/code-payments/flipchat-protobuf-api v0.0.0-20241121181219-b109532594c0 h1:KpeBOBQpuLhak7u6Y2anly4Ih8EIL9UduH0fbrQzP6s=
-github.com/code-payments/flipchat-protobuf-api v0.0.0-20241121181219-b109532594c0/go.mod h1:UvfwYdQalPa0FCfJVSuhMg2N+RXtmR6dUqbArayKP8U=
-github.com/code-payments/flipchat-server v0.0.0-20241122181454-afecd8a6b753 h1:fL+UB8KSEA3Gx7XAZ47cXkuIh0iYOaWpSsczkkb+LEk=
-github.com/code-payments/flipchat-server v0.0.0-20241122181454-afecd8a6b753/go.mod h1:ItzmqG9DP+ZPnolM+Wa768MzdhK4517B+T0HmjJgU/Q=
-github.com/code-payments/flipchat-server v0.0.0-20241122183426-db602a27572e h1:owkVzto+m+8Fo6aJZNrQ4pCcL0X9lZlpapJ+JSYGb8Y=
-github.com/code-payments/flipchat-server v0.0.0-20241122183426-db602a27572e/go.mod h1:ItzmqG9DP+ZPnolM+Wa768MzdhK4517B+T0HmjJgU/Q=
+github.com/code-payments/flipchat-protobuf-api v0.0.0-20241216184556-2e9f7af81dff h1:4SPH6OywQT33UACK0D22GCHsHdTEKbnROKUS3h0CD60=
+github.com/code-payments/flipchat-protobuf-api v0.0.0-20241216184556-2e9f7af81dff/go.mod h1:UvfwYdQalPa0FCfJVSuhMg2N+RXtmR6dUqbArayKP8U=
+github.com/code-payments/flipchat-server v0.0.0-20241216191640-95b79528368c h1:mm51t7+vY9hoyfBm9aBFLGCc5BaZMGJzmmIwMoto2sk=
+github.com/code-payments/flipchat-server v0.0.0-20241216191640-95b79528368c/go.mod h1:t3IxR/fhgHcBwjry7N+tXIR9aQn4B20MEEXjTpeYX3k=
 github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6 h1:NmTXa/uVnDyp0TY5MKi197+3HWcnYWfnHGyaFthlnGw=
 github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6/go.mod h1:GL3xCUCBDV3CZiTSEKksMWbLE66hEyuu9qyDOOqM47Y=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
