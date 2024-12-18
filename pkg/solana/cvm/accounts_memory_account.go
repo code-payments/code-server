@@ -36,8 +36,9 @@ const MemoryAccountSize = (8 + // discriminator
 	32 + // vm
 	MaxMemoryAccountNameLength + // name
 	1 + // bump
-	6 + // padding
-	1) // layout
+	1 + // version
+	2 + // account_size
+	4) // num_accounts
 
 var MemoryAccountDiscriminator = []byte{byte(AccountTypeMemory), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
@@ -75,7 +76,7 @@ func (obj *MemoryAccount) Unmarshal(data []byte) error {
 		default:
 			return errors.New("unsupported memory layout")
 		}
-		obj.NumAccounts = V0NumAccounts
+		obj.NumAccounts = MemoryV0NumAccounts
 
 	case MemoryVersionV1:
 		getUint16(data, &obj.AccountSize, &offset)
@@ -101,52 +102,23 @@ func (obj *MemoryAccount) String() string {
 }
 
 func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
-	if len(data) < MemoryAccountSize {
-		return ErrInvalidAccountData
+	var memoryAccount MemoryAccount
+	if err := memoryAccount.Unmarshal(data); err != nil {
+		return err
 	}
 
-	var offset int
-
-	var discriminator []byte
-	getDiscriminator(data, &discriminator, &offset)
-	if !bytes.Equal(discriminator, MemoryAccountDiscriminator) {
-		return ErrInvalidAccountData
-	}
-
-	getKey(data, &obj.Vm, &offset)
-	getFixedString(data, &obj.Name, MaxMemoryAccountNameLength, &offset)
-	getUint8(data, &obj.Bump, &offset)
-	getMemoryVersion(data, &obj.Version, &offset)
-
-	switch obj.Version {
-	case MemoryVersionV0:
-		var layout MemoryLayout
-		offset += 5 // padding
-		getMemoryLayout(data, &layout, &offset)
-
-		switch layout {
-		case MemoryLayoutTimelock:
-			obj.AccountSize = uint16(GetVirtualAccountSizeInMemory(VirtualAccountTypeTimelock))
-		case MemoryLayoutNonce:
-			obj.AccountSize = uint16(GetVirtualAccountSizeInMemory(VirtualAccountTypeDurableNonce))
-		case MemoryLayoutRelay:
-			obj.AccountSize = uint16(GetVirtualAccountSizeInMemory(VirtualAccountTypeRelay))
-		default:
-			return errors.New("unsupported memory layout")
-		}
-		obj.NumAccounts = V0NumAccounts
-
-	case MemoryVersionV1:
-		getUint16(data, &obj.AccountSize, &offset)
-		getUint32(data, &obj.NumAccounts, &offset)
-
-	default:
-		return errors.New("invalid memory account version")
-	}
+	obj.Vm = memoryAccount.Vm
+	obj.Name = memoryAccount.Name
+	obj.Bump = memoryAccount.Bump
+	obj.Version = memoryAccount.Version
+	obj.AccountSize = memoryAccount.AccountSize
+	obj.NumAccounts = memoryAccount.NumAccounts
 
 	if len(data) < MemoryAccountSize+GetSimpleMemoryAllocatorSize(int(obj.NumAccounts), int(obj.AccountSize)) {
 		return ErrInvalidAccountData
 	}
+
+	offset := MemoryAccountSize
 	getSimpleMemoryAllocator(data, &obj.Data, int(obj.NumAccounts), int(obj.AccountSize), &offset)
 
 	return nil
