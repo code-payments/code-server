@@ -7,13 +7,13 @@ import (
 	"github.com/mr-tron/base58"
 )
 
-type SimpleMemoryAllocator struct {
+type SliceAllocator struct {
 	State ItemStateArray
 	Data  [][]byte
 }
 
-func (obj *SimpleMemoryAllocator) Unmarshal(data []byte, capacity, itemSize int) error {
-	if len(data) < GetSimpleMemoryAllocatorSize(capacity, itemSize) {
+func (obj *SliceAllocator) Unmarshal(data []byte, capacity, itemSize int) error {
+	if len(data) < GetSliceAllocatorSize(capacity, itemSize) {
 		return ErrInvalidAccountData
 	}
 
@@ -30,19 +30,19 @@ func (obj *SimpleMemoryAllocator) Unmarshal(data []byte, capacity, itemSize int)
 	return nil
 }
 
-func getSimpleMemoryAllocator(src []byte, dst *SimpleMemoryAllocator, capacity, itemSize int, offset *int) {
+func getSliceAllocator(src []byte, dst *SliceAllocator, capacity, itemSize int, offset *int) {
 	dst.Unmarshal(src[*offset:], capacity, itemSize)
-	*offset += GetSimpleMemoryAllocatorSize(capacity, itemSize)
+	*offset += GetSliceAllocatorSize(capacity, itemSize)
 }
 
-func (obj *SimpleMemoryAllocator) IsAllocated(index int) bool {
+func (obj *SliceAllocator) IsAllocated(index int) bool {
 	if index >= len(obj.State) {
 		return false
 	}
 	return obj.State[index] == ItemStateAllocated
 }
 
-func (obj *SimpleMemoryAllocator) Read(index int) ([]byte, bool) {
+func (obj *SliceAllocator) Read(index int) ([]byte, bool) {
 	if !obj.IsAllocated(index) {
 		return nil, false
 	}
@@ -52,7 +52,7 @@ func (obj *SimpleMemoryAllocator) Read(index int) ([]byte, bool) {
 	return copied, true
 }
 
-func (obj *SimpleMemoryAllocator) String() string {
+func (obj *SliceAllocator) String() string {
 	dataStringValues := make([]string, len(obj.Data))
 	for i := 0; i < len(obj.Data); i++ {
 		dataStringValues[i] = base58.Encode(obj.Data[i])
@@ -60,13 +60,13 @@ func (obj *SimpleMemoryAllocator) String() string {
 	dataString := fmt.Sprintf("[%s]", strings.Join(dataStringValues, ","))
 
 	return fmt.Sprintf(
-		"SimpleMemoryAllocator{state=%s,data=%s}",
+		"SliceAllocator{state=%s,data=%s}",
 		obj.State.String(),
 		dataString,
 	)
 }
 
-func GetSimpleMemoryAllocatorSize(capacity, itemSize int) int {
+func GetSliceAllocatorSize(capacity, itemSize int) int {
 	return (capacity*ItemStateSize + // state
 		capacity*itemSize) // data
 }
