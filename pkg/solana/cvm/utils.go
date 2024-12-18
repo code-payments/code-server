@@ -107,6 +107,10 @@ func putUint32(dst []byte, v uint32, offset *int) {
 	binary.LittleEndian.PutUint32(dst[*offset:], v)
 	*offset += 4
 }
+func getUint32(src []byte, dst *uint32, offset *int) {
+	*dst = binary.LittleEndian.Uint32(src[*offset:])
+	*offset += 4
+}
 
 func putUint64(dst []byte, v uint64, offset *int) {
 	binary.LittleEndian.PutUint64(dst[*offset:], v)

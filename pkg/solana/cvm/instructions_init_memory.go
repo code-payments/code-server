@@ -8,13 +8,15 @@ import (
 
 const (
 	InitMemoryInstructionArgsSize = (MaxMemoryAccountNameLength + // name
-		1 + // layout
+		4 + // num_accounts
+		2 + // account_size
 		1) // vm_memory_bump
 )
 
 type InitMemoryInstructionArgs struct {
 	Name         string
-	Layout       MemoryLayout
+	NumAccounts  uint32
+	AccountSize  uint16
 	VmMemoryBump uint8
 }
 
@@ -35,7 +37,8 @@ func NewInitMemoryInstruction(
 
 	putCodeInstruction(data, CodeInstructionInitMemory, &offset)
 	putFixedString(data, args.Name, MaxMemoryAccountNameLength, &offset)
-	putMemoryLayout(data, args.Layout, &offset)
+	putUint32(data, args.NumAccounts, &offset)
+	putUint16(data, args.AccountSize, &offset)
 	putUint8(data, args.VmMemoryBump, &offset)
 
 	return solana.Instruction{
