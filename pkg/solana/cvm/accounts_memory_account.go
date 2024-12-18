@@ -29,7 +29,7 @@ type MemoryAccountWithData struct {
 	Version     MemoryVersion
 	AccountSize uint16
 	NumAccounts uint32
-	Data        SimpleMemoryAllocator // todo: support other implementations
+	Data        SliceAllocator // todo: support other implementations
 }
 
 const MemoryAccountSize = (8 + // discriminator
@@ -114,12 +114,12 @@ func (obj *MemoryAccountWithData) Unmarshal(data []byte) error {
 	obj.AccountSize = memoryAccount.AccountSize
 	obj.NumAccounts = memoryAccount.NumAccounts
 
-	if len(data) < MemoryAccountSize+GetSimpleMemoryAllocatorSize(int(obj.NumAccounts), int(obj.AccountSize)) {
+	if len(data) < MemoryAccountSize+GetSliceAllocatorSize(int(obj.NumAccounts), int(obj.AccountSize)) {
 		return ErrInvalidAccountData
 	}
 
 	offset := MemoryAccountSize
-	getSimpleMemoryAllocator(data, &obj.Data, int(obj.NumAccounts), int(obj.AccountSize), &offset)
+	getSliceAllocator(data, &obj.Data, int(obj.NumAccounts), int(obj.AccountSize), &offset)
 
 	return nil
 }
