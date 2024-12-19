@@ -135,10 +135,11 @@ type OpenAccountsIntentHandler struct {
 
 func NewOpenAccountsIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard, customAntispamGuard flipchat_intent.CustomAntispamGuard, maxmind *maxminddb.Reader) CreateIntentHandler {
 	return &OpenAccountsIntentHandler{
-		conf:          conf,
-		data:          data,
-		antispamGuard: antispamGuard,
-		maxmind:       maxmind,
+		conf:                conf,
+		data:                data,
+		antispamGuard:       antispamGuard,
+		customAntispamGuard: customAntispamGuard,
+		maxmind:             maxmind,
 	}
 }
 
