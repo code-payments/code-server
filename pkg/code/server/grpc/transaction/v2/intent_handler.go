@@ -18,6 +18,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 	flipchat_chatpb "github.com/code-payments/flipchat-protobuf-api/generated/go/chat/v1"
+	flipchat_messagingpb "github.com/code-payments/flipchat-protobuf-api/generated/go/messaging/v1"
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	"github.com/code-payments/code-server/pkg/code/balance"
@@ -1703,6 +1704,15 @@ func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(ctx context.Co
 			return err
 		}
 	case *flipchat_chatpb.JoinChatPaymentMetadata:
+		if err := typed.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+
+		customValidationResult, err = customHandler.Validate(ctx, intentRecord, typed)
+		if err != nil {
+			return err
+		}
+	case *flipchat_messagingpb.SendTipMessagePaymentMetadata:
 		if err := typed.Validate(); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}

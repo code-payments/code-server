@@ -8,7 +8,7 @@ require (
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
 	github.com/code-payments/code-protobuf-api v1.18.1-0.20241113145645-72417e3e3c84
 	github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba
-	github.com/code-payments/flipchat-protobuf-api v0.0.0-20241216184556-2e9f7af81dff
+	github.com/code-payments/flipchat-protobuf-api v0.0.0-20250110190306-bcbdc39585ad
 	github.com/code-payments/flipchat-server v0.0.0-20241219175855-77aaf5961530
 	github.com/dghubble/oauth1 v0.7.3
 	github.com/emirpasic/gods v1.12.0
