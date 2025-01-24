@@ -1721,6 +1721,15 @@ func (h *SendPublicPaymentIntentHandler) validateExtendedMetadata(ctx context.Co
 		if err != nil {
 			return err
 		}
+	case *flipchat_messagingpb.SendMessageAsListenerPaymentMetadata:
+		if err := typed.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+
+		customValidationResult, err = customHandler.Validate(ctx, intentRecord, typed)
+		if err != nil {
+			return err
+		}
 	default:
 		return newIntentValidationError("unsupported extended metadata proto type")
 	}
