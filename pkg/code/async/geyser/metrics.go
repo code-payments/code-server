@@ -35,11 +35,11 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 		case <-time.After(delay):
 			start := time.Now()
 
-			p.recordSubscriptionStatusPollingEvent(ctx)
-			p.recordEventWorkerStatusPollingEvent(ctx)
-			p.recordEventQueueStatusPollingEvent(ctx)
+			//p.recordSubscriptionStatusPollingEvent(ctx)
+			//p.recordEventWorkerStatusPollingEvent(ctx)
+			//p.recordEventQueueStatusPollingEvent(ctx)
 			p.recordBackupWorkerStatusPollingEvent(ctx)
-			p.recordBackupQueueStatusPollingEvent(ctx)
+			//p.recordBackupQueueStatusPollingEvent(ctx)
 
 			delay = time.Second - time.Since(start)
 		}
@@ -109,22 +109,30 @@ func (p *service) recordBackupWorkerStatusPollingEvent(ctx context.Context) {
 	p.metricStatusLock.Lock()
 	defer p.metricStatusLock.Unlock()
 
+	timelockMetrics := map[string]interface{}{
+		"worker_type": timelockStateWorkerName,
+		"is_active":   p.backupTimelockStateWorkerStatus,
+	}
+	if p.oldestTimelockRecord != nil {
+		timelockMetrics["oldest_record_age"] = int(time.Since(*p.oldestTimelockRecord) / time.Second)
+		p.oldestTimelockRecord = nil
+	}
 	metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
-		"worker_type":                       timelockStateWorkerName,
-		"is_active":                         p.backupTimelockStateWorkerStatus,
-		"unlocked_timelock_accounts_synced": p.unlockedTimelockAccountsSynced,
+		"worker_type": timelockStateWorkerName,
+		"is_active":   p.backupTimelockStateWorkerStatus,
 	})
-	p.unlockedTimelockAccountsSynced = false
 
-	metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
-		"worker_type": externalDepositWorkerName,
-		"is_active":   p.backupExternalDepositWorkerStatus,
-	})
+	/*
+		metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
+			"worker_type": externalDepositWorkerName,
+			"is_active":   p.backupExternalDepositWorkerStatus,
+		})
 
-	metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
-		"worker_type": messagingWorkerName,
-		"is_active":   p.backupMessagingWorkerStatus,
-	})
+		metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
+			"worker_type": messagingWorkerName,
+			"is_active":   p.backupMessagingWorkerStatus,
+		})
+	*/
 }
 
 func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {

@@ -19,11 +19,8 @@ const (
 	ProgramUpdateQueueSizeConfigEnvName = envConfigPrefix + "PROGRAM_UPDATE_QUEUE_SIZE"
 	defaultProgramUpdateQueueSize       = 1_000_000
 
-	BackupTimelockWorkerDaysCheckedConfigEnvName = envConfigPrefix + "BACKUP_TIMELOCK_WORKER_DAYS_CHECKED"
-	defaultBackupTimelockWorkerDaysChecked       = 5
-
 	BackupTimelockWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_TIMELOCK_WORKER_INTERVAL"
-	defaultBackupTimelockWorkerInterval       = 8 * time.Hour
+	defaultBackupTimelockWorkerInterval       = 1 * time.Minute
 
 	BackupExternalDepositWorkerCountConfigEnvName = envConfigPrefix + "BACKUP_EXTERNAL_DEPOSIT_WORKER_COUNT"
 	defaultBackupExternalDepositWorkerCount       = 32
@@ -50,8 +47,7 @@ type conf struct {
 	backupExternalDepositWorkerCount    config.Uint64
 	backupExternalDepositWorkerInterval config.Duration
 
-	backupTimelockWorkerDaysChecked config.Uint64
-	backupTimelockWorkerInterval    config.Duration
+	backupTimelockWorkerInterval config.Duration
 
 	messagingFeeCollectorPublicKey config.String
 	backupMessagingWorkerInterval  config.Duration
@@ -74,8 +70,7 @@ func WithEnvConfigs() ConfigProvider {
 			backupExternalDepositWorkerCount:    env.NewUint64Config(BackupExternalDepositWorkerCountConfigEnvName, defaultBackupExternalDepositWorkerCount),
 			backupExternalDepositWorkerInterval: env.NewDurationConfig(BackupExternalDepositWorkerIntervalConfigEnvName, defaultBackupExternalDepositWorkerInterval),
 
-			backupTimelockWorkerDaysChecked: env.NewUint64Config(BackupTimelockWorkerDaysCheckedConfigEnvName, defaultBackupTimelockWorkerDaysChecked),
-			backupTimelockWorkerInterval:    env.NewDurationConfig(BackupTimelockWorkerIntervalConfigEnvName, defaultBackupTimelockWorkerInterval),
+			backupTimelockWorkerInterval: env.NewDurationConfig(BackupTimelockWorkerIntervalConfigEnvName, defaultBackupTimelockWorkerInterval),
 
 			messagingFeeCollectorPublicKey: env.NewStringConfig(MessagingFeeCollectorPublicKeyConfigEnvName, defaultMessagingFeeCollectorPublicKey),
 			backupMessagingWorkerInterval:  env.NewDurationConfig(BackupMessagingWorkerIntervalConfigEnvName, defaultBackupMessagingWorkerInterval),

@@ -26,7 +26,7 @@ type Record struct {
 	VaultAddress string
 	VaultBump    uint8
 	VaultOwner   string
-	VaultState   timelock_token_v1.TimelockState
+	VaultState   timelock_token_v1.TimelockState // Uses the original Timelock account state since the CVM only defines enum states for unlock
 
 	UnlockAt *uint64
 
