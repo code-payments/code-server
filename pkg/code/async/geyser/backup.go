@@ -54,7 +54,7 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 					timelock_token.StateLocked,
 					query.WithDirection(query.Ascending),
 					query.WithCursor(cursor),
-					query.WithLimit(100),
+					query.WithLimit(256),
 				)
 				if err == timelock.ErrTimelockNotFound {
 					p.metricStatusLock.Lock()

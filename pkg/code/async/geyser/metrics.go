@@ -117,10 +117,7 @@ func (p *service) recordBackupWorkerStatusPollingEvent(ctx context.Context) {
 		timelockMetrics["oldest_record_age"] = int(time.Since(*p.oldestTimelockRecord) / time.Second)
 		p.oldestTimelockRecord = nil
 	}
-	metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
-		"worker_type": timelockStateWorkerName,
-		"is_active":   p.backupTimelockStateWorkerStatus,
-	})
+	metrics.RecordEvent(ctx, backupWorkerStatusEventName, timelockMetrics)
 
 	/*
 		metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
