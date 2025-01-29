@@ -121,6 +121,11 @@ func getUint64(src []byte, dst *uint64, offset *int) {
 	*offset += 8
 }
 
+func getInt64(src []byte, dst *int64, offset *int) {
+	*dst = int64(binary.LittleEndian.Uint64(src[*offset:]))
+	*offset += 8
+}
+
 func toFixedString(value string, length int) string {
 	fixed := make([]byte, length)
 	copy(fixed, []byte(value))

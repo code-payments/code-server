@@ -2,12 +2,16 @@ package async_geyser
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // Backup system workers can be found here. This is necessary because we can't rely
@@ -32,6 +36,8 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 	}()
 
 	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
+	cursor := query.EmptyCursor
+	oldestRecord := time.Now()
 	for {
 		select {
 		case <-time.After(delay):
@@ -41,15 +47,51 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_timelock_state_worker")
 				defer m.End()
-				//tracedCtx := newrelic.NewContext(serviceCtx, m)
+				tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				jobSucceeded := false
+				timelockRecords, err := p.data.GetAllTimelocksByState(
+					tracedCtx,
+					timelock_token.StateLocked,
+					query.WithDirection(query.Ascending),
+					query.WithCursor(cursor),
+					query.WithLimit(100),
+				)
+				if err == timelock.ErrTimelockNotFound {
+					p.metricStatusLock.Lock()
+					p.oldestTimelockRecord = &oldestRecord
+					p.metricStatusLock.Unlock()
 
-				// todo: implement me
+					cursor = query.EmptyCursor
+					oldestRecord = time.Now()
+					return
+				} else if err != nil {
+					log.WithError(err).Warn("failed to get timelock records")
+					return
+				}
 
-				p.metricStatusLock.Lock()
-				p.unlockedTimelockAccountsSynced = jobSucceeded
-				p.metricStatusLock.Unlock()
+				var wg sync.WaitGroup
+				for _, timelockRecord := range timelockRecords {
+					wg.Add(1)
+
+					if timelockRecord.LastUpdatedAt.Before(oldestRecord) {
+						oldestRecord = timelockRecord.LastUpdatedAt
+					}
+
+					go func(timelockRecord *timelock.Record) {
+						defer wg.Done()
+
+						log := log.WithField("timelock", timelockRecord.Address)
+
+						err := updateTimelockAccountRecord(tracedCtx, p.data, timelockRecord)
+						if err != nil {
+							log.WithError(err).Warn("failed to update timelock account")
+						}
+					}(timelockRecord)
+				}
+
+				wg.Wait()
+
+				cursor = query.ToCursor(timelockRecords[len(timelockRecords)-1].Id)
 			}()
 
 			delay = interval - time.Since(start)
