@@ -33,6 +33,7 @@ import (
 	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
 	push_lib "github.com/code-payments/code-server/pkg/push"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var accountTypesToOpen = []commonpb.AccountType{
@@ -218,7 +219,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	// Part 4: Validate the individual actions
 	//
 
-	err = h.validateActions(initiatiorOwnerAccount, actions)
+	err = h.validateActions(ctx, initiatiorOwnerAccount, actions)
 	if err != nil {
 		return err
 	}
@@ -239,7 +240,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	return validateFeePayments(ctx, h.data, intentRecord, simResult)
 }
 
-func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
+func (h *OpenAccountsIntentHandler) validateActions(ctx context.Context, initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
 	expectedActionCount := len(accountTypesToOpen)
 	if len(actions) != expectedActionCount {
 		return newIntentValidationErrorf("expected %d total actions", expectedActionCount)
@@ -282,6 +283,10 @@ func (h *OpenAccountsIntentHandler) validateActions(initiatiorOwnerAccount *comm
 
 		if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
 			return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
+		}
+
+		if err := validateTimelockUnlockStateDoesntExist(ctx, h.data, openAction.GetOpenAccount()); err != nil {
+			return err
 		}
 	}
 
@@ -758,6 +763,8 @@ func (h *SendPrivatePaymentIntentHandler) validateActions(
 		}
 
 		err = validateGiftCardAccountOpened(
+			ctx,
+			h.data,
 			initiatorOwnerAccount,
 			initiatorAccountsByType,
 			destination,
@@ -2137,10 +2144,10 @@ func (h *EstablishRelationshipIntentHandler) AllowCreation(ctx context.Context, 
 	// Part 8: Validate the individual actions
 	//
 
-	return h.validateActions(initiatiorOwnerAccount, actions)
+	return h.validateActions(ctx, initiatiorOwnerAccount, actions)
 }
 
-func (h *EstablishRelationshipIntentHandler) validateActions(initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
+func (h *EstablishRelationshipIntentHandler) validateActions(ctx context.Context, initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
 	if len(actions) != 1 {
 		return newIntentValidationError("expected 1 action")
 	}
@@ -2164,6 +2171,10 @@ func (h *EstablishRelationshipIntentHandler) validateActions(initiatiorOwnerAcco
 
 	if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
 		return newActionValidationErrorf(openAction, "authority cannot be %s", initiatiorOwnerAccount.PublicKey().ToBase58())
+	}
+
+	if err := validateTimelockUnlockStateDoesntExist(ctx, h.data, openAction.GetOpenAccount()); err != nil {
+		return err
 	}
 
 	return nil
@@ -2476,6 +2487,8 @@ func validateNextTemporaryAccountOpened(
 
 // Assumes only one gift card account is opened per intent
 func validateGiftCardAccountOpened(
+	ctx context.Context,
+	data code_data.Provider,
 	initiatorOwnerAccount *common.Account,
 	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	expectedGiftCardVault *common.Account,
@@ -2522,6 +2535,10 @@ func validateGiftCardAccountOpened(
 
 	if !bytes.Equal(openAction.GetOpenAccount().Token.Value, derivedVaultAccount.PublicKey().ToBytes()) {
 		return newActionValidationErrorf(openAction, "token must be %s", derivedVaultAccount.PublicKey().ToBase58())
+	}
+
+	if err := validateTimelockUnlockStateDoesntExist(ctx, data, openAction.GetOpenAccount()); err != nil {
+		return err
 	}
 
 	return nil
@@ -2859,6 +2876,28 @@ func validateTipDestination(ctx context.Context, data code_data.Provider, tipped
 	}
 
 	return nil
+}
+
+func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.Provider, openAction *transactionpb.OpenAccountAction) error {
+	authorityAccount, err := common.NewAccountFromProto(openAction.Authority)
+	if err != nil {
+		return err
+	}
+
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	if err != nil {
+		return err
+	}
+
+	_, err = data.GetBlockchainAccountInfo(ctx, timelockAccounts.Unlock.PublicKey().ToBase58(), solana.CommitmentFinalized)
+	switch err {
+	case nil:
+		return newIntentDeniedError("an account being opened has already initiated an unlock")
+	case solana.ErrNoAccountInfo:
+		return nil
+	default:
+		return err
+	}
 }
 
 func getExpectedTimelockVaultFromProtoAccount(authorityProto *commonpb.SolanaAccountId) (*common.Account, error) {
