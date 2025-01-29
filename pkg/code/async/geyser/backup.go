@@ -37,7 +37,7 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 
 	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
 	cursor := query.EmptyCursor
-	oldestRecord := time.Now()
+	oldestRecordTs := time.Now()
 	for {
 		select {
 		case <-time.After(delay):
@@ -58,11 +58,12 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 				)
 				if err == timelock.ErrTimelockNotFound {
 					p.metricStatusLock.Lock()
-					p.oldestTimelockRecord = &oldestRecord
+					copiedTs := oldestRecordTs
+					p.oldestTimelockRecord = &copiedTs
 					p.metricStatusLock.Unlock()
 
 					cursor = query.EmptyCursor
-					oldestRecord = time.Now()
+					oldestRecordTs = time.Now()
 					return
 				} else if err != nil {
 					log.WithError(err).Warn("failed to get timelock records")
@@ -73,8 +74,8 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 				for _, timelockRecord := range timelockRecords {
 					wg.Add(1)
 
-					if timelockRecord.LastUpdatedAt.Before(oldestRecord) {
-						oldestRecord = timelockRecord.LastUpdatedAt
+					if timelockRecord.LastUpdatedAt.Before(oldestRecordTs) {
+						oldestRecordTs = timelockRecord.LastUpdatedAt
 					}
 
 					go func(timelockRecord *timelock.Record) {
