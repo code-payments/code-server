@@ -49,6 +49,30 @@ func GetCompactWithdrawMessage(args *GetCompactWithdrawMessageArgs) CompactMessa
 	return hashMessage(message)
 }
 
+type GetCompactAirdropMessageArgs struct {
+	Source       ed25519.PublicKey
+	Destinations []ed25519.PublicKey
+	Amount       uint64
+	NonceAddress ed25519.PublicKey
+	NonceValue   Hash
+}
+
+func GetCompactAirdropMessage(args *GetCompactAirdropMessageArgs) CompactMessage {
+	amountBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(amountBytes, args.Amount)
+
+	var message Message
+	message = append(message, []byte("airdrop")...)
+	message = append(message, args.Source...)
+	message = append(message, args.NonceAddress...)
+	message = append(message, args.NonceValue[:]...)
+	message = append(message, amountBytes...)
+	for _, destination := range args.Destinations {
+		message = append(message, destination...)
+	}
+	return hashMessage(message)
+}
+
 func hashMessage(msg Message) CompactMessage {
 	h := sha256.New()
 	h.Write(msg)
