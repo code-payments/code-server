@@ -14,6 +14,8 @@ const (
 	OpcodeExternalRelay    Opcode = 20
 
 	OpcodeConditionalTransfer Opcode = 12
+
+	OpcodeAirdrop Opcode = 30
 )
 
 func putOpcode(dst []byte, v Opcode, offset *int) {
