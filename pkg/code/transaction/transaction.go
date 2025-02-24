@@ -101,7 +101,7 @@ func MakeInternalWithdrawTransaction(
 	destinationMemory *common.Account,
 	destinationIndex uint16,
 ) (solana.Transaction, error) {
-	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
+	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -145,7 +145,7 @@ func MakeExternalWithdrawTransaction(
 
 	externalDestination *common.Account,
 ) (solana.Transaction, error) {
-	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory)
+	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -194,7 +194,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
-	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
+	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -240,7 +240,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 	externalDestination *common.Account,
 	kinAmountInQuarks uint64,
 ) (solana.Transaction, error) {
-	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory)
+	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -294,7 +294,7 @@ func MakeInternalTreasuryAdvanceTransaction(
 	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
 	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
 
-	mergedMemoryBanks, err := mergeMemoryBanks(accountMemory, relayMemory)
+	mergedMemoryBanks, err := MergeMemoryBanks(accountMemory, relayMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -401,7 +401,7 @@ func MakeCashChequeTransaction(
 	treasuryPoolPublicKeyBytes := ed25519.PublicKey(treasuryPool.PublicKey().ToBytes())
 	treasuryPoolVaultPublicKeyBytes := ed25519.PublicKey(treasuryPoolVault.PublicKey().ToBytes())
 
-	mergedMemoryBanks, err := mergeMemoryBanks(nonceMemory, sourceMemory, relayMemory)
+	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory, relayMemory)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -434,7 +434,7 @@ func MakeCashChequeTransaction(
 	return MakeNoncedTransaction(nonce, bh, execInstruction)
 }
 
-type mergedMemoryBankResult struct {
+type MergedMemoryBankResult struct {
 	A       *ed25519.PublicKey
 	B       *ed25519.PublicKey
 	C       *ed25519.PublicKey
@@ -442,7 +442,7 @@ type mergedMemoryBankResult struct {
 	Indices []uint8
 }
 
-func mergeMemoryBanks(accounts ...*common.Account) (*mergedMemoryBankResult, error) {
+func MergeMemoryBanks(accounts ...*common.Account) (*MergedMemoryBankResult, error) {
 	indices := make([]uint8, len(accounts))
 	orderedBanks := make([]*ed25519.PublicKey, 4)
 
@@ -466,7 +466,7 @@ func mergeMemoryBanks(accounts ...*common.Account) (*mergedMemoryBankResult, err
 		}
 	}
 
-	return &mergedMemoryBankResult{
+	return &MergedMemoryBankResult{
 		A:       orderedBanks[0],
 		B:       orderedBanks[1],
 		C:       orderedBanks[2],
