@@ -84,7 +84,7 @@ func TestVmTransaction_MergedMemoryBanks_HappyPath(t *testing.T) {
 	account2 := testutil.NewRandomAccount(t)
 	account3 := testutil.NewRandomAccount(t)
 
-	res, err := mergeMemoryBanks(account1, account1, account2, account3, account2)
+	res, err := MergeMemoryBanks(account1, account1, account2, account3, account2)
 	require.NoError(t, err)
 
 	assert.EqualValues(t, account1.PublicKey().ToBytes(), *res.A)
@@ -96,6 +96,6 @@ func TestVmTransaction_MergedMemoryBanks_HappyPath(t *testing.T) {
 }
 
 func TestVmTransaction_MergedMemoryBanks_TooManyAccounts(t *testing.T) {
-	_, err := mergeMemoryBanks(testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t))
+	_, err := MergeMemoryBanks(testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t), testutil.NewRandomAccount(t))
 	assert.Error(t, err)
 }
