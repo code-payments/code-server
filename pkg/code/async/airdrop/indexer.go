@@ -10,6 +10,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 )
 
+var (
+	errNotIndexed = errors.New("virtual account is not indexed")
+)
+
 func (p *service) getVirtualTimelockAccountMemoryLocation(ctx context.Context, vm, owner *common.Account) (*common.Account, uint16, error) {
 	resp, err := p.vmIndexerClient.GetVirtualTimelockAccounts(ctx, &indexerpb.GetVirtualTimelockAccountsRequest{
 		VmAccount: &indexerpb.Address{Value: vm.PublicKey().ToBytes()},
@@ -17,6 +21,8 @@ func (p *service) getVirtualTimelockAccountMemoryLocation(ctx context.Context, v
 	})
 	if err != nil {
 		return nil, 0, err
+	} else if resp.Result == indexerpb.GetVirtualTimelockAccountsResponse_NOT_FOUND {
+		return nil, 0, errNotIndexed
 	} else if resp.Result != indexerpb.GetVirtualTimelockAccountsResponse_OK {
 		return nil, 0, errors.Errorf("received rpc result %s", resp.Result.String())
 	}
