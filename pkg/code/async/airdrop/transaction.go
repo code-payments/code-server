@@ -204,7 +204,7 @@ func (p *service) watchTxn(ctx context.Context, sig string) (*solana.ConfirmedTr
 }
 
 func (p *service) onSuccess(ctx context.Context, txn *solana.ConfirmedTransaction, amount uint64, owners ...*common.Account) error {
-	var usdMarketValue float64
+	usdMarketValue := 0.001
 	usdExchangeRateRecord, err := p.data.GetExchangeRate(ctx, currency.USD, *txn.BlockTime)
 	if err == nil {
 		usdMarketValue = usdExchangeRateRecord.Rate * float64(amount)
