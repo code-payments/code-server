@@ -38,7 +38,9 @@ func (p *service) airdropToOwners(ctx context.Context, amount uint64, owners ...
 	destinationsByMemory := make(map[string][]*destinationInMemory)
 	for _, owner := range owners {
 		memory, index, err := p.getVirtualTimelockAccountMemoryLocation(ctx, common.CodeVmAccount, owner)
-		if err != nil {
+		if err == errNotIndexed {
+			continue
+		} else if err != nil {
 			return err
 		}
 
