@@ -21,7 +21,7 @@ import (
 
 const (
 	maxAirdropsInVixn = 50
-	maxAirdropsInTxn  = 200
+	maxAirdropsInTxn  = 150
 
 	cuLimitPerVixn = 200_000
 
