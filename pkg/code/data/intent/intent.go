@@ -4,10 +4,7 @@ import (
 	"errors"
 	"time"
 
-	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
-
 	"github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/phone"
 )
 
 var (
@@ -29,19 +26,19 @@ const (
 type Type uint8
 
 const (
-	UnknownType Type = iota
-	LegacyPayment
-	LegacyCreateAccount
+	UnknownType         Type = iota
+	LegacyPayment            // Deprecated pre-2022 privacy flow
+	LegacyCreateAccount      // Deprecated pre-2022 privacy flow
 	OpenAccounts
-	SendPrivatePayment
-	ReceivePaymentsPrivately
-	SaveRecentRoot
-	MigrateToPrivacy2022
+	SendPrivatePayment       // Deprecated privacy flow
+	ReceivePaymentsPrivately // Deprecated privacy flow
+	SaveRecentRoot           // Deprecated privacy flow
+	MigrateToPrivacy2022     // Deprecated privacy flow
 	ExternalDeposit
 	SendPublicPayment
 	ReceivePaymentsPublicly
-	EstablishRelationship
-	Login
+	EstablishRelationship // Deprecated privacy flow
+	Login                 // Deprecated login flow
 )
 
 type Record struct {
@@ -51,93 +48,21 @@ type Record struct {
 	IntentType Type
 
 	InitiatorOwnerAccount string
-	InitiatorPhoneNumber  *string
 
-	// Intents v2 metadatum
-	OpenAccountsMetadata             *OpenAccountsMetadata
-	SendPrivatePaymentMetadata       *SendPrivatePaymentMetadata
-	ReceivePaymentsPrivatelyMetadata *ReceivePaymentsPrivatelyMetadata
-	SaveRecentRootMetadata           *SaveRecentRootMetadata
-	MigrateToPrivacy2022Metadata     *MigrateToPrivacy2022Metadata
-	ExternalDepositMetadata          *ExternalDepositMetadata
-	SendPublicPaymentMetadata        *SendPublicPaymentMetadata
-	ReceivePaymentsPubliclyMetadata  *ReceivePaymentsPubliclyMetadata
-	EstablishRelationshipMetadata    *EstablishRelationshipMetadata
-	LoginMetadata                    *LoginMetadata
+	OpenAccountsMetadata            *OpenAccountsMetadata
+	ExternalDepositMetadata         *ExternalDepositMetadata
+	SendPublicPaymentMetadata       *SendPublicPaymentMetadata
+	ReceivePaymentsPubliclyMetadata *ReceivePaymentsPubliclyMetadata
 
-	// Deprecated intents v1 metadatum
-	MoneyTransferMetadata     *MoneyTransferMetadata
-	AccountManagementMetadata *AccountManagementMetadata
+	ExtendedMetadata []byte
 
 	State State
 
 	CreatedAt time.Time
 }
 
-type MoneyTransferMetadata struct {
-	Source      string
-	Destination string
-
-	Quantity uint64
-
-	ExchangeCurrency currency.Code
-	ExchangeRate     float64
-	UsdMarketValue   float64
-
-	IsWithdrawal bool
-}
-
-type AccountManagementMetadata struct {
-	TokenAccount string
-}
-
 type OpenAccountsMetadata struct {
 	// Nothing yet
-}
-
-type SendPrivatePaymentMetadata struct {
-	DestinationOwnerAccount string
-	DestinationTokenAccount string
-	Quantity                uint64
-
-	ExchangeCurrency currency.Code
-	ExchangeRate     float64
-	NativeAmount     float64
-	UsdMarketValue   float64
-
-	IsWithdrawal   bool
-	IsRemoteSend   bool
-	IsMicroPayment bool
-	IsTip          bool
-	IsChat         bool
-
-	// Set when IsTip = true
-	TipMetadata *TipMetadata
-
-	// Set when IsChat = true
-	ChatId string
-}
-
-type TipMetadata struct {
-	Platform transactionpb.TippedUser_Platform
-	Username string
-}
-
-type ReceivePaymentsPrivatelyMetadata struct {
-	Source    string
-	Quantity  uint64
-	IsDeposit bool
-
-	UsdMarketValue float64
-}
-
-type SaveRecentRootMetadata struct {
-	TreasuryPool           string
-	PreviousMostRecentRoot string
-}
-
-type MigrateToPrivacy2022Metadata struct {
-	Quantity uint64
 }
 
 type ExternalDepositMetadata struct {
@@ -180,60 +105,15 @@ type ReceivePaymentsPubliclyMetadata struct {
 	UsdMarketValue float64
 }
 
-type EstablishRelationshipMetadata struct {
-	RelationshipTo string
-}
-
-type LoginMetadata struct {
-	App    string
-	UserId string
-}
-
 func (r *Record) IsCompleted() bool {
 	return r.State == StateConfirmed
 }
 
 func (r *Record) Clone() Record {
-	var moneyTransferMetadata *MoneyTransferMetadata
-	if r.MoneyTransferMetadata != nil {
-		cloned := r.MoneyTransferMetadata.Clone()
-		moneyTransferMetadata = &cloned
-	}
-
-	var accountManagementMetadata *AccountManagementMetadata
-	if r.AccountManagementMetadata != nil {
-		cloned := r.AccountManagementMetadata.Clone()
-		accountManagementMetadata = &cloned
-	}
-
 	var openAccountsMetadata *OpenAccountsMetadata
 	if r.OpenAccountsMetadata != nil {
 		cloned := r.OpenAccountsMetadata.Clone()
 		openAccountsMetadata = &cloned
-	}
-
-	var sendPrivatePaymentMetadata *SendPrivatePaymentMetadata
-	if r.SendPrivatePaymentMetadata != nil {
-		cloned := r.SendPrivatePaymentMetadata.Clone()
-		sendPrivatePaymentMetadata = &cloned
-	}
-
-	var receivePaymentsPrivatelyMetadata *ReceivePaymentsPrivatelyMetadata
-	if r.ReceivePaymentsPrivatelyMetadata != nil {
-		cloned := r.ReceivePaymentsPrivatelyMetadata.Clone()
-		receivePaymentsPrivatelyMetadata = &cloned
-	}
-
-	var saveRecentRootMetadata *SaveRecentRootMetadata
-	if r.SaveRecentRootMetadata != nil {
-		cloned := r.SaveRecentRootMetadata.Clone()
-		saveRecentRootMetadata = &cloned
-	}
-
-	var migrateToPrivacy2022Metadata *MigrateToPrivacy2022Metadata
-	if r.MigrateToPrivacy2022Metadata != nil {
-		cloned := r.MigrateToPrivacy2022Metadata.Clone()
-		migrateToPrivacy2022Metadata = &cloned
 	}
 
 	var externalDepositMetadata *ExternalDepositMetadata
@@ -254,24 +134,6 @@ func (r *Record) Clone() Record {
 		receivePaymentsPubliclyMetadata = &cloned
 	}
 
-	var establishRelationshipMetadata *EstablishRelationshipMetadata
-	if r.EstablishRelationshipMetadata != nil {
-		cloned := r.EstablishRelationshipMetadata.Clone()
-		establishRelationshipMetadata = &cloned
-	}
-
-	var loginMetadata *LoginMetadata
-	if r.LoginMetadata != nil {
-		cloned := r.LoginMetadata.Clone()
-		loginMetadata = &cloned
-	}
-
-	var initiatorPhoneNumber *string
-	if r.InitiatorPhoneNumber != nil {
-		value := *r.InitiatorPhoneNumber
-		initiatorPhoneNumber = &value
-	}
-
 	return Record{
 		Id: r.Id,
 
@@ -279,21 +141,13 @@ func (r *Record) Clone() Record {
 		IntentType: r.IntentType,
 
 		InitiatorOwnerAccount: r.InitiatorOwnerAccount,
-		InitiatorPhoneNumber:  initiatorPhoneNumber,
 
-		OpenAccountsMetadata:             openAccountsMetadata,
-		SendPrivatePaymentMetadata:       sendPrivatePaymentMetadata,
-		ReceivePaymentsPrivatelyMetadata: receivePaymentsPrivatelyMetadata,
-		SaveRecentRootMetadata:           saveRecentRootMetadata,
-		MigrateToPrivacy2022Metadata:     migrateToPrivacy2022Metadata,
-		ExternalDepositMetadata:          externalDepositMetadata,
-		SendPublicPaymentMetadata:        sendPublicPaymentMetadata,
-		ReceivePaymentsPubliclyMetadata:  receivePaymentsPubliclyMetadata,
-		EstablishRelationshipMetadata:    establishRelationshipMetadata,
-		LoginMetadata:                    loginMetadata,
+		OpenAccountsMetadata:            openAccountsMetadata,
+		ExternalDepositMetadata:         externalDepositMetadata,
+		SendPublicPaymentMetadata:       sendPublicPaymentMetadata,
+		ReceivePaymentsPubliclyMetadata: receivePaymentsPubliclyMetadata,
 
-		MoneyTransferMetadata:     moneyTransferMetadata,
-		AccountManagementMetadata: accountManagementMetadata,
+		ExtendedMetadata: r.ExtendedMetadata,
 
 		State: r.State,
 
@@ -308,20 +162,13 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IntentType = r.IntentType
 
 	dst.InitiatorOwnerAccount = r.InitiatorOwnerAccount
-	dst.InitiatorPhoneNumber = r.InitiatorPhoneNumber
 
 	dst.OpenAccountsMetadata = r.OpenAccountsMetadata
-	dst.SendPrivatePaymentMetadata = r.SendPrivatePaymentMetadata
-	dst.ReceivePaymentsPrivatelyMetadata = r.ReceivePaymentsPrivatelyMetadata
-	dst.SaveRecentRootMetadata = r.SaveRecentRootMetadata
-	dst.MigrateToPrivacy2022Metadata = r.MigrateToPrivacy2022Metadata
+	dst.ExternalDepositMetadata = r.ExternalDepositMetadata
 	dst.SendPublicPaymentMetadata = r.SendPublicPaymentMetadata
 	dst.ReceivePaymentsPubliclyMetadata = r.ReceivePaymentsPubliclyMetadata
-	dst.EstablishRelationshipMetadata = r.EstablishRelationshipMetadata
-	dst.LoginMetadata = r.LoginMetadata
 
-	dst.MoneyTransferMetadata = r.MoneyTransferMetadata
-	dst.AccountManagementMetadata = r.AccountManagementMetadata
+	dst.ExtendedMetadata = r.ExtendedMetadata
 
 	dst.State = r.State
 
@@ -341,82 +188,12 @@ func (r *Record) Validate() error {
 		return errors.New("initiator owner account is required")
 	}
 
-	if r.InitiatorPhoneNumber != nil && !phone.IsE164Format(*r.InitiatorPhoneNumber) {
-		return errors.New("initiator phone number doesn't match E.164 format")
-	}
-
-	if r.IntentType == LegacyPayment {
-		if r.MoneyTransferMetadata == nil {
-			return errors.New("money transfer metadata must be present")
-		}
-
-		err := r.MoneyTransferMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	if r.IntentType == LegacyCreateAccount {
-		if r.AccountManagementMetadata == nil {
-			return errors.New("account management metadata must be present")
-		}
-
-		err := r.AccountManagementMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
 	if r.IntentType == OpenAccounts {
 		if r.OpenAccountsMetadata == nil {
 			return errors.New("open accounts metadata must be present")
 		}
 
 		err := r.OpenAccountsMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	if r.IntentType == SendPrivatePayment {
-		if r.SendPrivatePaymentMetadata == nil {
-			return errors.New("send private payment metadata must be present")
-		}
-
-		err := r.SendPrivatePaymentMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	if r.IntentType == ReceivePaymentsPrivately {
-		if r.ReceivePaymentsPrivatelyMetadata == nil {
-			return errors.New("receive payments privately metadata must be present")
-		}
-
-		err := r.ReceivePaymentsPrivatelyMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	if r.IntentType == SaveRecentRoot {
-		if r.SaveRecentRootMetadata == nil {
-			return errors.New("save recent root metadata must be present")
-		}
-
-		err := r.SaveRecentRootMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	if r.IntentType == MigrateToPrivacy2022 {
-		if r.MigrateToPrivacy2022Metadata == nil {
-			return errors.New("migrate to privacy 2022 metadata must be present")
-		}
-
-		err := r.MigrateToPrivacy2022Metadata.Validate()
 		if err != nil {
 			return err
 		}
@@ -455,96 +232,6 @@ func (r *Record) Validate() error {
 		}
 	}
 
-	if r.IntentType == EstablishRelationship {
-		if r.EstablishRelationshipMetadata == nil {
-			return errors.New("establish relationship metadata must be present")
-		}
-
-		err := r.EstablishRelationshipMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	if r.IntentType == Login {
-		if r.LoginMetadata == nil {
-			return errors.New("login metadata must be present")
-		}
-
-		err := r.LoginMetadata.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *MoneyTransferMetadata) Clone() MoneyTransferMetadata {
-	return MoneyTransferMetadata{
-		Source:           m.Source,
-		Destination:      m.Destination,
-		Quantity:         m.Quantity,
-		ExchangeCurrency: m.ExchangeCurrency,
-		ExchangeRate:     m.ExchangeRate,
-		UsdMarketValue:   m.UsdMarketValue,
-		IsWithdrawal:     m.IsWithdrawal,
-	}
-}
-
-func (m *MoneyTransferMetadata) CopyTo(dst *MoneyTransferMetadata) {
-	dst.Source = m.Source
-	dst.Destination = m.Destination
-	dst.Quantity = m.Quantity
-	dst.ExchangeCurrency = m.ExchangeCurrency
-	dst.ExchangeRate = m.ExchangeRate
-	dst.UsdMarketValue = m.UsdMarketValue
-	dst.IsWithdrawal = m.IsWithdrawal
-}
-
-func (m *MoneyTransferMetadata) Validate() error {
-	if len(m.Source) == 0 {
-		return errors.New("payment source is required")
-	}
-
-	if len(m.Destination) == 0 {
-		return errors.New("payment destination is required")
-	}
-
-	if m.Quantity == 0 {
-		return errors.New("payment quantity cannot be zero")
-	}
-
-	if len(m.ExchangeCurrency) == 0 {
-		return errors.New("payment exchange currency is required")
-	}
-
-	if m.ExchangeRate == 0 {
-		return errors.New("payment exchange rate cannot be zero")
-	}
-
-	if m.UsdMarketValue == 0 {
-		return errors.New("payment usd market value cannot be zero")
-	}
-
-	return nil
-}
-
-func (m *AccountManagementMetadata) Clone() AccountManagementMetadata {
-	return AccountManagementMetadata{
-		TokenAccount: m.TokenAccount,
-	}
-}
-
-func (m *AccountManagementMetadata) CopyTo(dst *AccountManagementMetadata) {
-	dst.TokenAccount = m.TokenAccount
-}
-
-func (m *AccountManagementMetadata) Validate() error {
-	if len(m.TokenAccount) == 0 {
-		return errors.New("created token account is required")
-	}
-
 	return nil
 }
 
@@ -556,188 +243,6 @@ func (m *OpenAccountsMetadata) CopyTo(dst *OpenAccountsMetadata) {
 }
 
 func (m *OpenAccountsMetadata) Validate() error {
-	return nil
-}
-
-func (m *SendPrivatePaymentMetadata) Clone() SendPrivatePaymentMetadata {
-	var tipMetadata *TipMetadata
-	if m.TipMetadata != nil {
-		tipMetadata = &TipMetadata{
-			Platform: m.TipMetadata.Platform,
-			Username: m.TipMetadata.Username,
-		}
-	}
-
-	return SendPrivatePaymentMetadata{
-		DestinationOwnerAccount: m.DestinationOwnerAccount,
-		DestinationTokenAccount: m.DestinationTokenAccount,
-		Quantity:                m.Quantity,
-
-		ExchangeCurrency: m.ExchangeCurrency,
-		ExchangeRate:     m.ExchangeRate,
-		NativeAmount:     m.NativeAmount,
-		UsdMarketValue:   m.UsdMarketValue,
-
-		IsWithdrawal:   m.IsWithdrawal,
-		IsRemoteSend:   m.IsRemoteSend,
-		IsMicroPayment: m.IsMicroPayment,
-		IsTip:          m.IsTip,
-		IsChat:         m.IsChat,
-
-		TipMetadata: tipMetadata,
-		ChatId:      m.ChatId,
-	}
-}
-
-func (m *SendPrivatePaymentMetadata) CopyTo(dst *SendPrivatePaymentMetadata) {
-	var tipMetadata *TipMetadata
-	if m.TipMetadata != nil {
-		tipMetadata = &TipMetadata{
-			Platform: m.TipMetadata.Platform,
-			Username: m.TipMetadata.Username,
-		}
-	}
-
-	dst.DestinationOwnerAccount = m.DestinationOwnerAccount
-	dst.DestinationTokenAccount = m.DestinationTokenAccount
-	dst.Quantity = m.Quantity
-
-	dst.ExchangeCurrency = m.ExchangeCurrency
-	dst.ExchangeRate = m.ExchangeRate
-	dst.NativeAmount = m.NativeAmount
-	dst.UsdMarketValue = m.UsdMarketValue
-
-	dst.IsWithdrawal = m.IsWithdrawal
-	dst.IsRemoteSend = m.IsRemoteSend
-	dst.IsMicroPayment = m.IsMicroPayment
-	dst.IsTip = m.IsTip
-	dst.IsChat = m.IsChat
-
-	dst.TipMetadata = tipMetadata
-	dst.ChatId = m.ChatId
-}
-
-func (m *SendPrivatePaymentMetadata) Validate() error {
-	if len(m.DestinationTokenAccount) == 0 {
-		return errors.New("destination token account is required")
-	}
-
-	if m.Quantity == 0 {
-		return errors.New("quantity cannot be zero")
-	}
-
-	if len(m.ExchangeCurrency) == 0 {
-		return errors.New("exchange currency is required")
-	}
-
-	if m.ExchangeRate == 0 {
-		return errors.New("exchange rate cannot be zero")
-	}
-
-	if m.NativeAmount == 0 {
-		return errors.New("native amount cannot be zero")
-	}
-
-	if m.UsdMarketValue == 0 {
-		return errors.New("usd market value cannot be zero")
-	}
-
-	if m.IsTip {
-		if m.TipMetadata == nil {
-			return errors.New("tip metadata required for tips")
-		}
-
-		if m.TipMetadata.Platform == transactionpb.TippedUser_UNKNOWN {
-			return errors.New("tip platform is required")
-		}
-
-		if len(m.TipMetadata.Username) == 0 {
-			return errors.New("tip username is required")
-		}
-	} else if m.TipMetadata != nil {
-		return errors.New("tip metadata can only be set for tips")
-	}
-
-	if m.IsChat {
-		if len(m.ChatId) == 0 {
-			return errors.New("chat_id required for chat")
-		}
-	} else if m.ChatId != "" {
-		return errors.New("chat_id can only be set for chats")
-	}
-
-	return nil
-}
-
-func (m *ReceivePaymentsPrivatelyMetadata) Clone() ReceivePaymentsPrivatelyMetadata {
-	return ReceivePaymentsPrivatelyMetadata{
-		Source:    m.Source,
-		Quantity:  m.Quantity,
-		IsDeposit: m.IsDeposit,
-
-		UsdMarketValue: m.UsdMarketValue,
-	}
-}
-
-func (m *ReceivePaymentsPrivatelyMetadata) CopyTo(dst *ReceivePaymentsPrivatelyMetadata) {
-	dst.Source = m.Source
-	dst.Quantity = m.Quantity
-	dst.IsDeposit = m.IsDeposit
-
-	dst.UsdMarketValue = m.UsdMarketValue
-}
-
-func (m *ReceivePaymentsPrivatelyMetadata) Validate() error {
-	if len(m.Source) == 0 {
-		return errors.New("source is required")
-	}
-
-	if m.Quantity == 0 {
-		return errors.New("quantity cannot be zero")
-	}
-
-	if m.UsdMarketValue == 0 {
-		return errors.New("usd market value cannot be zero")
-	}
-
-	return nil
-}
-
-func (m *SaveRecentRootMetadata) Clone() SaveRecentRootMetadata {
-	return SaveRecentRootMetadata{
-		TreasuryPool:           m.TreasuryPool,
-		PreviousMostRecentRoot: m.PreviousMostRecentRoot,
-	}
-}
-
-func (m *SaveRecentRootMetadata) CopyTo(dst *SaveRecentRootMetadata) {
-	dst.TreasuryPool = m.TreasuryPool
-	dst.PreviousMostRecentRoot = m.PreviousMostRecentRoot
-}
-
-func (m *SaveRecentRootMetadata) Validate() error {
-	if len(m.TreasuryPool) == 0 {
-		return errors.New("treasury pool is required")
-	}
-
-	if len(m.PreviousMostRecentRoot) == 0 {
-		return errors.New("previous most recent root is required")
-	}
-
-	return nil
-}
-
-func (m *MigrateToPrivacy2022Metadata) Clone() MigrateToPrivacy2022Metadata {
-	return MigrateToPrivacy2022Metadata{
-		Quantity: m.Quantity,
-	}
-}
-
-func (m *MigrateToPrivacy2022Metadata) CopyTo(dst *MigrateToPrivacy2022Metadata) {
-	dst.Quantity = m.Quantity
-}
-
-func (m *MigrateToPrivacy2022Metadata) Validate() error {
 	return nil
 }
 
@@ -884,48 +389,6 @@ func (m *ReceivePaymentsPubliclyMetadata) Validate() error {
 
 	if m.UsdMarketValue == 0 {
 		return errors.New("usd market value cannot be zero")
-	}
-
-	return nil
-}
-
-func (m *EstablishRelationshipMetadata) Clone() EstablishRelationshipMetadata {
-	return EstablishRelationshipMetadata{
-		RelationshipTo: m.RelationshipTo,
-	}
-}
-
-func (m *EstablishRelationshipMetadata) CopyTo(dst *EstablishRelationshipMetadata) {
-	dst.RelationshipTo = m.RelationshipTo
-}
-
-func (m *EstablishRelationshipMetadata) Validate() error {
-	if len(m.RelationshipTo) == 0 {
-		return errors.New("relationship is required")
-	}
-
-	return nil
-}
-
-func (m *LoginMetadata) Clone() LoginMetadata {
-	return LoginMetadata{
-		App:    m.App,
-		UserId: m.UserId,
-	}
-}
-
-func (m *LoginMetadata) CopyTo(dst *LoginMetadata) {
-	dst.App = m.App
-	dst.UserId = m.UserId
-}
-
-func (m *LoginMetadata) Validate() error {
-	if len(m.App) == 0 {
-		return errors.New("app is required")
-	}
-
-	if len(m.UserId) == 0 {
-		return errors.New("user is required")
 	}
 
 	return nil

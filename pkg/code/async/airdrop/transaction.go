@@ -214,7 +214,7 @@ func (p *service) onSuccess(ctx context.Context, txn *solana.ConfirmedTransactio
 
 	var vaults []*common.Account
 	for _, owner := range owners {
-		timelockAccounts, err := owner.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+		timelockAccounts, err := owner.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
 		if err != nil {
 			return err
 		}

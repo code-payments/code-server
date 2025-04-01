@@ -1,5 +1,8 @@
 package example
 
+// Example uses deprecated service
+
+/*
 import (
 	"context"
 	"sync"
@@ -185,3 +188,4 @@ func (r Result) Mismatch() bool {
 func (r Result) Cached() bool {
 	return (r>>16)&0x02 == 2
 }
+*/

@@ -15,19 +15,15 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
 	"github.com/code-payments/code-server/pkg/code/data/onramp"
-	"github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
-	push_lib "github.com/code-payments/code-server/pkg/push"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/usdc"
 )
@@ -42,7 +38,7 @@ var (
 	syncedDepositCache = cache.NewCache(1_000_000)
 )
 
-func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.Provider, pusher push_lib.Provider, vault *common.Account) error {
+func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.Provider, vault *common.Account) error {
 	signatures, err := findPotentialExternalDeposits(ctx, data, vault)
 	if err != nil {
 		return errors.Wrap(err, "error finding potential external deposits")
@@ -50,7 +46,7 @@ func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.
 
 	var anyError error
 	for _, signature := range signatures {
-		err := processPotentialExternalDeposit(ctx, conf, data, pusher, signature, vault)
+		err := processPotentialExternalDeposit(ctx, conf, data, signature, vault)
 		if err != nil {
 			anyError = errors.Wrap(err, "error processing signature for external deposit")
 		}
@@ -114,7 +110,7 @@ func findPotentialExternalDeposits(ctx context.Context, data code_data.Provider,
 	return nil, errors.New("not implemented")
 }
 
-func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_data.Provider, pusher push_lib.Provider, signature string, tokenAccount *common.Account) error {
+func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_data.Provider, signature string, tokenAccount *common.Account) error {
 	/*
 		// Avoid reprocessing deposits we've recently seen and processed. Particularly,
 		// the backup process will likely be triggered in frequent bursts, so this is
@@ -701,7 +697,6 @@ func delayedUsdcDepositProcessing(
 	ctx context.Context,
 	conf *conf,
 	data code_data.Provider,
-	pusher push_lib.Provider,
 	ownerAccount *common.Account,
 	tokenAccount *common.Account,
 	signature string,
@@ -747,29 +742,6 @@ func delayedUsdcDepositProcessing(
 		if isCodeSwap {
 			return
 		}
-	}
-
-	chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, blockTime)
-	if err != nil {
-		return
-	}
-
-	canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, ownerAccount, chatMessage)
-	switch err {
-	case nil:
-		if canPush {
-			push.SendChatMessagePushNotification(
-				ctx,
-				data,
-				pusher,
-				chat_util.KinPurchasesName,
-				ownerAccount,
-				chatMessage,
-			)
-		}
-	case chat.ErrMessageAlreadyExists:
-	default:
-		return
 	}
 }
 

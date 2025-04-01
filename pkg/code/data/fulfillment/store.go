@@ -65,11 +65,6 @@ type Store interface {
 	// MarkAsActivelyScheduled marks a fulfillment as actively scheduled
 	MarkAsActivelyScheduled(ctx context.Context, id uint64) error
 
-	// ActivelyScheduleTreasuryAdvances is a specialized MarkAsActivelyScheduled variant
-	// to batch enable active scheduling for treasury advances at a particular point in time
-	// defined by the intent ordering index.
-	ActivelyScheduleTreasuryAdvances(ctx context.Context, treasury string, intentOrderingIndex uint64, limit int) (uint64, error)
-
 	// GetAllByState returns all fulfillment records for a given state.
 	//
 	// Returns ErrNotFound if no records are found.

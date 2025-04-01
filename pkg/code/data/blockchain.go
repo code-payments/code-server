@@ -6,8 +6,8 @@ import (
 
 	"github.com/mr-tron/base58"
 
+	"github.com/code-payments/code-server/pkg/code/config"
 	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/token"
@@ -46,7 +46,7 @@ type BlockchainProvider struct {
 
 func NewBlockchainProvider(solanaEndpoint string) (BlockchainData, error) {
 	sc := solana.New(solanaEndpoint)
-	tc := token.NewClient(sc, kin.TokenMint)
+	tc := token.NewClient(sc, config.CoreMintPublicKeyBytes)
 
 	return &BlockchainProvider{
 		sc: sc,
@@ -141,7 +141,7 @@ func (dp *BlockchainProvider) GetBlockchainTokenAccountsByOwner(ctx context.Cont
 		return nil, err
 	}
 
-	res, err := dp.sc.GetTokenAccountsByOwner(accountId, kin.TokenMint)
+	res, err := dp.sc.GetTokenAccountsByOwner(accountId, config.CoreMintPublicKeyBytes)
 
 	if err != nil {
 		tracer.OnError(err)

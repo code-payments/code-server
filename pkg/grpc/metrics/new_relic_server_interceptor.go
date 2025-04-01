@@ -43,54 +43,34 @@ const (
 
 var (
 	statusCodeHandlers = map[codes.Code]statusCodeHandler{
-		codes.OK:              infoStatusCodeHandler,
-		codes.AlreadyExists:   infoStatusCodeHandler,
-		codes.Canceled:        infoStatusCodeHandler,
-		codes.InvalidArgument: infoStatusCodeHandler,
-		codes.NotFound:        infoStatusCodeHandler,
-		codes.Unauthenticated: infoStatusCodeHandler,
+		codes.OK:                 infoStatusCodeHandler,
+		codes.Aborted:            infoStatusCodeHandler,
+		codes.AlreadyExists:      infoStatusCodeHandler,
+		codes.Canceled:           infoStatusCodeHandler,
+		codes.DataLoss:           infoStatusCodeHandler,
+		codes.DeadlineExceeded:   infoStatusCodeHandler,
+		codes.FailedPrecondition: infoStatusCodeHandler,
+		codes.InvalidArgument:    infoStatusCodeHandler,
+		codes.NotFound:           infoStatusCodeHandler,
+		codes.OutOfRange:         infoStatusCodeHandler,
+		codes.PermissionDenied:   infoStatusCodeHandler,
+		codes.ResourceExhausted:  infoStatusCodeHandler,
+		codes.Unauthenticated:    infoStatusCodeHandler,
+		codes.Unimplemented:      infoStatusCodeHandler,
 
-		codes.Aborted:            warningStatusCodeHandler,
-		codes.DeadlineExceeded:   warningStatusCodeHandler,
-		codes.FailedPrecondition: warningStatusCodeHandler,
-		codes.OutOfRange:         warningStatusCodeHandler,
-		codes.PermissionDenied:   warningStatusCodeHandler,
-		codes.ResourceExhausted:  warningStatusCodeHandler,
-		codes.Unavailable:        warningStatusCodeHandler,
-
-		codes.DataLoss:      errorStatusCodeHandler,
-		codes.Unknown:       errorStatusCodeHandler,
-		codes.Internal:      errorStatusCodeHandler,
-		codes.Unimplemented: errorStatusCodeHandler,
+		codes.Internal:    warningStatusCodeHandler,
+		codes.Unavailable: warningStatusCodeHandler,
+		codes.Unknown:     warningStatusCodeHandler,
 	}
-	defaultStatusCodeHandler = errorStatusCodeHandler
+	defaultStatusCodeHandler = infoStatusCodeHandler
 
 	resultCodeHandlers = map[string]resultCodeHandler{
-		"OK":                    infoResultCodeHandler,
-		"NOOP":                  infoResultCodeHandler,
-		"NOT_FOUND":             infoResultCodeHandler,
-		"ACTION_NOT_FOUND":      infoResultCodeHandler,
-		"INTENT_NOT_FOUND":      infoResultCodeHandler,
-		"NO_VERIFICATION":       infoResultCodeHandler,
-		"EXISTS":                infoResultCodeHandler,
-		"ALREADY_INVITED":       infoResultCodeHandler,
-		"NOT_INVITED":           infoResultCodeHandler,
-		"SENDER_NOT_INVITED":    infoResultCodeHandler,
-		"INVITE_COUNT_EXCEEDED": infoResultCodeHandler,
+		"OK":        infoResultCodeHandler,
+		"NOT_FOUND": infoResultCodeHandler,
 
-		"DENIED":                        warningResultCodeHandler,
-		"INVALID_ACTION":                warningResultCodeHandler,
-		"INVALID_CODE":                  warningResultCodeHandler,
-		"INVALID_INTENT":                warningResultCodeHandler,
-		"INVALID_PHONE_NUMBER":          warningResultCodeHandler,
-		"INVALID_PUSH_TOKEN":            warningResultCodeHandler,
-		"INVALID_RECEIVER_PHONE_NUMBER": warningResultCodeHandler,
-		"INVALID_TOKEN":                 warningResultCodeHandler,
-		"LANG_UNAVAILABLE":              warningResultCodeHandler,
-		"RATE_LIMITED":                  warningResultCodeHandler,
-		"SIGNATURE_ERROR":               warningResultCodeHandler,
+		"DENIED": warningResultCodeHandler,
 	}
-	defaultResultCodeHandler = errorResultCodeHandler
+	defaultResultCodeHandler = infoResultCodeHandler
 )
 
 func infoStatusCodeHandler(m *newrelic.Transaction, s *status.Status) {

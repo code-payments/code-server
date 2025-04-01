@@ -9,9 +9,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
 
 const (
@@ -19,17 +19,16 @@ const (
 )
 
 type model struct {
-	Id                   sql.NullInt64  `db:"id"`
-	Intent               string         `db:"intent"`
-	IntentType           uint           `db:"intent_type"`
-	ActionId             uint           `db:"action_id"`
-	ActionType           uint           `db:"action_type"`
-	Source               string         `db:"source"`
-	Destination          sql.NullString `db:"destination"`
-	Quantity             sql.NullInt64  `db:"quantity"`
-	InitiatorPhoneNumber sql.NullString `db:"initiator_phone_number"`
-	State                uint           `db:"state"`
-	CreatedAt            time.Time      `db:"created_at"`
+	Id          sql.NullInt64  `db:"id"`
+	Intent      string         `db:"intent"`
+	IntentType  uint           `db:"intent_type"`
+	ActionId    uint           `db:"action_id"`
+	ActionType  uint           `db:"action_type"`
+	Source      string         `db:"source"`
+	Destination sql.NullString `db:"destination"`
+	Quantity    sql.NullInt64  `db:"quantity"`
+	State       uint           `db:"state"`
+	CreatedAt   time.Time      `db:"created_at"`
 }
 
 func toModel(obj *action.Record) (*model, error) {
@@ -49,23 +48,16 @@ func toModel(obj *action.Record) (*model, error) {
 		quantity.Int64 = int64(*obj.Quantity)
 	}
 
-	var initiatorPhoneNumber sql.NullString
-	if obj.InitiatorPhoneNumber != nil {
-		initiatorPhoneNumber.Valid = true
-		initiatorPhoneNumber.String = *obj.InitiatorPhoneNumber
-	}
-
 	return &model{
-		Intent:               obj.Intent,
-		IntentType:           uint(obj.IntentType),
-		ActionId:             uint(obj.ActionId),
-		ActionType:           uint(obj.ActionType),
-		Source:               obj.Source,
-		Destination:          destination,
-		Quantity:             quantity,
-		InitiatorPhoneNumber: initiatorPhoneNumber,
-		State:                uint(obj.State),
-		CreatedAt:            obj.CreatedAt,
+		Intent:      obj.Intent,
+		IntentType:  uint(obj.IntentType),
+		ActionId:    uint(obj.ActionId),
+		ActionType:  uint(obj.ActionType),
+		Source:      obj.Source,
+		Destination: destination,
+		Quantity:    quantity,
+		State:       uint(obj.State),
+		CreatedAt:   obj.CreatedAt,
 	}, nil
 }
 
@@ -81,23 +73,17 @@ func fromModel(obj *model) *action.Record {
 		quantity = &value
 	}
 
-	var initiatorPhoneNumber *string
-	if obj.InitiatorPhoneNumber.Valid {
-		initiatorPhoneNumber = &obj.InitiatorPhoneNumber.String
-	}
-
 	return &action.Record{
-		Id:                   uint64(obj.Id.Int64),
-		Intent:               obj.Intent,
-		IntentType:           intent.Type(obj.IntentType),
-		ActionId:             uint32(obj.ActionId),
-		ActionType:           action.Type(obj.ActionType),
-		Source:               obj.Source,
-		Destination:          destination,
-		Quantity:             quantity,
-		InitiatorPhoneNumber: initiatorPhoneNumber,
-		State:                action.State(obj.State),
-		CreatedAt:            obj.CreatedAt,
+		Id:          uint64(obj.Id.Int64),
+		Intent:      obj.Intent,
+		IntentType:  intent.Type(obj.IntentType),
+		ActionId:    uint32(obj.ActionId),
+		ActionType:  action.Type(obj.ActionType),
+		Source:      obj.Source,
+		Destination: destination,
+		Quantity:    quantity,
+		State:       action.State(obj.State),
+		CreatedAt:   obj.CreatedAt,
 	}
 }
 
@@ -118,7 +104,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 		query := fmt.Sprintf(`UPDATE `+tableName+`
 			SET state = $3%s
 			WHERE intent = $1 AND action_id = $2
-			RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at
+			RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		`, quantityUpdateStmt)
 
 		err := tx.QueryRowxContext(
@@ -137,7 +123,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, error) {
 	var res []*model
 
-	query := `INSERT INTO ` + tableName + ` (intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at) VALUES `
+	query := `INSERT INTO ` + tableName + ` (intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at) VALUES `
 
 	var parameters []interface{}
 	for i, model := range models {
@@ -147,8 +133,8 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, 
 
 		baseIndex := len(parameters)
 		query += fmt.Sprintf(
-			`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
-			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7, baseIndex+8, baseIndex+9, baseIndex+10,
+			`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
+			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7, baseIndex+8, baseIndex+9,
 		)
 
 		if i != len(models)-1 {
@@ -164,13 +150,12 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, 
 			model.Source,
 			model.Destination,
 			model.Quantity,
-			model.InitiatorPhoneNumber,
 			model.State,
 			model.CreatedAt,
 		)
 	}
 
-	query += ` RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at`
+	query += ` RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at`
 
 	err := tx.SelectContext(
 		ctx,
@@ -188,7 +173,7 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, 
 func dbGetById(ctx context.Context, db *sqlx.DB, intent string, actionId uint32) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
 		WHERE intent = $1 AND action_id = $2
 		LIMIT 1`
@@ -203,7 +188,7 @@ func dbGetById(ctx context.Context, db *sqlx.DB, intent string, actionId uint32)
 func dbGetAllByIntent(ctx context.Context, db *sqlx.DB, intent string) ([]*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
 		WHERE intent = $1
 		ORDER BY action_id ASC`
@@ -223,7 +208,7 @@ func dbGetAllByIntent(ctx context.Context, db *sqlx.DB, intent string) ([]*model
 func dbGetAllByAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
 		WHERE source = $1 OR destination = $1`
 
@@ -312,7 +297,7 @@ func dbGetNetBalanceBatch(ctx context.Context, db *sqlx.DB, accounts ...string) 
 func dbGetGiftCardClaimedAction(ctx context.Context, db *sqlx.DB, giftCardVault string) (*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
 		WHERE source = $1 AND action_type = $2 AND state != $3
 		LIMIT 2`
@@ -341,7 +326,7 @@ func dbGetGiftCardClaimedAction(ctx context.Context, db *sqlx.DB, giftCardVault 
 func dbGetGiftCardAutoReturnAction(ctx context.Context, db *sqlx.DB, giftCardVault string) (*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, initiator_phone_number, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
 		WHERE source = $1 AND action_type = $2 AND state != $3
 		LIMIT 2`

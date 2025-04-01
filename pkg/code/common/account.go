@@ -19,10 +19,6 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
-var (
-	ErrNoPrivacyMigration2022 = errors.New("no privacy migration 2022 for owner")
-)
-
 type Account struct {
 	publicKey  *Key
 	privateKey *Key // Optional
@@ -360,120 +356,8 @@ func (a *TimelockAccounts) GetInitializeInstruction(memory *Account, accountInde
 	), nil
 }
 
-// GetTransferWithAuthorityInstruction gets a TransferWithAuthority instruction for a timelock account
-func (a *TimelockAccounts) GetTransferWithAuthorityInstruction(destination *Account, quarks uint64) (solana.Instruction, error) {
-	if err := destination.Validate(); err != nil {
-		return solana.Instruction{}, err
-	}
-
-	if quarks == 0 {
-		return solana.Instruction{}, errors.New("quarks must be positive")
-	}
-
-	return timelock_token_v1.NewTransferWithAuthorityInstruction(
-		&timelock_token_v1.TransferWithAuthorityInstructionAccounts{
-			Timelock:      a.State.publicKey.ToBytes(),
-			Vault:         a.Vault.publicKey.ToBytes(),
-			VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
-			Destination:   destination.publicKey.ToBytes(),
-			Payer:         GetSubsidizer().publicKey.ToBytes(),
-		},
-		&timelock_token_v1.TransferWithAuthorityInstructionArgs{
-			TimelockBump: a.StateBump,
-			Amount:       quarks,
-		},
-	).ToLegacyInstruction(), nil
-}
-
-// GetWithdrawInstruction gets a Withdraw instruction for a timelock account
-func (a *TimelockAccounts) GetWithdrawInstruction(destination *Account) (solana.Instruction, error) {
-	if err := destination.Validate(); err != nil {
-		return solana.Instruction{}, err
-	}
-
-	return timelock_token_v1.NewWithdrawInstruction(
-		&timelock_token_v1.WithdrawInstructionAccounts{
-			Timelock:    a.State.publicKey.ToBytes(),
-			Vault:       a.Vault.publicKey.ToBytes(),
-			VaultOwner:  a.VaultOwner.publicKey.ToBytes(),
-			Destination: destination.publicKey.ToBytes(),
-			Payer:       GetSubsidizer().publicKey.ToBytes(),
-		},
-		&timelock_token_v1.WithdrawInstructionArgs{
-			TimelockBump: a.StateBump,
-		},
-	).ToLegacyInstruction(), nil
-}
-
-// GetBurnDustWithAuthorityInstruction gets a BurnDustWithAuthority instruction for a timelock account
-func (a *TimelockAccounts) GetBurnDustWithAuthorityInstruction(maxQuarks uint64) (solana.Instruction, error) {
-	if maxQuarks == 0 {
-		return solana.Instruction{}, errors.New("max quarks must be positive")
-	}
-
-	return timelock_token_v1.NewBurnDustWithAuthorityInstruction(
-		&timelock_token_v1.BurnDustWithAuthorityInstructionAccounts{
-			Timelock:      a.State.publicKey.ToBytes(),
-			Vault:         a.Vault.publicKey.ToBytes(),
-			VaultOwner:    a.VaultOwner.publicKey.ToBytes(),
-			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
-			Mint:          a.Mint.publicKey.ToBytes(),
-			Payer:         GetSubsidizer().publicKey.ToBytes(),
-		},
-		&timelock_token_v1.BurnDustWithAuthorityInstructionArgs{
-			TimelockBump: a.StateBump,
-			MaxAmount:    maxQuarks,
-		},
-	).ToLegacyInstruction(), nil
-}
-
-// GetRevokeLockWithAuthorityInstruction gets a RevokeLockWithAuthority instruction for a timelock account
-func (a *TimelockAccounts) GetRevokeLockWithAuthorityInstruction() (solana.Instruction, error) {
-	return timelock_token_v1.NewRevokeLockWithAuthorityInstruction(
-		&timelock_token_v1.RevokeLockWithAuthorityInstructionAccounts{
-			Timelock:      a.State.publicKey.ToBytes(),
-			Vault:         a.Vault.publicKey.ToBytes(),
-			TimeAuthority: GetSubsidizer().publicKey.ToBytes(),
-			Payer:         GetSubsidizer().publicKey.ToBytes(),
-		},
-		&timelock_token_v1.RevokeLockWithAuthorityInstructionArgs{
-			TimelockBump: a.StateBump,
-		},
-	).ToLegacyInstruction(), nil
-}
-
-// GetDeactivateInstruction gets a Deactivate instruction for a timelock account
-func (a *TimelockAccounts) GetDeactivateInstruction() (solana.Instruction, error) {
-	return timelock_token_v1.NewDeactivateInstruction(
-		&timelock_token_v1.DeactivateInstructionAccounts{
-			Timelock:   a.State.publicKey.ToBytes(),
-			VaultOwner: a.VaultOwner.publicKey.ToBytes(),
-			Payer:      GetSubsidizer().publicKey.ToBytes(),
-		},
-		&timelock_token_v1.DeactivateInstructionArgs{
-			TimelockBump: a.StateBump,
-		},
-	).ToLegacyInstruction(), nil
-}
-
-// GetCloseAccountsInstruction gets a CloseAccounts instruction for a timelock account
-func (a *TimelockAccounts) GetCloseAccountsInstruction() (solana.Instruction, error) {
-	return timelock_token_v1.NewCloseAccountsInstruction(
-		&timelock_token_v1.CloseAccountsInstructionAccounts{
-			Timelock:       a.State.publicKey.ToBytes(),
-			Vault:          a.Vault.publicKey.ToBytes(),
-			CloseAuthority: GetSubsidizer().publicKey.ToBytes(),
-			Payer:          GetSubsidizer().publicKey.ToBytes(),
-		},
-		&timelock_token_v1.CloseAccountsInstructionArgs{
-			TimelockBump: a.StateBump,
-		},
-	).ToLegacyInstruction(), nil
-}
-
-// ValidateExternalKinTokenAccount validates an address is an external Kin token account
-func ValidateExternalKinTokenAccount(ctx context.Context, data code_data.Provider, tokenAccount *Account) (bool, string, error) {
+// ValidateExternalTokenAccount validates an address is an external token account for the core mint
+func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, tokenAccount *Account) (bool, string, error) {
 	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.publicKey.ToBase58(), solana.CommitmentFinalized)
 	switch err {
 	case nil:

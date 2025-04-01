@@ -15,8 +15,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/user"
-	"github.com/code-payments/code-server/pkg/code/data/user/storage"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
 
@@ -55,39 +53,6 @@ func (v *RPCSignatureVerifier) Authenticate(ctx context.Context, owner *common.A
 
 	if !isSignatureValid {
 		return status.Error(codes.Unauthenticated, "")
-	}
-	return nil
-}
-
-// AuthorizeDataAccess authenticates and authorizes that an owner account can
-// access data in a container.
-func (v *RPCSignatureVerifier) AuthorizeDataAccess(ctx context.Context, dataContainerID *user.DataContainerID, owner *common.Account, message proto.Message, signature *commonpb.Signature) error {
-	defer metrics.TraceMethodCall(ctx, metricsStructName, "AuthorizeDataAccess").End()
-
-	log := v.log.WithFields(logrus.Fields{
-		"method":         "AuthorizeDataAccess",
-		"data_container": dataContainerID.String(),
-		"owner_account":  owner.PublicKey().ToBase58(),
-	})
-
-	isSignatureValid, err := v.isSignatureVerifiedProtoMessage(owner, message, signature)
-	if err != nil {
-		log.WithError(err).Warn("failure verifying signature")
-		return status.Error(codes.Internal, "")
-	}
-
-	if !isSignatureValid {
-		return status.Error(codes.Unauthenticated, "")
-	}
-
-	dataContainer, err := v.data.GetUserDataContainerByID(ctx, dataContainerID)
-	if err == storage.ErrNotFound {
-		return status.Error(codes.PermissionDenied, "")
-	} else if err != nil {
-		log.WithError(err).Warn("failure checking data container ownership")
-		return status.Error(codes.Internal, "")
-	} else if owner.PublicKey().ToBase58() != dataContainer.OwnerAccount {
-		return status.Error(codes.PermissionDenied, "")
 	}
 	return nil
 }

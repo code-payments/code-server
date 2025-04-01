@@ -48,13 +48,6 @@ func intentSubmittedJsonPayloadProvider(ctx context.Context, data code_data.Prov
 		var destination string
 		var isMicroPayment bool
 		switch intentRecord.IntentType {
-		case intent.SendPrivatePayment:
-			currency = intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency
-			amount = intentRecord.SendPrivatePaymentMetadata.NativeAmount
-			exchangeRate = intentRecord.SendPrivatePaymentMetadata.ExchangeRate
-			quarks = intentRecord.SendPrivatePaymentMetadata.Quantity
-			destination = intentRecord.SendPrivatePaymentMetadata.DestinationTokenAccount
-			isMicroPayment = intentRecord.SendPrivatePaymentMetadata.IsMicroPayment
 		default:
 			return nil, errors.Errorf("%d intent type is not supported", intentRecord.IntentType)
 		}

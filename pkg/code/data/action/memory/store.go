@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/action"
 )
 
 type ById []*action.Record

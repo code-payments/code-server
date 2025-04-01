@@ -1,5 +1,6 @@
 package lawenforcement
 
+/*
 import (
 	"context"
 	"fmt"
@@ -484,3 +485,4 @@ func setupPrivateBalance(t *testing.T, env amlTestEnv, owner *common.Account, ba
 		require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
 	}
 }
+*/

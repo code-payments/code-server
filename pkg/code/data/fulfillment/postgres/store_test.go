@@ -48,8 +48,6 @@ const (
 
 			disable_active_scheduling BOOL NOT NULL,
 
-			phone_number TEXT NULL,
-
 			state INTEGER NOT NULL,
 
 			batch_insertion_id INTEGER NOT NULL,

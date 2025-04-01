@@ -45,7 +45,7 @@ func getTimelockUnlockState(ctx context.Context, data code_data.Provider, timelo
 		return nil, 0, err
 	}
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -29,7 +29,6 @@ func RunTests(t *testing.T, s fulfillment.Store, teardown func()) {
 		testGetCount,
 		testSchedulingQueries,
 		testSubsidizerQueries,
-		testTreasuryQueries,
 	} {
 		tf(t, s)
 		teardown()
@@ -69,7 +68,6 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 			ActionOrderingIndex:      2,
 			FulfillmentOrderingIndex: 3,
 			DisableActiveScheduling:  false,
-			InitiatorPhoneNumber:     pointer.String("+12223334444"),
 			State:                    fulfillment.StateConfirmed,
 			CreatedAt:                time.Now(),
 		}
@@ -120,7 +118,6 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 			ActionOrderingIndex:      2,
 			FulfillmentOrderingIndex: 3,
 			DisableActiveScheduling:  true,
-			InitiatorPhoneNumber:     nil,
 			State:                    fulfillment.StateUnknown,
 			CreatedAt:                time.Now(),
 		}
@@ -165,7 +162,6 @@ func testBatchPut(t *testing.T, s fulfillment.Store) {
 				ActionOrderingIndex:      uint32(i),
 				FulfillmentOrderingIndex: uint32(i),
 				DisableActiveScheduling:  false,
-				InitiatorPhoneNumber:     pointer.String(fmt.Sprintf("+1800555%d", i)),
 				State:                    fulfillment.StateConfirmed,
 				CreatedAt:                time.Now(),
 			}
@@ -244,7 +240,6 @@ func testUpdate(t *testing.T, s fulfillment.Store) {
 			Blockhash:                nil,
 			Source:                   "test_source",
 			Destination:              nil,
-			InitiatorPhoneNumber:     pointer.String("+12223334444"),
 			IntentOrderingIndex:      1,
 			ActionOrderingIndex:      2,
 			FulfillmentOrderingIndex: 3,
@@ -935,133 +930,6 @@ func testSubsidizerQueries(t *testing.T, s fulfillment.Store) {
 	})
 }
 
-func testTreasuryQueries(t *testing.T, s fulfillment.Store) {
-	t.Run("testTreasuryQueries", func(t *testing.T) {
-		ctx := context.Background()
-
-		records := []*fulfillment.Record{
-			// Everything is a candidate for update
-			{Source: "treasury1", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 1},
-			{Source: "treasury1", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 2},
-			{Source: "treasury1", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 3},
-			{Source: "treasury1", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 4},
-			{Source: "treasury1", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 5},
-
-			// Everything is a candidate for update
-			{Source: "treasury2", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 1},
-			{Source: "treasury2", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 2},
-			{Source: "treasury2", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 3},
-			{Source: "treasury2", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 4},
-			{Source: "treasury2", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 5},
-
-			// Everything is a candidate for update
-			{Source: "treasury3", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 1},
-			{Source: "treasury3", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 2},
-			{Source: "treasury3", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 3},
-			{Source: "treasury3", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 4},
-			{Source: "treasury3", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 5},
-
-			// Multiple states
-			{Source: "treasury4", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 1},
-			{Source: "treasury4", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StatePending, DisableActiveScheduling: true, IntentOrderingIndex: 2},
-			{Source: "treasury4", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateConfirmed, DisableActiveScheduling: true, IntentOrderingIndex: 3},
-			{Source: "treasury4", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateFailed, DisableActiveScheduling: true, IntentOrderingIndex: 4},
-			{Source: "treasury4", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateRevoked, DisableActiveScheduling: true, IntentOrderingIndex: 5},
-
-			// Multiple fulfillment thypes
-			{Source: "treasury5", FulfillmentType: fulfillment.TransferWithCommitment, State: fulfillment.StateUnknown, DisableActiveScheduling: true, IntentOrderingIndex: 1},
-			{Source: "treasury5", FulfillmentType: fulfillment.SaveRecentRoot, State: fulfillment.StatePending, DisableActiveScheduling: true, IntentOrderingIndex: 2},
-			{Source: "treasury5", FulfillmentType: fulfillment.InitializeLockedTimelockAccount, State: fulfillment.StateConfirmed, DisableActiveScheduling: true, IntentOrderingIndex: 3},
-			{Source: "treasury5", FulfillmentType: fulfillment.NoPrivacyTransferWithAuthority, State: fulfillment.StateFailed, DisableActiveScheduling: true, IntentOrderingIndex: 4},
-			{Source: "treasury5", FulfillmentType: fulfillment.TemporaryPrivacyTransferWithAuthority, State: fulfillment.StateRevoked, DisableActiveScheduling: true, IntentOrderingIndex: 5},
-		}
-
-		// Fill in required fields that have no relevancy to this test
-		for i, record := range records {
-			record.Intent = fmt.Sprintf("i%d", i+1)
-			record.IntentType = intent.SendPrivatePayment
-			record.ActionType = action.PrivateTransfer
-		}
-		require.NoError(t, s.PutAll(ctx, records...))
-
-		// Everything is updated
-		updateCount, err := s.ActivelyScheduleTreasuryAdvances(ctx, "treasury1", 10, 10)
-		require.NoError(t, err)
-		assert.EqualValues(t, 5, updateCount)
-		for _, record := range records {
-			actual, err := s.GetById(ctx, record.Id)
-			require.NoError(t, err)
-			assert.Equal(t, record.Source == "treasury1", !actual.DisableActiveScheduling)
-		}
-
-		// Everything updated, so should get an empty count without error
-		updateCount, err = s.ActivelyScheduleTreasuryAdvances(ctx, "treasury1", 10, 10)
-		require.NoError(t, err)
-		assert.EqualValues(t, 0, updateCount)
-
-		// Subset matching intent ordering index is updated
-		updateCount, err = s.ActivelyScheduleTreasuryAdvances(ctx, "treasury2", 3, 10)
-		require.NoError(t, err)
-		assert.EqualValues(t, 2, updateCount)
-		for _, record := range records {
-			if record.Source != "treasury2" {
-				continue
-			}
-
-			actual, err := s.GetById(ctx, record.Id)
-			require.NoError(t, err)
-			assert.Equal(t, record.IntentOrderingIndex < 3, !actual.DisableActiveScheduling)
-		}
-
-		// Subset limited by limit value is updated
-		updateCount, err = s.ActivelyScheduleTreasuryAdvances(ctx, "treasury3", 10, 2)
-		require.NoError(t, err)
-		assert.EqualValues(t, 2, updateCount)
-		var totalUpdated int
-		for _, record := range records {
-			if record.Source != "treasury3" {
-				continue
-			}
-
-			actual, err := s.GetById(ctx, record.Id)
-			require.NoError(t, err)
-
-			if !actual.DisableActiveScheduling {
-				totalUpdated += 1
-			}
-		}
-		assert.Equal(t, 2, totalUpdated)
-
-		// Subset matching expected state is updated
-		updateCount, err = s.ActivelyScheduleTreasuryAdvances(ctx, "treasury4", 10, 10)
-		require.NoError(t, err)
-		assert.EqualValues(t, 1, updateCount)
-		for _, record := range records {
-			if record.Source != "treasury4" {
-				continue
-			}
-
-			actual, err := s.GetById(ctx, record.Id)
-			require.NoError(t, err)
-			assert.Equal(t, record.State == fulfillment.StateUnknown, !actual.DisableActiveScheduling)
-		}
-
-		// Subset matching expected fulfillment type is updated
-		updateCount, err = s.ActivelyScheduleTreasuryAdvances(ctx, "treasury5", 10, 10)
-		require.NoError(t, err)
-		assert.EqualValues(t, 1, updateCount)
-		for _, record := range records {
-			if record.Source != "treasury5" {
-				continue
-			}
-
-			actual, err := s.GetById(ctx, record.Id)
-			require.NoError(t, err)
-			assert.Equal(t, record.FulfillmentType == fulfillment.TransferWithCommitment, !actual.DisableActiveScheduling)
-		}
-	})
-}
-
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *fulfillment.Record) {
 	assert.Equal(t, obj1.Intent, obj2.Intent)
 	assert.Equal(t, obj1.IntentType, obj2.IntentType)
@@ -1081,7 +949,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *fulfillment.Record) {
 	assert.Equal(t, obj1.ActionOrderingIndex, obj2.ActionOrderingIndex)
 	assert.Equal(t, obj1.FulfillmentOrderingIndex, obj2.FulfillmentOrderingIndex)
 	assert.Equal(t, obj1.DisableActiveScheduling, obj2.DisableActiveScheduling)
-	assert.EqualValues(t, obj1.InitiatorPhoneNumber, obj2.InitiatorPhoneNumber)
 	assert.Equal(t, obj1.State, obj2.State)
 	assert.Equal(t, obj1.CreatedAt.Unix(), obj2.CreatedAt.Unix())
 }

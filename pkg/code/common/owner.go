@@ -9,7 +9,6 @@ import (
 
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
@@ -35,10 +34,9 @@ const (
 )
 
 type OwnerMetadata struct {
-	Type               OwnerType
-	Account            *Account
-	VerificationRecord *phone.Verification
-	State              OwnerManagementState
+	Type    OwnerType
+	Account *Account
+	State   OwnerManagementState
 }
 
 // GetOwnerMetadata gets metadata about an owner account
@@ -56,15 +54,11 @@ func GetOwnerMetadata(ctx context.Context, data code_data.Provider, owner *Accou
 	}
 
 	if mtdt.Type == OwnerTypeUnknown {
-		// Is the owner account a user's 12 words that's phone verified?
-		//
-		// This should be the last thing checked, since it's technically possible
-		// today for a malicious user to phone very any owner account type.
-		verificationRecord, err := data.GetLatestPhoneVerificationForAccount(ctx, owner.publicKey.ToBase58())
+		// Is the owner account a user 12 words?
+		_, err := data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.publicKey.ToBase58(), commonpb.AccountType_PRIMARY)
 		if err == nil {
 			mtdt.Type = OwnerTypeUser12Words
-			mtdt.VerificationRecord = verificationRecord
-		} else if err != phone.ErrVerificationNotFound {
+		} else if err != account.ErrAccountInfoNotFound {
 			return nil, err
 		}
 	}
