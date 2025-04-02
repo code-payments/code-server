@@ -11,14 +11,18 @@ import (
 
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 // todo: add tests, but generally well tested in server tests since that's where most of this originated
+
+var (
+	SmallestSendAmount = common.CoreMintQuarksPerUnit / 100
+)
 
 // GetPotentialClientExchangeRates gets a set of exchange rates that a client
 // attempting to maintain a latest state could have fetched from the currency
@@ -63,11 +67,10 @@ func GetPotentialClientExchangeRates(ctx context.Context, data code_data.Provide
 func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
 	currencyCode := strings.ToLower(proto.Currency)
 	switch currencyCode {
-	case string(currency_lib.KIN):
+	case string(common.CoreMintSymbol):
 		if proto.ExchangeRate != 1.0 {
-			return false, "kin exchange rate must be 1", nil
+			return false, "core mint exchange rate must be 1", nil
 		}
-
 	default:
 		// Validate the exchange rate with what Code would have returned
 		exchangeRecords, err := GetPotentialClientExchangeRates(ctx, data, currency_lib.Code(currencyCode))
@@ -100,9 +103,8 @@ func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, pr
 	//
 	// todo: This uses string conversions, which is less than ideal, but the only
 	//       thing available at the time of writing this for conversion.
-	smallestSendAmount := float64(kin.ToQuarks(1))
-	quarksFromCurrency, _ := kin.StrToQuarks(fmt.Sprintf("%.5f", proto.NativeAmount/proto.ExchangeRate))
-	if math.Abs(float64(quarksFromCurrency-int64(proto.Quarks))) > smallestSendAmount+100 {
+	quarksFromCurrency, _ := common.StrToQuarks(fmt.Sprintf("%.6f", proto.NativeAmount/proto.ExchangeRate))
+	if math.Abs(float64(quarksFromCurrency-int64(proto.Quarks))) > float64(SmallestSendAmount) {
 		return false, "payment native amount and quark value mismatch", nil
 	}
 

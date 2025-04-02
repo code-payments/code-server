@@ -538,43 +538,6 @@ func (s *store) MarkAsActivelyScheduled(ctx context.Context, id uint64) error {
 	return nil
 }
 
-func (s *store) ActivelyScheduleTreasuryAdvances(ctx context.Context, treasury string, intentOrderingIndex uint64, limit int) (uint64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var updateCount uint64
-	for _, data := range s.records {
-		if !data.DisableActiveScheduling {
-			continue
-		}
-
-		if data.State != fulfillment.StateUnknown {
-			continue
-		}
-
-		if data.FulfillmentType != fulfillment.TransferWithCommitment {
-			continue
-		}
-
-		if data.Source != treasury {
-			continue
-		}
-
-		if data.IntentOrderingIndex >= intentOrderingIndex {
-			continue
-		}
-
-		data.DisableActiveScheduling = false
-
-		updateCount += 1
-		if updateCount >= uint64(limit) {
-			return updateCount, nil
-		}
-	}
-
-	return updateCount, nil
-}
-
 func (s *store) GetById(ctx context.Context, id uint64) (*fulfillment.Record, error) {
 	if id == 0 {
 		return nil, fulfillment.ErrFulfillmentNotFound

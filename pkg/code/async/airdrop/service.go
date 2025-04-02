@@ -86,7 +86,7 @@ func (p *service) loadAirdropper(ctx context.Context) error {
 		return err
 	}
 
-	p.airdropperTimelockAccounts, err = p.airdropper.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
+	p.airdropperTimelockAccounts, err = p.airdropper.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
 	if err != nil {
 		log.WithError(err).Warn("failed to dervice timelock accounts")
 		return err

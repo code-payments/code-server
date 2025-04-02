@@ -11,7 +11,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	push_lib "github.com/code-payments/code-server/pkg/push"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -28,16 +27,14 @@ type ProgramAccountUpdateHandler interface {
 }
 
 type TokenProgramAccountHandler struct {
-	conf   *conf
-	data   code_data.Provider
-	pusher push_lib.Provider
+	conf *conf
+	data code_data.Provider
 }
 
-func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider, pusher push_lib.Provider) ProgramAccountUpdateHandler {
+func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider) ProgramAccountUpdateHandler {
 	return &TokenProgramAccountHandler{
-		conf:   conf,
-		data:   data,
-		pusher: pusher,
+		conf: conf,
+		data: data,
 	}
 }
 
@@ -80,18 +77,6 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		return errors.Wrap(err, "invalid mint account")
 	}
 
-	// The token account is the messaging fee collector, so process the update as
-	// a blockchain message.
-	if tokenAccount.PublicKey().ToBase58() == h.conf.messagingFeeCollectorPublicKey.Get(ctx) {
-		return processPotentialBlockchainMessage(
-			ctx,
-			h.data,
-			h.pusher,
-			tokenAccount,
-			*update.TxSignature,
-		)
-	}
-
 	// Account is empty, and all we care about are external deposits at this point,
 	// so filter it out
 	if unmarshalled.Amount == 0 {
@@ -100,20 +85,15 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 
 	switch mintAccount.PublicKey().ToBase58() {
 
-	case common.KinMintAccount.PublicKey().ToBase58():
+	case common.CoreMintAccount.PublicKey().ToBase58():
 		// Not a program vault account, so filter it out. It cannot be a Timelock
 		// account.
 		if !bytes.Equal(tokenAccount.PublicKey().ToBytes(), ownerAccount.PublicKey().ToBytes()) {
 			return nil
 		}
 
-		isCodeTimelockAccount, err := testForKnownCodeTimelockAccount(ctx, h.data, tokenAccount)
-		if err != nil {
-			return errors.Wrap(err, "error testing for known account")
-		} else if !isCodeTimelockAccount {
-			// Not an account we track, so skip the update
-			return nil
-		}
+		// todo: Need to implement VM deposit flow
+		return nil
 
 	case common.UsdcMintAccount.PublicKey().ToBase58():
 		ata, err := ownerAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
@@ -135,17 +115,17 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		}
 
 	default:
-		// Not a Kin or USDC account, so filter it out
+		// Not a Core Mint or USDC account, so filter it out
 		return nil
 	}
 
 	// We've determined this token account is one that we care about. Process
 	// the update as an external deposit.
-	return processPotentialExternalDeposit(ctx, h.conf, h.data, h.pusher, *update.TxSignature, tokenAccount)
+	return processPotentialExternalDeposit(ctx, h.conf, h.data, *update.TxSignature, tokenAccount)
 }
 
-func initializeProgramAccountUpdateHandlers(conf *conf, data code_data.Provider, pusher push_lib.Provider) map[string]ProgramAccountUpdateHandler {
+func initializeProgramAccountUpdateHandlers(conf *conf, data code_data.Provider) map[string]ProgramAccountUpdateHandler {
 	return map[string]ProgramAccountUpdateHandler{
-		base58.Encode(token.ProgramKey): NewTokenProgramAccountHandler(conf, data, pusher),
+		base58.Encode(token.ProgramKey): NewTokenProgramAccountHandler(conf, data),
 	}
 }

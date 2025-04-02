@@ -7,7 +7,6 @@ import (
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
@@ -128,54 +127,6 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 
 				// todo: implement me
 			}()
-		case <-serviceCtx.Done():
-			return serviceCtx.Err()
-		}
-	}
-}
-
-func (p *service) backupMessagingWorker(serviceCtx context.Context, interval time.Duration) error {
-	log := p.log.WithField("method", "backupMessagingWorker")
-	log.Debug("worker started")
-
-	p.metricStatusLock.Lock()
-	p.backupMessagingWorkerStatus = true
-	p.metricStatusLock.Unlock()
-	defer func() {
-		p.metricStatusLock.Lock()
-		p.backupMessagingWorkerStatus = false
-		p.metricStatusLock.Unlock()
-
-		log.Debug("worker stopped")
-	}()
-
-	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
-
-	messagingFeeCollector, err := common.NewAccountFromPublicKeyString(p.conf.messagingFeeCollectorPublicKey.Get(serviceCtx))
-	if err != nil {
-		return err
-	}
-
-	var checkpoint *string
-	for {
-		select {
-		case <-time.After(delay):
-			start := time.Now()
-
-			func() {
-				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
-				m := nr.StartTransaction("async__geyser_consumer_service__backup_messaging_worker")
-				defer m.End()
-				tracedCtx := newrelic.NewContext(serviceCtx, m)
-
-				checkpoint, err = fixMissingBlockchainMessages(tracedCtx, p.data, p.pusher, messagingFeeCollector, checkpoint)
-				if err != nil {
-					m.NoticeError(err)
-					log.WithError(err).Warn("failure fixing missing messages")
-				}
-			}()
-
-			delay = interval - time.Since(start)
 		case <-serviceCtx.Done():
 			return serviceCtx.Err()
 		}

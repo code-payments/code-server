@@ -10,7 +10,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/async"
 	geyserpb "github.com/code-payments/code-server/pkg/code/async/geyser/api/gen"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	push_lib "github.com/code-payments/code-server/pkg/push"
 )
 
 type eventWorkerMetrics struct {
@@ -19,10 +18,9 @@ type eventWorkerMetrics struct {
 }
 
 type service struct {
-	log    *logrus.Entry
-	data   code_data.Provider
-	pusher push_lib.Provider
-	conf   *conf
+	log  *logrus.Entry
+	data code_data.Provider
+	conf *conf
 
 	programUpdatesChan    chan *geyserpb.AccountUpdate
 	programUpdateHandlers map[string]ProgramAccountUpdateHandler
@@ -43,15 +41,14 @@ type service struct {
 	backupMessagingWorkerStatus bool
 }
 
-func New(data code_data.Provider, pusher push_lib.Provider, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
 	conf := configProvider()
 	return &service{
 		log:                        logrus.StandardLogger().WithField("service", "geyser_consumer"),
 		data:                       data,
-		pusher:                     pusher,
 		conf:                       configProvider(),
 		programUpdatesChan:         make(chan *geyserpb.AccountUpdate, conf.programUpdateQueueSize.Get(context.Background())),
-		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data, pusher),
+		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data),
 		programUpdateWorkerMetrics: make(map[int]*eventWorkerMetrics),
 	}
 }

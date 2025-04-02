@@ -131,11 +131,6 @@ func (s *store) MarkAsActivelyScheduled(ctx context.Context, id uint64) error {
 	return dbMarkAsActivelyScheduled(ctx, s.db, id)
 }
 
-// ActivelyScheduleTreasuryAdvances implements fulfillment.Store.ActivelyScheduleTreasuryAdvances
-func (s *store) ActivelyScheduleTreasuryAdvances(ctx context.Context, treasury string, intentOrderingIndex uint64, limit int) (uint64, error) {
-	return dbActivelyScheduleTreasuryAdvances(ctx, s.db, treasury, intentOrderingIndex, limit)
-}
-
 // GetById implements fulfillment.Store.GetById
 func (s *store) GetById(ctx context.Context, id uint64) (*fulfillment.Record, error) {
 	obj, err := dbGetById(ctx, s.db, id)

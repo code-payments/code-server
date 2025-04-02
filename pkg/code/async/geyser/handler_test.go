@@ -25,6 +25,6 @@ func setup(t *testing.T) *testEnv {
 	data := code_data.NewTestDataProvider()
 	return &testEnv{
 		data:     data,
-		handlers: initializeProgramAccountUpdateHandlers(&conf{}, data, nil),
+		handlers: initializeProgramAccountUpdateHandlers(&conf{}, data),
 	}
 }

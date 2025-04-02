@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,6 @@ import (
 
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/code/data/phone"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
@@ -29,26 +27,6 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
-
-	// Initially phone verified, but OpenAccounts intent not created. Until an
-	// account type is mapped, we assume a user 12 words, since that's the expected
-	// path.
-
-	verificationRecord := &phone.Verification{
-		PhoneNumber:    "+12223334444",
-		OwnerAccount:   owner.PublicKey().ToBase58(),
-		LastVerifiedAt: time.Now(),
-		CreatedAt:      time.Now(),
-	}
-	require.NoError(t, data.SavePhoneVerification(ctx, verificationRecord))
-
-	actual, err := GetOwnerMetadata(ctx, data, owner)
-	require.NoError(t, err)
-	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
-	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
-	assert.Equal(t, OwnerManagementStateNotFound, actual.State)
-	require.NotNil(t, actual.VerificationRecord)
-	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
 
 	// Later calls intent to OpenAccounts
 
@@ -67,13 +45,11 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, primaryAccountInfoRecord))
 
-	actual, err = GetOwnerMetadata(ctx, data, owner)
+	actual, err := GetOwnerMetadata(ctx, data, owner)
 	require.NoError(t, err)
 	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
 	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
 	assert.Equal(t, OwnerManagementStateCodeAccount, actual.State)
-	require.NotNil(t, actual.VerificationRecord)
-	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
 
 	// Add swap account
 
@@ -93,8 +69,6 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
 	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
 	assert.Equal(t, OwnerManagementStateCodeAccount, actual.State)
-	require.NotNil(t, actual.VerificationRecord)
-	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
 
 	// Unlock a Timelock account
 
@@ -107,8 +81,6 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
 	assert.Equal(t, OwnerTypeUser12Words, actual.Type)
 	assert.Equal(t, OwnerManagementStateUnlocked, actual.State)
-	require.NotNil(t, actual.VerificationRecord)
-	assert.Equal(t, verificationRecord.PhoneNumber, actual.VerificationRecord.PhoneNumber)
 }
 
 func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
@@ -122,16 +94,6 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
-
-	// It's possible a malicious user could phone verify a gift card owner, which
-	// we should ignore
-	verificationRecord := &phone.Verification{
-		PhoneNumber:    "+12223334444",
-		OwnerAccount:   owner.PublicKey().ToBase58(),
-		LastVerifiedAt: time.Now(),
-		CreatedAt:      time.Now(),
-	}
-	require.NoError(t, data.SavePhoneVerification(ctx, verificationRecord))
 
 	timelockAccounts, err := owner.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
@@ -153,7 +115,6 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 	assert.Equal(t, actual.Account.PublicKey().ToBase58(), owner.PublicKey().ToBase58())
 	assert.Equal(t, OwnerTypeRemoteSendGiftCard, actual.Type)
 	assert.Equal(t, OwnerManagementStateCodeAccount, actual.State)
-	assert.Nil(t, actual.VerificationRecord)
 }
 
 func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {

@@ -32,8 +32,6 @@ const (
 			destination TEXT NULL,
 			quantity INTEGER NULL,
 
-			initiator_phone_number TEXT NULL,
-
 			state INTEGER NOT NULL,
 
 			created_at timestamp with time zone NOT NULL, 

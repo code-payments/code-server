@@ -7,7 +7,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/phone"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
@@ -24,17 +23,17 @@ const (
 	InitializeLockedTimelockAccount
 	NoPrivacyTransferWithAuthority
 	NoPrivacyWithdraw
-	TemporaryPrivacyTransferWithAuthority
-	PermanentPrivacyTransferWithAuthority
-	TransferWithCommitment
-	CloseEmptyTimelockAccount   // Technically a compression with the new VM flows
-	CloseDormantTimelockAccount // Deprecated by the VM
-	SaveRecentRoot
-	InitializeCommitmentProof // Deprecated with new VM flows
-	UploadCommitmentProof     // Deprecated with new VM flows
-	VerifyCommitmentProof     // Deprecated with new VM flows
-	OpenCommitmentVault       // Deprecated with new VM flows
-	CloseCommitment
+	TemporaryPrivacyTransferWithAuthority // Deprecated privacy flow
+	PermanentPrivacyTransferWithAuthority // Deprecated privacy flow
+	TransferWithCommitment                // Deprecated privacy flow
+	CloseEmptyTimelockAccount             // Technically a compression with the new VM flows
+	CloseDormantTimelockAccount           // Deprecated by the VM
+	SaveRecentRoot                        // Deprecated privacy flow
+	InitializeCommitmentProof             // Deprecated with new VM flows
+	UploadCommitmentProof                 // Deprecated with new VM flows
+	VerifyCommitmentProof                 // Deprecated with new VM flows
+	OpenCommitmentVault                   // Deprecated with new VM flows
+	CloseCommitment                       // Deprecated privacy flow
 )
 
 type State uint8
@@ -87,9 +86,6 @@ type Record struct {
 	// to reduce redundant processing. This doesn't affect correctness of scheduling
 	// (eg. depedencies), so accidentally making some actively scheduled is ok.
 	DisableActiveScheduling bool
-
-	// Metadata required to help make antispam decisions
-	InitiatorPhoneNumber *string
 
 	State State
 
@@ -157,7 +153,6 @@ func (r *Record) Clone() Record {
 		ActionOrderingIndex:      r.ActionOrderingIndex,
 		FulfillmentOrderingIndex: r.FulfillmentOrderingIndex,
 		DisableActiveScheduling:  r.DisableActiveScheduling,
-		InitiatorPhoneNumber:     pointer.StringCopy(r.InitiatorPhoneNumber),
 		State:                    r.State,
 		CreatedAt:                r.CreatedAt,
 	}
@@ -182,7 +177,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IntentOrderingIndex = r.IntentOrderingIndex
 	dst.ActionOrderingIndex = r.ActionOrderingIndex
 	dst.FulfillmentOrderingIndex = r.FulfillmentOrderingIndex
-	dst.InitiatorPhoneNumber = r.InitiatorPhoneNumber
 	dst.DisableActiveScheduling = r.DisableActiveScheduling
 	dst.State = r.State
 	dst.CreatedAt = r.CreatedAt
@@ -250,10 +244,6 @@ func (r *Record) Validate() error {
 	}
 
 	// todo: validate intent, action and fulfillment type all align
-
-	if r.InitiatorPhoneNumber != nil && !phone.IsE164Format(*r.InitiatorPhoneNumber) {
-		return errors.New("initiator phone number doesn't match E.164 format")
-	}
 
 	return nil
 }
