@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 )
 
 type store struct {
@@ -50,6 +50,15 @@ func (s *store) findById(id uint64) *fulfillment.Record {
 func (s *store) findBySignature(sig string) *fulfillment.Record {
 	for _, item := range s.records {
 		if item.Signature != nil && *item.Signature == sig {
+			return item
+		}
+	}
+	return nil
+}
+
+func (s *store) findByVirtualSignature(sig string) *fulfillment.Record {
+	for _, item := range s.records {
+		if item.VirtualSignature != nil && *item.VirtualSignature == sig {
 			return item
 		}
 	}
@@ -494,10 +503,16 @@ func (s *store) Update(ctx context.Context, data *fulfillment.Record) error {
 		return fulfillment.ErrFulfillmentNotFound
 	}
 
+	item.Data = data.Data
+
 	item.Signature = pointer.StringCopy(data.Signature)
 	item.Nonce = pointer.StringCopy(data.Nonce)
 	item.Blockhash = pointer.StringCopy(data.Blockhash)
-	item.Data = data.Data
+
+	item.VirtualSignature = pointer.StringCopy(data.VirtualSignature)
+	item.VirtualNonce = pointer.StringCopy(data.VirtualNonce)
+	item.VirtualBlockhash = pointer.StringCopy(data.VirtualBlockhash)
+
 	item.State = data.State
 
 	if item.FulfillmentType == fulfillment.CloseDormantTimelockAccount {
@@ -523,43 +538,6 @@ func (s *store) MarkAsActivelyScheduled(ctx context.Context, id uint64) error {
 	return nil
 }
 
-func (s *store) ActivelyScheduleTreasuryAdvances(ctx context.Context, treasury string, intentOrderingIndex uint64, limit int) (uint64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var updateCount uint64
-	for _, data := range s.records {
-		if !data.DisableActiveScheduling {
-			continue
-		}
-
-		if data.State != fulfillment.StateUnknown {
-			continue
-		}
-
-		if data.FulfillmentType != fulfillment.TransferWithCommitment {
-			continue
-		}
-
-		if data.Source != treasury {
-			continue
-		}
-
-		if data.IntentOrderingIndex >= intentOrderingIndex {
-			continue
-		}
-
-		data.DisableActiveScheduling = false
-
-		updateCount += 1
-		if updateCount >= uint64(limit) {
-			return updateCount, nil
-		}
-	}
-
-	return updateCount, nil
-}
-
 func (s *store) GetById(ctx context.Context, id uint64) (*fulfillment.Record, error) {
 	if id == 0 {
 		return nil, fulfillment.ErrFulfillmentNotFound
@@ -581,6 +559,18 @@ func (s *store) GetBySignature(ctx context.Context, sig string) (*fulfillment.Re
 	defer s.mu.Unlock()
 
 	if item := s.findBySignature(sig); item != nil {
+		cloned := item.Clone()
+		return &cloned, nil
+	}
+
+	return nil, fulfillment.ErrFulfillmentNotFound
+}
+
+func (s *store) GetByVirtualSignature(ctx context.Context, sig string) (*fulfillment.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if item := s.findByVirtualSignature(sig); item != nil {
 		cloned := item.Clone()
 		return &cloned, nil
 	}

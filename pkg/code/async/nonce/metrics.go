@@ -2,14 +2,15 @@ package async_nonce
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
-	nonceCountMetricName     = "Nonce/%s_count"
 	nonceCountCheckEventName = "NonceCountPollingCheck"
 )
 
@@ -23,25 +24,31 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 		case <-time.After(delay):
 			start := time.Now()
 
-			for _, useCase := range []nonce.Purpose{
-				nonce.PurposeClientTransaction,
-				nonce.PurposeInternalServerProcess,
-				nonce.PurposeOnDemandTransaction,
+			// todo: optimize number of queries needed per polling check
+			for _, state := range []nonce.State{
+				nonce.StateUnknown,
+				nonce.StateReleased,
+				nonce.StateAvailable,
+				nonce.StateReserved,
+				nonce.StateInvalid,
 			} {
-				for _, state := range []nonce.State{
-					nonce.StateUnknown,
-					nonce.StateReleased,
-					nonce.StateAvailable,
-					nonce.StateReserved,
-					nonce.StateInvalid,
-				} {
-					count, err := p.data.GetNonceCountByStateAndPurpose(ctx, state, useCase)
-					if err != nil {
-						continue
-					}
-
-					recordNonceCountEvent(ctx, state, useCase, count)
+				count, err := p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, nonce.PurposeClientTransaction)
+				if err != nil {
+					continue
 				}
+				recordNonceCountEvent(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, nonce.PurposeClientTransaction, count)
+
+				count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeOnDemandTransaction)
+				if err != nil {
+					continue
+				}
+				recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeOnDemandTransaction, count)
+
+				count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeInternalServerProcess)
+				if err != nil {
+					continue
+				}
+				recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeInternalServerProcess, count)
 			}
 
 			delay = time.Second - time.Since(start)
@@ -49,8 +56,9 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 	}
 }
 
-func recordNonceCountEvent(ctx context.Context, state nonce.State, useCase nonce.Purpose, count uint64) {
+func recordNonceCountEvent(ctx context.Context, env nonce.Environment, instance string, state nonce.State, useCase nonce.Purpose, count uint64) {
 	metrics.RecordEvent(ctx, nonceCountCheckEventName, map[string]interface{}{
+		"pool":     fmt.Sprintf("%s:%s", env.String(), instance),
 		"use_case": useCase.String(),
 		"state":    state.String(),
 		"count":    count,

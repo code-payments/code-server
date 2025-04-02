@@ -13,11 +13,11 @@ import (
 
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
-	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
+	"github.com/code-payments/code-server/pkg/code/server/messaging"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (

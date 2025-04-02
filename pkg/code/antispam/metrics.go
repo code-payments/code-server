@@ -11,15 +11,9 @@ const (
 
 	eventName = "AntispamGuardDenial"
 
-	actionOpenAccounts             = "OpenAccounts"
-	actionSendPayment              = "SendPayment"
-	actionReceivePayments          = "ReceivePayments"
-	actionEstablishNewRelationship = "EstablishNewRelationship"
-
-	actionNewPhoneVerification     = "NewPhoneVerification"
-	actionSendSmsVerificationCode  = "SendSmsVerificationCode"
-	actionCheckSmsVerificationCode = "CheckSmsVerificationCode"
-	actionLinkAccount              = "LinkAccount"
+	actionOpenAccounts    = "OpenAccounts"
+	actionSendPayment     = "SendPayment"
+	actionReceivePayments = "ReceivePayments"
 
 	actionWelcomeBonus  = "WelcomeBonus"
 	actionReferralBonus = "ReferralBonus"

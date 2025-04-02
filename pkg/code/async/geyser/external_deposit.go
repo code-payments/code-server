@@ -15,28 +15,20 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
-	"github.com/code-payments/code-server/pkg/code/data/chat"
-	"github.com/code-payments/code-server/pkg/code/data/deposit"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/onramp"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	"github.com/code-payments/code-server/pkg/code/push"
 	"github.com/code-payments/code-server/pkg/code/thirdparty"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/grpc/client"
-	"github.com/code-payments/code-server/pkg/kin"
-	push_lib "github.com/code-payments/code-server/pkg/push"
-	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/usdc"
 )
+
+// todo: needs to be reimagined for the VM
 
 const (
 	codeMemoValue = "ZTAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
@@ -46,7 +38,7 @@ var (
 	syncedDepositCache = cache.NewCache(1_000_000)
 )
 
-func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.Provider, pusher push_lib.Provider, vault *common.Account) error {
+func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.Provider, vault *common.Account) error {
 	signatures, err := findPotentialExternalDeposits(ctx, data, vault)
 	if err != nil {
 		return errors.Wrap(err, "error finding potential external deposits")
@@ -54,7 +46,7 @@ func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.
 
 	var anyError error
 	for _, signature := range signatures {
-		err := processPotentialExternalDeposit(ctx, conf, data, pusher, signature, vault)
+		err := processPotentialExternalDeposit(ctx, conf, data, signature, vault)
 		if err != nil {
 			anyError = errors.Wrap(err, "error processing signature for external deposit")
 		}
@@ -66,14 +58,8 @@ func fixMissingExternalDeposits(ctx context.Context, conf *conf, data code_data.
 	return markDepositsAsSynced(ctx, data, vault)
 }
 
-// Note: This puts an upper bound to how far back in history we'll search
-//
-// todo: We can track the furthest succesful signature, so we have a bound.
-// This would also enable us to not reprocess transactions. We'll need to be
-// careful to check commitment status, since GetBlockchainHistory could return
-// non-finalized transactions.
 func findPotentialExternalDeposits(ctx context.Context, data code_data.Provider, vault *common.Account) ([]string, error) {
-	var res []string
+	/*var res []string
 	var cursor []byte
 	var totalTransactionsFound int
 	for {
@@ -120,268 +106,273 @@ func findPotentialExternalDeposits(ctx context.Context, data code_data.Provider,
 
 		cursor = query.Cursor(history[len(history)-1].Signature[:])
 	}
+	*/
+	return nil, errors.New("not implemented")
 }
 
-func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_data.Provider, pusher push_lib.Provider, signature string, tokenAccount *common.Account) error {
-	// Avoid reprocessing deposits we've recently seen and processed. Particularly,
-	// the backup process will likely be triggered in frequent bursts, so this is
-	// just an optimization around that.
-	cacheKey := getSyncedDepositCacheKey(signature, tokenAccount)
-	_, ok := syncedDepositCache.Retrieve(cacheKey)
-	if ok {
-		return nil
-	}
-
-	decodedSignature, err := base58.Decode(signature)
-	if err != nil {
-		return errors.Wrap(err, "invalid signature")
-	}
-	var typedSignature solana.Signature
-	copy(typedSignature[:], decodedSignature)
-
-	// Is this transaction a fulfillment? If so, it cannot be an external deposit.
-	_, err = data.GetFulfillmentBySignature(ctx, signature)
-	if err == nil {
-		return nil
-	} else if err != fulfillment.ErrFulfillmentNotFound {
-		return errors.Wrap(err, "error getting fulfillment record")
-	}
-
-	// Grab transaction token balances to get net quark balances from this transaction.
-	// This enables us to avoid parsing transaction data and generically handle any
-	// kind of transaction. It's far too complicated if we need to inspect individual
-	// instructions.
-	var tokenBalances *solana.TransactionTokenBalances
-	_, err = retry.Retry(
-		func() error {
-			tokenBalances, err = data.GetBlockchainTransactionTokenBalances(ctx, signature)
-			return err
-		},
-		waitForFinalizationRetryStrategies...,
-	)
-	if err != nil {
-		return errors.Wrap(err, "error getting transaction token balances")
-	}
-
-	// Check whether the Code subsidizer was involved in this transaction. If it is, then
-	// it cannot be an external deposit.
-	for _, account := range tokenBalances.Accounts {
-		if account == common.GetSubsidizer().PublicKey().ToBase58() {
+func processPotentialExternalDeposit(ctx context.Context, conf *conf, data code_data.Provider, signature string, tokenAccount *common.Account) error {
+	/*
+		// Avoid reprocessing deposits we've recently seen and processed. Particularly,
+		// the backup process will likely be triggered in frequent bursts, so this is
+		// just an optimization around that.
+		cacheKey := getSyncedDepositCacheKey(signature, tokenAccount)
+		_, ok := syncedDepositCache.Retrieve(cacheKey)
+		if ok {
 			return nil
 		}
-	}
 
-	deltaQuarks, err := getDeltaQuarksFromTokenBalances(tokenAccount, tokenBalances)
-	if err != nil {
-		return errors.Wrap(err, "error getting delta quarks from token balances")
-	}
+		decodedSignature, err := base58.Decode(signature)
+		if err != nil {
+			return errors.Wrap(err, "invalid signature")
+		}
+		var typedSignature solana.Signature
+		copy(typedSignature[:], decodedSignature)
 
-	// Transaction did not positively affect token account balance, so no new funds
-	// were externally deposited into the account.
-	if deltaQuarks <= 0 {
-		return nil
-	}
-
-	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.PublicKey().ToBase58())
-	if err != nil {
-		return errors.Wrap(err, "error getting account info record")
-	}
-
-	chatMessageReceiver, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
-	if err != nil {
-		return errors.Wrap(err, "invalid owner account")
-	}
-
-	blockTime := time.Now()
-	if tokenBalances.BlockTime != nil {
-		blockTime = *tokenBalances.BlockTime
-	}
-
-	// Use the account type to determine how we'll process this external deposit
-	//
-	// todo: Below logic is beginning to get messy and might be in need of a
-	//       refactor soon
-	switch accountInfoRecord.AccountType {
-
-	case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
-		// Check whether we've previously processed this external deposit
-		_, err = data.GetExternalDeposit(ctx, signature, tokenAccount.PublicKey().ToBase58())
+		// Is this transaction a fulfillment? If so, it cannot be an external deposit.
+		_, err = data.GetFulfillmentBySignature(ctx, signature)
 		if err == nil {
-			syncedDepositCache.Insert(cacheKey, true, 1)
+			return nil
+		} else if err != fulfillment.ErrFulfillmentNotFound {
+			return errors.Wrap(err, "error getting fulfillment record")
+		}
+
+		// Grab transaction token balances to get net quark balances from this transaction.
+		// This enables us to avoid parsing transaction data and generically handle any
+		// kind of transaction. It's far too complicated if we need to inspect individual
+		// instructions.
+		var tokenBalances *solana.TransactionTokenBalances
+		_, err = retry.Retry(
+			func() error {
+				tokenBalances, err = data.GetBlockchainTransactionTokenBalances(ctx, signature)
+				return err
+			},
+			waitForFinalizationRetryStrategies...,
+		)
+		if err != nil {
+			return errors.Wrap(err, "error getting transaction token balances")
+		}
+
+		// Check whether the Code subsidizer was involved in this transaction. If it is, then
+		// it cannot be an external deposit.
+		for _, account := range tokenBalances.Accounts {
+			if account == common.GetSubsidizer().PublicKey().ToBase58() {
+				return nil
+			}
+		}
+
+		deltaQuarks, err := getDeltaQuarksFromTokenBalances(tokenAccount, tokenBalances)
+		if err != nil {
+			return errors.Wrap(err, "error getting delta quarks from token balances")
+		}
+
+		// Transaction did not positively affect token account balance, so no new funds
+		// were externally deposited into the account.
+		if deltaQuarks <= 0 {
 			return nil
 		}
 
-		isCodeSwap, usdcSwapAccount, usdcQuarksSwapped, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
+		accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.PublicKey().ToBase58())
 		if err != nil {
-			return errors.Wrap(err, "error getting code swap metadata")
+			return errors.Wrap(err, "error getting account info record")
 		}
 
-		var usdMarketValue float64
-		if isCodeSwap {
-			usdMarketValue = float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc)
-		} else {
-			usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
-			if err != nil {
-				return errors.Wrap(err, "error getting usd rate")
-			}
-			usdMarketValue = usdExchangeRecord.Rate * float64(deltaQuarks) / float64(kin.QuarksPerKin)
-		}
-
-		if isCodeSwap {
-			// Checkpoint the Code swap account balance, to minimize chances a
-			// stale RPC node results in a double counting of funds
-			bestEffortCacheExternalAccountBalance(ctx, data, usdcSwapAccount, tokenBalances)
-		}
-
-		// For a consistent payment history list
-		//
-		// Deprecated in favour of chats (for history purposes)
-		intentRecord := &intent.Record{
-			IntentId:   fmt.Sprintf("%s-%s", signature, tokenAccount.PublicKey().ToBase58()),
-			IntentType: intent.ExternalDeposit,
-
-			InitiatorOwnerAccount: tokenBalances.Accounts[0], // The fee payer
-
-			ExternalDepositMetadata: &intent.ExternalDepositMetadata{
-				DestinationOwnerAccount: accountInfoRecord.OwnerAccount,
-				DestinationTokenAccount: tokenAccount.PublicKey().ToBase58(),
-				Quantity:                uint64(deltaQuarks),
-				UsdMarketValue:          usdMarketValue,
-			},
-
-			State:     intent.StateConfirmed,
-			CreatedAt: time.Now(),
-		}
-		err = data.SaveIntent(ctx, intentRecord)
-		if err != nil {
-			return errors.Wrap(err, "error saving intent record")
-		}
-
-		if isCodeSwap {
-			purchases, err := getPurchasesFromSwap(
-				ctx,
-				conf,
-				data,
-				signature,
-				usdcSwapAccount,
-				usdcQuarksSwapped,
-			)
-			if err != nil {
-				return errors.Wrap(err, "error getting swap purchases")
-			}
-
-			var protoPurchases []*transactionpb.ExchangeDataWithoutRate
-			for _, purchase := range purchases {
-				protoPurchases = append(protoPurchases, purchase.protoExchangeData)
-				recordBuyModulePurchaseCompletedEvent(
-					ctx,
-					purchase.deviceType,
-					purchase.purchaseInitiationTime,
-					purchase.usdcDepositTime,
-				)
-			}
-
-			chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, blockTime, protoPurchases...)
-			if err != nil {
-				return errors.Wrap(err, "error creating chat message")
-			}
-
-			canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, chatMessageReceiver, chatMessage)
-			switch err {
-			case nil:
-				if canPush {
-					push.SendChatMessagePushNotification(
-						ctx,
-						data,
-						pusher,
-						chat_util.KinPurchasesName,
-						chatMessageReceiver,
-						chatMessage,
-					)
-				}
-			case chat.ErrMessageAlreadyExists:
-			default:
-				return errors.Wrap(err, "error sending chat message")
-			}
-		} else {
-			err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
-			if err != nil {
-				return errors.Wrap(err, "error updating cash transactions chat")
-			}
-			_, err = chat_util.SendMerchantExchangeMessage(ctx, data, intentRecord, nil)
-			if err != nil {
-				return errors.Wrap(err, "error updating merchant chat")
-			}
-
-			push.SendDepositPushNotification(ctx, data, pusher, tokenAccount, uint64(deltaQuarks))
-		}
-
-		// For tracking in balances
-		externalDepositRecord := &deposit.Record{
-			Signature:      signature,
-			Destination:    tokenAccount.PublicKey().ToBase58(),
-			Amount:         uint64(deltaQuarks),
-			UsdMarketValue: usdMarketValue,
-
-			Slot:              tokenBalances.Slot,
-			ConfirmationState: transaction.ConfirmationFinalized,
-
-			CreatedAt: time.Now(),
-		}
-		err = data.SaveExternalDeposit(ctx, externalDepositRecord)
-		if err != nil {
-			return errors.Wrap(err, "error creating external deposit record")
-		}
-
-		syncedDepositCache.Insert(cacheKey, true, 1)
-
-		return nil
-
-	case commonpb.AccountType_SWAP:
-		bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
-
-		//		go delayedUsdcDepositProcessing(
-		//			ctx,
-		//			conf,
-		//			data,
-		//			pusher,
-		//			chatMessageReceiver,
-		//			tokenAccount,
-		//			signature,
-		//			blockTime,
-		//		)
-
-		owner, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+		chatMessageReceiver, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
 		if err != nil {
 			return errors.Wrap(err, "invalid owner account")
 		}
 
-		// Best-effort attempt to get the client to trigger a Swap RPC call now
-		go push.SendTriggerSwapRpcPushNotification(
-			ctx,
-			data,
-			pusher,
-			owner,
-		)
-
-		// Have the account pulled by the swap retry worker
-		err = markRequiringSwapRetries(ctx, data, accountInfoRecord)
-		if err != nil {
-			return err
+		blockTime := time.Now()
+		if tokenBalances.BlockTime != nil {
+			blockTime = *tokenBalances.BlockTime
 		}
 
-		syncedDepositCache.Insert(cacheKey, true, 1)
+		// Use the account type to determine how we'll process this external deposit
+		//
+		// todo: Below logic is beginning to get messy and might be in need of a
+		//       refactor soon
+		switch accountInfoRecord.AccountType {
 
-		return nil
+		case commonpb.AccountType_PRIMARY, commonpb.AccountType_RELATIONSHIP:
+			// Check whether we've previously processed this external deposit
+			_, err = data.GetExternalDeposit(ctx, signature, tokenAccount.PublicKey().ToBase58())
+			if err == nil {
+				syncedDepositCache.Insert(cacheKey, true, 1)
+				return nil
+			}
 
-	default:
-		// Mark anything other than deposit or swap accounts as synced and move on without
-		// saving anything. There's a potential someone could overutilize our treasury
-		// by depositing large sums into temporary or bucket accounts, which have
-		// more lenient checks ATM. We'll deal with these adhoc as they arise.
-		syncedDepositCache.Insert(cacheKey, true, 1)
-		return nil
-	}
+			isCodeSwap, usdcSwapAccount, usdcQuarksSwapped, err := getCodeSwapMetadata(ctx, conf, tokenBalances)
+			if err != nil {
+				return errors.Wrap(err, "error getting code swap metadata")
+			}
+
+			var usdMarketValue float64
+			if isCodeSwap {
+				usdMarketValue = float64(usdcQuarksSwapped) / float64(usdc.QuarksPerUsdc)
+			} else {
+				usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
+				if err != nil {
+					return errors.Wrap(err, "error getting usd rate")
+				}
+				usdMarketValue = usdExchangeRecord.Rate * float64(deltaQuarks) / float64(kin.QuarksPerKin)
+			}
+
+			if isCodeSwap {
+				// Checkpoint the Code swap account balance, to minimize chances a
+				// stale RPC node results in a double counting of funds
+				bestEffortCacheExternalAccountBalance(ctx, data, usdcSwapAccount, tokenBalances)
+			}
+
+			// For a consistent payment history list
+			//
+			// Deprecated in favour of chats (for history purposes)
+			intentRecord := &intent.Record{
+				IntentId:   fmt.Sprintf("%s-%s", signature, tokenAccount.PublicKey().ToBase58()),
+				IntentType: intent.ExternalDeposit,
+
+				InitiatorOwnerAccount: tokenBalances.Accounts[0], // The fee payer
+
+				ExternalDepositMetadata: &intent.ExternalDepositMetadata{
+					DestinationOwnerAccount: accountInfoRecord.OwnerAccount,
+					DestinationTokenAccount: tokenAccount.PublicKey().ToBase58(),
+					Quantity:                uint64(deltaQuarks),
+					UsdMarketValue:          usdMarketValue,
+				},
+
+				State:     intent.StateConfirmed,
+				CreatedAt: time.Now(),
+			}
+			err = data.SaveIntent(ctx, intentRecord)
+			if err != nil {
+				return errors.Wrap(err, "error saving intent record")
+			}
+
+			if isCodeSwap {
+				purchases, err := getPurchasesFromSwap(
+					ctx,
+					conf,
+					data,
+					signature,
+					usdcSwapAccount,
+					usdcQuarksSwapped,
+				)
+				if err != nil {
+					return errors.Wrap(err, "error getting swap purchases")
+				}
+
+				var protoPurchases []*transactionpb.ExchangeDataWithoutRate
+				for _, purchase := range purchases {
+					protoPurchases = append(protoPurchases, purchase.protoExchangeData)
+					recordBuyModulePurchaseCompletedEvent(
+						ctx,
+						purchase.deviceType,
+						purchase.purchaseInitiationTime,
+						purchase.usdcDepositTime,
+					)
+				}
+
+				chatMessage, err := chat_util.ToKinAvailableForUseMessage(signature, blockTime, protoPurchases...)
+				if err != nil {
+					return errors.Wrap(err, "error creating chat message")
+				}
+
+				canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, chatMessageReceiver, chatMessage)
+				switch err {
+				case nil:
+					if canPush {
+						push.SendChatMessagePushNotification(
+							ctx,
+							data,
+							pusher,
+							chat_util.KinPurchasesName,
+							chatMessageReceiver,
+							chatMessage,
+						)
+					}
+				case chat.ErrMessageAlreadyExists:
+				default:
+					return errors.Wrap(err, "error sending chat message")
+				}
+			} else {
+				err = chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
+				if err != nil {
+					return errors.Wrap(err, "error updating cash transactions chat")
+				}
+				_, err = chat_util.SendMerchantExchangeMessage(ctx, data, intentRecord, nil)
+				if err != nil {
+					return errors.Wrap(err, "error updating merchant chat")
+				}
+
+				push.SendDepositPushNotification(ctx, data, pusher, tokenAccount, uint64(deltaQuarks))
+			}
+
+			// For tracking in balances
+			externalDepositRecord := &deposit.Record{
+				Signature:      signature,
+				Destination:    tokenAccount.PublicKey().ToBase58(),
+				Amount:         uint64(deltaQuarks),
+				UsdMarketValue: usdMarketValue,
+
+				Slot:              tokenBalances.Slot,
+				ConfirmationState: transaction.ConfirmationFinalized,
+
+				CreatedAt: time.Now(),
+			}
+			err = data.SaveExternalDeposit(ctx, externalDepositRecord)
+			if err != nil {
+				return errors.Wrap(err, "error creating external deposit record")
+			}
+
+			syncedDepositCache.Insert(cacheKey, true, 1)
+
+			return nil
+
+		case commonpb.AccountType_SWAP:
+			bestEffortCacheExternalAccountBalance(ctx, data, tokenAccount, tokenBalances)
+
+			//		go delayedUsdcDepositProcessing(
+			//			ctx,
+			//			conf,
+			//			data,
+			//			pusher,
+			//			chatMessageReceiver,
+			//			tokenAccount,
+			//			signature,
+			//			blockTime,
+			//		)
+
+			owner, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+			if err != nil {
+				return errors.Wrap(err, "invalid owner account")
+			}
+
+			// Best-effort attempt to get the client to trigger a Swap RPC call now
+			go push.SendTriggerSwapRpcPushNotification(
+				ctx,
+				data,
+				pusher,
+				owner,
+			)
+
+			// Have the account pulled by the swap retry worker
+			err = markRequiringSwapRetries(ctx, data, accountInfoRecord)
+			if err != nil {
+				return err
+			}
+
+			syncedDepositCache.Insert(cacheKey, true, 1)
+
+			return nil
+
+		default:
+			// Mark anything other than deposit or swap accounts as synced and move on without
+			// saving anything. There's a potential someone could overutilize our treasury
+			// by depositing large sums into temporary or bucket accounts, which have
+			// more lenient checks ATM. We'll deal with these adhoc as they arise.
+			syncedDepositCache.Insert(cacheKey, true, 1)
+			return nil
+		}
+	*/
+	return errors.New("not implemented")
 }
 
 func markDepositsAsSynced(ctx context.Context, data code_data.Provider, vault *common.Account) error {
@@ -706,7 +697,6 @@ func delayedUsdcDepositProcessing(
 	ctx context.Context,
 	conf *conf,
 	data code_data.Provider,
-	pusher push_lib.Provider,
 	ownerAccount *common.Account,
 	tokenAccount *common.Account,
 	signature string,
@@ -752,29 +742,6 @@ func delayedUsdcDepositProcessing(
 		if isCodeSwap {
 			return
 		}
-	}
-
-	chatMessage, err := chat_util.ToUsdcDepositedMessage(signature, blockTime)
-	if err != nil {
-		return
-	}
-
-	canPush, err := chat_util.SendKinPurchasesMessage(ctx, data, ownerAccount, chatMessage)
-	switch err {
-	case nil:
-		if canPush {
-			push.SendChatMessagePushNotification(
-				ctx,
-				data,
-				pusher,
-				chat_util.KinPurchasesName,
-				ownerAccount,
-				chatMessage,
-			)
-		}
-	case chat.ErrMessageAlreadyExists:
-	default:
-		return
 	}
 }
 

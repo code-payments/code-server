@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mr-tron/base58/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/pkg/errors"
 
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
@@ -14,10 +14,15 @@ import (
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/system"
 )
 
-func (p *service) worker(serviceCtx context.Context, state nonce.State, interval time.Duration) error {
+// todo: We can generalize nonce handling by environment using an interface
+
+const (
+	nonceBatchSize = 100
+)
+
+func (p *service) worker(serviceCtx context.Context, env nonce.Environment, instance string, state nonce.State, interval time.Duration) error {
 	var cursor query.Cursor
 	delay := interval
 
@@ -33,6 +38,8 @@ func (p *service) worker(serviceCtx context.Context, state nonce.State, interval
 			// Get a batch of nonce records in similar state (e.g. newly created, released, reserved, etc...)
 			items, err := p.data.GetAllNonceByState(
 				tracedCtx,
+				env,
+				instance,
 				state,
 				query.WithLimit(nonceBatchSize),
 				query.WithCursor(cursor),
@@ -80,7 +87,8 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 			States:
 				StateUnknown:
 					Newly created nonce on our side but the account might not
-					exist on Solana.
+					exist. Current implementation assumes we know the address
+					ahead of time.
 
 				StateReleased:
 					The account is confirmed to exist but we don't know its
@@ -88,11 +96,11 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 
 				StateAvailable:
 					Available to be used by a payment intent, subscription, or
-					other nonce-related transaction.
+					other nonce-related transaction/instruction.
 
 				StateReserved:
 					Reserved by a payment intent, subscription, or other
-					nonce-related transaction.
+					nonce-related transaction/instruction.
 
 				StateInvalid:
 					The nonce account is invalid (e.g. insufficient funds, etc).
@@ -129,7 +137,12 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 }
 
 func (p *service) handleUnknown(ctx context.Context, record *nonce.Record) error {
-	// Newly created nonces.
+	if record.Environment != nonce.EnvironmentSolana {
+		return errors.Errorf("%s environment not supported for %s state", record.Environment.String(), nonce.StateUnknown.String())
+	}
+
+	// Newly created nonces. Only supports Solana atm since we don't know the VDN
+	// address ahead of time.
 
 	// We're going to the blockchain directly here (super slow btw)
 	// because we don't capture the transaction through history yet (it only
@@ -170,40 +183,57 @@ func (p *service) handleUnknown(ctx context.Context, record *nonce.Record) error
 }
 
 func (p *service) handleReleased(ctx context.Context, record *nonce.Record) error {
-	// Nonces that exist but we don't yet know their stored blockhash.
-
-	txn, err := p.getTransaction(ctx, record.Signature)
-	if err != nil {
-		return err
+	switch record.Environment {
+	case nonce.EnvironmentSolana, nonce.EnvironmentCvm:
+	default:
+		return errors.Errorf("%s environment not supported for %s state", record.Environment.String(), nonce.StateReleased.String())
 	}
 
-	// Sanity check the transaction is in a finalized or failed state
+	// Nonces that exist but we don't yet know their stored blockhash.
+
+	// Fetch the Solana transaction where the nonce would be consumed
+	var txn *transaction.Record
+	var err error
+	switch record.Environment {
+	case nonce.EnvironmentSolana:
+		txn, err = p.getTransaction(ctx, record.Signature)
+		if err != nil {
+			return err
+		}
+	case nonce.EnvironmentCvm:
+		fulfillmentRecord, err := p.data.GetFulfillmentByVirtualSignature(ctx, record.Signature)
+		if err != nil {
+			return err
+		}
+
+		txn, err = p.getTransaction(ctx, *fulfillmentRecord.Signature)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Sanity check the Solana transaction is in a finalized or failed state
 	if txn.ConfirmationState != transaction.ConfirmationFinalized && txn.ConfirmationState != transaction.ConfirmationFailed {
 		return nil
 	}
 
-	// Always get the account's state after the transaction's block to avoid
-	// having RPC nodes that are behind provide stale finalized data.
-	rawData, _, err := p.data.GetBlockchainAccountDataAfterBlock(ctx, record.Address, txn.Slot)
-	if err != nil {
-		return err
+	// Get the next blockhash using a "safe" query
+	var nextBlockhash string
+	switch record.Environment {
+	case nonce.EnvironmentSolana:
+		nextBlockhash, err = p.getBlockhashFromSolanaNonce(ctx, record, txn.Slot)
+		if err != nil {
+			return err
+		}
+	case nonce.EnvironmentCvm:
+		nextBlockhash, err = p.getBlockhashFromCvmNonce(ctx, record, txn.Slot)
+		if err != nil {
+			return err
+		}
 	}
 
-	if len(rawData) != system.NonceAccountSize {
-		// RPC call failed or something (maybe this node has no history?)
-		return ErrInvalidNonceAccountSize
-	}
-
-	var data system.NonceAccount
-	err = data.Unmarshal(rawData)
-	if err != nil {
-		return err
-	}
-
-	nextBlockhash := base58.Encode(data.Blockhash)
-
-	// Precautionary safety check, since it's an easy validation
-	if record.Blockhash == nextBlockhash {
+	// Precautionary safety checks, since it's an easy validation
+	if record.Blockhash == nextBlockhash || nextBlockhash == "" {
 		return nil
 	}
 

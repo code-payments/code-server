@@ -11,10 +11,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/kin"
-	push_lib "github.com/code-payments/code-server/pkg/push"
-	splitter_token "github.com/code-payments/code-server/pkg/solana/splitter"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -31,16 +27,14 @@ type ProgramAccountUpdateHandler interface {
 }
 
 type TokenProgramAccountHandler struct {
-	conf   *conf
-	data   code_data.Provider
-	pusher push_lib.Provider
+	conf *conf
+	data code_data.Provider
 }
 
-func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider, pusher push_lib.Provider) ProgramAccountUpdateHandler {
+func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider) ProgramAccountUpdateHandler {
 	return &TokenProgramAccountHandler{
-		conf:   conf,
-		data:   data,
-		pusher: pusher,
+		conf: conf,
+		data: data,
 	}
 }
 
@@ -83,18 +77,6 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		return errors.Wrap(err, "invalid mint account")
 	}
 
-	// The token account is the messaging fee collector, so process the update as
-	// a blockchain message.
-	if tokenAccount.PublicKey().ToBase58() == h.conf.messagingFeeCollectorPublicKey.Get(ctx) {
-		return processPotentialBlockchainMessage(
-			ctx,
-			h.data,
-			h.pusher,
-			tokenAccount,
-			*update.TxSignature,
-		)
-	}
-
 	// Account is empty, and all we care about are external deposits at this point,
 	// so filter it out
 	if unmarshalled.Amount == 0 {
@@ -103,20 +85,15 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 
 	switch mintAccount.PublicKey().ToBase58() {
 
-	case common.KinMintAccount.PublicKey().ToBase58():
+	case common.CoreMintAccount.PublicKey().ToBase58():
 		// Not a program vault account, so filter it out. It cannot be a Timelock
 		// account.
 		if !bytes.Equal(tokenAccount.PublicKey().ToBytes(), ownerAccount.PublicKey().ToBytes()) {
 			return nil
 		}
 
-		isCodeTimelockAccount, err := testForKnownCodeTimelockAccount(ctx, h.data, tokenAccount)
-		if err != nil {
-			return errors.Wrap(err, "error testing for known account")
-		} else if !isCodeTimelockAccount {
-			// Not an account we track, so skip the update
-			return nil
-		}
+		// todo: Need to implement VM deposit flow
+		return nil
 
 	case common.UsdcMintAccount.PublicKey().ToBase58():
 		ata, err := ownerAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
@@ -138,89 +115,17 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		}
 
 	default:
-		// Not a Kin or USDC account, so filter it out
+		// Not a Core Mint or USDC account, so filter it out
 		return nil
 	}
 
 	// We've determined this token account is one that we care about. Process
 	// the update as an external deposit.
-	return processPotentialExternalDeposit(ctx, h.conf, h.data, h.pusher, *update.TxSignature, tokenAccount)
+	return processPotentialExternalDeposit(ctx, h.conf, h.data, *update.TxSignature, tokenAccount)
 }
 
-type TimelockV1ProgramAccountHandler struct {
-	data code_data.Provider
-}
-
-func NewTimelockV1ProgramAccountHandler(data code_data.Provider) ProgramAccountUpdateHandler {
-	return &TimelockV1ProgramAccountHandler{
-		data: data,
-	}
-}
-
-func (h *TimelockV1ProgramAccountHandler) Handle(ctx context.Context, update *geyserpb.AccountUpdate) error {
-	if !bytes.Equal(update.Owner, timelock_token_v1.PROGRAM_ID) {
-		return ErrUnexpectedProgramOwner
-	}
-
-	if len(update.Data) > 0 {
-		var unmarshalled timelock_token_v1.TimelockAccount
-		err := unmarshalled.Unmarshal(update.Data)
-		if err != nil {
-			return errors.Wrap(err, "error unmarshalling account data from update")
-		}
-
-		// Not a Kin account, so filter it out
-		if !bytes.Equal(unmarshalled.Mint, kin.TokenMint) {
-			return nil
-		}
-
-		// Not managed by Code, so filter it out
-		if !bytes.Equal(unmarshalled.TimeAuthority, common.GetSubsidizer().PublicKey().ToBytes()) {
-			return nil
-		}
-
-		// Account is locked, so filter it out. Scheduler success handlers ensure
-		// we properly update state from unknown to locked state. We don't care if
-		// the account remains locked. We're really just interested in external
-		// unlocks. Skip the update to reduce load.
-		if unmarshalled.VaultState == timelock_token_v1.StateLocked {
-			return nil
-		}
-	}
-
-	stateAccount, err := common.NewAccountFromPublicKeyBytes(update.Pubkey)
-	if err != nil {
-		return errors.Wrap(err, "invalid state account")
-	}
-
-	// Go out to the blockchain to fetch finalized account state. Don't trust the update.
-	return updateTimelockV1AccountCachedState(ctx, h.data, stateAccount, update.Slot)
-}
-
-type SplitterProgramAccountHandler struct {
-	data code_data.Provider
-}
-
-func NewSplitterProgramAccountHandler(data code_data.Provider) ProgramAccountUpdateHandler {
-	return &SplitterProgramAccountHandler{
-		data: data,
-	}
-}
-
-func (h *SplitterProgramAccountHandler) Handle(ctx context.Context, update *geyserpb.AccountUpdate) error {
-	if !bytes.Equal(update.Owner, splitter_token.PROGRAM_ID) {
-		return ErrUnexpectedProgramOwner
-	}
-
-	// Nothing to do, we don't care about updates here yet. Everything is handled
-	// externally atm in the fulfillment and treasury workers.
-	return nil
-}
-
-func initializeProgramAccountUpdateHandlers(conf *conf, data code_data.Provider, pusher push_lib.Provider) map[string]ProgramAccountUpdateHandler {
+func initializeProgramAccountUpdateHandlers(conf *conf, data code_data.Provider) map[string]ProgramAccountUpdateHandler {
 	return map[string]ProgramAccountUpdateHandler{
-		base58.Encode(token.ProgramKey):             NewTokenProgramAccountHandler(conf, data, pusher),
-		base58.Encode(timelock_token_v1.PROGRAM_ID): NewTimelockV1ProgramAccountHandler(data),
-		base58.Encode(splitter_token.PROGRAM_ID):    NewSplitterProgramAccountHandler(data),
+		base58.Encode(token.ProgramKey): NewTokenProgramAccountHandler(conf, data),
 	}
 }

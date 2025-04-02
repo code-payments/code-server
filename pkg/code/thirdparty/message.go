@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jdgcs/ed25519/extra25519"
@@ -13,9 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/vence722/base122-go"
 	"golang.org/x/crypto/nacl/box"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	chatpb "github.com/code-payments/code-protobuf-api/generated/go/chat/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/netutil"
@@ -111,41 +107,6 @@ func (m *NaclBoxBlockchainMessage) Encode() ([]byte, error) {
 
 	// Because memo requires UTF-8, and this is more space efficient than base64
 	return base122.Encode(buffer)
-}
-
-// ToProto creates the proto representation of a NaclBoxBlockchainMessage
-func (m *NaclBoxBlockchainMessage) ToProto(
-	sender *common.Account,
-	signature string,
-	ts time.Time,
-) (*chatpb.ChatMessage, error) {
-	messageId, err := base58.Decode(signature)
-	if err != nil {
-		return nil, err
-	}
-
-	msg := &chatpb.ChatMessage{
-		MessageId: &chatpb.ChatMessageId{
-			Value: messageId,
-		},
-		Ts: timestamppb.New(ts),
-		Content: []*chatpb.Content{
-			{
-				Type: &chatpb.Content_NaclBox{
-					NaclBox: &chatpb.NaclBoxEncryptedContent{
-						PeerPublicKey:    sender.ToProto(),
-						Nonce:            m.Nonce,
-						EncryptedPayload: m.EncryptedMessage,
-					},
-				},
-			},
-		},
-	}
-
-	if err := msg.Content[0].Validate(); err != nil {
-		return nil, errors.Wrap(err, "unexpectedly constructed an invalid proto message")
-	}
-	return msg, nil
 }
 
 // DecodeNaclBoxBlockchainMessage attempts to decode a byte payload into a NaclBoxBlockchainMessage

@@ -7,25 +7,26 @@ import (
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/code/config"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/solana"
 )
+
+// todo: always assumes mainnet
 
 const (
 	// Important Note: Be very careful changing this value, as it will completely
 	// change timelock PDAs and have consequences with existing splitter treasuries.
-	//
-	// todo: configurable
-	realSubsidizerPublicKey = "codeHy87wGD5oMRLG75qKqsSi1vWE3oxNyYmXo5F9YR"
+	realSubsidizerPublicKey = config.SubsidizerPublicKey
 
 	// Ensure this is a large enough buffer. The enforcement of a min balance isn't
 	// perfect to say the least.
 	//
 	// todo: configurable
-	minSubsidizerBalance = 250_000_000_000 // 250 SOL
+	minSubsidizerBalance = 10_000_000_000 // 10 SOL
 )
 
 var (
@@ -34,20 +35,10 @@ var (
 	// and SOL balances for our subsidizer, so we exclude rent recovery which
 	// ensures our estimates are always on the conservative side of things.
 	lamportsByFulfillment = map[fulfillment.Type]uint64{
-		fulfillment.InitializeLockedTimelockAccount:       4120000,  // 0.00412 SOL
-		fulfillment.NoPrivacyTransferWithAuthority:        10000,    // 0.00001 SOL (5000 lamports per signature)
-		fulfillment.NoPrivacyWithdraw:                     10000,    // 0.00001 SOL (5000 lamports per signature)
-		fulfillment.TemporaryPrivacyTransferWithAuthority: 10000,    // 0.00001 SOL (5000 lamports per signature)
-		fulfillment.PermanentPrivacyTransferWithAuthority: 10000,    // 0.00001 SOL (5000 lamports per signature)
-		fulfillment.TransferWithCommitment:                5000,     // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.CloseEmptyTimelockAccount:             10000,    // 0.00001 SOL (5000 lamports per signature)
-		fulfillment.CloseDormantTimelockAccount:           10000,    // 0.00001 SOL (5000 lamports per signature)
-		fulfillment.SaveRecentRoot:                        5000,     // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.InitializeCommitmentProof:             15800000, // 0.0158 SOL
-		fulfillment.UploadCommitmentProof:                 5000,     // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.VerifyCommitmentProof:                 5000,     // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.OpenCommitmentVault:                   2050000,  // 0.00205 SOL
-		fulfillment.CloseCommitmentVault:                  5000,     // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.InitializeLockedTimelockAccount: 5000, // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.NoPrivacyTransferWithAuthority:  5000, // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.NoPrivacyWithdraw:               5000, // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.CloseEmptyTimelockAccount:       5000, // 0.000005 SOL (5000 lamports per signature)
 	}
 	lamportsPerCreateNonceAccount uint64 = 1450000 // 0.00145 SOL
 )
@@ -154,7 +145,7 @@ func EstimateUsedSubsidizerBalance(ctx context.Context, data code_data.Provider)
 		fees += uint64(count) * lamportsConsumed
 	}
 
-	numNoncesBeingCreated, err := data.GetNonceCountByState(ctx, nonce.StateUnknown)
+	numNoncesBeingCreated, err := data.GetNonceCountByState(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown)
 	if err != nil {
 		return 0, err
 	}

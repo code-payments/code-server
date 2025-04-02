@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/kin"
+	"github.com/code-payments/code-server/pkg/code/config"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/mr-tron/base58/base58"
 )
@@ -203,7 +203,7 @@ func getTokenBalanceSet(meta *solana.TransactionMeta, accounts []ed25519.PublicK
 	txBalances := map[string]*TokenBalance{}
 
 	for _, txTokenBal := range meta.PreTokenBalances {
-		if txTokenBal.Mint != kin.Mint {
+		if txTokenBal.Mint != config.CoreMintPublicKeyString {
 			continue
 		}
 
@@ -225,7 +225,7 @@ func getTokenBalanceSet(meta *solana.TransactionMeta, accounts []ed25519.PublicK
 	}
 
 	for _, txTokenBal := range meta.PostTokenBalances {
-		if txTokenBal.Mint != kin.Mint {
+		if txTokenBal.Mint != config.CoreMintPublicKeyString {
 			continue
 		}
 

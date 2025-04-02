@@ -22,8 +22,6 @@ const (
 		CREATE TABLE codewallet__core_timelock(
 			id SERIAL NOT NULL PRIMARY KEY,
 
-			data_version INTEGER NOT NULL,
-
 			address TEXT NOT NULL,
 			bump INTEGER NOT NULL,
 
@@ -32,12 +30,6 @@ const (
 			vault_owner TEXT NOT NULL,
 			vault_state INTEGER NOT NULL,
 
-			time_authority TEXT NOT NULL,
-			close_authority TEXT NOT NULL,
-
-			mint TEXT NOT NULL,
-
-			num_days_locked INTEGER NOT NULL,
 			unlock_at INTEGER,
 
 			block INTEGER NOT NULL,

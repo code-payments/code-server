@@ -32,9 +32,6 @@ const (
 
 			quantity bigint NULL CHECK (quantity >= 0),
 
-			treasury_pool text NULL,
-			recent_root text NULL,
-
 			exchange_currency varchar(3) NULL,
 			exchange_rate numeric(18, 9) NULL,
 			native_amount numeric(18, 9) NULL,
@@ -46,16 +43,8 @@ const (
 			is_returned BOOL NOT NULL,
 			is_issuer_voiding_gift_card BOOL NOT NULL,
 			is_micro_payment BOOL NOT NULL,
-			is_tip BOOL NOT NULL,
-			is_chat BOOL NOT NULL,
 
-			relationship_to TEXT NULL,
-
-			tip_platform INTEGER NULL,
-			tipped_username TEXT NULL,
-
-			chat_id TEXT NULL,
-			phone_number TEXT NULL,
+			extended_metadata BYTEA NULL,
 
 			state integer NOT NULL,
 

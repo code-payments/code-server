@@ -1,5 +1,6 @@
 package lawenforcement
 
+/*
 import (
 	"context"
 	"fmt"
@@ -21,7 +22,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/user/identity"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/kin"
-	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -458,7 +458,7 @@ func makeReceivePaymentsPubliclyIntent(t *testing.T, phoneNumber string, owner *
 func setupPrivateBalance(t *testing.T, env amlTestEnv, owner *common.Account, balance uint64) {
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(timelock_token.DataVersion1, common.KinMintAccount)
+	timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.KinMintAccount)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -468,7 +468,7 @@ func setupPrivateBalance(t *testing.T, env amlTestEnv, owner *common.Account, ba
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: authority.PublicKey().ToBase58(),
 		TokenAccount:     timelockRecord.VaultAddress,
-		MintAccount:      timelockRecord.Mint,
+		MintAccount:      timelockAccounts.Mint.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_BUCKET_1_KIN,
 	}
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, &accountInfoRecord))
@@ -485,3 +485,4 @@ func setupPrivateBalance(t *testing.T, env amlTestEnv, owner *common.Account, ba
 		require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
 	}
 }
+*/

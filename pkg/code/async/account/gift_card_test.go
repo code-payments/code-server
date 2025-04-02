@@ -1,15 +1,6 @@
 package async_account
 
-import (
-	"testing"
-	"time"
-
-	"github.com/mr-tron/base58/base58"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/code-payments/code-server/pkg/testutil"
-)
+/*
 
 func TestGiftCardAutoReturn_ExpiryWindow(t *testing.T) {
 	for _, tc := range []struct {
@@ -85,3 +76,5 @@ func TestGiftCardAutoReturn_IntentId(t *testing.T) {
 		assert.Equal(t, generated2, getAutoReturnIntentId(intentId2))
 	}
 }
+
+*/

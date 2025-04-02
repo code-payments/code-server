@@ -2,32 +2,25 @@ package async_account
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
-	"math"
 	"sync"
 	"time"
 
-	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/sirupsen/logrus"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
-	chat_util "github.com/code-payments/code-server/pkg/code/chat"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
-	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/push"
-	"github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/metrics"
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/retry"
 )
+
+// todo: Is this even relevant anymore with the VM? If so, we need new logic because
+//       closing dormant accounts is no longer a thing with the VM.
 
 const (
 	giftCardAutoReturnIntentPrefix = "auto-return-gc-"
@@ -135,76 +128,67 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 // Note: This is the first instance of handling a conditional action, and could be
 // a good guide for similar actions in the future.
 func (p *service) initiateProcessToAutoReturnGiftCard(ctx context.Context, giftCardVaultAccount *common.Account) error {
-	giftCardIssuedIntent, err := p.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
+	/*
+		giftCardIssuedIntent, err := p.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+		if err != nil {
+			return err
+		}
 
-	autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
+		autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+		if err != nil {
+			return err
+		}
 
-	autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
-	if err != nil {
-		return err
-	}
+		autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
+		if err != nil {
+			return err
+		}
 
-	// Add a payment history item to show the funds being returned back to the issuer
-	err = insertAutoReturnPaymentHistoryItem(ctx, p.data, giftCardIssuedIntent)
-	if err != nil {
-		return err
-	}
+		// Add a payment history item to show the funds being returned back to the issuer
+		err = insertAutoReturnPaymentHistoryItem(ctx, p.data, giftCardIssuedIntent)
+		if err != nil {
+			return err
+		}
 
-	// We need to update pre-sorting because close dormant fulfillments are always
-	// inserted at the very last spot in the line.
-	//
-	// Must be the first thing to succeed! We cannot risk a deposit back into the
-	// organizer to win a race in scheduling. By pre-sorting this to the end of
-	// the gift card issued intent, we ensure the auto-return is blocked on any
-	// fulfillments to setup the gift card. We'll also guarantee that subsequent
-	// intents that utilize the primary account as a source of funds will be blocked
-	// by the auto-return.
-	err = updateCloseDormantAccountFulfillmentPreSorting(
-		ctx,
-		p.data,
-		autoReturnFulfillment[0],
-		giftCardIssuedIntent.Id,
-		math.MaxInt32,
-		0,
-	)
-	if err != nil {
-		return err
-	}
+		// We need to update pre-sorting because close dormant fulfillments are always
+		// inserted at the very last spot in the line.
+		//
+		// Must be the first thing to succeed! We cannot risk a deposit back into the
+		// organizer to win a race in scheduling. By pre-sorting this to the end of
+		// the gift card issued intent, we ensure the auto-return is blocked on any
+		// fulfillments to setup the gift card. We'll also guarantee that subsequent
+		// intents that utilize the primary account as a source of funds will be blocked
+		// by the auto-return.
+		err = updateCloseDormantAccountFulfillmentPreSorting(
+			ctx,
+			p.data,
+			autoReturnFulfillment[0],
+			giftCardIssuedIntent.Id,
+			math.MaxInt32,
+			0,
+		)
+		if err != nil {
+			return err
+		}
 
-	// This will update the action's quantity, so balance changes are reflected. We
-	// also unblock fulfillment scheduling by moving the action out of the unknown
-	// state and into the pending state.
-	err = scheduleCloseDormantAccountAction(
-		ctx,
-		p.data,
-		autoReturnAction,
-		giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity,
-	)
-	if err != nil {
-		return err
-	}
+		// This will update the action's quantity, so balance changes are reflected. We
+		// also unblock fulfillment scheduling by moving the action out of the unknown
+		// state and into the pending state.
+		err = scheduleCloseDormantAccountAction(
+			ctx,
+			p.data,
+			autoReturnAction,
+			giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity,
+		)
+		if err != nil {
+			return err
+		}
 
-	// This will trigger the fulfillment worker to poll for the fulfillment. This
-	// should be the very last DB update called.
-	err = markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
-	if err != nil {
-		return err
-	}
-
-	// Finally, update the user by best-effort sending them a push
-	go push.SendGiftCardReturnedPushNotification(
-		ctx,
-		p.data,
-		p.pusher,
-		giftCardVaultAccount,
-	)
-	return nil
+		// This will trigger the fulfillment worker to poll for the fulfillment. This
+		// should be the very last DB update called.
+		return markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
+	*/
+	return errors.New("requires rewrite")
 }
 
 func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, record *account.Record) error {
@@ -215,6 +199,8 @@ func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, r
 	record.RequiresAutoReturnCheck = false
 	return data.UpdateAccountInfo(ctx, record)
 }
+
+/*
 
 // Note: Structured like a generic utility because it could very well evolve
 // into that, but there's no reason to call this on anything else as of
@@ -305,7 +291,6 @@ func insertAutoReturnPaymentHistoryItem(ctx context.Context, data code_data.Prov
 		IntentType: intent.ReceivePaymentsPublicly,
 
 		InitiatorOwnerAccount: giftCardIssuedIntent.InitiatorOwnerAccount,
-		InitiatorPhoneNumber:  giftCardIssuedIntent.InitiatorPhoneNumber,
 
 		ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{
 			Source:       giftCardIssuedIntent.SendPrivatePaymentMetadata.DestinationTokenAccount,
@@ -317,19 +302,14 @@ func insertAutoReturnPaymentHistoryItem(ctx context.Context, data code_data.Prov
 			OriginalExchangeRate:     giftCardIssuedIntent.SendPrivatePaymentMetadata.ExchangeRate,
 			OriginalNativeAmount:     giftCardIssuedIntent.SendPrivatePaymentMetadata.NativeAmount,
 
-			UsdMarketValue: usdExchangeRecord.Rate * float64(kin.FromQuarks(giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity)),
+			UsdMarketValue: usdExchangeRecord.Rate * float64(common.FromCoreMintQuarks(giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity)),
 		},
 
 		State: intent.StateConfirmed,
 
 		CreatedAt: time.Now(),
 	}
-	err = data.SaveIntent(ctx, intentRecord)
-	if err != nil {
-		return err
-	}
-
-	return chat_util.SendCashTransactionsExchangeMessage(ctx, data, intentRecord)
+	return data.SaveIntent(ctx, intentRecord)
 }
 
 // Must be unique, but consistent for idempotency, and ideally fit in a 32
@@ -338,3 +318,4 @@ func getAutoReturnIntentId(originalIntentId string) string {
 	hashed := sha256.Sum256([]byte(giftCardAutoReturnIntentPrefix + originalIntentId))
 	return base58.Encode(hashed[:])
 }
+*/

@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s action.Store, teardown func()) {
@@ -46,8 +46,6 @@ func testRoundTrip(t *testing.T, s action.Store) {
 			Source:      "source",
 			Destination: pointer.String("destination"),
 			Quantity:    nil,
-
-			InitiatorPhoneNumber: pointer.String("phone"),
 
 			State: action.StateConfirmed,
 		}
@@ -383,8 +381,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *action.Record) {
 	assert.Equal(t, obj1.Source, obj2.Source)
 	assert.EqualValues(t, obj1.Destination, obj2.Destination)
 	assert.EqualValues(t, obj1.Quantity, obj2.Quantity)
-
-	assert.EqualValues(t, obj1.InitiatorPhoneNumber, obj2.InitiatorPhoneNumber)
 
 	assert.Equal(t, obj1.State, obj2.State)
 }

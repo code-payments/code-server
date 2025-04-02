@@ -9,7 +9,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
+	"github.com/code-payments/code-server/pkg/code/server/messaging"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 

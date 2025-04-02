@@ -7,10 +7,10 @@ import (
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/code-payments/code-server/pkg/code/common"
-	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 // Backup system workers can be found here. This is necessary because we can't rely
@@ -35,6 +35,8 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 	}()
 
 	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
+	cursor := query.EmptyCursor
+	oldestRecordTs := time.Now()
 	for {
 		select {
 		case <-time.After(delay):
@@ -46,45 +48,50 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				jobSucceeded := true
+				timelockRecords, err := p.data.GetAllTimelocksByState(
+					tracedCtx,
+					timelock_token.StateLocked,
+					query.WithDirection(query.Ascending),
+					query.WithCursor(cursor),
+					query.WithLimit(256),
+				)
+				if err == timelock.ErrTimelockNotFound {
+					p.metricStatusLock.Lock()
+					copiedTs := oldestRecordTs
+					p.oldestTimelockRecord = &copiedTs
+					p.metricStatusLock.Unlock()
 
-				// Find and process unlocked timelock accounts unlocking between [+21 - n days, +21 days],
-				// which enables a retry mechanism across time.
-				for i := uint8(0); i <= uint8(p.conf.backupTimelockWorkerDaysChecked.Get(tracedCtx)); i++ {
-					daysUntilUnlock := timelock_token_v1.DefaultNumDaysLocked - i
-
-					addresses, slot, err := findUnlockedTimelockV1Accounts(tracedCtx, p.data, daysUntilUnlock)
-					if err != nil {
-						m.NoticeError(err)
-						log.WithError(err).Warn("failure getting unlocked timelock accounts")
-						jobSucceeded = false
-						continue
-					}
-
-					log.Infof("found %d timelock accounts unlocking in %d days", len(addresses), daysUntilUnlock)
-
-					for _, address := range addresses {
-						log := log.WithField("account", address)
-
-						stateAccount, err := common.NewAccountFromPublicKeyString(address)
-						if err != nil {
-							log.WithError(err).Warn("invalid state account address")
-							continue
-						}
-
-						err = updateTimelockV1AccountCachedState(tracedCtx, p.data, stateAccount, slot)
-						if err != nil {
-							m.NoticeError(err)
-							log.WithError(err).Warn("failure updating cached timelock account state")
-							jobSucceeded = false
-							continue
-						}
-					}
+					cursor = query.EmptyCursor
+					oldestRecordTs = time.Now()
+					return
+				} else if err != nil {
+					log.WithError(err).Warn("failed to get timelock records")
+					return
 				}
 
-				p.metricStatusLock.Lock()
-				p.unlockedTimelockAccountsSynced = jobSucceeded
-				p.metricStatusLock.Unlock()
+				var wg sync.WaitGroup
+				for _, timelockRecord := range timelockRecords {
+					wg.Add(1)
+
+					if timelockRecord.LastUpdatedAt.Before(oldestRecordTs) {
+						oldestRecordTs = timelockRecord.LastUpdatedAt
+					}
+
+					go func(timelockRecord *timelock.Record) {
+						defer wg.Done()
+
+						log := log.WithField("timelock", timelockRecord.Address)
+
+						err := updateTimelockAccountRecord(tracedCtx, p.data, timelockRecord)
+						if err != nil {
+							log.WithError(err).Warn("failed to update timelock account")
+						}
+					}(timelockRecord)
+				}
+
+				wg.Wait()
+
+				cursor = query.ToCursor(timelockRecords[len(timelockRecords)-1].Id)
 			}()
 
 			delay = interval - time.Since(start)
@@ -116,89 +123,10 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_external_deposit_worker")
 				defer m.End()
-				tracedCtx := newrelic.NewContext(serviceCtx, m)
+				// tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				accountInfoRecords, err := p.data.GetPrioritizedAccountInfosRequiringDepositSync(tracedCtx, p.conf.backupExternalDepositWorkerCount.Get(tracedCtx))
-				if err != nil {
-					if err != account.ErrAccountInfoNotFound {
-						m.NoticeError(err)
-						log.WithError(err).Warn("failure getting accounts to sync external deposits")
-					}
-					return
-				}
-
-				var wg sync.WaitGroup
-				for _, accountInfoRecord := range accountInfoRecords {
-					vault, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
-					if err != nil {
-						log.WithError(err).WithField("account", accountInfoRecord.TokenAccount).Warn("invalid token account")
-						continue
-					}
-
-					wg.Add(1)
-
-					go func(vault *common.Account) {
-						defer wg.Done()
-
-						log := log.WithField("account", vault.PublicKey().ToBase58())
-
-						err := fixMissingExternalDeposits(tracedCtx, p.conf, p.data, p.pusher, vault)
-						if err != nil {
-							m.NoticeError(err)
-							log.WithError(err).Warn("failure fixing missing external deposits")
-						}
-					}(vault)
-				}
-				wg.Wait()
+				// todo: implement me
 			}()
-		case <-serviceCtx.Done():
-			return serviceCtx.Err()
-		}
-	}
-}
-
-func (p *service) backupMessagingWorker(serviceCtx context.Context, interval time.Duration) error {
-	log := p.log.WithField("method", "backupMessagingWorker")
-	log.Debug("worker started")
-
-	p.metricStatusLock.Lock()
-	p.backupMessagingWorkerStatus = true
-	p.metricStatusLock.Unlock()
-	defer func() {
-		p.metricStatusLock.Lock()
-		p.backupMessagingWorkerStatus = false
-		p.metricStatusLock.Unlock()
-
-		log.Debug("worker stopped")
-	}()
-
-	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
-
-	messagingFeeCollector, err := common.NewAccountFromPublicKeyString(p.conf.messagingFeeCollectorPublicKey.Get(serviceCtx))
-	if err != nil {
-		return err
-	}
-
-	var checkpoint *string
-	for {
-		select {
-		case <-time.After(delay):
-			start := time.Now()
-
-			func() {
-				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
-				m := nr.StartTransaction("async__geyser_consumer_service__backup_messaging_worker")
-				defer m.End()
-				tracedCtx := newrelic.NewContext(serviceCtx, m)
-
-				checkpoint, err = fixMissingBlockchainMessages(tracedCtx, p.data, p.pusher, messagingFeeCollector, checkpoint)
-				if err != nil {
-					m.NoticeError(err)
-					log.WithError(err).Warn("failure fixing missing messages")
-				}
-			}()
-
-			delay = interval - time.Since(start)
 		case <-serviceCtx.Done():
 			return serviceCtx.Err()
 		}

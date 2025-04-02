@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/code-payments/code-server/pkg/testutil"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/webhook"
-	"github.com/code-payments/code-server/pkg/code/server/grpc/messaging"
+	"github.com/code-payments/code-server/pkg/code/server/messaging"
 	webhook_util "github.com/code-payments/code-server/pkg/code/webhook"
+	"github.com/code-payments/code-server/pkg/testutil"
 )
 
 func TestWorker_HappyPath(t *testing.T) {

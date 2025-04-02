@@ -10,6 +10,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 )
 
 // Scheduler decides when fulfillments can be scheduled for submission to the
@@ -49,12 +50,12 @@ type contextualScheduler struct {
 //     problem (likely a wavefunction collapse implementation).
 //  2. Fulfillments that require client signatures are validated to guarantee
 //     success before being created.
-func NewContextualScheduler(data code_data.Provider, configProvider ConfigProvider) Scheduler {
+func NewContextualScheduler(data code_data.Provider, indexerClient indexerpb.IndexerClient, configProvider ConfigProvider) Scheduler {
 	return &contextualScheduler{
 		log:                     logrus.StandardLogger().WithField("type", "sequencer/scheduler/contextual"),
 		data:                    data,
 		conf:                    configProvider(),
-		handlersByType:          getFulfillmentHandlers(data, configProvider),
+		handlersByType:          getFulfillmentHandlers(data, indexerClient, configProvider),
 		includeSubsidizerChecks: true,
 	}
 }

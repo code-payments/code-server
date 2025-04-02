@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
-	"github.com/code-payments/code-server/pkg/kin"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
@@ -54,7 +53,7 @@ func testRoundTrip(t *testing.T, s paymentrequest.Store) {
 				ExchangeCurrency:        pointer.String("usd"),
 				NativeAmount:            pointer.Float64(2.46),
 				ExchangeRate:            pointer.Float64(1.23),
-				Quantity:                pointer.Uint64(kin.ToQuarks(2)),
+				Quantity:                pointer.Uint64(2),
 				Fees:                    fees,
 				Domain:                  pointer.String("example.com"),
 				IsVerified:              true,
@@ -85,7 +84,7 @@ func testInvalidRecord(t *testing.T, s paymentrequest.Store) {
 			ExchangeCurrency:        pointer.String("usd"),
 			NativeAmount:            pointer.Float64(2.46),
 			ExchangeRate:            pointer.Float64(1.23),
-			Quantity:                pointer.Uint64(kin.ToQuarks(2)),
+			Quantity:                pointer.Uint64(2),
 			Fees: []*paymentrequest.Fee{
 				{
 					DestinationTokenAccount: "destination2",

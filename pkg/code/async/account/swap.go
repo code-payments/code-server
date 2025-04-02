@@ -1,5 +1,6 @@
 package async_account
 
+/*
 import (
 	"context"
 	"errors"
@@ -143,3 +144,4 @@ func markSwapRetriedNow(ctx context.Context, data code_data.Provider, record *ac
 	record.LastSwapRetryAt = time.Now()
 	return data.UpdateAccountInfo(ctx, record)
 }
+*/

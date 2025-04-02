@@ -2,11 +2,13 @@ package async_nonce
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
 	"github.com/mr-tron/base58/base58"
+	"github.com/pkg/errors"
+
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -98,7 +100,7 @@ func (p *service) getRentAmount(ctx context.Context) (uint64, error) {
 	return p.rent, nil
 }
 
-func (p *service) createNonce(ctx context.Context) (*nonce.Record, error) {
+func (p *service) createSolanaMainnetNonce(ctx context.Context) (*nonce.Record, error) {
 	err := common.EnforceMinimumSubsidizerBalance(ctx, p.data)
 	if err != nil {
 		return nil, err
@@ -110,10 +112,12 @@ func (p *service) createNonce(ctx context.Context) (*nonce.Record, error) {
 	}
 
 	res := nonce.Record{
-		Address:   key.PublicKey,
-		Authority: common.GetSubsidizer().PublicKey().ToBase58(),
-		Purpose:   nonce.PurposeClientTransaction, // todo: intelligently set a purpose
-		State:     nonce.StateUnknown,
+		Address:             key.PublicKey,
+		Authority:           common.GetSubsidizer().PublicKey().ToBase58(),
+		Environment:         nonce.EnvironmentSolana,
+		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+		Purpose:             nonce.PurposeOnDemandTransaction, // todo: intelligently set a purpose, but most use cases require this type of nonce
+		State:               nonce.StateUnknown,
 	}
 
 	tx, err := p.createNonceAccountTx(ctx, &res)
@@ -217,4 +221,59 @@ func (p *service) broadcastTx(ctx context.Context, tx *solana.Transaction) {
 			return
 		}
 	}
+}
+
+func (p *service) getBlockhashFromSolanaNonce(ctx context.Context, record *nonce.Record, slot uint64) (string, error) {
+	if record.Environment != nonce.EnvironmentSolana {
+		return "", errors.Errorf("nonce environment is not %s", nonce.EnvironmentSolana.String())
+	}
+
+	// Always get the account's state after the transaction's block to avoid
+	// having RPC nodes that are behind provide stale finalized data.
+	rawData, _, err := p.data.GetBlockchainAccountDataAfterBlock(ctx, record.Address, slot)
+	if err != nil {
+		return "", err
+	}
+
+	if len(rawData) != system.NonceAccountSize {
+		// RPC call failed or something (maybe this node has no history?)
+		return "", ErrInvalidNonceAccountSize
+	}
+
+	var data system.NonceAccount
+	err = data.Unmarshal(rawData)
+	if err != nil {
+		return "", err
+	}
+
+	return base58.Encode(data.Blockhash), nil
+}
+
+func (p *service) getBlockhashFromCvmNonce(ctx context.Context, record *nonce.Record, slot uint64) (string, error) {
+	if record.Environment != nonce.EnvironmentCvm {
+		return "", errors.Errorf("nonce environment is not %s", nonce.EnvironmentCvm.String())
+	}
+
+	decodedVmAddress, err := base58.Decode(record.EnvironmentInstance)
+	if err != nil {
+		return "", err
+	}
+
+	decodedVdnAddress, err := base58.Decode(record.Address)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := p.vmIndexerClient.GetVirtualDurableNonce(ctx, &indexerpb.GetVirtualDurableNonceRequest{
+		VmAccount: &indexerpb.Address{Value: decodedVmAddress},
+		Address:   &indexerpb.Address{Value: decodedVdnAddress},
+	})
+	if err != nil {
+		return "", err
+	} else if resp.Result != indexerpb.GetVirtualDurableNonceResponse_OK {
+		return "", errors.Errorf("received rpc result %s", resp.Result.String())
+	} else if resp.Item.Slot <= slot {
+		return "", errors.New("rpc returned stale account state")
+	}
+	return base58.Encode(resp.Item.Account.Nonce.Value), nil
 }

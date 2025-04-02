@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestComputeAllKinExchangeRates_HappyPath(t *testing.T) {
-	kinRates := map[string]float64{
+func TestComputeAllExchangeRates_HappyPath(t *testing.T) {
+	coreMintRates := map[string]float64{
 		"usd": 0.5,
 		"cad": 1.0,
 	}
@@ -20,16 +20,16 @@ func TestComputeAllKinExchangeRates_HappyPath(t *testing.T) {
 		"aud": 0.66,
 	}
 
-	rates, err := computeAllKinExchangeRates(kinRates, usdRates)
+	rates, err := computeAllExchangeRates(coreMintRates, usdRates)
 	require.NoError(t, err)
 
 	assert.Equal(t, rates["usd"], 0.5)
-	assert.Equal(t, rates["cad"], 1.0) // FX rate differs, but we always prefer the source kin rate
+	assert.Equal(t, rates["cad"], 0.65)
 	assert.Equal(t, rates["eur"], 0.5)
 	assert.Equal(t, rates["aud"], 0.33)
 }
 
-func TestComputeAllKinExchangeRates_UsdRateMissing(t *testing.T) {
+func TestComputeAllExchangeRates_UsdRateMissing(t *testing.T) {
 	kinRates := map[string]float64{
 		"cad": 1.0,
 	}
@@ -41,6 +41,6 @@ func TestComputeAllKinExchangeRates_UsdRateMissing(t *testing.T) {
 		"aud": 0.66,
 	}
 
-	_, err := computeAllKinExchangeRates(kinRates, usdRates)
+	_, err := computeAllExchangeRates(kinRates, usdRates)
 	assert.Error(t, err)
 }

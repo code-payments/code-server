@@ -35,6 +35,10 @@ const (
 			nonce TEXT NULL,
 			blockhash TEXT NULL,
 
+			virtual_signature TEXT NULL,
+			virtual_nonce TEXT NULL,
+			virtual_blockhash TEXT NULL,
+
 			source TEXT NOT NULL,
 			destination TEXT NULL,
 
@@ -43,8 +47,6 @@ const (
 			fulfillment_ordering_index INTEGER NOT NULL,
 
 			disable_active_scheduling BOOL NOT NULL,
-
-			phone_number TEXT NULL,
 
 			state INTEGER NOT NULL,
 

@@ -8,39 +8,42 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	push_lib "github.com/code-payments/code-server/pkg/push"
 )
 
 type service struct {
-	log    *logrus.Entry
-	conf   *conf
-	data   code_data.Provider
-	pusher push_lib.Provider
+	log  *logrus.Entry
+	conf *conf
+	data code_data.Provider
 }
 
-func New(data code_data.Provider, pusher push_lib.Provider, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
 	return &service{
-		log:    logrus.StandardLogger().WithField("service", "account"),
-		conf:   configProvider(),
-		data:   data,
-		pusher: pusher,
+		log:  logrus.StandardLogger().WithField("service", "account"),
+		conf: configProvider(),
+		data: data,
 	}
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-	go func() {
-		err := p.giftCardAutoReturnWorker(ctx, interval)
-		if err != nil && err != context.Canceled {
-			p.log.WithError(err).Warn("gift card auto-return processing loop terminated unexpectedly")
-		}
-	}()
+	// todo: auto returns are broken because we've removed close dormant account actions
+	/*
+		go func() {
+			err := p.giftCardAutoReturnWorker(ctx, interval)
+			if err != nil && err != context.Canceled {
+				p.log.WithError(err).Warn("gift card auto-return processing loop terminated unexpectedly")
+			}
+		}()
+	*/
 
-	go func() {
-		err := p.swapRetryWorker(ctx, interval)
-		if err != nil && err != context.Canceled {
-			p.log.WithError(err).Warn("swap retry processing loop terminated unexpectedly")
-		}
-	}()
+	// todo: the open code protocol needs to get the push token from the implementing app
+	/*
+		go func() {
+			err := p.swapRetryWorker(ctx, interval)
+			if err != nil && err != context.Canceled {
+				p.log.WithError(err).Warn("swap retry processing loop terminated unexpectedly")
+			}
+		}()
+	*/
 
 	go func() {
 		err := p.metricsGaugeWorker(ctx)

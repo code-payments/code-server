@@ -8,8 +8,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
 
 type store struct {
