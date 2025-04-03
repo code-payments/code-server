@@ -12,7 +12,7 @@ import (
 
 const (
 	// Random values. Replace with real mint configuration
-	CoreMintPublicKeyString = "DWYE8SQkpestTvpCxGNTCRjC2E9Kn6TCnu2SxkddrEEU"
+	CoreMintPublicKeyString = usdc.Mint
 	CoreMintQuarksPerUnit   = uint64(usdc.QuarksPerUsdc)
 	CoreMintSymbol          = currency_lib.USDC
 	CoreMintDecimals        = usdc.Decimals
