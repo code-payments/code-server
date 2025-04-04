@@ -95,6 +95,11 @@ func (s *server) LinkAdditionalAccounts(ctx context.Context, req *accountpb.Link
 	log := s.log.WithField("method", "LinkAdditionalAccounts")
 	log = client.InjectLoggingMetadata(ctx, log)
 
+	if common.CoreMintAccount.PublicKey().ToBase58() == common.UsdcMintAccount.PublicKey().ToBase58() {
+		log.Warn("core mint account is usdc")
+		return nil, status.Error(codes.Unavailable, "")
+	}
+
 	owner, err := common.NewAccountFromProto(req.Owner)
 	if err != nil {
 		log.WithError(err).Warn("invalid owner account")
