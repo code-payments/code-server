@@ -11,14 +11,12 @@ import (
 // todo: make these environment configs
 
 const (
-	// Random values. Replace with real mint configuration
 	CoreMintPublicKeyString = usdc.Mint
 	CoreMintQuarksPerUnit   = uint64(usdc.QuarksPerUsdc)
 	CoreMintSymbol          = currency_lib.USDC
 	CoreMintDecimals        = usdc.Decimals
 
-	// Random value. Replace with real subsidizer public keys
-	SubsidizerPublicKey = "84ydcM4Yp59W6aZP6eSaKiAMaKidNLfb5k318sT2pm14"
+	SubsidizerPublicKey = "cash11ndAmdKFEnG2wrQQ5Zqvr1kN9htxxLyoPLYFUV"
 
 	// Random value. Replace with real VM public keys
 	VmAccountPublicKey = "BVMGLfRgr3nVFCH5DuW6VR2kfSDxq4EFEopXfwCDpYzb"
