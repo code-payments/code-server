@@ -18,9 +18,8 @@ const (
 
 	SubsidizerPublicKey = "cash11ndAmdKFEnG2wrQQ5Zqvr1kN9htxxLyoPLYFUV"
 
-	// Random value. Replace with real VM public keys
-	VmAccountPublicKey = "BVMGLfRgr3nVFCH5DuW6VR2kfSDxq4EFEopXfwCDpYzb"
-	VmOmnibusPublicKey = "GNw1t85VH8b1CcwB5933KBC7PboDPJ5EcQdGynbfN1Pb"
+	VmAccountPublicKey = "DHwPoAFFW4bTLBEdbFURvj5mJUUXCofPZwXXiZtRxRxw"
+	VmOmnibusPublicKey = "DLBG6mt2NbzvVmhUq1sTqpccJH2cvmtZ9rUVUD7d97uv"
 )
 
 var (
