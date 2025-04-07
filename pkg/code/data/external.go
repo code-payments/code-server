@@ -46,9 +46,16 @@ func (dp *WebProvider) GetCurrentExchangeRatesFromExternalProviders(ctx context.
 	tracer := metrics.TraceMethodCall(ctx, webProviderMetricsName, "GetCurrentExchangeRatesFromExternalProviders")
 	defer tracer.End()
 
-	coinGeckoData, err := dp.coinGecko.GetCurrentRates(ctx, string(config.CoreMintSymbol))
-	if err != nil {
-		return nil, err
+	coinGeckoRates := make(map[string]float64)
+	var err error
+	if config.CoreMintPublicKeyString == usdc.Mint {
+		coinGeckoRates[string(currency_lib.USD)] = 1.0
+	} else {
+		coinGeckoData, err := dp.coinGecko.GetCurrentRates(ctx, string(config.CoreMintSymbol))
+		if err != nil {
+			return nil, err
+		}
+		coinGeckoRates = coinGeckoData.Rates
 	}
 
 	fixerData, err := dp.fixer.GetCurrentRates(ctx, string(currency_lib.USD))
@@ -56,7 +63,7 @@ func (dp *WebProvider) GetCurrentExchangeRatesFromExternalProviders(ctx context.
 		return nil, err
 	}
 
-	rates, err := computeAllExchangeRates(coinGeckoData.Rates, fixerData.Rates)
+	rates, err := computeAllExchangeRates(coinGeckoRates, fixerData.Rates)
 	if err != nil {
 		return nil, err
 	}
@@ -70,9 +77,18 @@ func (dp *WebProvider) GetPastExchangeRatesFromExternalProviders(ctx context.Con
 	tracer := metrics.TraceMethodCall(ctx, webProviderMetricsName, "GetPastExchangeRatesFromExternalProviders")
 	defer tracer.End()
 
-	coinGeckoData, err := dp.coinGecko.GetHistoricalRates(ctx, string(config.CoreMintSymbol), t.UTC())
-	if err != nil {
-		return nil, err
+	coinGeckoRates := make(map[string]float64)
+	ts := t
+	var err error
+	if config.CoreMintPublicKeyString == usdc.Mint {
+		coinGeckoRates[string(currency_lib.USD)] = 1.0
+	} else {
+		coinGeckoData, err := dp.coinGecko.GetCurrentRates(ctx, string(config.CoreMintSymbol))
+		if err != nil {
+			return nil, err
+		}
+		coinGeckoRates = coinGeckoData.Rates
+		ts = coinGeckoData.Timestamp
 	}
 
 	fixerData, err := dp.fixer.GetHistoricalRates(ctx, string(currency_lib.USD), t.UTC())
@@ -80,13 +96,13 @@ func (dp *WebProvider) GetPastExchangeRatesFromExternalProviders(ctx context.Con
 		return nil, err
 	}
 
-	rates, err := computeAllExchangeRates(coinGeckoData.Rates, fixerData.Rates)
+	rates, err := computeAllExchangeRates(coinGeckoRates, fixerData.Rates)
 	if err != nil {
 		return nil, err
 	}
 
 	return &currency.MultiRateRecord{
-		Time:  coinGeckoData.Timestamp,
+		Time:  ts,
 		Rates: rates,
 	}, nil
 }
