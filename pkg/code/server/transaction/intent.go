@@ -90,9 +90,11 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 	// Figure out what kind of intent we're operating on and initialize the intent handler
 	var intentHandler interface{}
+	var intentHasNewOwner bool // todo: intent handler should specify this
 	switch submitActionsReq.Metadata.Type.(type) {
 	case *transactionpb.Metadata_OpenAccounts:
 		log = log.WithField("intent_type", "open_accounts")
+		intentHasNewOwner = true
 		intentHandler = NewOpenAccountsIntentHandler(s.conf, s.data, s.antispamGuard)
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
@@ -120,8 +122,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	}
 	log = log.WithField("submit_actions_owner_account", submitActionsOwnerAccount.PublicKey().ToBase58())
 
-	// For all allowed cases of owner account types that can call SubmitIntent,
-	// we need to find the phone-verified user's 12 words who initiated the intent.
 	var initiatorOwnerAccount *common.Account
 	submitActionsOwnerMetadata, err := common.GetOwnerMetadata(ctx, s.data, submitActionsOwnerAccount)
 	if err == nil {
@@ -164,17 +164,15 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return handleSubmitIntentError(streamer, errors.New("unhandled owner account type"))
 		}
 	} else if err == common.ErrOwnerNotFound {
-		// Caught by later error
+		if !intentHasNewOwner {
+			return handleSubmitIntentError(streamer, newIntentDeniedError("unexpected owner account"))
+		}
+		initiatorOwnerAccount = submitActionsOwnerAccount
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting owner account metadata")
 		return handleSubmitIntentError(streamer, err)
 	}
 
-	// All intents must be initiated by a phone-verified user
-	if initiatorOwnerAccount == nil {
-		log.Info("intent not initiated by phone-verified user 12 words")
-		return handleSubmitIntentError(streamer, ErrNotPhoneVerified)
-	}
 	log = log.WithField("initiator_owner_account", initiatorOwnerAccount.PublicKey().ToBase58())
 
 	// Check that all provided signatures in proto messages are valid

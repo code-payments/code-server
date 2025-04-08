@@ -23,20 +23,13 @@ const (
 var (
 	ErrTimedOutReceivingRequest = errors.New("timed out receiving request")
 
-	ErrNotPhoneVerified         = newIntentDeniedError("not phone verified")
 	ErrTooManyPayments          = newIntentDeniedError("too many payments")
-	ErrTooManyNewRelationships  = newIntentDeniedError("too many new relationships")
 	ErrTransactionLimitExceeded = newIntentDeniedError("dollar value exceeds limit")
 	ErrNotManagedByCode         = newIntentDeniedError("at least one account is no longer managed by code")
 
 	ErrInvalidSignature  = errors.New("invalid signature provided")
 	ErrMissingSignature  = errors.New("at least one signature is missing")
 	ErrTooManySignatures = errors.New("too many signatures provided")
-
-	ErrInvalidActionToUpgrade = errors.New("attempt to upgrade an action that isn't upgradeable")
-	ErrPrivacyUpgradeMissed   = errors.New("opportunity to upgrade the private transaction was missed")
-	ErrPrivacyAlreadyUpgraded = errors.New("private transaction has already been upgraded")
-	ErrWaitForNextBlock       = errors.New("must wait for next block before attempting privacy upgrade")
 
 	ErrNotImplemented = errors.New("feature not implemented")
 )
