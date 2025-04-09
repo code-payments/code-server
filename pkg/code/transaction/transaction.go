@@ -8,6 +8,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/solana"
+	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
@@ -50,6 +51,8 @@ func MakeOpenAccountTransaction(
 	}
 
 	instructions := []solana.Instruction{
+		compute_budget.SetComputeUnitPrice(1_000),
+		compute_budget.SetComputeUnitLimit(50_000),
 		initializeInstruction,
 	}
 	return MakeNoncedTransaction(nonce, bh, instructions...)
@@ -84,7 +87,12 @@ func MakeCompressAccountTransaction(
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, compressInstruction)
+	instructions := []solana.Instruction{
+		compute_budget.SetComputeUnitPrice(1_000),
+		compute_budget.SetComputeUnitLimit(200_000),
+		compressInstruction,
+	}
+	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
 func MakeInternalWithdrawTransaction(
@@ -126,7 +134,12 @@ func MakeInternalWithdrawTransaction(
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, execInstruction)
+	instructions := []solana.Instruction{
+		compute_budget.SetComputeUnitPrice(1_000),
+		compute_budget.SetComputeUnitLimit(200_000),
+		execInstruction,
+	}
+	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
 func MakeExternalWithdrawTransaction(
@@ -175,7 +188,12 @@ func MakeExternalWithdrawTransaction(
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, execInstruction)
+	instructions := []solana.Instruction{
+		compute_budget.SetComputeUnitPrice(1_000),
+		compute_budget.SetComputeUnitLimit(200_000),
+		execInstruction,
+	}
+	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
 func MakeInternalTransferWithAuthorityTransaction(
@@ -220,7 +238,12 @@ func MakeInternalTransferWithAuthorityTransaction(
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, execInstruction)
+	instructions := []solana.Instruction{
+		compute_budget.SetComputeUnitPrice(1_000),
+		compute_budget.SetComputeUnitLimit(200_000),
+		execInstruction,
+	}
+	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
 func MakeExternalTransferWithAuthorityTransaction(
@@ -271,7 +294,12 @@ func MakeExternalTransferWithAuthorityTransaction(
 		},
 	)
 
-	return MakeNoncedTransaction(nonce, bh, execInstruction)
+	instructions := []solana.Instruction{
+		compute_budget.SetComputeUnitPrice(1_000),
+		compute_budget.SetComputeUnitLimit(200_000),
+		execInstruction,
+	}
+	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 
 type MergedMemoryBankResult struct {
