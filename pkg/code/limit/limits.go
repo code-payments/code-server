@@ -360,7 +360,4 @@ var (
 		"zmw":  {Min: 0.50, Max: 10.00},
 		"zwl":  {Min: 10.00, Max: 200.00},
 	}
-
-	MaxDailyDepositUsdAmount = 1.5 * SendLimits[currency_lib.USD].Daily
-	MaxPerDepositUsdAmount   = 1.2 * SendLimits[currency_lib.USD].PerTransaction
 )

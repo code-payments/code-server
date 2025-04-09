@@ -30,37 +30,30 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		return nil, err
 	}
 
-	zeroSendLimits := make(map[string]*transactionpb.SendLimit)
-	zeroMicroPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
-	zeroBuyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
-	for currency := range limit.SendLimits {
-		zeroSendLimits[string(currency)] = &transactionpb.SendLimit{
-			NextTransaction:   0,
-			MaxPerTransaction: 0,
-			MaxPerDay:         0,
+	sendLimits := make(map[string]*transactionpb.SendLimit)
+	microPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
+	buyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
+	for currency, limit := range limit.SendLimits {
+		sendLimits[string(currency)] = &transactionpb.SendLimit{
+			NextTransaction:   float32(limit.PerTransaction),
+			MaxPerTransaction: float32(limit.PerTransaction),
+			MaxPerDay:         float32(limit.Daily),
 		}
-		zeroBuyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
-			MaxPerTransaction: 0,
-			MinPerTransaction: 0,
-		}
-	}
-	for currency := range limit.MicroPaymentLimits {
-		zeroMicroPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
-			MaxPerTransaction: 0,
-			MinPerTransaction: 0,
+		buyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
+			MaxPerTransaction: float32(limit.PerTransaction),
+			MinPerTransaction: float32(limit.PerTransaction / 10),
 		}
 	}
-	zeroResp := &transactionpb.GetLimitsResponse{
+	for currency, limit := range limit.MicroPaymentLimits {
+		microPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
+			MaxPerTransaction: float32(limit.Max),
+			MinPerTransaction: float32(limit.Min),
+		}
+	}
+	return &transactionpb.GetLimitsResponse{
 		Result:                       transactionpb.GetLimitsResponse_OK,
-		SendLimitsByCurrency:         zeroSendLimits,
-		MicroPaymentLimitsByCurrency: zeroMicroPaymentLimits,
-		BuyModuleLimitsByCurrency:    zeroBuyModuleLimits,
-		DepositLimit: &transactionpb.DepositLimit{
-			MaxQuarks: 0,
-		},
-	}
-
-	// todo: We need to calculate limits based on account, or another identity system
-	//       now that phone numbers is no longer a requirements.
-	return zeroResp, nil
+		SendLimitsByCurrency:         sendLimits,
+		MicroPaymentLimitsByCurrency: microPaymentLimits,
+		BuyModuleLimitsByCurrency:    buyModuleLimits,
+	}, nil
 }
