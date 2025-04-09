@@ -240,7 +240,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 
 	instructions := []solana.Instruction{
 		compute_budget.SetComputeUnitPrice(1_000),
-		compute_budget.SetComputeUnitLimit(200_000),
+		compute_budget.SetComputeUnitLimit(100_000),
 		execInstruction,
 	}
 	return MakeNoncedTransaction(nonce, bh, instructions...)
@@ -296,7 +296,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 
 	instructions := []solana.Instruction{
 		compute_budget.SetComputeUnitPrice(1_000),
-		compute_budget.SetComputeUnitLimit(200_000),
+		compute_budget.SetComputeUnitLimit(100_000),
 		execInstruction,
 	}
 	return MakeNoncedTransaction(nonce, bh, instructions...)
