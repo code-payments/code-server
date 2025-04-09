@@ -272,7 +272,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			NativeAmount:     coreMintAmount,
 			UsdMarketValue:   usdRateRecord.Rate * coreMintAmount,
 
-			IsWithdrawal: true,
+			IsWithdrawal: false,
 		},
 
 		InitiatorOwnerAccount: s.airdropper.VaultOwner.PublicKey().ToBase58(),
