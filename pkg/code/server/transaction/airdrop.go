@@ -267,7 +267,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			DestinationTokenAccount: destination.PublicKey().ToBase58(),
 			Quantity:                quarkAmount,
 
-			ExchangeCurrency: common.CoreMintSymbol,
+			ExchangeCurrency: currency_lib.USD,
 			ExchangeRate:     1.0,
 			NativeAmount:     coreMintAmount,
 			UsdMarketValue:   usdRateRecord.Rate * coreMintAmount,
