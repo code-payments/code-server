@@ -22,6 +22,11 @@ func (s *transactionServer) DeclareFiatOnrampPurchaseAttempt(ctx context.Context
 	log := s.log.WithField("method", "DeclareFiatOnrampPurchaseAttempt")
 	log = client.InjectLoggingMetadata(ctx, log)
 
+	if common.CoreMintAccount.PublicKey().ToBase58() == common.UsdcMintAccount.PublicKey().ToBase58() {
+		log.Warn("core mint account is usdc")
+		return nil, status.Error(codes.Unavailable, "")
+	}
+
 	var deviceType client.DeviceType
 	userAgent, err := client.GetUserAgent(ctx)
 	if err == nil {
