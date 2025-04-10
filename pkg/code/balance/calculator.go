@@ -7,8 +7,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
-
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/balance"
@@ -400,61 +398,6 @@ func FundingFromExternalDepositsBatch(ctx context.Context, data code_data.Provid
 
 		return state, nil
 	}
-}
-
-// GetPrivateBalance gets an owner account's total private balance.
-//
-// Note: Assumes all private accounts have the same mint
-func GetPrivateBalance(ctx context.Context, data code_data.Provider, owner *common.Account) (uint64, error) {
-	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"method": "GetPrivateBalance",
-		"owner":  owner.PublicKey().ToBase58(),
-	})
-
-	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "GetPrivateBalance")
-	tracer.AddAttribute("owner", owner.PublicKey().ToBase58())
-	defer tracer.End()
-
-	accountRecordsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
-	if err != nil {
-		log.WithError(err).Warn("failure getting latest token account records")
-		tracer.OnError(err)
-		return 0, err
-	}
-
-	if len(accountRecordsByType) == 0 {
-		tracer.OnError(ErrNotManagedByCode)
-		return 0, ErrNotManagedByCode
-	}
-
-	var accountRecordsBatch []*common.AccountRecords
-	for _, accountRecords := range accountRecordsByType {
-		switch accountRecords[0].General.AccountType {
-		case commonpb.AccountType_PRIMARY,
-			commonpb.AccountType_LEGACY_PRIMARY_2022,
-			commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
-			commonpb.AccountType_RELATIONSHIP,
-			commonpb.AccountType_SWAP:
-			continue
-		}
-
-		accountRecordsBatch = append(accountRecordsBatch, accountRecords...)
-	}
-
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(ctx, data, accountRecordsBatch...)
-	if err != nil {
-		log.WithError(err).Warn("failure getting balances")
-		tracer.OnError(err)
-		return 0, err
-	}
-
-	var total uint64
-	for _, batchRecords := range accountRecordsByType {
-		for _, records := range batchRecords {
-			total += balanceByAccount[records.General.TokenAccount]
-		}
-	}
-	return total, nil
 }
 
 func (s Source) String() string {

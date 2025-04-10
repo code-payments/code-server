@@ -3,7 +3,6 @@ package balance
 import (
 	"context"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	"github.com/code-payments/code-server/pkg/pointer"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -345,66 +343,6 @@ func TestDefaultCalculation_ExternalAccount(t *testing.T) {
 	assert.Equal(t, ErrNotManagedByCode, err)
 
 	// Note: not possible with batch method, since we wouldn't have account records
-}
-
-func TestGetAggregatedBalances(t *testing.T) {
-	env := setupBalanceTestEnv(t)
-
-	vmAccount := testutil.NewRandomAccount(t)
-	owner := testutil.NewRandomAccount(t)
-
-	_, err := GetPrivateBalance(env.ctx, env.data, owner)
-	assert.Equal(t, ErrNotManagedByCode, err)
-
-	var expectedTotalBalance, expectedPrivateBalance uint64
-	for i, accountType := range account.AllAccountTypes {
-		if accountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD || accountType == commonpb.AccountType_SWAP {
-			continue
-		}
-
-		authority := testutil.NewRandomAccount(t)
-		if accountType == commonpb.AccountType_PRIMARY {
-			authority = owner
-		}
-
-		balance := uint64(math.Pow10(i))
-		expectedTotalBalance += balance
-		if accountType != commonpb.AccountType_PRIMARY && accountType != commonpb.AccountType_RELATIONSHIP {
-			expectedPrivateBalance += balance
-		}
-
-		timelockAccounts, err := authority.GetTimelockAccounts(vmAccount, common.CoreMintAccount)
-		require.NoError(t, err)
-
-		timelockRecord := timelockAccounts.ToDBRecord()
-		require.NoError(t, env.data.SaveTimelock(env.ctx, timelockRecord))
-
-		accountInfoRecord := account.Record{
-			OwnerAccount:     owner.PublicKey().ToBase58(),
-			AuthorityAccount: authority.PublicKey().ToBase58(),
-			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      accountType,
-		}
-		if accountType == commonpb.AccountType_RELATIONSHIP {
-			accountInfoRecord.RelationshipTo = pointer.String("example.com")
-		}
-		require.NoError(t, env.data.CreateAccountInfo(env.ctx, &accountInfoRecord))
-
-		actionRecord := action.Record{
-			Intent:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			IntentType:  intent.SendPrivatePayment,
-			ActionType:  action.PrivateTransfer,
-			Source:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			Destination: &accountInfoRecord.TokenAccount,
-			Quantity:    &balance,
-		}
-		require.NoError(t, env.data.PutAllActions(env.ctx, &actionRecord))
-	}
-
-	balance, err := GetPrivateBalance(env.ctx, env.data, owner)
-	require.NoError(t, err)
-	assert.EqualValues(t, expectedPrivateBalance, balance)
 }
 
 type balanceTestEnv struct {
