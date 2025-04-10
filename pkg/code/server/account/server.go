@@ -297,32 +297,6 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 func (s *server) fetchBalances(ctx context.Context, recordsByType map[commonpb.AccountType][]*common.AccountRecords) (map[string]*balanceMetadata, error) {
 	balanceMetadataByTokenAccount := make(map[string]*balanceMetadata)
 
-	// Pre-privacy accounts are not supported by the new batching stuff
-	if _, ok := recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022]; ok {
-		tokenAccount, err := common.NewAccountFromPublicKeyString(recordsByType[commonpb.AccountType_LEGACY_PRIMARY_2022][0].General.TokenAccount)
-		if err != nil {
-			return nil, err
-		}
-
-		quarks, err := balance.CalculateFromCache(ctx, s.data, tokenAccount)
-		switch err {
-		case nil:
-			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
-				value:  quarks,
-				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
-			}
-		case balance.ErrNotManagedByCode:
-			// Don't bother calculating a balance, the account isn't useable in Code
-			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
-				value:  0,
-				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
-			}
-		default:
-			return nil, err
-		}
-	}
-
-	// Post-privacy Timelock account balances can be fetched using a batched method from cache
 	var batchedAccountRecords []*common.AccountRecords
 	for accountType, batchAccountRecords := range recordsByType {
 		if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
