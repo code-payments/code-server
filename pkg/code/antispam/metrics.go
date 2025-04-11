@@ -15,8 +15,7 @@ const (
 	actionSendPayment     = "SendPayment"
 	actionReceivePayments = "ReceivePayments"
 
-	actionWelcomeBonus  = "WelcomeBonus"
-	actionReferralBonus = "ReferralBonus"
+	actionWelcomeBonus = "WelcomeBonus"
 
 	actionSwap = "Swap"
 )
