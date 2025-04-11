@@ -381,7 +381,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 			return err
 		}
 
-		allow, err := h.antispamGuard.AllowSendPayment(ctx, initiatiorOwnerAccount, true, destination)
+		allow, err := h.antispamGuard.AllowSendPayment(ctx, initiatiorOwnerAccount, destination, true)
 		if err != nil {
 			return err
 		} else if !allow {
