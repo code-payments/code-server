@@ -22,6 +22,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -57,6 +58,24 @@ var (
 var (
 	cachedAirdropStatus = cache.NewCache(10_000)
 )
+
+type AirdropIntegration interface {
+	// GetWelcomeBonusAmount returns the amount that should be paid for the
+	// welcome bonus. Return 0 amount if the airdrop should not be sent.
+	GetWelcomeBonusAmount(ctx context.Context, owner *common.Account) (float64, currency_lib.Code, error)
+}
+
+type defaultAirdropIntegration struct{}
+
+// NewDefaultAirdropIntegration retuns an AirdropIntegration that sends $1 USD
+// to everyone
+func NewDefaultAirdropIntegration() AirdropIntegration {
+	return &defaultAirdropIntegration{}
+}
+
+func (i *defaultAirdropIntegration) GetWelcomeBonusAmount(ctx context.Context, owner *common.Account) (float64, currency_lib.Code, error) {
+	return 1.0, currency_lib.USD, nil
+}
 
 func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.AirdropRequest) (*transactionpb.AirdropResponse, error) {
 	log := s.log.WithFields(logrus.Fields{
@@ -159,9 +178,7 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 	}, nil
 }
 
-// airdrop gives Kin airdrops denominated in Kin for performing certain
-// actions in the Code app. This funciton is idempotent with the given
-// intent ID.
+// Note: this function is idempotent with the given intent ID.
 func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner *common.Account, airdropType AirdropType) (*intent.Record, error) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":       "airdrop",
@@ -169,15 +186,6 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		"intent":       intentId,
 		"airdrop_type": airdropType.String(),
 	})
-
-	var quarkAmount uint64
-	switch airdropType {
-	case AirdropTypeGetFirstCrypto:
-		quarkAmount = common.ToCoreMintQuarks(1) // todo: configurable
-	default:
-		return nil, errors.New("unhandled airdrop type")
-	}
-	coreMintAmount := float64(common.FromCoreMintQuarks(quarkAmount)) // todo: doesn't handle fractional amount
 
 	// Find the destination account, which will be the user's primary account
 	primaryAccountInfoRecord, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
@@ -194,11 +202,51 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		return nil, err
 	}
 
-	usdRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	var nativeAmount float64
+	var currencyCode currency_lib.Code
+	switch airdropType {
+	case AirdropTypeGetFirstCrypto:
+		nativeAmount, currencyCode, err = s.airdropIntegration.GetWelcomeBonusAmount(ctx, owner)
+		if err != nil {
+			log.WithError(err).Warn("failure getting welcome bonus amount from integration")
+			return nil, err
+		}
+		if nativeAmount == 0 {
+			log.Trace("integration did not allow welcome bonus")
+			return nil, ErrInvalidAirdropTarget
+		}
+	default:
+		return nil, errors.New("unhandled airdrop type")
+	}
+
+	exchangeRateTime := exchange_rate_util.GetLatestExchangeRateTime()
+
+	usdRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, exchangeRateTime)
 	if err != nil {
 		log.WithError(err).Warn("failure getting usd rate")
 		return nil, err
 	}
+
+	var otherRateRecord *currency.ExchangeRateRecord
+	switch currencyCode {
+	case currency_lib.USD:
+		otherRateRecord = usdRateRecord
+	case common.CoreMintSymbol:
+		otherRateRecord = &currency.ExchangeRateRecord{
+			Time:   exchangeRateTime,
+			Rate:   1.0,
+			Symbol: string(common.CoreMintSymbol),
+		}
+	default:
+		otherRateRecord, err = s.data.GetExchangeRate(ctx, currencyCode, exchangeRateTime)
+		if err != nil {
+			log.WithError(err).Warn("failure getting other rate")
+			return nil, err
+		}
+	}
+
+	coreMintAmount := nativeAmount / otherRateRecord.Rate
+	quarkAmount := uint64(coreMintAmount * float64(common.CoreMintQuarksPerUnit))
 
 	var isAirdropperManuallyUnlocked bool
 	s.airdropperLock.Lock()
@@ -233,7 +281,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 
 	// Make the intent to transfer the funds. We accomplish this by having the
 	// sender setup and act like an internal Code account who always publicly
-	// transfers the airdrop like a Code->Code withdrawal.
+	// transfers the airdrop like a Code->Code payment.
 	//
 	// todo: This is an interesting concept we could consider expanding further.
 	//       Instead of constructing and validating everything manually, we could
@@ -267,9 +315,9 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			DestinationTokenAccount: destination.PublicKey().ToBase58(),
 			Quantity:                quarkAmount,
 
-			ExchangeCurrency: currency_lib.USD,
-			ExchangeRate:     1.0,
-			NativeAmount:     coreMintAmount,
+			ExchangeCurrency: currencyCode,
+			ExchangeRate:     otherRateRecord.Rate,
+			NativeAmount:     nativeAmount,
 			UsdMarketValue:   usdRateRecord.Rate * coreMintAmount,
 
 			IsWithdrawal: false,

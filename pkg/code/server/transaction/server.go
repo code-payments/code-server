@@ -26,6 +26,8 @@ type transactionServer struct {
 
 	auth *auth_util.RPCSignatureVerifier
 
+	airdropIntegration AirdropIntegration
+
 	jupiterClient *jupiter.Client
 
 	messagingClient messaging.InternalMessageClient
@@ -50,6 +52,7 @@ type transactionServer struct {
 
 func NewTransactionServer(
 	data code_data.Provider,
+	airdropIntegration AirdropIntegration,
 	jupiterClient *jupiter.Client,
 	messagingClient messaging.InternalMessageClient,
 	antispamGuard *antispam.Guard,
@@ -68,6 +71,8 @@ func NewTransactionServer(
 		data: data,
 
 		auth: auth_util.NewRPCSignatureVerifier(data),
+
+		airdropIntegration: airdropIntegration,
 
 		jupiterClient: jupiterClient,
 
