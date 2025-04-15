@@ -60,7 +60,7 @@ func (h *RequestToGrabBillMessageHandler) Validate(ctx context.Context, rendezvo
 	}
 
 	//
-	// Part 1: Requestor account must be a latest temporary incoming account
+	// Part 1: Requestor account must be a primary account
 	//
 
 	requestorAccount, err := common.NewAccountFromProto(typedMessage.RequestorAccount)
@@ -69,17 +69,10 @@ func (h *RequestToGrabBillMessageHandler) Validate(ctx context.Context, rendezvo
 	}
 
 	accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, requestorAccount.PublicKey().ToBase58())
-	if err == account.ErrAccountInfoNotFound || (err == nil && accountInfoRecord.AccountType != commonpb.AccountType_TEMPORARY_INCOMING) {
-		return newMessageValidationError("requestor account must be a temporary incoming account")
+	if err == account.ErrAccountInfoNotFound || (err == nil && accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY) {
+		return newMessageValidationError("requestor account must be a primary account")
 	} else if err != nil {
 		return err
-	}
-
-	latestAccountInfoRecord, err := h.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, accountInfoRecord.OwnerAccount, commonpb.AccountType_TEMPORARY_INCOMING)
-	if err != nil {
-		return err
-	} else if accountInfoRecord.TokenAccount != latestAccountInfoRecord.TokenAccount {
-		return newMessageValidationErrorf("requestor account must be latest temporary incoming account %s", accountInfoRecord.TokenAccount)
 	}
 
 	return nil
