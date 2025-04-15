@@ -207,21 +207,14 @@ func TestSendMessage_RequestToGrabBill_Validation(t *testing.T) {
 	env.client1.resetConf()
 	env.client1.conf.simulateAccountNotCodeAccount = true
 	sendMessageCall := env.client1.sendRequestToGrabBillMessage(t, rendezvousKey)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a temporary incoming account")
+	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a primary account")
 	env.server1.assertNoMessages(t, rendezvousKey)
 
 	env.client1.resetConf()
 	env.client1.conf.simulateInvalidAccountType = true
 	sendMessageCall = env.client1.sendRequestToGrabBillMessage(t, rendezvousKey)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a temporary incoming account")
+	sendMessageCall.assertInvalidMessageError(t, "requestor account must be a primary account")
 	env.server1.assertNoMessages(t, rendezvousKey)
-
-	env.client1.resetConf()
-	env.client1.conf.simulateStaleRequestorAccountType = true
-	sendMessageCall = env.client1.sendRequestToGrabBillMessage(t, rendezvousKey)
-	sendMessageCall.assertInvalidMessageError(t, "requestor account must be latest temporary incoming account")
-	env.server1.assertNoMessages(t, rendezvousKey)
-
 }
 
 /*

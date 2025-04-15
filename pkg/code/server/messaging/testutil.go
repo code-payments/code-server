@@ -233,9 +233,8 @@ type cancellableStream struct {
 type clientConf struct {
 	// Simulations for invalid account
 
-	simulateStaleRequestorAccountType bool
-	simulateInvalidAccountType        bool
-	simulateAccountNotCodeAccount     bool
+	simulateInvalidAccountType    bool
+	simulateAccountNotCodeAccount bool
 
 	// Simulations for invalid exchange data
 
@@ -512,31 +511,21 @@ func (c *sendMessageCallMetadata) assertNoActiveStreamError(t *testing.T) {
 func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *common.Account) *sendMessageCallMetadata {
 	destination := testutil.NewRandomAccount(t)
 
+	ownerAccount := testutil.NewRandomAccount(t)
 	accountInfoRecord := &account.Record{
-		OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
+		OwnerAccount:     ownerAccount.PublicKey().ToBase58(),
+		AuthorityAccount: ownerAccount.PublicKey().ToBase58(),
 		TokenAccount:     destination.PublicKey().ToBase58(),
 		MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-		AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
+		AccountType:      commonpb.AccountType_PRIMARY,
 		Index:            0,
 	}
 	if c.conf.simulateInvalidAccountType {
-		accountInfoRecord.AccountType = commonpb.AccountType_TEMPORARY_OUTGOING
+		accountInfoRecord.AuthorityAccount = testutil.NewRandomAccount(t).PublicKey().ToBase58()
+		accountInfoRecord.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
 	}
 	if !c.conf.simulateAccountNotCodeAccount {
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	}
-
-	if c.conf.simulateStaleRequestorAccountType {
-		latestAccountInfoRecord := &account.Record{
-			OwnerAccount:     accountInfoRecord.OwnerAccount,
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
-			Index:            accountInfoRecord.Index + 1,
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, latestAccountInfoRecord))
 	}
 
 	req := &messagingpb.SendMessageRequest{
