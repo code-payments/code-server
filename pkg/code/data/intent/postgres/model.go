@@ -13,6 +13,7 @@ import (
 	"github.com/code-payments/code-server/pkg/currency"
 
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
+	q "github.com/code-payments/code-server/pkg/database/query"
 )
 
 const (
@@ -208,6 +209,29 @@ func dbGetIntent(ctx context.Context, db *sqlx.DB, intentID string) (*intentMode
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, intent.ErrIntentNotFound)
 	}
+	return res, nil
+}
+
+func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*intentModel, error) {
+	res := []*intentModel{}
+
+	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, created_at
+		FROM ` + intentTableName + `
+		WHERE owner = $1 OR destination_owner = $1
+	`
+
+	opts := []any{owner}
+	query, opts = q.PaginateQuery(query, opts, cursor, limit, direction)
+
+	err := db.SelectContext(ctx, &res, query, opts...)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, intent.ErrIntentNotFound)
+	}
+
+	if len(res) == 0 {
+		return nil, intent.ErrIntentNotFound
+	}
+
 	return res, nil
 }
 

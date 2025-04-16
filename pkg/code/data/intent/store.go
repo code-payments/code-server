@@ -2,6 +2,8 @@ package intent
 
 import (
 	"context"
+
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type Store interface {
@@ -12,6 +14,11 @@ type Store interface {
 	//
 	// Returns ErrNotFound if no record is found.
 	Get(ctx context.Context, intentID string) (*Record, error)
+
+	// GetAllByOwner returns all records for a given owner (as both a source and destination).
+	//
+	// Returns ErrNotFound if no records are found.
+	GetAllByOwner(ctx context.Context, owner string, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*Record, error)
 
 	// GetLatestByInitiatorAndType gets the latest record by initiating owner and intent type
 	//

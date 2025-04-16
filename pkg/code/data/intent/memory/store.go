@@ -3,10 +3,12 @@ package memory
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 type store struct {
@@ -73,6 +75,28 @@ func (s *store) findByState(state intent.State) []*intent.Record {
 	return res
 }
 
+func (s *store) findByOwner(owner string) []*intent.Record {
+	res := make([]*intent.Record, 0)
+	for _, item := range s.records {
+		if item.InitiatorOwnerAccount == owner {
+			res = append(res, item)
+			continue
+		}
+
+		if item.SendPublicPaymentMetadata != nil && item.SendPublicPaymentMetadata.DestinationOwnerAccount == owner {
+			res = append(res, item)
+			continue
+		}
+
+		if item.ExternalDepositMetadata != nil && item.ExternalDepositMetadata.DestinationOwnerAccount == owner {
+			res = append(res, item)
+			continue
+		}
+	}
+
+	return res
+}
+
 func (s *store) findByDestination(destination string) []*intent.Record {
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
@@ -116,6 +140,38 @@ func (s *store) findByInitiatorAndType(intentType intent.Type, owner string) []*
 
 		res = append(res, item)
 	}
+	return res
+}
+
+func (s *store) filter(items []*intent.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*intent.Record {
+	var start uint64
+
+	start = 0
+	if direction == query.Descending {
+		start = s.last + 1
+	}
+	if len(cursor) > 0 {
+		start = cursor.ToUint64()
+	}
+
+	var res []*intent.Record
+	for _, item := range items {
+		if item.Id > start && direction == query.Ascending {
+			res = append(res, item)
+		}
+		if item.Id < start && direction == query.Descending {
+			res = append(res, item)
+		}
+	}
+
+	if direction == query.Descending {
+		sort.Sort(sort.Reverse(ById(res)))
+	}
+
+	if len(res) >= int(limit) {
+		return res[:limit]
+	}
+
 	return res
 }
 
@@ -192,6 +248,23 @@ func (s *store) Get(ctx context.Context, intentID string) (*intent.Record, error
 
 	if item := s.findIntent(intentID); item != nil {
 		return item, nil
+	}
+
+	return nil, intent.ErrIntentNotFound
+}
+
+func (s *store) GetAllByOwner(ctx context.Context, owner string, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*intent.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if items := s.findByOwner(owner); len(items) > 0 {
+		res := s.filter(items, cursor, limit, direction)
+
+		if len(res) == 0 {
+			return nil, intent.ErrIntentNotFound
+		}
+
+		return res, nil
 	}
 
 	return nil, intent.ErrIntentNotFound
