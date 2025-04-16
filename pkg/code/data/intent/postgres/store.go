@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -47,6 +48,23 @@ func (s *store) Get(ctx context.Context, intentID string) (*intent.Record, error
 	}
 
 	return fromIntentModel(obj), nil
+}
+
+// GetAllByOwner returns all records for a given owner (as both a source and destination).
+//
+// Returns ErrNotFound if no records are found.
+func (s *store) GetAllByOwner(ctx context.Context, owner string, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*intent.Record, error) {
+	models, err := dbGetAllByOwner(ctx, s.db, owner, cursor, limit, direction)
+	if err != nil {
+		return nil, err
+	}
+
+	intents := make([]*intent.Record, len(models))
+	for i, model := range models {
+		intents[i] = fromIntentModel(model)
+	}
+
+	return intents, nil
 }
 
 // GetLatestByInitiatorAndType gets the latest record by intent type and initiating owner

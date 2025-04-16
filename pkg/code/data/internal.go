@@ -171,6 +171,7 @@ type DatabaseData interface {
 	SaveIntent(ctx context.Context, record *intent.Record) error
 	GetIntent(ctx context.Context, intentID string) (*intent.Record, error)
 	GetIntentBySignature(ctx context.Context, signature string) (*intent.Record, error)
+	GetAllIntentsByOwner(ctx context.Context, owner string, opts ...query.Option) ([]*intent.Record, error)
 	GetLatestIntentByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error)
 	GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
 	GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
@@ -634,6 +635,14 @@ func (dp *DatabaseProvider) GetIntentBySignature(ctx context.Context, signature 
 	}
 
 	return dp.intents.Get(ctx, fulfillmentRecord.Intent)
+}
+func (dp *DatabaseProvider) GetAllIntentsByOwner(ctx context.Context, owner string, opts ...query.Option) ([]*intent.Record, error) {
+	req, err := query.DefaultPaginationHandler(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return dp.intents.GetAllByOwner(ctx, owner, req.Cursor, req.Limit, req.SortBy)
 }
 func (dp *DatabaseProvider) GetLatestIntentByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error) {
 	return dp.intents.GetLatestByInitiatorAndType(ctx, intentType, owner)
