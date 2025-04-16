@@ -497,15 +497,6 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 				return status.Error(codes.Aborted, "")
 			}
 
-			// Currently only support streams that have short lifespans in terms
-			// of key validity and length of time opened. Current implementation
-			// might be ok, but we should be thoughtful of any additional edge cases
-			// that might arise.
-			switch msg.Kind.(type) {
-			case *messagingpb.Message_AirdropReceived:
-				continue
-			}
-
 			err := streamer.Send(&messagingpb.OpenMessageStreamResponse{
 				Messages: []*messagingpb.Message{msg},
 			})
@@ -697,13 +688,6 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 		return nil, status.Error(codes.InvalidArgument, "message.kind cannot be intent_submitted")
 	case *messagingpb.Message_WebhookCalled:
 		return nil, status.Error(codes.InvalidArgument, "message.kind cannot be webhook_called")
-
-	//
-	// Section: Airdrops
-	//
-
-	case *messagingpb.Message_AirdropReceived:
-		return nil, status.Error(codes.InvalidArgument, "message.kind cannot be airdrop_received")
 
 	default:
 		return nil, status.Error(codes.InvalidArgument, "message.kind must be set")
