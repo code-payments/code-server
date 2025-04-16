@@ -3,7 +3,7 @@ package query
 import "strconv"
 
 const (
-	defaultPagingLimit = 1000
+	defaultPagingLimit = 1024
 )
 
 // PaginateQuery returns a paginated query string for the given input options.
