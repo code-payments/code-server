@@ -453,6 +453,9 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	if len(actions) != 1 {
 		return newIntentValidationError("expected 1 action")
 	}
+	if metadata.IsRemoteSend {
+		return newIntentDeniedError("remote send is not implemented")
+	}
 
 	var source *common.Account
 	var err error
