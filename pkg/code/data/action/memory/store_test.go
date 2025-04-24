@@ -6,7 +6,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action/tests"
 )
 
-func TestTreasuryPoolMemoryStore(t *testing.T) {
+func TestActionMemoryStore(t *testing.T) {
 	testStore := New()
 	teardown := func() {
 		testStore.(*store).reset()

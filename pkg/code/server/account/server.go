@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -420,11 +421,6 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		blockchainState = accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_UNKNOWN
 	}
 
-	mustRotate, err := s.shouldClientRotateAccount(ctx, records, prefetchedBalanceMetadata.value)
-	if err != nil {
-		return nil, err
-	}
-
 	// Claimed states only apply to gift card accounts
 	var claimState accountpb.TokenAccountInfo_ClaimState
 	if records.General.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
@@ -476,14 +472,12 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 	}
 
 	var originalExchangeData *transactionpb.ExchangeData
-	/*
-		if records.General.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
-			originalExchangeData, err = s.getOriginalGiftCardExchangeData(ctx, records)
-			if err != nil {
-				return nil, err
-			}
+	if records.General.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+		originalExchangeData, err = s.getOriginalGiftCardExchangeData(ctx, records)
+		if err != nil {
+			return nil, err
 		}
-	*/
+	}
 
 	return &accountpb.TokenAccountInfo{
 		Address:              tokenAccount.ToProto(),
@@ -495,7 +489,6 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		Balance:              prefetchedBalanceMetadata.value,
 		ManagementState:      managementState,
 		BlockchainState:      blockchainState,
-		MustRotate:           mustRotate,
 		ClaimState:           claimState,
 		OriginalExchangeData: originalExchangeData,
 		Mint:                 mintAccount.ToProto(),
@@ -503,17 +496,6 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 	}, nil
 }
 
-func (s *server) shouldClientRotateAccount(ctx context.Context, records *common.AccountRecords, balance uint64) (bool, error) {
-	// Only temp incoming accounts require server hints to rotate
-	if records.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
-		return false, nil
-	}
-
-	// Rotation should occur if the account has a balance
-	return balance > 0, nil
-}
-
-/*
 func (s *server) getOriginalGiftCardExchangeData(ctx context.Context, records *common.AccountRecords) (*transactionpb.ExchangeData, error) {
 	if records.General.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
 		return nil, errors.New("invalid account type")
@@ -525,10 +507,9 @@ func (s *server) getOriginalGiftCardExchangeData(ctx context.Context, records *c
 	}
 
 	return &transactionpb.ExchangeData{
-		Currency:     string(intentRecord.SendPrivatePaymentMetadata.ExchangeCurrency),
-		ExchangeRate: intentRecord.SendPrivatePaymentMetadata.ExchangeRate,
-		NativeAmount: intentRecord.SendPrivatePaymentMetadata.NativeAmount,
-		Quarks:       intentRecord.SendPrivatePaymentMetadata.Quantity,
+		Currency:     string(intentRecord.SendPublicPaymentMetadata.ExchangeCurrency),
+		ExchangeRate: intentRecord.SendPublicPaymentMetadata.ExchangeRate,
+		NativeAmount: intentRecord.SendPublicPaymentMetadata.NativeAmount,
+		Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
 	}, nil
 }
-*/

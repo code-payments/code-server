@@ -38,10 +38,10 @@ func testRoundTrip(t *testing.T, s action.Store) {
 
 		expected := &action.Record{
 			Intent:     "intent",
-			IntentType: intent.SendPrivatePayment,
+			IntentType: intent.SendPublicPayment,
 
 			ActionId:   1,
-			ActionType: action.CloseDormantAccount,
+			ActionType: action.NoPrivacyWithdraw,
 
 			Source:      "source",
 			Destination: pointer.String("destination"),
@@ -338,19 +338,19 @@ func testGetGiftCardAutoReturnAction(t *testing.T, s action.Store) {
 		ctx := context.Background()
 
 		records := []*action.Record{
-			{Intent: "i1", IntentType: intent.SendPrivatePayment, ActionId: 0, ActionType: action.OpenAccount, Source: "a1", State: action.StateConfirmed},
-			{Intent: "i1", IntentType: intent.SendPrivatePayment, ActionId: 1, ActionType: action.PrivateTransfer, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
-			{Intent: "i1", IntentType: intent.SendPrivatePayment, ActionId: 2, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
-			{Intent: "i1", IntentType: intent.SendPrivatePayment, ActionId: 3, ActionType: action.CloseEmptyAccount, Source: "a1", State: action.StateConfirmed},
-			{Intent: "i1", IntentType: intent.SendPrivatePayment, ActionId: 4, ActionType: action.NoPrivacyWithdraw, Source: "a1", Destination: pointer.String("destination"), State: action.StatePending},
-			{Intent: "i1", IntentType: intent.SendPrivatePayment, ActionId: 5, ActionType: action.CloseDormantAccount, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 0, ActionType: action.OpenAccount, Source: "a1", State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 1, ActionType: action.PrivateTransfer, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 2, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 3, ActionType: action.CloseEmptyAccount, Source: "a1", State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 4, ActionType: action.CloseDormantAccount, Source: "a1", Destination: pointer.String("destination"), State: action.StatePending},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 5, ActionType: action.NoPrivacyWithdraw, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
 
-			{Intent: "i2", IntentType: intent.SendPrivatePayment, ActionId: 1, ActionType: action.CloseDormantAccount, Source: "a2", Destination: pointer.String("destination"), State: action.StateRevoked},
-			{Intent: "i2", IntentType: intent.SendPrivatePayment, ActionId: 2, ActionType: action.CloseDormantAccount, Source: "other", Destination: pointer.String("a2"), State: action.StatePending},
-			{Intent: "i2", IntentType: intent.SendPrivatePayment, ActionId: 0, ActionType: action.CloseDormantAccount, Source: "a2", Destination: pointer.String("destination"), State: action.StatePending},
+			{Intent: "i2", IntentType: intent.SendPublicPayment, ActionId: 1, ActionType: action.NoPrivacyWithdraw, Source: "a2", Destination: pointer.String("destination"), State: action.StateRevoked},
+			{Intent: "i2", IntentType: intent.SendPublicPayment, ActionId: 2, ActionType: action.NoPrivacyWithdraw, Source: "other", Destination: pointer.String("a2"), State: action.StatePending},
+			{Intent: "i2", IntentType: intent.SendPublicPayment, ActionId: 0, ActionType: action.NoPrivacyWithdraw, Source: "a2", Destination: pointer.String("destination"), State: action.StatePending},
 
-			{Intent: "i3", IntentType: intent.SendPrivatePayment, ActionId: 0, ActionType: action.CloseDormantAccount, Source: "a3", Destination: pointer.String("destination"), State: action.StatePending},
-			{Intent: "i3", IntentType: intent.SendPrivatePayment, ActionId: 1, ActionType: action.CloseDormantAccount, Source: "a3", Destination: pointer.String("destination"), State: action.StateConfirmed},
+			{Intent: "i3", IntentType: intent.SendPublicPayment, ActionId: 0, ActionType: action.NoPrivacyWithdraw, Source: "a3", Destination: pointer.String("destination"), State: action.StatePending},
+			{Intent: "i3", IntentType: intent.SendPublicPayment, ActionId: 1, ActionType: action.NoPrivacyWithdraw, Source: "a3", Destination: pointer.String("destination"), State: action.StateConfirmed},
 		}
 
 		require.NoError(t, s.PutAll(ctx, records...))

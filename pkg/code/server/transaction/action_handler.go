@@ -3,6 +3,7 @@ package transaction_v2
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -15,6 +16,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
+	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
@@ -35,8 +37,10 @@ type newFulfillmentMetadata struct {
 	source      *common.Account
 	destination *common.Account
 
-	fulfillmentOrderingIndex uint32
-	disableActiveScheduling  bool
+	intentOrderingIndexOverride *uint64
+	actionOrderingIndexOverride *uint32
+	fulfillmentOrderingIndex    uint32
+	disableActiveScheduling     bool
 }
 
 // BaseActionHandler is a base interface for operation-specific action handlers
@@ -273,8 +277,7 @@ func (h *NoPrivacyTransferActionHandler) FulfillmentCount() int {
 func (h *NoPrivacyTransferActionHandler) PopulateMetadata(actionRecord *action.Record) error {
 	actionRecord.Source = h.source.Vault.PublicKey().ToBase58()
 
-	destination := h.destination.PublicKey().ToBase58()
-	actionRecord.Destination = &destination
+	actionRecord.Destination = pointer.String(h.destination.PublicKey().ToBase58())
 
 	actionRecord.Quantity = &h.amount
 
@@ -345,22 +348,13 @@ func (h *NoPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) error {
 }
 
 type NoPrivacyWithdrawActionHandler struct {
-	source                  *common.TimelockAccounts
-	destination             *common.Account
-	amount                  uint64
-	disableActiveScheduling bool
+	source       *common.TimelockAccounts
+	destination  *common.Account
+	amount       uint64
+	isAutoReturn bool
 }
 
 func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
-	var disableActiveScheduling bool
-
-	switch intentRecord.IntentType {
-	case intent.SendPrivatePayment:
-		// Technically we should do this for public receives too, but we don't
-		// yet have a great way of doing cross intent fulfillment polling hints.
-		disableActiveScheduling = true
-	}
-
 	sourceAuthority, err := common.NewAccountFromProto(protoAction.Authority)
 	if err != nil {
 		return nil, err
@@ -377,10 +371,10 @@ func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction 
 	}
 
 	return &NoPrivacyWithdrawActionHandler{
-		source:                  source,
-		destination:             destination,
-		amount:                  protoAction.Amount,
-		disableActiveScheduling: disableActiveScheduling,
+		source:       source,
+		destination:  destination,
+		amount:       protoAction.Amount,
+		isAutoReturn: protoAction.IsAutoReturn,
 	}, nil
 }
 
@@ -391,12 +385,20 @@ func (h *NoPrivacyWithdrawActionHandler) FulfillmentCount() int {
 func (h *NoPrivacyWithdrawActionHandler) PopulateMetadata(actionRecord *action.Record) error {
 	actionRecord.Source = h.source.Vault.PublicKey().ToBase58()
 
-	destination := h.destination.PublicKey().ToBase58()
-	actionRecord.Destination = &destination
+	actionRecord.Destination = pointer.String(h.destination.PublicKey().ToBase58())
 
 	actionRecord.Quantity = &h.amount
 
 	actionRecord.State = action.StatePending
+
+	if h.isAutoReturn {
+		// Do not populate a quantity. This will be done later when we decide to schedule
+		// the action. Otherwise, the balance calculator will be completely off. Balance
+		// amount will be determined at time of scheduling
+		actionRecord.Quantity = nil
+
+		actionRecord.State = action.StateUnknown
+	}
 
 	return nil
 }
@@ -431,12 +433,14 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 			expectedSigner:          h.source.VaultOwner,
 			virtualIxnHash:          &virtualIxnHash,
 
-			fulfillmentType:          fulfillment.NoPrivacyWithdraw,
-			source:                   h.source.Vault,
-			destination:              h.destination,
-			fulfillmentOrderingIndex: 0,
+			fulfillmentType: fulfillment.NoPrivacyWithdraw,
+			source:          h.source.Vault,
+			destination:     h.destination,
 
-			disableActiveScheduling: h.disableActiveScheduling,
+			intentOrderingIndexOverride: pointer.Uint64(math.MaxInt64),
+			actionOrderingIndexOverride: pointer.Uint32(0),
+			fulfillmentOrderingIndex:    0,
+			disableActiveScheduling:     h.isAutoReturn,
 		}, nil
 	default:
 		return nil, errors.New("invalid transaction index")

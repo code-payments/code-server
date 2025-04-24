@@ -374,7 +374,7 @@ func (m *fulfillmentModel) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 			m.VirtualBlockhash,
 		}
 
-		if m.FulfillmentType == uint(fulfillment.CloseDormantTimelockAccount) {
+		if m.IntentType == uint(intent.SendPublicPayment) && m.FulfillmentType == uint(fulfillment.NoPrivacyWithdraw) {
 			preSortingUpdateStmt = ", intent_ordering_index = $10, action_ordering_index = $11, fulfillment_ordering_index = $12"
 			params = append(
 				params,
