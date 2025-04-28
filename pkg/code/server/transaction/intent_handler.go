@@ -315,6 +315,10 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 		intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount = destinationAccountInfo.OwnerAccount
 	}
 
+	if intentRecord.SendPublicPaymentMetadata.IsRemoteSend && intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+		return newIntentValidationError("remote send cannot be a withdraw")
+	}
+
 	return nil
 }
 
@@ -433,28 +437,27 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 		initiatiorOwnerAccount,
 		initiatorAccountsByType,
 		initiatorAccountsByVault,
-		intentRecord,
 		typedMetadata,
 		actions,
 		simResult,
 	)
 }
 
+// todo: For remote send, we still need to fully validate the auto-return action
 func (h *SendPublicPaymentIntentHandler) validateActions(
 	ctx context.Context,
 	initiatorOwnerAccount *common.Account,
 	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
-	intentRecord *intent.Record,
 	metadata *transactionpb.SendPublicPaymentMetadata,
 	actions []*transactionpb.Action,
 	simResult *LocalSimulationResult,
 ) error {
-	if len(actions) != 1 {
+	if !metadata.IsRemoteSend && len(actions) != 1 {
 		return newIntentValidationError("expected 1 action")
 	}
-	if metadata.IsRemoteSend {
-		return newIntentDeniedError("remote send is not implemented")
+	if metadata.IsRemoteSend && len(actions) != 3 {
+		return newIntentValidationError("expected 3 actions")
 	}
 
 	var source *common.Account
@@ -483,6 +486,11 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
 	switch err {
 	case nil:
+		// Remote sends must be to a brand new gift card account
+		if metadata.IsRemoteSend {
+			return newIntentValidationError("destination must be a brand new gift card account")
+		}
+
 		// Code->Code public withdraws must be done against other deposit accounts
 		if metadata.IsWithdrawal && destinationAccountInfo.AccountType != commonpb.AccountType_PRIMARY {
 			return newIntentValidationError("destination account must be a deposit account")
@@ -493,9 +501,10 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 			return newIntentValidationError("payment is a no-op")
 		}
 	case account.ErrAccountInfoNotFound:
-		// Check whether the destination account is a Kin token account that's
-		// been created on the blockchain.
-		if !h.conf.disableBlockchainChecks.Get(ctx) {
+		// Check whether the destination account is a core mint token account that's
+		// been created on the blockchain. Exception is made when we're doing a remote
+		// send, since we expect the gift card account to no yet exist.
+		if !metadata.IsRemoteSend && !h.conf.disableBlockchainChecks.Get(ctx) {
 			err = validateExternalTokenAccountWithinIntent(ctx, h.data, destination)
 			if err != nil {
 				return err
@@ -523,7 +532,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return newIntentValidationErrorf("must send payment to destination account %s", destination.PublicKey().ToBase58())
 	} else if destinationSimulation.Transfers[0].IsPrivate || destinationSimulation.Transfers[0].IsWithdraw {
 		return newActionValidationError(destinationSimulation.Transfers[0].Action, "payment sent to destination must be a public transfer")
-	} else if destinationSimulation.GetDeltaQuarks() != int64(metadata.ExchangeData.Quarks) {
+	} else if destinationSimulation.GetDeltaQuarks(false) != int64(metadata.ExchangeData.Quarks) {
 		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "must send %d quarks to destination account", metadata.ExchangeData.Quarks)
 	}
 
@@ -535,7 +544,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
 	if !ok {
 		return newIntentValidationErrorf("must send payment from source account %s", source.PublicKey().ToBase58())
-	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.ExchangeData.Quarks) {
+	} else if sourceSimulation.GetDeltaQuarks(false) != -int64(metadata.ExchangeData.Quarks) {
 		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must send %d quarks from source account", metadata.ExchangeData.Quarks)
 	}
 
@@ -546,14 +555,53 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return err
 	}
 
-	// Part 4: Sanity check no open and closed accounts
+	// Part 4: Validate open and closed accounts
 
-	if len(simResult.GetOpenedAccounts()) > 0 {
-		return newIntentValidationError("cannot open any account")
-	}
+	if metadata.IsRemoteSend {
+		if len(simResult.GetOpenedAccounts()) != 1 {
+			return newIntentValidationError("expected 1 account opened")
+		}
 
-	if len(simResult.GetClosedAccounts()) > 0 {
-		return newIntentValidationError("cannot close any account")
+		err = validateGiftCardAccountOpened(
+			ctx,
+			h.data,
+			initiatorOwnerAccount,
+			destination,
+			actions,
+		)
+		if err != nil {
+			return err
+		}
+
+		closedAccounts := simResult.GetClosedAccounts()
+		if len(FilterAutoReturnedAccounts(closedAccounts)) != 0 {
+			return newIntentValidationError("expected no closed accounts outside of auto-returns")
+		}
+		if len(closedAccounts) != 1 {
+			return newIntentValidationError("expected exactly 1 auto-returned account")
+		}
+
+		autoReturns := destinationSimulation.GetAutoReturns()
+		if len(autoReturns) != 1 {
+			return newIntentValidationError("expected auto-return for the remote send gift card")
+		} else if autoReturns[0].IsPrivate || !autoReturns[0].IsWithdraw {
+			return newActionValidationError(destinationSimulation.Transfers[0].Action, "auto-return must be a public withdraw")
+		} else if autoReturns[0].DeltaQuarks != -int64(metadata.ExchangeData.Quarks) {
+			return newActionValidationErrorf(autoReturns[0].Action, "must auto-return %d quarks from remote send gift card", metadata.ExchangeData.Quarks)
+		}
+
+		autoReturns = sourceSimulation.GetAutoReturns()
+		if len(autoReturns) != 1 {
+			return newIntentValidationError("gift card auto-return balance must go to the source account")
+		}
+	} else {
+		if len(simResult.GetOpenedAccounts()) > 0 {
+			return newIntentValidationError("cannot open any account")
+		}
+
+		if len(simResult.GetClosedAccounts()) > 0 {
+			return newIntentValidationError("cannot close any account")
+		}
 	}
 
 	return nil
@@ -585,56 +633,53 @@ func NewReceivePaymentsPubliclyIntentHandler(conf *conf, data code_data.Provider
 }
 
 func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error {
-	return newIntentDeniedError("remote send requires rewrite")
+	typedProtoMetadata := protoMetadata.GetReceivePaymentsPublicly()
+	if typedProtoMetadata == nil {
+		return errors.New("unexpected metadata proto message")
+	}
 
-	/*
-		typedProtoMetadata := protoMetadata.GetReceivePaymentsPublicly()
-		if typedProtoMetadata == nil {
-			return errors.New("unexpected metadata proto message")
-		}
+	giftCardVault, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
+	if err != nil {
+		return err
+	}
 
-		giftCardVault, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
-		if err != nil {
-			return err
-		}
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	if err != nil {
+		return errors.Wrap(err, "error getting current usd exchange rate")
+	}
 
-		usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
-		if err != nil {
-			return errors.Wrap(err, "error getting current usd exchange rate")
-		}
+	// This is an optimization for payment history. Original fiat amounts are not
+	// easily linked due to the nature of gift cards and the remote send flow. We
+	// fetch this metadata up front so we don't need to do it every time in history.
+	giftCardIssuedIntentRecord, err := h.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVault.PublicKey().ToBase58())
+	if err == intent.ErrIntentNotFound {
+		return newIntentValidationError("source is not a remote send gift card")
+	} else if err != nil {
+		return err
+	}
+	h.cachedGiftCardIssuedIntentRecord = giftCardIssuedIntentRecord
 
-		// This is an optimization for payment history. Original fiat amounts are not
-		// easily linked due to the nature of gift cards and the remote send flow. We
-		// fetch this metadata up front so we don't need to do it every time in history.
-		giftCardIssuedIntentRecord, err := h.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVault.PublicKey().ToBase58())
-		if err == intent.ErrIntentNotFound {
-			return newIntentValidationError("source is not a remote send gift card")
-		} else if err != nil {
-			return err
-		}
-		h.cachedGiftCardIssuedIntentRecord = giftCardIssuedIntentRecord
+	intentRecord.IntentType = intent.ReceivePaymentsPublicly
+	intentRecord.ReceivePaymentsPubliclyMetadata = &intent.ReceivePaymentsPubliclyMetadata{
+		Source:   giftCardVault.PublicKey().ToBase58(),
+		Quantity: typedProtoMetadata.Quarks,
 
-		intentRecord.IntentType = intent.ReceivePaymentsPublicly
-		intentRecord.ReceivePaymentsPubliclyMetadata = &intent.ReceivePaymentsPubliclyMetadata{
-			Source:                  giftCardVault.PublicKey().ToBase58(),
-			Quantity:                typedProtoMetadata.Quarks,
-			IsRemoteSend:            typedProtoMetadata.IsRemoteSend,
-			IsReturned:              false,
-			IsIssuerVoidingGiftCard: typedProtoMetadata.IsIssuerVoidingGiftCard,
+		IsRemoteSend:            typedProtoMetadata.IsRemoteSend,
+		IsReturned:              false,
+		IsIssuerVoidingGiftCard: typedProtoMetadata.IsIssuerVoidingGiftCard,
 
-			OriginalExchangeCurrency: giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeCurrency,
-			OriginalExchangeRate:     giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeRate,
-			OriginalNativeAmount:     giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.NativeAmount,
+		OriginalExchangeCurrency: giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency,
+		OriginalExchangeRate:     giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate,
+		OriginalNativeAmount:     giftCardIssuedIntentRecord.SendPublicPaymentMetadata.NativeAmount,
 
-			UsdMarketValue: usdExchangeRecord.Rate * float64(typedProtoMetadata.Quarks) / float64(common.CoreMintQuarksPerUnit),
-		}
+		UsdMarketValue: usdExchangeRecord.Rate * float64(typedProtoMetadata.Quarks) / float64(common.CoreMintQuarksPerUnit),
+	}
 
-		if intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard && intentRecord.InitiatorOwnerAccount != giftCardIssuedIntentRecord.InitiatorOwnerAccount {
-			return newIntentValidationError("only the issuer can void the gift card")
-		}
+	if intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard && intentRecord.InitiatorOwnerAccount != giftCardIssuedIntentRecord.InitiatorOwnerAccount {
+		return newIntentValidationError("only the issuer can void the gift card")
+	}
 
-		return nil
-	*/
+	return nil
 }
 
 func (h *ReceivePaymentsPubliclyIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
@@ -756,8 +801,6 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	//
 
 	return h.validateActions(
-		ctx,
-		initiatiorOwnerAccount,
 		initiatorAccountsByType,
 		initiatorAccountsByVault,
 		typedMetadata,
@@ -767,8 +810,6 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 }
 
 func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
-	ctx context.Context,
-	initiatorOwnerAccount *common.Account,
 	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	metadata *transactionpb.ReceivePaymentsPubliclyMetadata,
@@ -789,17 +830,11 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 		return err
 	}
 
-	// The destination account must be the latest temporary incoming account
-	destinationAccountInfo := initiatorAccountsByType[commonpb.AccountType_TEMPORARY_INCOMING][0].General
+	// The destination account must be the primary
+	destinationAccountInfo := initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General
 	destinationSimulation, ok := simResult.SimulationsByAccount[destinationAccountInfo.TokenAccount]
 	if !ok {
-		return newActionValidationError(actions[0], "must send payment to latest temp incoming account")
-	}
-
-	// And that temporary incoming account has limited usage
-	err = validateMinimalTempIncomingAccountUsage(ctx, h.data, destinationAccountInfo)
-	if err != nil {
-		return err
+		return newActionValidationError(actions[0], "must send payment to primary account")
 	}
 
 	//
@@ -813,7 +848,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
 	if !ok {
 		return newIntentValidationError("must receive payments from source account")
-	} else if sourceSimulation.GetDeltaQuarks() != -int64(metadata.Quarks) {
+	} else if sourceSimulation.GetDeltaQuarks(false) != -int64(metadata.Quarks) {
 		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must receive %d quarks from source account", metadata.Quarks)
 	} else if sourceSimulation.Transfers[0].IsPrivate || !sourceSimulation.Transfers[0].IsWithdraw {
 		return newActionValidationError(sourceSimulation.Transfers[0].Action, "transfer must be a public withdraw")
@@ -823,7 +858,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	// Part 2.2: Check destination account is paid exact quark amount from source account in a public withdraw
 	//
 
-	if destinationSimulation.GetDeltaQuarks() != int64(metadata.Quarks) {
+	if destinationSimulation.GetDeltaQuarks(false) != int64(metadata.Quarks) {
 		return newActionValidationErrorf(actions[0], "must receive %d quarks to temp incoming account", metadata.Quarks)
 	} else if destinationSimulation.Transfers[0].IsPrivate || !destinationSimulation.Transfers[0].IsWithdraw {
 		return newActionValidationError(sourceSimulation.Transfers[0].Action, "transfer must be a public withdraw")
@@ -870,26 +905,6 @@ func validateAllUserAccountsManagedByCode(ctx context.Context, initiatorAccounts
 	return nil
 }
 
-func validateMoneyMovementActionCount(actions []*transactionpb.Action) error {
-	var numMoneyMovementActions int
-
-	for _, action := range actions {
-		switch action.Type.(type) {
-		case *transactionpb.Action_NoPrivacyWithdraw,
-			*transactionpb.Action_NoPrivacyTransfer,
-			*transactionpb.Action_FeePayment:
-
-			numMoneyMovementActions++
-		}
-	}
-
-	// todo: configurable
-	if numMoneyMovementActions > 50 {
-		return newIntentDeniedError("too many transfer/exchange/withdraw actions")
-	}
-	return nil
-}
-
 // Provides generic and lightweight validation of which accounts owned by a Code
 // user can be used in certain actions. This is by no means a comprehensive check.
 // Other account types (eg. gift cards, external wallets, etc) and intent-specific
@@ -923,8 +938,8 @@ func validateMoneyMovementActionUserAccounts(
 			}
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			// No privacy withdraws are used in two ways depending on the intent:
-			//  1. As the sender of funds from the latest temp outgoing account in a private send
-			//  2. As a receiver of funds to the latest temp incoming account in a public receive
+			//  1. As an auto-return action back to the payer's primary account in a public payment intent for remote send
+			//  2. As a receiver of funds to the primary account in a public receive
 
 			authority, err = common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Authority)
 			if err != nil {
@@ -942,14 +957,14 @@ func validateMoneyMovementActionUserAccounts(
 			}
 
 			switch intentType {
-			case intent.ReceivePaymentsPublicly:
+			case intent.SendPublicPayment, intent.ReceivePaymentsPublicly:
 				destinationAccountInfo, ok := initiatorAccountsByVault[destination.PublicKey().ToBase58()]
-				if !ok || destinationAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
-					return newActionValidationError(action, "source account must be the latest temporary incoming account")
+				if !ok || destinationAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
+					return newActionValidationError(action, "source account must be the primary account")
 				}
 			}
 		case *transactionpb.Action_FeePayment:
-			// Fee payments always come from the latest temporary outgoing account
+			// Fee payments always come from the primary account
 
 			authority, err = common.NewAccountFromProto(typedAction.FeePayment.Authority)
 			if err != nil {
@@ -962,8 +977,8 @@ func validateMoneyMovementActionUserAccounts(
 			}
 
 			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
-			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_TEMPORARY_OUTGOING {
-				return newActionValidationError(action, "source account must be the latest temporary outgoing account")
+			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
+				return newActionValidationError(action, "source account must be the primary account")
 			}
 		default:
 			continue
@@ -980,72 +995,11 @@ func validateMoneyMovementActionUserAccounts(
 	return nil
 }
 
-func validateNextTemporaryAccountOpened(
-	accountType commonpb.AccountType,
-	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
-	actions []*transactionpb.Action,
-) error {
-	if accountType != commonpb.AccountType_TEMPORARY_INCOMING && accountType != commonpb.AccountType_TEMPORARY_OUTGOING {
-		return errors.New("unexpected account type")
-	}
-
-	prevTempAccountRecords, ok := initiatorAccountsByType[accountType]
-	if !ok {
-		return errors.New("previous temp account record missing")
-	}
-
-	// Find the open and close actions
-
-	var openAction *transactionpb.Action
-	for _, action := range actions {
-		switch typed := action.Type.(type) {
-		case *transactionpb.Action_OpenAccount:
-			if typed.OpenAccount.AccountType == accountType {
-				if openAction != nil {
-					return newIntentValidationErrorf("multiple open actions for %s account type", accountType)
-				}
-
-				openAction = action
-			}
-		}
-	}
-
-	if openAction == nil {
-		return newIntentValidationErrorf("open account action for %s account type missing", accountType)
-	}
-
-	if !bytes.Equal(openAction.GetOpenAccount().Owner.Value, initiatorOwnerAccount.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(openAction, "owner must be %s", initiatorOwnerAccount.PublicKey().ToBase58())
-	}
-
-	if bytes.Equal(openAction.GetOpenAccount().Owner.Value, openAction.GetOpenAccount().Authority.Value) {
-		return newActionValidationErrorf(openAction, "authority cannot be %s", initiatorOwnerAccount.PublicKey().ToBase58())
-	}
-
-	expectedIndex := prevTempAccountRecords[0].General.Index + 1
-	if openAction.GetOpenAccount().Index != expectedIndex {
-		return newActionValidationErrorf(openAction, "next derivation expected to be %d", expectedIndex)
-	}
-
-	expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccount(openAction.GetOpenAccount().Authority)
-	if err != nil {
-		return err
-	}
-
-	if !bytes.Equal(openAction.GetOpenAccount().Token.Value, expectedVaultAccount.PublicKey().ToBytes()) {
-		return newActionValidationErrorf(openAction, "token must be %s", expectedVaultAccount.PublicKey().ToBase58())
-	}
-
-	return nil
-}
-
 // Assumes only one gift card account is opened per intent
 func validateGiftCardAccountOpened(
 	ctx context.Context,
 	data code_data.Provider,
 	initiatorOwnerAccount *common.Account,
-	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	expectedGiftCardVault *common.Account,
 	actions []*transactionpb.Action,
 ) error {
@@ -1263,41 +1217,6 @@ func validateFeePayments(
 	return nil
 }
 
-func validateMinimalTempIncomingAccountUsage(ctx context.Context, data code_data.Provider, accountInfo *account.Record) error {
-	if accountInfo.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
-		return errors.New("expected a temporary incoming account")
-	}
-
-	actionRecords, err := data.GetAllActionsByAddress(ctx, accountInfo.TokenAccount)
-	if err != nil && err != action.ErrActionNotFound {
-		return err
-	}
-
-	var paymentCount int
-	for _, actionRecord := range actionRecords {
-		// Revoked actions don't count
-		if actionRecord.State == action.StateRevoked {
-			continue
-		}
-
-		// Temp incoming accounts are always paid via no privacy withdraws
-		if actionRecord.ActionType != action.NoPrivacyWithdraw {
-			continue
-		}
-
-		paymentCount += 1
-	}
-
-	// Should be coordinated with MustRotate flag in GetTokenAccountInfos
-	//
-	// todo: configurable
-	if paymentCount >= 2 {
-		// Important Note: Do not leak anything. Just say it isn't the latest.
-		return newStaleStateError("destination is not the latest temporary incoming account")
-	}
-	return nil
-}
-
 func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account, claimedAmount uint64) error {
 	//
 	// Part 1: Is the account a gift card?
@@ -1344,9 +1263,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 	}
 
 	isManagedByCode := common.IsManagedByCode(ctx, timelockRecord)
-	if err != nil {
-		return err
-	} else if !isManagedByCode {
+	if !isManagedByCode {
 		if timelockRecord.IsClosed() {
 			// Better error messaging, since we know we'll never reopen the account
 			// and the balance is guaranteed to be claimed (not necessarily through

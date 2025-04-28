@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +24,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	"github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/pointer"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -225,7 +226,6 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Equal(t, common.CoreMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
 		}
 
-		assert.False(t, accountInfo.MustRotate)
 		assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
 		assert.Nil(t, accountInfo.OriginalExchangeData)
 	}
@@ -235,7 +235,6 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	assert.True(t, primaryAccountInfoRecord.RequiresDepositSync)
 }
 
-/*
 func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
@@ -381,11 +380,11 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 
 		giftCardIssuedIntentRecord := &intent.Record{
 			IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			IntentType: intent.SendPrivatePayment,
+			IntentType: intent.SendPublicPayment,
 
 			InitiatorOwnerAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
 
-			SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+			SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 				DestinationTokenAccount: accountRecords.General.TokenAccount,
 				Quantity:                common.ToCoreMintQuarks(10),
 
@@ -408,10 +407,10 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 
 		autoReturnActionRecord := &action.Record{
 			Intent:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			IntentType: intent.SendPrivatePayment,
+			IntentType: intent.SendPublicPayment,
 
 			ActionId:   0,
-			ActionType: action.CloseDormantAccount,
+			ActionType: action.NoPrivacyWithdraw,
 
 			Source:      accountRecords.General.TokenAccount,
 			Destination: pointer.String("primary"),
@@ -474,19 +473,16 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		assert.Equal(t, tc.expectedClaimState, accountInfo.ClaimState)
 
 		require.NotNil(t, accountInfo.OriginalExchangeData)
-		assert.EqualValues(t, giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeCurrency, accountInfo.OriginalExchangeData.Currency)
-		assert.Equal(t, giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.ExchangeRate, accountInfo.OriginalExchangeData.ExchangeRate)
-		assert.Equal(t, giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.NativeAmount, accountInfo.OriginalExchangeData.NativeAmount)
-		assert.Equal(t, giftCardIssuedIntentRecord.SendPrivatePaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
-
-		assert.False(t, accountInfo.MustRotate)
+		assert.EqualValues(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency, accountInfo.OriginalExchangeData.Currency)
+		assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate, accountInfo.OriginalExchangeData.ExchangeRate)
+		assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.NativeAmount, accountInfo.OriginalExchangeData.NativeAmount)
+		assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
 
 		accountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 		require.NoError(t, err)
 		assert.False(t, accountInfoRecord.RequiresDepositSync)
 	}
 }
-*/
 
 func TestGetTokenAccountInfos_BlockchainState(t *testing.T) {
 	env, cleanup := setup(t)
@@ -593,58 +589,6 @@ func TestGetTokenAccountInfos_ManagementState(t *testing.T) {
 		accountInfo, ok := resp.TokenAccountInfos[accountRecords.Timelock.VaultAddress]
 		require.True(t, ok)
 		assert.Equal(t, tc.expected, accountInfo.ManagementState)
-	}
-}
-
-func TestGetTokenAccountInfos_TempIncomingAccountRotation_AtLeastOnePayment(t *testing.T) {
-	env, cleanup := setup(t)
-	defer cleanup()
-
-	ownerAccount := testutil.NewRandomAccount(t)
-
-	req := &accountpb.GetTokenAccountInfosRequest{
-		Owner: ownerAccount.ToProto(),
-	}
-	reqBytes, err := proto.Marshal(req)
-	require.NoError(t, err)
-	req.Signature = &commonpb.Signature{
-		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-	}
-
-	tempIncomingDerivedOwner := testutil.NewRandomAccount(t)
-	accountRecords := setupAccountRecords(t, env, ownerAccount, tempIncomingDerivedOwner, 2, commonpb.AccountType_TEMPORARY_INCOMING)
-
-	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	require.Len(t, resp.TokenAccountInfos, 1)
-
-	accountInfo, ok := resp.TokenAccountInfos[accountRecords.General.TokenAccount]
-	require.True(t, ok)
-	assert.False(t, accountInfo.MustRotate)
-
-	for i := 0; i < 3; i++ {
-		quantity := uint64(1)
-		actionRecord := &action.Record{
-			Intent:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			IntentType:  intent.SendPrivatePayment,
-			ActionType:  action.NoPrivacyWithdraw,
-			Source:      testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			Destination: &accountRecords.General.TokenAccount,
-			Quantity:    &quantity,
-			State:       action.StatePending,
-			CreatedAt:   time.Now(),
-		}
-		require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
-
-		resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
-		require.NoError(t, err)
-		assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-		require.Len(t, resp.TokenAccountInfos, 1)
-
-		accountInfo, ok := resp.TokenAccountInfos[accountRecords.General.TokenAccount]
-		require.True(t, ok)
-		assert.True(t, accountInfo.MustRotate)
 	}
 }
 

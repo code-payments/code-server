@@ -129,7 +129,9 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 				ExchangeRate:     0.00073,
 				NativeAmount:     0.00073 * 12345,
 				UsdMarketValue:   0.00042,
-				IsWithdrawal:     true,
+
+				IsWithdrawal: true,
+				IsRemoteSend: true,
 			},
 			ExtendedMetadata: []byte("extended_metadata"),
 			State:            intent.StateUnknown,
@@ -153,6 +155,7 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.NativeAmount, actual.SendPublicPaymentMetadata.NativeAmount)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.UsdMarketValue, actual.SendPublicPaymentMetadata.UsdMarketValue)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.IsWithdrawal, actual.SendPublicPaymentMetadata.IsWithdrawal)
+		assert.Equal(t, cloned.SendPublicPaymentMetadata.IsRemoteSend, actual.SendPublicPaymentMetadata.IsRemoteSend)
 		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
@@ -271,89 +274,81 @@ func testGetLatestByInitiatorAndType(t *testing.T, s intent.Store) {
 
 func testGetOriginalGiftCardIssuedIntent(t *testing.T, s intent.Store) {
 	t.Run("testGetOriginalGiftCardIssuedIntent", func(t *testing.T) {
-		/*
-			ctx := context.Background()
+		ctx := context.Background()
 
-			records := []intent.Record{
-				{IntentId: "i1", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a1", DestinationOwnerAccount: "o1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+		records := []intent.Record{
+			{IntentId: "i1", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a1", DestinationOwnerAccount: "o1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-				{IntentId: "i2", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i3", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i4", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i5", IntentType: intent.ExternalDeposit, ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i6", IntentType: intent.LegacyPayment, MoneyTransferMetadata: &intent.MoneyTransferMetadata{Source: "source", Destination: "a2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i2", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i3", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i4", IntentType: intent.ExternalDeposit, ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-				{IntentId: "i7", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i8", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i5", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i6", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-				{IntentId: "i9", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StatePending},
-				{IntentId: "i10", IntentType: intent.SendPrivatePayment, SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateRevoked},
-			}
+			{IntentId: "i7", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StatePending},
+			{IntentId: "i8", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateRevoked},
+		}
 
-			for _, record := range records {
-				require.NoError(t, s.Save(ctx, &record))
-			}
+		for _, record := range records {
+			require.NoError(t, s.Save(ctx, &record))
+		}
 
-			_, err := s.GetOriginalGiftCardIssuedIntent(ctx, "unknown")
-			assert.Equal(t, intent.ErrIntentNotFound, err)
+		_, err := s.GetOriginalGiftCardIssuedIntent(ctx, "unknown")
+		assert.Equal(t, intent.ErrIntentNotFound, err)
 
-			_, err = s.GetOriginalGiftCardIssuedIntent(ctx, "a1")
-			assert.Equal(t, intent.ErrIntentNotFound, err)
+		_, err = s.GetOriginalGiftCardIssuedIntent(ctx, "a1")
+		assert.Equal(t, intent.ErrIntentNotFound, err)
 
-			actual, err := s.GetOriginalGiftCardIssuedIntent(ctx, "a2")
-			require.NoError(t, err)
-			assert.Equal(t, "i2", actual.IntentId)
+		actual, err := s.GetOriginalGiftCardIssuedIntent(ctx, "a2")
+		require.NoError(t, err)
+		assert.Equal(t, "i2", actual.IntentId)
 
-			_, err = s.GetOriginalGiftCardIssuedIntent(ctx, "a3")
-			assert.Equal(t, intent.ErrMultilpeIntentsFound, err)
+		_, err = s.GetOriginalGiftCardIssuedIntent(ctx, "a3")
+		assert.Equal(t, intent.ErrMultilpeIntentsFound, err)
 
-			actual, err = s.GetOriginalGiftCardIssuedIntent(ctx, "a4")
-			require.NoError(t, err)
-			assert.Equal(t, "i9", actual.IntentId)
-		*/
+		actual, err = s.GetOriginalGiftCardIssuedIntent(ctx, "a4")
+		require.NoError(t, err)
+		assert.Equal(t, "i7", actual.IntentId)
 	})
 }
 
 func testGetGiftCardClaimedIntent(t *testing.T, s intent.Store) {
 	t.Run("testGetGiftCardClaimedIntent", func(t *testing.T) {
-		/*
-			ctx := context.Background()
+		ctx := context.Background()
 
-			records := []intent.Record{
-				{IntentId: "i1", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a1", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+		records := []intent.Record{
+			{IntentId: "i1", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a1", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-				{IntentId: "i2", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i3", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i4", IntentType: intent.ReceivePaymentsPrivately, ReceivePaymentsPrivatelyMetadata: &intent.ReceivePaymentsPrivatelyMetadata{Source: "a2", Quantity: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i5", IntentType: intent.LegacyPayment, MoneyTransferMetadata: &intent.MoneyTransferMetadata{Source: "a2", Destination: "destination", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i2", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i3", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-				{IntentId: "i6", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-				{IntentId: "i7", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i4", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i5", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-				{IntentId: "i8", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateRevoked},
-				{IntentId: "i9", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StatePending},
-			}
+			{IntentId: "i6", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateRevoked},
+			{IntentId: "i7", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StatePending},
+		}
 
-			for _, record := range records {
-				require.NoError(t, s.Save(ctx, &record))
-			}
+		for _, record := range records {
+			require.NoError(t, s.Save(ctx, &record))
+		}
 
-			_, err := s.GetGiftCardClaimedIntent(ctx, "unknown")
-			assert.Equal(t, intent.ErrIntentNotFound, err)
+		_, err := s.GetGiftCardClaimedIntent(ctx, "unknown")
+		assert.Equal(t, intent.ErrIntentNotFound, err)
 
-			_, err = s.GetGiftCardClaimedIntent(ctx, "a1")
-			assert.Equal(t, intent.ErrIntentNotFound, err)
+		_, err = s.GetGiftCardClaimedIntent(ctx, "a1")
+		assert.Equal(t, intent.ErrIntentNotFound, err)
 
-			actual, err := s.GetGiftCardClaimedIntent(ctx, "a2")
-			require.NoError(t, err)
-			assert.Equal(t, "i3", actual.IntentId)
+		actual, err := s.GetGiftCardClaimedIntent(ctx, "a2")
+		require.NoError(t, err)
+		assert.Equal(t, "i3", actual.IntentId)
 
-			_, err = s.GetGiftCardClaimedIntent(ctx, "a3")
-			assert.Equal(t, intent.ErrMultilpeIntentsFound, err)
+		_, err = s.GetGiftCardClaimedIntent(ctx, "a3")
+		assert.Equal(t, intent.ErrMultilpeIntentsFound, err)
 
-			actual, err = s.GetGiftCardClaimedIntent(ctx, "a4")
-			require.NoError(t, err)
-			assert.Equal(t, "i9", actual.IntentId)
-		*/
+		actual, err = s.GetGiftCardClaimedIntent(ctx, "a4")
+		require.NoError(t, err)
+		assert.Equal(t, "i7", actual.IntentId)
 	})
 }

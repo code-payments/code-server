@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -207,6 +206,10 @@ func (s *store) filterByRemoteSendFlag(items []*intent.Record, want bool) []*int
 	var res []*intent.Record
 	for _, item := range items {
 		switch item.IntentType {
+		case intent.SendPublicPayment:
+			if item.SendPublicPaymentMetadata.IsRemoteSend == want {
+				res = append(res, item)
+			}
 		case intent.ReceivePaymentsPublicly:
 			if item.ReceivePaymentsPubliclyMetadata.IsRemoteSend == want {
 				res = append(res, item)
@@ -290,51 +293,43 @@ func (s *store) GetLatestByInitiatorAndType(ctx context.Context, intentType inte
 }
 
 func (s *store) GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {
-	return nil, errors.New("not implemented")
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	/*
-		s.mu.Lock()
-		defer s.mu.Unlock()
+	items := s.findByDestination(giftCardVault)
+	items = s.filterByType(items, intent.SendPublicPayment)
+	items = s.filterByState(items, false, intent.StateRevoked)
+	items = s.filterByRemoteSendFlag(items, true)
 
-		items := s.findByDestination(giftCardVault)
-		items = s.filterByType(items, intent.SendPrivatePayment)
-		items = s.filterByState(items, false, intent.StateRevoked)
-		items = s.filterByRemoteSendFlag(items, true)
+	if len(items) == 0 {
+		return nil, intent.ErrIntentNotFound
+	}
 
-		if len(items) == 0 {
-			return nil, intent.ErrIntentNotFound
-		}
+	if len(items) > 1 {
+		return nil, intent.ErrMultilpeIntentsFound
+	}
 
-		if len(items) > 1 {
-			return nil, intent.ErrMultilpeIntentsFound
-		}
-
-		cloned := items[0].Clone()
-		return &cloned, nil
-	*/
+	cloned := items[0].Clone()
+	return &cloned, nil
 }
 
 func (s *store) GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {
-	return nil, errors.New("not implemented")
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	/*
-		s.mu.Lock()
-		defer s.mu.Unlock()
+	items := s.findBySource(giftCardVault)
+	items = s.filterByType(items, intent.ReceivePaymentsPublicly)
+	items = s.filterByState(items, false, intent.StateRevoked)
+	items = s.filterByRemoteSendFlag(items, true)
 
-		items := s.findBySource(giftCardVault)
-		items = s.filterByType(items, intent.ReceivePaymentsPublicly)
-		items = s.filterByState(items, false, intent.StateRevoked)
-		items = s.filterByRemoteSendFlag(items, true)
+	if len(items) == 0 {
+		return nil, intent.ErrIntentNotFound
+	}
 
-		if len(items) == 0 {
-			return nil, intent.ErrIntentNotFound
-		}
+	if len(items) > 1 {
+		return nil, intent.ErrMultilpeIntentsFound
+	}
 
-		if len(items) > 1 {
-			return nil, intent.ErrMultilpeIntentsFound
-		}
-
-		cloned := items[0].Clone()
-		return &cloned, nil
-	*/
+	cloned := items[0].Clone()
+	return &cloned, nil
 }

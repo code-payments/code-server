@@ -24,28 +24,23 @@ type TokenAccountSimulation struct {
 	Opened     bool
 	OpenAction *transactionpb.Action
 
-	// todo: We need to handle CloseDormantAccount actions better. They're closed later,
-	//       but there's no indication here in simulation that we could close it at our
-	//       discretion.
-	Closed      bool
-	CloseAction *transactionpb.Action
+	Closed         bool
+	CloseAction    *transactionpb.Action
+	IsAutoReturned bool
 }
 
 // todo: Make it easier to extract accounts from a TransferSimulation (see some fee payment validation logic)
 type TransferSimulation struct {
-	Action      *transactionpb.Action
-	IsPrivate   bool
-	IsWithdraw  bool
-	IsFee       bool
-	DeltaQuarks int64
+	Action       *transactionpb.Action
+	IsPrivate    bool
+	IsWithdraw   bool
+	IsFee        bool
+	IsAutoReturn bool
+	DeltaQuarks  int64
 }
 
 // LocalSimulation simulates actions as if they were executed on the blockchain
 // taking into account cached Code DB state.
-//
-// Note: This doesn't currently incoporate accounts being closed by us. This is
-// fine because we only close temporary accounts during rotation. We already have
-// good validation for this, so it's fine for now.
 func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*transactionpb.Action) (*LocalSimulationResult, error) {
 	result := &LocalSimulationResult{
 		SimulationsByAccount: make(map[string]TokenAccountSimulation),
@@ -118,9 +113,6 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 					Transfers: []TransferSimulation{
 						{
 							Action:      action,
-							IsPrivate:   false,
-							IsWithdraw:  false,
-							IsFee:       false,
 							DeltaQuarks: -int64(amount),
 						},
 					},
@@ -130,9 +122,6 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 					Transfers: []TransferSimulation{
 						{
 							Action:      action,
-							IsPrivate:   false,
-							IsWithdraw:  false,
-							IsFee:       false,
 							DeltaQuarks: int64(amount),
 						},
 					},
@@ -159,8 +148,6 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 					Transfers: []TransferSimulation{
 						{
 							Action:      action,
-							IsPrivate:   false,
-							IsWithdraw:  false,
 							IsFee:       true,
 							DeltaQuarks: -int64(amount),
 						},
@@ -199,25 +186,24 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 					TokenAccount: source,
 					Transfers: []TransferSimulation{
 						{
-							Action:      action,
-							IsPrivate:   false,
-							IsWithdraw:  true,
-							IsFee:       false,
-							DeltaQuarks: -int64(amount),
+							Action:       action,
+							IsWithdraw:   true,
+							IsAutoReturn: typedAction.NoPrivacyWithdraw.IsAutoReturn,
+							DeltaQuarks:  -int64(amount),
 						},
 					},
-					Closed:      true,
-					CloseAction: action,
+					Closed:         true,
+					CloseAction:    action,
+					IsAutoReturned: typedAction.NoPrivacyWithdraw.IsAutoReturn,
 				},
 				TokenAccountSimulation{
 					TokenAccount: destination,
 					Transfers: []TransferSimulation{
 						{
-							Action:      action,
-							IsPrivate:   false,
-							IsWithdraw:  true,
-							IsFee:       false,
-							DeltaQuarks: int64(amount),
+							Action:       action,
+							IsWithdraw:   true,
+							IsAutoReturn: typedAction.NoPrivacyWithdraw.IsAutoReturn,
+							DeltaQuarks:  int64(amount),
 						},
 					},
 				},
@@ -239,7 +225,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 		// some basic level of validation.
 		for _, simulation := range simulations {
 			for _, txn := range simulation.Transfers {
-				// Attempt to transfer 0 Kin
+				// Attempt to transfer 0 quarks
 				if txn.DeltaQuarks == 0 {
 					return nil, newActionValidationError(action, "transaction with 0 quarks")
 				}
@@ -267,9 +253,9 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 					return nil, newActionValidationError(action, "account is already closed in another action")
 				}
 
-				// Attempt to send/receive Kin to a closed account
+				// Attempt to send/receive funds to a closed account
 				if combined.Closed && len(simulation.Transfers) > 0 {
-					return nil, newActionValidationError(action, "account is closed and cannot send/receive kin")
+					return nil, newActionValidationError(action, "account is closed and cannot send/receive funds")
 				}
 
 				combined.Transfers = append(combined.Transfers, simulation.Transfers...)
@@ -281,6 +267,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				if simulation.Closed {
 					combined.CloseAction = simulation.CloseAction
 				}
+				combined.IsAutoReturned = combined.IsAutoReturned || simulation.IsAutoReturned
 			} else {
 				combined = simulation
 			}
@@ -389,9 +376,13 @@ func (s LocalSimulationResult) GetClosedAccounts() []TokenAccountSimulation {
 	return simulations
 }
 
-func (s TokenAccountSimulation) GetDeltaQuarks() int64 {
+func (s TokenAccountSimulation) GetDeltaQuarks(includeAutoReturns bool) int64 {
 	var res int64
 	for _, txn := range s.Transfers {
+		if !includeAutoReturns && txn.IsAutoReturn {
+			continue
+		}
+
 		res += txn.DeltaQuarks
 	}
 	return res
@@ -441,6 +432,16 @@ func (s TokenAccountSimulation) GetWithdraws() []TransferSimulation {
 	var transfers []TransferSimulation
 	for _, transfer := range s.Transfers {
 		if transfer.IsWithdraw {
+			transfers = append(transfers, transfer)
+		}
+	}
+	return transfers
+}
+
+func (s TokenAccountSimulation) GetAutoReturns() []TransferSimulation {
+	var transfers []TransferSimulation
+	for _, transfer := range s.Transfers {
+		if transfer.IsAutoReturn {
 			transfers = append(transfers, transfer)
 		}
 	}
@@ -575,4 +576,26 @@ func (s LocalSimulationResult) CountFeePayments() int {
 		}
 	}
 	return count
+}
+
+func FilterAutoReturnedAccounts(in []TokenAccountSimulation) []TokenAccountSimulation {
+	var out []TokenAccountSimulation
+	for _, account := range in {
+		if account.IsAutoReturned {
+			continue
+		}
+		out = append(out, account)
+	}
+	return out
+}
+
+func FilterAutoReturnTransfers(in []TransferSimulation) []TransferSimulation {
+	var out []TransferSimulation
+	for _, transfer := range in {
+		if transfer.IsAutoReturn {
+			continue
+		}
+		out = append(out, transfer)
+	}
+	return out
 }

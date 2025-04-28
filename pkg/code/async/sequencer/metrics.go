@@ -4,15 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
-	fulfillmentCountEventName                  = "FulfillmentCountPollingCheck"
-	subsidizerBalanceEventName                 = "SubsidizerBalancePollingCheck"
-	temporaryPrivateTransferScheduledEventName = "TemporaryPrivateTransferScheduled"
+	fulfillmentCountEventName  = "FulfillmentCountPollingCheck"
+	subsidizerBalanceEventName = "SubsidizerBalancePollingCheck"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
@@ -61,11 +60,5 @@ func recordFulfillmentCountEvent(ctx context.Context, fulfillmentType fulfillmen
 func recordSubsidizerBalanceEvent(ctx context.Context, lamports uint64) {
 	metrics.RecordEvent(ctx, subsidizerBalanceEventName, map[string]interface{}{
 		"lamports": lamports,
-	})
-}
-
-func recordTemporaryPrivateTransferScheduledEvent(ctx context.Context, fulfillmentRecord *fulfillment.Record) {
-	metrics.RecordEvent(ctx, temporaryPrivateTransferScheduledEventName, map[string]interface{}{
-		"signature": *fulfillmentRecord.Signature,
 	})
 }

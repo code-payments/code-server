@@ -25,15 +25,13 @@ func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-	// todo: auto returns are broken because we've removed close dormant account actions
-	/*
-		go func() {
-			err := p.giftCardAutoReturnWorker(ctx, interval)
-			if err != nil && err != context.Canceled {
-				p.log.WithError(err).Warn("gift card auto-return processing loop terminated unexpectedly")
-			}
-		}()
-	*/
+
+	go func() {
+		err := p.giftCardAutoReturnWorker(ctx, interval)
+		if err != nil && err != context.Canceled {
+			p.log.WithError(err).Warn("gift card auto-return processing loop terminated unexpectedly")
+		}
+	}()
 
 	// todo: the open code protocol needs to get the push token from the implementing app
 	/*

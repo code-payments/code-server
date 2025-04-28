@@ -1,6 +1,5 @@
 package async_account
 
-/*
 import (
 	"context"
 	"math"
@@ -32,10 +31,10 @@ type testEnv struct {
 type testGiftCard struct {
 	accountInfoRecord *account.Record
 
-	issuedIntentRecord            *intent.Record
-	claimedActionRecord           *action.Record
-	closeDormantActionRecord      *action.Record
-	closeDormantFulfillmentRecord *fulfillment.Record
+	issuedIntentRecord          *intent.Record
+	claimedActionRecord         *action.Record
+	autoReturnActionRecord      *action.Record
+	autoReturnFulfillmentRecord *fulfillment.Record
 }
 
 func setup(t *testing.T) *testEnv {
@@ -80,11 +79,11 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 
 	intentRecord := &intent.Record{
 		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		IntentType: intent.SendPrivatePayment,
+		IntentType: intent.SendPublicPayment,
 
 		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
-		SendPrivatePaymentMetadata: &intent.SendPrivatePaymentMetadata{
+		SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 			DestinationTokenAccount: accountInfoRecord.TokenAccount,
 			Quantity:                common.ToCoreMintQuarks(12345),
 
@@ -102,12 +101,12 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 	}
 	require.NoError(t, e.data.SaveIntent(e.ctx, intentRecord))
 
-	closeDormantActionRecord := &action.Record{
+	autoReturnActionRecord := &action.Record{
 		Intent:     intentRecord.IntentId,
 		IntentType: intentRecord.IntentType,
 
 		ActionId:   10,
-		ActionType: action.CloseDormantAccount,
+		ActionType: action.NoPrivacyWithdraw,
 
 		Source:      accountInfoRecord.TokenAccount,
 		Destination: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
@@ -117,24 +116,24 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 
 		CreatedAt: creationTs,
 	}
-	require.NoError(t, e.data.PutAllActions(e.ctx, closeDormantActionRecord))
+	require.NoError(t, e.data.PutAllActions(e.ctx, autoReturnActionRecord))
 
-	closeDormantFulfillmentRecord := &fulfillment.Record{
+	autoReturnFulfillmentRecord := &fulfillment.Record{
 		Intent:     intentRecord.IntentId,
 		IntentType: intentRecord.IntentType,
 
-		ActionId:   closeDormantActionRecord.ActionId,
-		ActionType: closeDormantActionRecord.ActionType,
+		ActionId:   autoReturnActionRecord.ActionId,
+		ActionType: autoReturnActionRecord.ActionType,
 
-		FulfillmentType: fulfillment.CloseDormantTimelockAccount,
+		FulfillmentType: fulfillment.NoPrivacyWithdraw,
 		Data:            []byte("data"),
 		Signature:       pointer.String(testutil.NewRandomAccount(t).PrivateKey().ToBase58()),
 
 		Nonce:     pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
 		Blockhash: pointer.String("bh"),
 
-		Source:      closeDormantActionRecord.Source,
-		Destination: pointer.StringCopy(closeDormantActionRecord.Destination),
+		Source:      autoReturnActionRecord.Source,
+		Destination: pointer.StringCopy(autoReturnActionRecord.Destination),
 
 		IntentOrderingIndex:      math.MaxInt64,
 		ActionOrderingIndex:      0,
@@ -146,14 +145,14 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 
 		CreatedAt: creationTs,
 	}
-	require.NoError(t, e.data.PutAllFulfillments(e.ctx, closeDormantFulfillmentRecord))
+	require.NoError(t, e.data.PutAllFulfillments(e.ctx, autoReturnFulfillmentRecord))
 
 	return &testGiftCard{
 		accountInfoRecord: accountInfoRecord,
 
-		issuedIntentRecord:            intentRecord,
-		closeDormantActionRecord:      closeDormantActionRecord,
-		closeDormantFulfillmentRecord: closeDormantFulfillmentRecord,
+		issuedIntentRecord:          intentRecord,
+		autoReturnActionRecord:      autoReturnActionRecord,
+		autoReturnFulfillmentRecord: autoReturnFulfillmentRecord,
 	}
 }
 
@@ -169,7 +168,7 @@ func (e *testEnv) simulateGiftCardBeingClaimed(t *testing.T, giftCard *testGiftC
 
 		Source:      giftCard.accountInfoRecord.TokenAccount,
 		Destination: pointer.String(testutil.NewRandomAccount(t).PublicKey().ToBase58()),
-		Quantity:    pointer.Uint64(giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.Quantity),
+		Quantity:    pointer.Uint64(giftCard.issuedIntentRecord.SendPublicPaymentMetadata.Quantity),
 
 		State: action.StatePending,
 	}
@@ -181,13 +180,13 @@ func (e *testEnv) assertGiftCardAutoReturned(t *testing.T, giftCard *testGiftCar
 	require.NoError(t, err)
 	assert.False(t, accountInfoRecord.RequiresAutoReturnCheck)
 
-	actionRecord, err := e.data.GetActionById(e.ctx, giftCard.closeDormantActionRecord.Intent, giftCard.closeDormantActionRecord.ActionId)
+	actionRecord, err := e.data.GetActionById(e.ctx, giftCard.autoReturnActionRecord.Intent, giftCard.autoReturnActionRecord.ActionId)
 	require.NoError(t, err)
 	require.NotNil(t, actionRecord.Quantity)
-	assert.Equal(t, giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.Quantity, *actionRecord.Quantity)
+	assert.Equal(t, giftCard.issuedIntentRecord.SendPublicPaymentMetadata.Quantity, *actionRecord.Quantity)
 	assert.Equal(t, action.StatePending, actionRecord.State)
 
-	fulfillmentRecord, err := e.data.GetFulfillmentBySignature(e.ctx, *giftCard.closeDormantFulfillmentRecord.Signature)
+	fulfillmentRecord, err := e.data.GetFulfillmentBySignature(e.ctx, *giftCard.autoReturnFulfillmentRecord.Signature)
 	require.NoError(t, err)
 	assert.EqualValues(t, giftCard.issuedIntentRecord.Id, fulfillmentRecord.IntentOrderingIndex)
 	assert.EqualValues(t, math.MaxInt32, fulfillmentRecord.ActionOrderingIndex)
@@ -203,12 +202,12 @@ func (e *testEnv) assertGiftCardAutoReturned(t *testing.T, giftCard *testGiftCar
 	assert.Equal(t, giftCard.issuedIntentRecord.InitiatorOwnerAccount, historyRecord.InitiatorOwnerAccount)
 	require.NotNil(t, historyRecord.ReceivePaymentsPubliclyMetadata)
 	assert.Equal(t, giftCard.accountInfoRecord.TokenAccount, historyRecord.ReceivePaymentsPubliclyMetadata.Source)
-	assert.Equal(t, giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.Quantity, historyRecord.ReceivePaymentsPubliclyMetadata.Quantity)
+	assert.Equal(t, giftCard.issuedIntentRecord.SendPublicPaymentMetadata.Quantity, historyRecord.ReceivePaymentsPubliclyMetadata.Quantity)
 	assert.True(t, historyRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend)
 	assert.True(t, historyRecord.ReceivePaymentsPubliclyMetadata.IsReturned)
-	assert.Equal(t, giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.ExchangeCurrency, historyRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeCurrency)
-	assert.Equal(t, giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.ExchangeRate, historyRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeRate)
-	assert.Equal(t, giftCard.issuedIntentRecord.SendPrivatePaymentMetadata.NativeAmount, historyRecord.ReceivePaymentsPubliclyMetadata.OriginalNativeAmount)
+	assert.Equal(t, giftCard.issuedIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency, historyRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeCurrency)
+	assert.Equal(t, giftCard.issuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate, historyRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeRate)
+	assert.Equal(t, giftCard.issuedIntentRecord.SendPublicPaymentMetadata.NativeAmount, historyRecord.ReceivePaymentsPubliclyMetadata.OriginalNativeAmount)
 	assert.Equal(t, 1234.5, historyRecord.ReceivePaymentsPubliclyMetadata.UsdMarketValue)
 	assert.Equal(t, intent.StateConfirmed, historyRecord.State)
 }
@@ -218,20 +217,27 @@ func (e *testEnv) assertGiftCardNotAutoReturned(t *testing.T, giftCard *testGift
 	require.NoError(t, err)
 	assert.Equal(t, isRemovedFromWorkerQueue, !accountInfoRecord.RequiresAutoReturnCheck)
 
-	actionRecord, err := e.data.GetActionById(e.ctx, giftCard.closeDormantActionRecord.Intent, giftCard.closeDormantActionRecord.ActionId)
+	actionRecord, err := e.data.GetActionById(e.ctx, giftCard.autoReturnActionRecord.Intent, giftCard.autoReturnActionRecord.ActionId)
 	require.NoError(t, err)
 	assert.Nil(t, actionRecord.Quantity)
-	assert.Equal(t, action.StateUnknown, actionRecord.State)
+	if isRemovedFromWorkerQueue {
+		assert.Equal(t, action.StateRevoked, actionRecord.State)
+	} else {
+		assert.Equal(t, action.StateUnknown, actionRecord.State)
+	}
 
-	fulfillmentRecord, err := e.data.GetFulfillmentBySignature(e.ctx, *giftCard.closeDormantFulfillmentRecord.Signature)
+	fulfillmentRecord, err := e.data.GetFulfillmentBySignature(e.ctx, *giftCard.autoReturnFulfillmentRecord.Signature)
 	require.NoError(t, err)
 	assert.EqualValues(t, math.MaxInt64, fulfillmentRecord.IntentOrderingIndex)
 	assert.EqualValues(t, 0, fulfillmentRecord.ActionOrderingIndex)
 	assert.EqualValues(t, 0, fulfillmentRecord.FulfillmentOrderingIndex)
 	assert.True(t, fulfillmentRecord.DisableActiveScheduling)
-	assert.Equal(t, fulfillment.StateUnknown, fulfillmentRecord.State)
+	if isRemovedFromWorkerQueue {
+		assert.Equal(t, fulfillment.StateRevoked, fulfillmentRecord.State)
+	} else {
+		assert.Equal(t, fulfillment.StateUnknown, fulfillmentRecord.State)
+	}
 
 	_, err = e.data.GetIntent(e.ctx, giftCardAutoReturnIntentPrefix+giftCard.issuedIntentRecord.IntentId)
 	assert.Equal(t, intent.ErrIntentNotFound, err)
 }
-*/
