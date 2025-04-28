@@ -310,6 +310,7 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 		UsdMarketValue:   usdExchangeRecord.Rate * float64(exchangeData.Quarks) / float64(common.CoreMintQuarksPerUnit),
 
 		IsWithdrawal: typedProtoMetadata.IsWithdrawal,
+		IsRemoteSend: typedProtoMetadata.IsRemoteSend,
 	}
 
 	if destinationAccountInfo != nil {
