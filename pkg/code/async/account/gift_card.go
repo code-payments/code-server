@@ -113,7 +113,7 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 	//
 	// Note: Without distributed locks, we assume SubmitIntent uses expiry - delta
 	//       to ensure race conditions aren't possible
-	if time.Since(accountInfoRecord.CreatedAt) < giftCardExpiry {
+	if time.Since(accountInfoRecord.CreatedAt) < GiftCardExpiry {
 		log.Trace("skipping gift card that hasn't hit the expiry window")
 		return nil
 	}
