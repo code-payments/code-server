@@ -28,7 +28,7 @@ import (
 
 const (
 	giftCardAutoReturnIntentPrefix = "auto-return-gc-"
-	giftCardExpiry                 = 24 * time.Hour
+	GiftCardExpiry                 = 24 * time.Hour
 )
 
 func (p *service) giftCardAutoReturnWorker(serviceCtx context.Context, interval time.Duration) error {
@@ -44,7 +44,7 @@ func (p *service) giftCardAutoReturnWorker(serviceCtx context.Context, interval 
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
 
 			// todo: configurable batch size
-			records, err := p.data.GetPrioritizedAccountInfosRequiringAutoReturnCheck(tracedCtx, giftCardExpiry, 32)
+			records, err := p.data.GetPrioritizedAccountInfosRequiringAutoReturnCheck(tracedCtx, GiftCardExpiry, 32)
 			if err == account.ErrAccountInfoNotFound {
 				return nil
 			} else if err != nil {

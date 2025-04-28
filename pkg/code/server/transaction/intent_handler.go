@@ -14,6 +14,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/antispam"
+	async_account "github.com/code-payments/code-server/pkg/code/async/account"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -1295,7 +1296,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 
 	// todo: I think we use the same trick of doing deadline - x minutes to avoid race
 	//       conditions without distributed locks.
-	if time.Since(accountInfoRecord.CreatedAt) > 24*time.Hour-15*time.Minute {
+	if time.Since(accountInfoRecord.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
 		return newStaleStateError("gift card is expired")
 	}
 

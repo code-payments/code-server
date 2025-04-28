@@ -15,6 +15,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/cache"
+	async_account "github.com/code-payments/code-server/pkg/code/async/account"
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -460,7 +461,7 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		// Unclaimed gift cards that are close to the auto-return window are
 		// marked as expired in a consistent manner as SubmitIntent to avoid
 		// race conditions with the auto-return.
-		if claimState == accountpb.TokenAccountInfo_CLAIM_STATE_NOT_CLAIMED && time.Since(records.General.CreatedAt) > 24*time.Hour-15*time.Minute {
+		if claimState == accountpb.TokenAccountInfo_CLAIM_STATE_NOT_CLAIMED && time.Since(records.General.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
 			claimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
 		}
 
