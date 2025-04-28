@@ -428,6 +428,13 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 			NonceValue:   cvm.Hash(bh),
 		})
 
+		var intentOrderingIndexOverride *uint64
+		var actionOrderingIndexOverride *uint32
+		if h.isAutoReturn {
+			intentOrderingIndexOverride = pointer.Uint64(math.MaxInt64)
+			actionOrderingIndexOverride = pointer.Uint32(0)
+		}
+
 		return &newFulfillmentMetadata{
 			requiresClientSignature: true,
 			expectedSigner:          h.source.VaultOwner,
@@ -437,8 +444,8 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 			source:          h.source.Vault,
 			destination:     h.destination,
 
-			intentOrderingIndexOverride: pointer.Uint64(math.MaxInt64),
-			actionOrderingIndexOverride: pointer.Uint32(0),
+			intentOrderingIndexOverride: intentOrderingIndexOverride,
+			actionOrderingIndexOverride: actionOrderingIndexOverride,
 			fulfillmentOrderingIndex:    0,
 			disableActiveScheduling:     h.isAutoReturn,
 		}, nil
