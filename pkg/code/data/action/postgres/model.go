@@ -96,7 +96,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 			m.State,
 		}
 
-		if m.ActionType == uint(action.CloseDormantAccount) {
+		if m.IntentType == uint(intent.SendPublicPayment) && m.ActionType == uint(action.NoPrivacyWithdraw) {
 			quantityUpdateStmt = ", quantity = $4"
 			params = append(params, m.Quantity)
 		}
@@ -299,7 +299,7 @@ func dbGetGiftCardClaimedAction(ctx context.Context, db *sqlx.DB, giftCardVault 
 
 	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
-		WHERE source = $1 AND action_type = $2 AND state != $3
+		WHERE source = $1 AND action_type = $2 AND intent_type = $3 AND state != $4
 		LIMIT 2`
 
 	err := db.SelectContext(
@@ -308,6 +308,7 @@ func dbGetGiftCardClaimedAction(ctx context.Context, db *sqlx.DB, giftCardVault 
 		query,
 		giftCardVault,
 		action.NoPrivacyWithdraw,
+		intent.ReceivePaymentsPublicly,
 		action.StateRevoked,
 	)
 	if err != nil {
@@ -328,7 +329,7 @@ func dbGetGiftCardAutoReturnAction(ctx context.Context, db *sqlx.DB, giftCardVau
 
 	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, state, created_at
 		FROM ` + tableName + `
-		WHERE source = $1 AND action_type = $2 AND state != $3
+		WHERE source = $1 AND action_type = $2 AND intent_type = $3 AND state != $4
 		LIMIT 2`
 
 	err := db.SelectContext(
@@ -336,7 +337,8 @@ func dbGetGiftCardAutoReturnAction(ctx context.Context, db *sqlx.DB, giftCardVau
 		&res,
 		query,
 		giftCardVault,
-		action.CloseDormantAccount,
+		action.NoPrivacyWithdraw,
+		intent.SendPublicPayment,
 		action.StateRevoked,
 	)
 	if err != nil {

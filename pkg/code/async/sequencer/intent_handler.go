@@ -67,17 +67,38 @@ func NewSendPublicPaymentIntentHandler(data code_data.Provider) IntentHandler {
 }
 
 func (h *SendPublicPaymentIntentHandler) OnActionUpdated(ctx context.Context, intentId string) error {
-	actionRecord, err := h.data.GetActionById(ctx, intentId, 0)
+	actionRecords, err := h.data.GetAllActionsByIntent(ctx, intentId)
 	if err != nil {
 		return err
 	}
 
-	// Intent is confirmed/failed based on the state the single action
-	switch actionRecord.State {
-	case action.StateConfirmed:
-		return markIntentConfirmed(ctx, h.data, intentId)
-	case action.StateFailed:
+	actionRecordsToCheck := actionRecords
+	if len(actionRecords) > 1 {
+		// Do not include the auto-return action, which is a different server-side
+		// initiated intent using the final action here.
+		//
+		// todo: Assumes > 1 case is just remote send
+		actionRecordsToCheck = actionRecordsToCheck[:len(actionRecordsToCheck)-1]
+	}
+
+	allConfirmed := true
+	anyFailures := false
+	for _, actionRecord := range actionRecordsToCheck {
+		switch actionRecord.State {
+		case action.StateConfirmed:
+		case action.StateFailed:
+			anyFailures = true
+			fallthrough
+		default:
+			allConfirmed = false
+		}
+	}
+
+	if anyFailures {
 		return markIntentFailed(ctx, h.data, intentId)
+	}
+	if allConfirmed {
+		return markIntentConfirmed(ctx, h.data, intentId)
 	}
 	return nil
 }

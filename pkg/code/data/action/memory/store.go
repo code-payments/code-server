@@ -3,12 +3,11 @@ package memory
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
@@ -90,35 +89,14 @@ func (s *store) findBySource(source string) []*action.Record {
 	return res
 }
 
-func (s *store) filter(items []*action.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*action.Record {
-	var start uint64
-
-	start = 0
-	if direction == query.Descending {
-		start = s.last + 1
-	}
-	if len(cursor) > 0 {
-		start = cursor.ToUint64()
-	}
-
+func (s *store) filterByIntentType(items []*action.Record, want intent.Type) []*action.Record {
 	var res []*action.Record
 	for _, item := range items {
-		if item.Id > start && direction == query.Ascending {
+		if item.IntentType == want {
 			res = append(res, item)
-		}
-		if item.Id < start && direction == query.Descending {
-			res = append(res, item)
+			continue
 		}
 	}
-
-	if direction == query.Descending {
-		sort.Sort(sort.Reverse(ById(res)))
-	}
-
-	if len(res) >= int(limit) {
-		return res[:limit]
-	}
-
 	return res
 }
 
@@ -197,7 +175,7 @@ func (s *store) Update(ctx context.Context, record *action.Record) error {
 	defer s.mu.Unlock()
 
 	if item := s.find(record); item != nil {
-		if record.ActionType == action.CloseDormantAccount {
+		if record.IntentType == intent.SendPublicPayment && record.ActionType == action.NoPrivacyWithdraw {
 			item.Quantity = pointer.Uint64Copy(record.Quantity)
 		}
 		item.State = record.State
@@ -284,6 +262,7 @@ func (s *store) GetGiftCardClaimedAction(ctx context.Context, giftCardVault stri
 
 	items := s.findBySource(giftCardVault)
 	items = s.filterByActionType(items, action.NoPrivacyWithdraw)
+	items = s.filterByIntentType(items, intent.ReceivePaymentsPublicly)
 	items = s.filterByState(items, false, action.StateRevoked)
 
 	if len(items) == 0 {
@@ -302,7 +281,8 @@ func (s *store) GetGiftCardAutoReturnAction(ctx context.Context, giftCardVault s
 	defer s.mu.Unlock()
 
 	items := s.findBySource(giftCardVault)
-	items = s.filterByActionType(items, action.CloseDormantAccount)
+	items = s.filterByActionType(items, action.NoPrivacyWithdraw)
+	items = s.filterByIntentType(items, intent.SendPublicPayment)
 	items = s.filterByState(items, false, action.StateRevoked)
 
 	if len(items) == 0 {

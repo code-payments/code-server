@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
@@ -515,7 +516,7 @@ func (s *store) Update(ctx context.Context, data *fulfillment.Record) error {
 
 	item.State = data.State
 
-	if item.FulfillmentType == fulfillment.CloseDormantTimelockAccount {
+	if item.IntentType == intent.SendPublicPayment && item.FulfillmentType == fulfillment.NoPrivacyWithdraw {
 		item.IntentOrderingIndex = data.IntentOrderingIndex
 		item.ActionOrderingIndex = data.ActionOrderingIndex
 		item.FulfillmentOrderingIndex = data.FulfillmentOrderingIndex

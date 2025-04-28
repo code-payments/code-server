@@ -82,9 +82,11 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 		m.UsdMarketValue = obj.SendPublicPaymentMetadata.UsdMarketValue
 
 		m.IsWithdrawal = obj.SendPublicPaymentMetadata.IsWithdrawal
+		m.IsRemoteSend = obj.SendPublicPaymentMetadata.IsRemoteSend
 	case intent.ReceivePaymentsPublicly:
 		m.Source = obj.ReceivePaymentsPubliclyMetadata.Source
 		m.Quantity = obj.ReceivePaymentsPubliclyMetadata.Quantity
+
 		m.IsRemoteSend = obj.ReceivePaymentsPubliclyMetadata.IsRemoteSend
 		m.IsReturned = obj.ReceivePaymentsPubliclyMetadata.IsReturned
 		m.IsIssuerVoidingGiftCard = obj.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard
@@ -134,11 +136,13 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 			UsdMarketValue:   obj.UsdMarketValue,
 
 			IsWithdrawal: obj.IsWithdrawal,
+			IsRemoteSend: obj.IsRemoteSend,
 		}
 	case intent.ReceivePaymentsPublicly:
 		record.ReceivePaymentsPubliclyMetadata = &intent.ReceivePaymentsPubliclyMetadata{
-			Source:                  obj.Source,
-			Quantity:                obj.Quantity,
+			Source:   obj.Source,
+			Quantity: obj.Quantity,
+
 			IsRemoteSend:            obj.IsRemoteSend,
 			IsReturned:              obj.IsReturned,
 			IsIssuerVoidingGiftCard: obj.IsIssuerVoidingGiftCard,
@@ -265,7 +269,7 @@ func dbGetOriginalGiftCardIssuedIntent(ctx context.Context, db *sqlx.DB, giftCar
 		&res,
 		query,
 		giftCardVault,
-		intent.SendPrivatePayment,
+		intent.SendPublicPayment,
 		intent.StateRevoked,
 	)
 	if err != nil {

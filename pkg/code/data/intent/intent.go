@@ -83,21 +83,17 @@ type SendPublicPaymentMetadata struct {
 	UsdMarketValue   float64
 
 	IsWithdrawal bool
+	IsRemoteSend bool
 }
 
 type ReceivePaymentsPubliclyMetadata struct {
-	Source                  string
-	Quantity                uint64
+	Source   string
+	Quantity uint64
+
 	IsRemoteSend            bool
 	IsReturned              bool
 	IsIssuerVoidingGiftCard bool
 
-	// Because remote send history isn't directly linked to the send. It's ok, because
-	// we'd expect a single payment per gift card ok (unlike temporary incoming that
-	// can receive many times and this metadata would be much more harder for the private
-	// receive).
-	//
-	// todo: A better approach?
 	OriginalExchangeCurrency currency.Code
 	OriginalExchangeRate     float64
 	OriginalNativeAmount     float64
@@ -293,6 +289,7 @@ func (m *SendPublicPaymentMetadata) Clone() SendPublicPaymentMetadata {
 		NativeAmount:     m.NativeAmount,
 		UsdMarketValue:   m.UsdMarketValue,
 		IsWithdrawal:     m.IsWithdrawal,
+		IsRemoteSend:     m.IsRemoteSend,
 	}
 }
 
@@ -305,7 +302,9 @@ func (m *SendPublicPaymentMetadata) CopyTo(dst *SendPublicPaymentMetadata) {
 	dst.ExchangeRate = m.ExchangeRate
 	dst.NativeAmount = m.NativeAmount
 	dst.UsdMarketValue = m.UsdMarketValue
+
 	dst.IsWithdrawal = m.IsWithdrawal
+	dst.IsRemoteSend = m.IsRemoteSend
 }
 
 func (m *SendPublicPaymentMetadata) Validate() error {
@@ -338,8 +337,9 @@ func (m *SendPublicPaymentMetadata) Validate() error {
 
 func (m *ReceivePaymentsPubliclyMetadata) Clone() ReceivePaymentsPubliclyMetadata {
 	return ReceivePaymentsPubliclyMetadata{
-		Source:                  m.Source,
-		Quantity:                m.Quantity,
+		Source:   m.Source,
+		Quantity: m.Quantity,
+
 		IsRemoteSend:            m.IsRemoteSend,
 		IsReturned:              m.IsReturned,
 		IsIssuerVoidingGiftCard: m.IsIssuerVoidingGiftCard,
@@ -355,6 +355,7 @@ func (m *ReceivePaymentsPubliclyMetadata) Clone() ReceivePaymentsPubliclyMetadat
 func (m *ReceivePaymentsPubliclyMetadata) CopyTo(dst *ReceivePaymentsPubliclyMetadata) {
 	dst.Source = m.Source
 	dst.Quantity = m.Quantity
+
 	dst.IsRemoteSend = m.IsRemoteSend
 	dst.IsReturned = m.IsReturned
 	dst.IsIssuerVoidingGiftCard = m.IsIssuerVoidingGiftCard

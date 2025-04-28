@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/database/query"
@@ -82,29 +81,21 @@ func (s *store) GetLatestByInitiatorAndType(ctx context.Context, intentType inte
 // GetOriginalGiftCardIssuedIntent gets the original intent where a gift card
 // was issued by its vault address.
 func (s *store) GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {
-	return nil, errors.New("not implemented")
+	model, err := dbGetOriginalGiftCardIssuedIntent(ctx, s.db, giftCardVault)
+	if err != nil {
+		return nil, err
+	}
 
-	/*
-		model, err := dbGetOriginalGiftCardIssuedIntent(ctx, s.db, giftCardVault)
-		if err != nil {
-			return nil, err
-		}
-
-		return fromIntentModel(model), nil
-	*/
+	return fromIntentModel(model), nil
 }
 
 // GetGiftCardClaimedIntent gets the intent where a gift card was claimed by its
 // vault address
 func (s *store) GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {
-	return nil, errors.New("not implemented")
+	model, err := dbGetGiftCardClaimedIntent(ctx, s.db, giftCardVault)
+	if err != nil {
+		return nil, err
+	}
 
-	/*
-		model, err := dbGetGiftCardClaimedIntent(ctx, s.db, giftCardVault)
-		if err != nil {
-			return nil, err
-		}
-
-		return fromIntentModel(model), nil
-	*/
+	return fromIntentModel(model), nil
 }

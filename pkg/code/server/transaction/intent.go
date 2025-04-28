@@ -100,9 +100,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		log = log.WithField("intent_type", "send_public_payment")
 		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.antispamGuard)
 	case *transactionpb.Metadata_ReceivePaymentsPublicly:
-		return newIntentDeniedError("remote send requires rewrite")
-		//log = log.WithField("intent_type", "receive_payments_publicly")
-		//intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard)
+		log = log.WithField("intent_type", "receive_payments_publicly")
+		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard)
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}
@@ -131,7 +130,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		case common.OwnerTypeRemoteSendGiftCard:
 			// Remote send gift cards can only be the owner of an intent for a
 			// remote send public receive. In this instance, we need to inspect
-			// the destination account, which should be a user's temporary incoming
+			// the destination account, which should be a user's primary
 			// account.
 			//
 			// todo: This is a bit of a mess and should realistically be a generic
@@ -145,8 +144,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						if err != nil && err != account.ErrAccountInfoNotFound {
 							log.WithError(err).Warn("failure getting user initiator owner account")
 							return handleSubmitIntentError(streamer, err)
-						} else if err == account.ErrAccountInfoNotFound || accountInfoRecord.AccountType != commonpb.AccountType_TEMPORARY_INCOMING {
-							return newActionValidationError(submitActionsReq.Actions[0], "destination must be a temporary incoming account")
+						} else if err == account.ErrAccountInfoNotFound || accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
+							return newActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account")
 						}
 
 						initiatorOwnerAccount, err = common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
@@ -339,6 +338,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		requiresClientSignature bool
 		expectedSigner          *common.Account
 		virtualIxnHash          *cvm.CompactMessage
+
+		intentOrderingIndexOverriden bool
 	}
 
 	// Convert all actions into a set of fulfillments
@@ -524,6 +525,12 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			if newFulfillmentMetadata.destination != nil {
 				fulfillmentRecord.Destination = pointer.String(newFulfillmentMetadata.destination.PublicKey().ToBase58())
 			}
+			if newFulfillmentMetadata.intentOrderingIndexOverride != nil {
+				fulfillmentRecord.IntentOrderingIndex = *newFulfillmentMetadata.intentOrderingIndexOverride
+			}
+			if newFulfillmentMetadata.actionOrderingIndexOverride != nil {
+				fulfillmentRecord.ActionOrderingIndex = *newFulfillmentMetadata.actionOrderingIndexOverride
+			}
 
 			// Fulfillment has a virtual instruction requiring client signature
 			if newFulfillmentMetadata.requiresClientSignature {
@@ -544,6 +551,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				requiresClientSignature: newFulfillmentMetadata.requiresClientSignature,
 				expectedSigner:          newFulfillmentMetadata.expectedSigner,
 				virtualIxnHash:          newFulfillmentMetadata.virtualIxnHash,
+
+				intentOrderingIndexOverriden: newFulfillmentMetadata.intentOrderingIndexOverride != nil,
 			})
 			reservedNonces = append(reservedNonces, selectedNonce)
 		}
@@ -663,7 +672,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		// Save all fulfillment records
 		fulfillmentRecordsToSave := make([]*fulfillment.Record, 0)
 		for i, fulfillmentWithMetadata := range fulfillments {
-			fulfillmentWithMetadata.record.IntentOrderingIndex = intentRecord.Id
+			if !fulfillmentWithMetadata.intentOrderingIndexOverriden {
+				fulfillmentWithMetadata.record.IntentOrderingIndex = intentRecord.Id
+			}
 
 			fulfillmentRecordsToSave = append(fulfillmentRecordsToSave, fulfillmentWithMetadata.record)
 
@@ -1003,10 +1014,9 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	if timelockRecord != nil {
 		accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, accountToCheck.PublicKey().ToBase58())
 		if err == nil {
-			// todo: may need to check if we're going to close the primary account when supported in the future
 			return &transactionpb.CanWithdrawToAccountResponse{
 				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY || accountInfoRecord.AccountType == commonpb.AccountType_RELATIONSHIP,
+				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY,
 			}, nil
 		} else {
 			log.WithError(err).Warn("failure checking account info db")

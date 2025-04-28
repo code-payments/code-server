@@ -2,10 +2,13 @@ package async_account
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"math"
 	"sync"
 	"time"
 
+	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/sirupsen/logrus"
 
@@ -15,12 +18,13 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/metrics"
+	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/retry"
 )
-
-// todo: Is this even relevant anymore with the VM? If so, we need new logic because
-//       closing dormant accounts is no longer a thing with the VM.
 
 const (
 	giftCardAutoReturnIntentPrefix = "auto-return-gc-"
@@ -39,7 +43,8 @@ func (p *service) giftCardAutoReturnWorker(serviceCtx context.Context, interval 
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-			records, err := p.data.GetPrioritizedAccountInfosRequiringAutoReturnCheck(tracedCtx, giftCardExpiry, 10)
+			// todo: configurable batch size
+			records, err := p.data.GetPrioritizedAccountInfosRequiringAutoReturnCheck(tracedCtx, giftCardExpiry, 32)
 			if err == account.ErrAccountInfoNotFound {
 				return nil
 			} else if err != nil {
@@ -91,13 +96,14 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 	if err == nil {
 		log.Trace("gift card is claimed and will be removed from worker queue")
 
-		// Gift card is claimed, so take it out of the worker queue. The auto-return
-		// action and fulfillment will be revoked in the fulfillment worker from generic
-		// account closing flows.
-		//
-		// Note: It is possible the original issuer "claimed" the gift card. This is
-		//       actually ideal because funds move in a more private manner through the
-		//       temp incoming account versus the primary account.
+		// Cleanup anything related to gift card auto-return, since it cannot be scheduled
+		err = p.initiateProcessToCleanupGiftCardAutoReturn(ctx, giftCardVaultAccount)
+		if err != nil {
+			log.WithError(err).Warn("failure cleaning up auto-return action")
+			return err
+		}
+
+		// Gift card is claimed, so take it out of the worker queue.
 		return markAutoReturnCheckComplete(ctx, p.data, accountInfoRecord)
 	} else if err != action.ErrActionNotFound {
 		return err
@@ -128,67 +134,82 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 // Note: This is the first instance of handling a conditional action, and could be
 // a good guide for similar actions in the future.
 func (p *service) initiateProcessToAutoReturnGiftCard(ctx context.Context, giftCardVaultAccount *common.Account) error {
-	/*
-		giftCardIssuedIntent, err := p.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-		if err != nil {
-			return err
-		}
+	giftCardIssuedIntent, err := p.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
 
-		autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-		if err != nil {
-			return err
-		}
+	autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
 
-		autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
-		if err != nil {
-			return err
-		}
+	autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
+	if err != nil {
+		return err
+	}
 
-		// Add a payment history item to show the funds being returned back to the issuer
-		err = insertAutoReturnPaymentHistoryItem(ctx, p.data, giftCardIssuedIntent)
-		if err != nil {
-			return err
-		}
+	// Add a intent record to show the funds being returned back to the issuer
+	err = insertAutoReturnIntentRecord(ctx, p.data, giftCardIssuedIntent)
+	if err != nil {
+		return err
+	}
 
-		// We need to update pre-sorting because close dormant fulfillments are always
-		// inserted at the very last spot in the line.
-		//
-		// Must be the first thing to succeed! We cannot risk a deposit back into the
-		// organizer to win a race in scheduling. By pre-sorting this to the end of
-		// the gift card issued intent, we ensure the auto-return is blocked on any
-		// fulfillments to setup the gift card. We'll also guarantee that subsequent
-		// intents that utilize the primary account as a source of funds will be blocked
-		// by the auto-return.
-		err = updateCloseDormantAccountFulfillmentPreSorting(
-			ctx,
-			p.data,
-			autoReturnFulfillment[0],
-			giftCardIssuedIntent.Id,
-			math.MaxInt32,
-			0,
-		)
-		if err != nil {
-			return err
-		}
+	// We need to update pre-sorting because auto-return fulfillments are always
+	// inserted at the very last spot in the line.
+	//
+	// Must be the first thing to succeed! By pre-sorting this to the end of
+	// the gift card issued intent, we ensure the auto-return is blocked on any
+	// fulfillments to setup the gift card. We'll also guarantee that subsequent
+	// intents that utilize the primary account as a source of funds will be blocked
+	// by the auto-return.
+	err = updateAutoReturnFulfillmentPreSorting(
+		ctx,
+		p.data,
+		autoReturnFulfillment[0],
+		giftCardIssuedIntent.Id,
+		math.MaxInt32,
+		0,
+	)
+	if err != nil {
+		return err
+	}
 
-		// This will update the action's quantity, so balance changes are reflected. We
-		// also unblock fulfillment scheduling by moving the action out of the unknown
-		// state and into the pending state.
-		err = scheduleCloseDormantAccountAction(
-			ctx,
-			p.data,
-			autoReturnAction,
-			giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity,
-		)
-		if err != nil {
-			return err
-		}
+	// This will update the action's quantity, so balance changes are reflected. We
+	// also unblock fulfillment scheduling by moving the action out of the unknown
+	// state and into the pending state.
+	err = scheduleAutoReturnAction(
+		ctx,
+		p.data,
+		autoReturnAction,
+		giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity,
+	)
+	if err != nil {
+		return err
+	}
 
-		// This will trigger the fulfillment worker to poll for the fulfillment. This
-		// should be the very last DB update called.
-		return markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
-	*/
-	return errors.New("requires rewrite")
+	// This will trigger the fulfillment worker to poll for the fulfillment. This
+	// should be the very last DB update called.
+	return markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
+}
+
+func (p *service) initiateProcessToCleanupGiftCardAutoReturn(ctx context.Context, giftCardVaultAccount *common.Account) error {
+	autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
+
+	autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
+	if err != nil {
+		return err
+	}
+
+	err = markActionAsRevoked(ctx, p.data, autoReturnAction)
+	if err != nil {
+		return err
+	}
+
+	return markFulfillmentAsRevoked(ctx, p.data, autoReturnFulfillment[0])
 }
 
 func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, record *account.Record) error {
@@ -200,14 +221,12 @@ func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, r
 	return data.UpdateAccountInfo(ctx, record)
 }
 
-/*
-
 // Note: Structured like a generic utility because it could very well evolve
 // into that, but there's no reason to call this on anything else as of
 // writing this comment.
-func scheduleCloseDormantAccountAction(ctx context.Context, data code_data.Provider, actionRecord *action.Record, balance uint64) error {
-	if actionRecord.ActionType != action.CloseDormantAccount {
-		return errors.New("expected a close dormant account action")
+func scheduleAutoReturnAction(ctx context.Context, data code_data.Provider, actionRecord *action.Record, balance uint64) error {
+	if actionRecord.ActionType != action.NoPrivacyWithdraw {
+		return errors.New("expected a no privacy withdraw action")
 	}
 
 	if actionRecord.State == action.StatePending {
@@ -226,7 +245,7 @@ func scheduleCloseDormantAccountAction(ctx context.Context, data code_data.Provi
 // Note: Structured like a generic utility because it could very well evolve
 // into that, but there's no reason to call this on anything else as of
 // writing this comment.
-func updateCloseDormantAccountFulfillmentPreSorting(
+func updateAutoReturnFulfillmentPreSorting(
 	ctx context.Context,
 	data code_data.Provider,
 	fulfillmentRecord *fulfillment.Record,
@@ -234,8 +253,8 @@ func updateCloseDormantAccountFulfillmentPreSorting(
 	actionOrderingIndex uint32,
 	fulfillmentOrderingIndex uint32,
 ) error {
-	if fulfillmentRecord.FulfillmentType != fulfillment.CloseDormantTimelockAccount {
-		return errors.New("expected a close dormant timelock account fulfillment")
+	if fulfillmentRecord.FulfillmentType != fulfillment.NoPrivacyWithdraw {
+		return errors.New("expected a no privacy withdraw fulfillment")
 	}
 
 	if fulfillmentRecord.IntentOrderingIndex == intentOrderingIndex &&
@@ -252,6 +271,56 @@ func updateCloseDormantAccountFulfillmentPreSorting(
 	fulfillmentRecord.ActionOrderingIndex = actionOrderingIndex
 	fulfillmentRecord.FulfillmentOrderingIndex = fulfillmentOrderingIndex
 	return data.UpdateFulfillment(ctx, fulfillmentRecord)
+}
+
+func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, giftCardIssuedIntent *intent.Record) error {
+	usdExchangeRecord, err := data.GetExchangeRate(ctx, currency.USD, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// We need to insert a faked completed public receive intent so it can appear
+	// as a return in the user's payment history. Think of it as a server-initiated
+	// intent on behalf of the user based on pre-approved conditional actions.
+	intentRecord := &intent.Record{
+		IntentId:   getAutoReturnIntentId(giftCardIssuedIntent.IntentId),
+		IntentType: intent.ReceivePaymentsPublicly,
+
+		InitiatorOwnerAccount: giftCardIssuedIntent.InitiatorOwnerAccount,
+
+		ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{
+			Source:   giftCardIssuedIntent.SendPublicPaymentMetadata.DestinationTokenAccount,
+			Quantity: giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity,
+
+			IsRemoteSend: true,
+			IsReturned:   true,
+
+			OriginalExchangeCurrency: giftCardIssuedIntent.SendPublicPaymentMetadata.ExchangeCurrency,
+			OriginalExchangeRate:     giftCardIssuedIntent.SendPublicPaymentMetadata.ExchangeRate,
+			OriginalNativeAmount:     giftCardIssuedIntent.SendPublicPaymentMetadata.NativeAmount,
+
+			UsdMarketValue: usdExchangeRecord.Rate * float64(giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity) / float64(common.CoreMintQuarksPerUnit),
+		},
+
+		State: intent.StateConfirmed,
+
+		CreatedAt: time.Now(),
+	}
+	return data.SaveIntent(ctx, intentRecord)
+}
+
+func markActionAsRevoked(ctx context.Context, data code_data.Provider, actionRecord *action.Record) error {
+	if actionRecord.State == action.StateRevoked {
+		return nil
+	}
+
+	if actionRecord.State != action.StateUnknown {
+		return errors.New("expected fulfillment in unknown state")
+	}
+
+	actionRecord.State = action.StateRevoked
+
+	return data.UpdateAction(ctx, actionRecord)
 }
 
 func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) error {
@@ -271,45 +340,22 @@ func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Prov
 	return data.MarkFulfillmentAsActivelyScheduled(ctx, fulfillmentRecord.Id)
 }
 
-func insertAutoReturnPaymentHistoryItem(ctx context.Context, data code_data.Provider, giftCardIssuedIntent *intent.Record) error {
-	usdExchangeRecord, err := data.GetExchangeRate(ctx, currency.USD, time.Now())
-	if err != nil {
-		return err
+func markFulfillmentAsRevoked(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) error {
+	if fulfillmentRecord.Id == 0 {
+		return errors.New("fulfillment id is zero")
 	}
 
-	// We need to insert a faked completed public receive intent so it can appear
-	// as a return in the user's payment history. Think of it as a server-initiated
-	// intent on behalf of the user based on pre-approved conditional actions.
-	//
-	// Deprecated in favour of chats (for history purposes)
-	//
-	// todo: Should we remap the CloseDormantAccount action and fulfillments, then
-	//       tie the fulfillment/action state to the intent state? Just doing the
-	//       easiest thing for now to get auto-return out the door.
-	intentRecord := &intent.Record{
-		IntentId:   getAutoReturnIntentId(giftCardIssuedIntent.IntentId),
-		IntentType: intent.ReceivePaymentsPublicly,
-
-		InitiatorOwnerAccount: giftCardIssuedIntent.InitiatorOwnerAccount,
-
-		ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{
-			Source:       giftCardIssuedIntent.SendPrivatePaymentMetadata.DestinationTokenAccount,
-			Quantity:     giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity,
-			IsRemoteSend: true,
-			IsReturned:   true,
-
-			OriginalExchangeCurrency: giftCardIssuedIntent.SendPrivatePaymentMetadata.ExchangeCurrency,
-			OriginalExchangeRate:     giftCardIssuedIntent.SendPrivatePaymentMetadata.ExchangeRate,
-			OriginalNativeAmount:     giftCardIssuedIntent.SendPrivatePaymentMetadata.NativeAmount,
-
-			UsdMarketValue: usdExchangeRecord.Rate * float64(common.FromCoreMintQuarks(giftCardIssuedIntent.SendPrivatePaymentMetadata.Quantity)),
-		},
-
-		State: intent.StateConfirmed,
-
-		CreatedAt: time.Now(),
+	if fulfillmentRecord.State == fulfillment.StateRevoked {
+		return nil
 	}
-	return data.SaveIntent(ctx, intentRecord)
+
+	if fulfillmentRecord.State != fulfillment.StateUnknown {
+		return errors.New("expected fulfillment in unknown state")
+	}
+
+	fulfillmentRecord.State = fulfillment.StateRevoked
+
+	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }
 
 // Must be unique, but consistent for idempotency, and ideally fit in a 32
@@ -318,4 +364,3 @@ func getAutoReturnIntentId(originalIntentId string) string {
 	hashed := sha256.Sum256([]byte(giftCardAutoReturnIntentPrefix + originalIntentId))
 	return base58.Encode(hashed[:])
 }
-*/
