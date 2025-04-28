@@ -11,6 +11,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/cvm/storage"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
@@ -550,7 +551,12 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, ful
 		return errors.New("invalid fulfillment type")
 	}
 
-	return onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
+	err := onVirtualAccountDeleted(ctx, h.data, fulfillmentRecord.Source)
+	if err != nil {
+		return err
+	}
+
+	return markTimelockClosed(ctx, h.data, fulfillmentRecord.Source, txnRecord.Slot)
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -567,7 +573,14 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) IsRevoked(ctx context.Context, ful
 		return false, false, errors.New("invalid fulfillment type")
 	}
 
-	return false, false, nil
+	// Auto-return actions might be revoked, check the action record that would've
+	// been updated by the gift card return worker.
+	actionRecord, err := h.data.GetActionById(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return false, false, err
+	}
+
+	return actionRecord.State == action.StateRevoked, false, nil
 }
 
 type CloseEmptyTimelockAccountFulfillmentHandler struct {

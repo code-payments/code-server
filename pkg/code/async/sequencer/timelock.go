@@ -28,3 +28,22 @@ func markTimelockLocked(ctx context.Context, data code_data.Provider, vault stri
 	}
 	return err
 }
+
+func markTimelockClosed(ctx context.Context, data code_data.Provider, vault string, slot uint64) error {
+	record, err := data.GetTimelockByVault(ctx, vault)
+	if err != nil {
+		return err
+	}
+
+	record.VaultState = timelock_token_v1.StateClosed
+	if record.Block > slot {
+		// Potential conflict with unlock state detection, force a move to close at the next block
+		//
+		// todo: Better way of handling this
+		record.Block += 1
+	} else {
+		record.Block = slot
+	}
+
+	return data.SaveTimelock(ctx, record)
+}

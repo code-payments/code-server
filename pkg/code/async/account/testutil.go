@@ -231,11 +231,11 @@ func (e *testEnv) assertGiftCardNotAutoReturned(t *testing.T, giftCard *testGift
 	assert.EqualValues(t, math.MaxInt64, fulfillmentRecord.IntentOrderingIndex)
 	assert.EqualValues(t, 0, fulfillmentRecord.ActionOrderingIndex)
 	assert.EqualValues(t, 0, fulfillmentRecord.FulfillmentOrderingIndex)
-	assert.True(t, fulfillmentRecord.DisableActiveScheduling)
+	assert.Equal(t, fulfillment.StateUnknown, fulfillmentRecord.State)
 	if isRemovedFromWorkerQueue {
-		assert.Equal(t, fulfillment.StateRevoked, fulfillmentRecord.State)
+		assert.False(t, fulfillmentRecord.DisableActiveScheduling)
 	} else {
-		assert.Equal(t, fulfillment.StateUnknown, fulfillmentRecord.State)
+		assert.True(t, fulfillmentRecord.DisableActiveScheduling)
 	}
 
 	_, err = e.data.GetIntent(e.ctx, giftCardAutoReturnIntentPrefix+giftCard.issuedIntentRecord.IntentId)

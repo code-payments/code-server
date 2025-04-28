@@ -209,7 +209,8 @@ func (p *service) initiateProcessToCleanupGiftCardAutoReturn(ctx context.Context
 		return err
 	}
 
-	return markFulfillmentAsRevoked(ctx, p.data, autoReturnFulfillment[0])
+	// The sequencer will handle state transition and any cleanup
+	return markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
 }
 
 func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, record *account.Record) error {
@@ -338,24 +339,6 @@ func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Prov
 
 	// Note: different than Save, since we don't have distributed locks
 	return data.MarkFulfillmentAsActivelyScheduled(ctx, fulfillmentRecord.Id)
-}
-
-func markFulfillmentAsRevoked(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) error {
-	if fulfillmentRecord.Id == 0 {
-		return errors.New("fulfillment id is zero")
-	}
-
-	if fulfillmentRecord.State == fulfillment.StateRevoked {
-		return nil
-	}
-
-	if fulfillmentRecord.State != fulfillment.StateUnknown {
-		return errors.New("expected fulfillment in unknown state")
-	}
-
-	fulfillmentRecord.State = fulfillment.StateRevoked
-
-	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }
 
 // Must be unique, but consistent for idempotency, and ideally fit in a 32
