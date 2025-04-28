@@ -21,15 +21,15 @@ func TestGiftCardAutoReturn_ExpiryWindow(t *testing.T) {
 			isAutoReturned: false,
 		},
 		{
-			creationTs:     time.Now().Add(-giftCardExpiry + time.Minute),
+			creationTs:     time.Now().Add(-GiftCardExpiry + time.Minute),
 			isAutoReturned: false,
 		},
 		{
-			creationTs:     time.Now().Add(-giftCardExpiry),
+			creationTs:     time.Now().Add(-GiftCardExpiry),
 			isAutoReturned: true,
 		},
 		{
-			creationTs:     time.Now().Add(-giftCardExpiry - time.Minute),
+			creationTs:     time.Now().Add(-GiftCardExpiry - time.Minute),
 			isAutoReturned: true,
 		},
 	} {
@@ -53,7 +53,7 @@ func TestGiftCardAutoReturn_AlreadyClaimed(t *testing.T) {
 	giftCard1 := env.generateRandomGiftCard(t, time.Now())
 	env.simulateGiftCardBeingClaimed(t, giftCard1)
 
-	giftCard2 := env.generateRandomGiftCard(t, time.Now().Add(-giftCardExpiry-24*time.Hour))
+	giftCard2 := env.generateRandomGiftCard(t, time.Now().Add(-GiftCardExpiry-24*time.Hour))
 	env.simulateGiftCardBeingClaimed(t, giftCard2)
 
 	require.NoError(t, env.service.maybeInitiateGiftCardAutoReturn(env.ctx, giftCard1.accountInfoRecord))
