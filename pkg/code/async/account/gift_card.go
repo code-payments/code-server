@@ -3,6 +3,7 @@ package async_account
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"errors"
 	"math"
 	"sync"
@@ -97,7 +98,7 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 		log.Trace("gift card is claimed and will be removed from worker queue")
 
 		// Cleanup anything related to gift card auto-return, since it cannot be scheduled
-		err = p.initiateProcessToCleanupGiftCardAutoReturn(ctx, giftCardVaultAccount)
+		err = initiateProcessToCleanupGiftCardAutoReturn(ctx, p.data, giftCardVaultAccount)
 		if err != nil {
 			log.WithError(err).Warn("failure cleaning up auto-return action")
 			return err
@@ -123,7 +124,7 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 	// There's no action to claim the gift card and the expiry window has been met.
 	// It's time to initiate the process of auto-returning the funds back to the
 	// issuer.
-	err = p.initiateProcessToAutoReturnGiftCard(ctx, giftCardVaultAccount)
+	err = InitiateProcessToAutoReturnGiftCard(ctx, p.data, giftCardVaultAccount, false)
 	if err != nil {
 		log.WithError(err).Warn("failure initiating process to return gift card balance to issuer")
 		return err
@@ -133,84 +134,91 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 
 // Note: This is the first instance of handling a conditional action, and could be
 // a good guide for similar actions in the future.
-func (p *service) initiateProcessToAutoReturnGiftCard(ctx context.Context, giftCardVaultAccount *common.Account) error {
-	giftCardIssuedIntent, err := p.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
+//
+// todo: This probably belongs somewhere more common
+func InitiateProcessToAutoReturnGiftCard(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account, isVoidedByUser bool) error {
+	return data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+		giftCardIssuedIntent, err := data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+		if err != nil {
+			return err
+		}
 
-	autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
+		autoReturnAction, err := data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+		if err != nil {
+			return err
+		}
+		if autoReturnAction.State != action.StateUnknown {
+			return nil
+		}
 
-	autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
-	if err != nil {
-		return err
-	}
+		autoReturnFulfillment, err := data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
+		if err != nil {
+			return err
+		}
 
-	// Add a intent record to show the funds being returned back to the issuer
-	err = insertAutoReturnIntentRecord(ctx, p.data, giftCardIssuedIntent)
-	if err != nil {
-		return err
-	}
+		// Add a intent record to show the funds being returned back to the issuer
+		err = insertAutoReturnIntentRecord(ctx, data, giftCardIssuedIntent, isVoidedByUser)
+		if err != nil {
+			return err
+		}
 
-	// We need to update pre-sorting because auto-return fulfillments are always
-	// inserted at the very last spot in the line.
-	//
-	// Must be the first thing to succeed! By pre-sorting this to the end of
-	// the gift card issued intent, we ensure the auto-return is blocked on any
-	// fulfillments to setup the gift card. We'll also guarantee that subsequent
-	// intents that utilize the primary account as a source of funds will be blocked
-	// by the auto-return.
-	err = updateAutoReturnFulfillmentPreSorting(
-		ctx,
-		p.data,
-		autoReturnFulfillment[0],
-		giftCardIssuedIntent.Id,
-		math.MaxInt32,
-		0,
-	)
-	if err != nil {
-		return err
-	}
+		// We need to update pre-sorting because auto-return fulfillments are always
+		// inserted at the very last spot in the line.
+		//
+		// Must be the first thing to succeed! By pre-sorting this to the end of
+		// the gift card issued intent, we ensure the auto-return is blocked on any
+		// fulfillments to setup the gift card. We'll also guarantee that subsequent
+		// intents that utilize the primary account as a source of funds will be blocked
+		// by the auto-return.
+		err = updateAutoReturnFulfillmentPreSorting(
+			ctx,
+			data,
+			autoReturnFulfillment[0],
+			giftCardIssuedIntent.Id,
+			math.MaxInt32,
+			0,
+		)
+		if err != nil {
+			return err
+		}
 
-	// This will update the action's quantity, so balance changes are reflected. We
-	// also unblock fulfillment scheduling by moving the action out of the unknown
-	// state and into the pending state.
-	err = scheduleAutoReturnAction(
-		ctx,
-		p.data,
-		autoReturnAction,
-		giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity,
-	)
-	if err != nil {
-		return err
-	}
+		// This will update the action's quantity, so balance changes are reflected. We
+		// also unblock fulfillment scheduling by moving the action out of the unknown
+		// state and into the pending state.
+		err = scheduleAutoReturnAction(
+			ctx,
+			data,
+			autoReturnAction,
+			giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity,
+		)
+		if err != nil {
+			return err
+		}
 
-	// This will trigger the fulfillment worker to poll for the fulfillment. This
-	// should be the very last DB update called.
-	return markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
+		// This will trigger the fulfillment worker to poll for the fulfillment. This
+		// should be the very last DB update called.
+		return markFulfillmentAsActivelyScheduled(ctx, data, autoReturnFulfillment[0])
+	})
 }
 
-func (p *service) initiateProcessToCleanupGiftCardAutoReturn(ctx context.Context, giftCardVaultAccount *common.Account) error {
-	autoReturnAction, err := p.data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+func initiateProcessToCleanupGiftCardAutoReturn(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account) error {
+	autoReturnAction, err := data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
 	if err != nil {
 		return err
 	}
 
-	autoReturnFulfillment, err := p.data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
+	autoReturnFulfillment, err := data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
 	if err != nil {
 		return err
 	}
 
-	err = markActionAsRevoked(ctx, p.data, autoReturnAction)
+	err = markActionAsRevoked(ctx, data, autoReturnAction)
 	if err != nil {
 		return err
 	}
 
 	// The sequencer will handle state transition and any cleanup
-	return markFulfillmentAsActivelyScheduled(ctx, p.data, autoReturnFulfillment[0])
+	return markFulfillmentAsActivelyScheduled(ctx, data, autoReturnFulfillment[0])
 }
 
 func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, record *account.Record) error {
@@ -274,7 +282,7 @@ func updateAutoReturnFulfillmentPreSorting(
 	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }
 
-func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, giftCardIssuedIntent *intent.Record) error {
+func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, giftCardIssuedIntent *intent.Record, isVoidedByUser bool) error {
 	usdExchangeRecord, err := data.GetExchangeRate(ctx, currency.USD, time.Now())
 	if err != nil {
 		return err
@@ -293,8 +301,9 @@ func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, 
 			Source:   giftCardIssuedIntent.SendPublicPaymentMetadata.DestinationTokenAccount,
 			Quantity: giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity,
 
-			IsRemoteSend: true,
-			IsReturned:   true,
+			IsRemoteSend:            true,
+			IsIssuerVoidingGiftCard: isVoidedByUser,
+			IsReturned:              !isVoidedByUser,
 
 			OriginalExchangeCurrency: giftCardIssuedIntent.SendPublicPaymentMetadata.ExchangeCurrency,
 			OriginalExchangeRate:     giftCardIssuedIntent.SendPublicPaymentMetadata.ExchangeRate,

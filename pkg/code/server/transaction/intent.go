@@ -19,6 +19,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	async_account "github.com/code-payments/code-server/pkg/code/async/account"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -952,10 +953,9 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 		metadata = &transactionpb.Metadata{
 			Type: &transactionpb.Metadata_ReceivePaymentsPublicly{
 				ReceivePaymentsPublicly: &transactionpb.ReceivePaymentsPubliclyMetadata{
-					Source:                  sourceAccount.ToProto(),
-					Quarks:                  intentRecord.ReceivePaymentsPubliclyMetadata.Quantity,
-					IsRemoteSend:            intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend,
-					IsIssuerVoidingGiftCard: intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard,
+					Source:       sourceAccount.ToProto(),
+					Quarks:       intentRecord.ReceivePaymentsPubliclyMetadata.Quantity,
+					IsRemoteSend: intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend,
 					ExchangeData: &transactionpb.ExchangeData{
 						Currency:     string(intentRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeCurrency),
 						ExchangeRate: intentRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeRate,
@@ -1075,5 +1075,98 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 		AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
 		IsValidPaymentDestination: false,
 		RequiresInitialization:    requiresInitialization,
+	}, nil
+}
+
+func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb.VoidGiftCardRequest) (*transactionpb.VoidGiftCardResponse, error) {
+	log := s.log.WithField("method", "VoidGiftCard")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	owner, err := common.NewAccountFromProto(req.Owner)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
+
+	giftCardVault, err := common.NewAccountFromProto(req.GiftCardVault)
+	if err != nil {
+		log.WithError(err).Warn("invalid owner account")
+		return nil, status.Error(codes.Internal, "")
+	}
+	log = log.WithField("gift_card_vault_account", giftCardVault.PublicKey().ToBase58())
+
+	signature := req.Signature
+	req.Signature = nil
+	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+		return nil, err
+	}
+
+	accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, giftCardVault.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		if accountInfoRecord.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+			return &transactionpb.VoidGiftCardResponse{
+				Result: transactionpb.VoidGiftCardResponse_NOT_FOUND,
+			}, nil
+		}
+	case account.ErrAccountInfoNotFound:
+		return &transactionpb.VoidGiftCardResponse{
+			Result: transactionpb.VoidGiftCardResponse_NOT_FOUND,
+		}, nil
+	default:
+		log.WithError(err).Warn("failure getting gift card account info")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	giftCardIssuedIntentRecord, err := s.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVault.PublicKey().ToBase58())
+	if err != nil {
+		log.WithError(err).Warn("failure getting gift card issued intent record")
+		return nil, status.Error(codes.Internal, "")
+	} else if giftCardIssuedIntentRecord.InitiatorOwnerAccount != owner.PublicKey().ToBase58() {
+		return &transactionpb.VoidGiftCardResponse{
+			Result: transactionpb.VoidGiftCardResponse_DENIED,
+		}, nil
+	}
+
+	if time.Since(accountInfoRecord.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
+		return &transactionpb.VoidGiftCardResponse{
+			Result: transactionpb.VoidGiftCardResponse_OK,
+		}, nil
+	}
+
+	giftCardLock := s.giftCardLocks.Get(giftCardVault.PublicKey().ToBytes())
+	giftCardLock.Lock()
+	defer giftCardLock.Unlock()
+
+	claimedActionRecord, err := s.data.GetGiftCardClaimedAction(ctx, giftCardVault.PublicKey().ToBase58())
+	if err == nil {
+		ownerTimelockAccounts, err := owner.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+		if err != nil {
+			log.WithError(err).Warn("failure getting owner timelock accounts")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		if *claimedActionRecord.Destination != ownerTimelockAccounts.Vault.PublicKey().ToBase58() {
+			return &transactionpb.VoidGiftCardResponse{
+				Result: transactionpb.VoidGiftCardResponse_CLAIMED_BY_OTHER_USER,
+			}, nil
+		}
+		return &transactionpb.VoidGiftCardResponse{
+			Result: transactionpb.VoidGiftCardResponse_OK,
+		}, nil
+	} else if err != action.ErrActionNotFound {
+		log.WithError(err).Warn("failure getting gift card claimed action")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	err = async_account.InitiateProcessToAutoReturnGiftCard(ctx, s.data, giftCardVault, true)
+	if err != nil {
+		log.WithError(err).Warn("failure scheduling auto-return action")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	return &transactionpb.VoidGiftCardResponse{
+		Result: transactionpb.VoidGiftCardResponse_OK,
 	}, nil
 }

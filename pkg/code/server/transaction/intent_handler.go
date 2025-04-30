@@ -668,17 +668,13 @@ func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Cont
 
 		IsRemoteSend:            typedProtoMetadata.IsRemoteSend,
 		IsReturned:              false,
-		IsIssuerVoidingGiftCard: typedProtoMetadata.IsIssuerVoidingGiftCard,
+		IsIssuerVoidingGiftCard: false,
 
 		OriginalExchangeCurrency: giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency,
 		OriginalExchangeRate:     giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate,
 		OriginalNativeAmount:     giftCardIssuedIntentRecord.SendPublicPaymentMetadata.NativeAmount,
 
 		UsdMarketValue: usdExchangeRecord.Rate * float64(typedProtoMetadata.Quarks) / float64(common.CoreMintQuarksPerUnit),
-	}
-
-	if intentRecord.ReceivePaymentsPubliclyMetadata.IsIssuerVoidingGiftCard && intentRecord.InitiatorOwnerAccount != giftCardIssuedIntentRecord.InitiatorOwnerAccount {
-		return newIntentValidationError("only the issuer can void the gift card")
 	}
 
 	return nil
