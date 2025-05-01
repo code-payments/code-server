@@ -32,7 +32,6 @@ var accountTypesToOpen = []commonpb.AccountType{
 }
 
 type lockableAccounts struct {
-	DestinationOwner        *common.Account
 	RemoteSendGiftCardVault *common.Account
 }
 
@@ -74,12 +73,6 @@ type CreateIntentHandler interface {
 	//       This is all best-effort up to this point. Use a worker for things
 	//       requiring retries!
 	OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error
-}
-
-// UpdateIntentHandler is an interface for handling updates to an existing intent
-type UpdateIntentHandler interface {
-	// AllowUpdate determines whether an intent update should be allowed.
-	AllowUpdate(ctx context.Context, existingIntent *intent.Record, metdata *transactionpb.Metadata, actions []*transactionpb.Action) error
 }
 
 type OpenAccountsIntentHandler struct {
@@ -329,17 +322,17 @@ func (h *SendPublicPaymentIntentHandler) IsNoop(ctx context.Context, intentRecor
 }
 
 func (h *SendPublicPaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
+	if !intentRecord.SendPublicPaymentMetadata.IsRemoteSend {
 		return &lockableAccounts{}, nil
 	}
 
-	destinationOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
+	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
 	if err != nil {
 		return nil, err
 	}
 
 	return &lockableAccounts{
-		DestinationOwner: destinationOwnerAccount,
+		RemoteSendGiftCardVault: giftCardVaultAccount,
 	}, nil
 }
 

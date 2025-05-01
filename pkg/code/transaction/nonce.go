@@ -10,7 +10,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -126,63 +125,6 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, env nonc
 	}, nil
 }
 
-// SelectVirtualNonceFromFulfillmentToUpgrade selects a nonce from a fulfillment that
-// is going to be upgraded.
-func SelectVirtualNonceFromFulfillmentToUpgrade(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) (*SelectedNonce, error) {
-	if fulfillmentRecord.State != fulfillment.StateUnknown || fulfillmentRecord.Signature != nil {
-		return nil, errors.New("dangerous nonce selection from fulfillment")
-	}
-
-	if fulfillmentRecord.VirtualNonce == nil {
-		return nil, errors.New("fulfillment doesn't have an assigned virtual nonce")
-	}
-
-	lock := getNonceLock(*fulfillmentRecord.VirtualNonce)
-	lock.Lock()
-
-	// Fetch after locking to get most up-to-date state
-	nonceRecord, err := data.GetNonce(ctx, *fulfillmentRecord.VirtualNonce)
-	if err != nil {
-		lock.Unlock()
-		return nil, err
-	}
-
-	if nonceRecord.State != nonce.StateReserved {
-		lock.Unlock()
-		return nil, errors.New("virtual nonce isn't reserved")
-	}
-
-	if nonceRecord.Blockhash != *fulfillmentRecord.VirtualBlockhash {
-		lock.Unlock()
-		return nil, errors.New("fulfillment record doesn't have the right virtual blockhash")
-	}
-
-	if nonceRecord.Signature != *fulfillmentRecord.VirtualSignature {
-		lock.Unlock()
-		return nil, errors.New("virtual nonce isn't mapped to selected fulfillment")
-	}
-
-	account, err := common.NewAccountFromPublicKeyString(nonceRecord.Address)
-	if err != nil {
-		lock.Unlock()
-		return nil, err
-	}
-
-	bh, err := base58.Decode(*fulfillmentRecord.VirtualBlockhash)
-	if err != nil {
-		lock.Unlock()
-		return nil, err
-	}
-
-	return &SelectedNonce{
-		distributedLock: lock,
-		data:            data,
-		record:          nonceRecord,
-		Account:         account,
-		Blockhash:       solana.Blockhash(bh),
-	}, nil
-}
-
 // MarkReservedWithSignature marks the nonce as reserved with a signature
 func (n *SelectedNonce) MarkReservedWithSignature(ctx context.Context, sig string) error {
 	if len(sig) == 0 {
@@ -215,33 +157,6 @@ func (n *SelectedNonce) MarkReservedWithSignature(ctx context.Context, sig strin
 	}
 
 	n.record.State = nonce.StateReserved
-	n.record.Signature = sig
-	return n.data.SaveNonce(ctx, n.record)
-}
-
-// UpdateSignature updates the signature for a reserved nonce. The use case here
-// being transactions that share a nonce, and the new transaction being designated
-// as the one to submit to the blockchain.
-func (n *SelectedNonce) UpdateSignature(ctx context.Context, sig string) error {
-	if len(sig) == 0 {
-		return errors.New("signature is empty")
-	}
-
-	n.localLock.Lock()
-	defer n.localLock.Unlock()
-
-	if n.isUnlocked {
-		return errors.New("nonce is unlocked")
-	}
-
-	if n.record.Signature == sig {
-		return nil
-	}
-
-	if n.record.State != nonce.StateReserved {
-		return errors.New("nonce must be in a reserved state")
-	}
-
 	n.record.Signature = sig
 	return n.data.SaveNonce(ctx, n.record)
 }

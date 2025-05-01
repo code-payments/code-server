@@ -27,7 +27,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
-	"github.com/code-payments/code-server/pkg/code/data/webhook"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -90,7 +89,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	}
 
 	// Figure out what kind of intent we're operating on and initialize the intent handler
-	var intentHandler interface{}
+	var intentHandler CreateIntentHandler
 	var intentHasNewOwner bool // todo: intent handler should specify this
 	switch submitActionsReq.Metadata.Type.(type) {
 	case *transactionpb.Metadata_OpenAccounts:
@@ -105,12 +104,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard)
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
-	}
-
-	var isIntentUpdateOperation bool
-	switch intentHandler.(type) {
-	case UpdateIntentHandler:
-		isIntentUpdateOperation = true
 	}
 
 	// The public key that is the owner and signed the intent. This may not be
@@ -237,100 +230,58 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return handleSubmitIntentError(streamer, err)
 	}
 
-	if isIntentUpdateOperation {
-		// Intent is an update, so ensure we have an existing DB record
-		if existingIntentRecord == nil {
-			return handleSubmitIntentError(streamer, newIntentValidationError("intent doesn't exists"))
-		}
+	// We're operating on a new intent, so validate we don't have an existing DB record
+	if existingIntentRecord != nil {
+		log.Warn("client is attempting to resubmit an intent or reuse an intent id")
+		return handleSubmitIntentError(streamer, newStaleStateError("intent already exists"))
+	}
 
-		// Intent is an update, so ensure the original owner account is operating
-		// on the intent
-		if initiatorOwnerAccount.PublicKey().ToBase58() != existingIntentRecord.InitiatorOwnerAccount {
-			return handleSubmitIntentError(streamer, status.Error(codes.PermissionDenied, ""))
-		}
+	// Populate metadata into the new DB record
+	err = intentHandler.PopulateMetadata(ctx, intentRecord, submitActionsReq.Metadata)
+	if err != nil {
+		log.WithError(err).Warn("failure populating intent metadata")
+		return handleSubmitIntentError(streamer, err)
+	}
 
-		// Validate the update with intent-specific logic
-		err = intentHandler.(UpdateIntentHandler).AllowUpdate(ctx, existingIntentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
-		if err != nil {
-			switch err.(type) {
-			case IntentValidationError:
-				log.WithError(err).Warn("intent update failed validation")
-			case IntentDeniedError:
-				log.WithError(err).Warn("intent update was denied")
-			case StaleStateError:
-				log.WithError(err).Warn("detected a client with stale state")
-			default:
-				log.WithError(err).Warn("failure checking if intent update was allowed")
-			}
+	isNoop, err := intentHandler.IsNoop(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
+	if err != nil {
+		log.WithError(err).Warn("failure checking if intent is a no-op")
+		return handleSubmitIntentError(streamer, err)
+	} else if isNoop {
+		if err := streamer.Send(okResp); err != nil {
 			return handleSubmitIntentError(streamer, err)
 		}
+		return nil
+	}
 
-		// Use the existing DB record going forward
-		intentRecord = existingIntentRecord
-	} else {
-		// We're operating on a new intent, so validate we don't have an existing DB record
-		if existingIntentRecord != nil {
-			log.Warn("client is attempting to resubmit an intent or reuse an intent id")
-			return handleSubmitIntentError(streamer, newStaleStateError("intent already exists"))
+	// Distributed locking on additional accounts possibly not known until
+	// populating intent metadata. Importantly, this must be done prior to
+	// doing validation checks in AllowCreation.
+	additionalAccountsToLock, err := intentHandler.GetAdditionalAccountsToLock(ctx, intentRecord)
+	if err != nil {
+		return handleSubmitIntentError(streamer, err)
+	}
+
+	if additionalAccountsToLock.RemoteSendGiftCardVault != nil {
+		giftCardLock := s.giftCardLocks.Get(additionalAccountsToLock.RemoteSendGiftCardVault.PublicKey().ToBytes())
+		giftCardLock.Lock()
+		defer giftCardLock.Unlock()
+	}
+
+	// Validate the new intent with intent-specific logic
+	err = intentHandler.AllowCreation(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
+	if err != nil {
+		switch err.(type) {
+		case IntentValidationError:
+			log.WithError(err).Warn("new intent failed validation")
+		case IntentDeniedError:
+			log.WithError(err).Warn("new intent was denied")
+		case StaleStateError:
+			log.WithError(err).Warn("detected a client with stale state")
+		default:
+			log.WithError(err).Warn("failure checking if new intent was allowed")
 		}
-
-		createIntentHandler := intentHandler.(CreateIntentHandler)
-
-		// Populate metadata into the new DB record
-		err = createIntentHandler.PopulateMetadata(ctx, intentRecord, submitActionsReq.Metadata)
-		if err != nil {
-			log.WithError(err).Warn("failure populating intent metadata")
-			return handleSubmitIntentError(streamer, err)
-		}
-
-		isNoop, err := createIntentHandler.IsNoop(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
-		if err != nil {
-			log.WithError(err).Warn("failure checking if intent is a no-op")
-			return handleSubmitIntentError(streamer, err)
-		} else if isNoop {
-			if err := streamer.Send(okResp); err != nil {
-				return handleSubmitIntentError(streamer, err)
-			}
-			return nil
-		}
-
-		// Distributed locking on additional accounts possibly not known until
-		// populating intent metadata. Importantly, this must be done prior to
-		// doing validation checks in AllowCreation.
-		additionalAccountsToLock, err := createIntentHandler.GetAdditionalAccountsToLock(ctx, intentRecord)
-		if err != nil {
-			return handleSubmitIntentError(streamer, err)
-		}
-
-		if additionalAccountsToLock.DestinationOwner != nil {
-			destinationOwnerLock := s.ownerLocks.Get(additionalAccountsToLock.DestinationOwner.PublicKey().ToBytes())
-			if destinationOwnerLock != initiatorOwnerLock { // Because we're using striped locks
-				destinationOwnerLock.Lock()
-				defer destinationOwnerLock.Unlock()
-			}
-		}
-
-		if additionalAccountsToLock.RemoteSendGiftCardVault != nil {
-			giftCardLock := s.giftCardLocks.Get(additionalAccountsToLock.RemoteSendGiftCardVault.PublicKey().ToBytes())
-			giftCardLock.Lock()
-			defer giftCardLock.Unlock()
-		}
-
-		// Validate the new intent with intent-specific logic
-		err = createIntentHandler.AllowCreation(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
-		if err != nil {
-			switch err.(type) {
-			case IntentValidationError:
-				log.WithError(err).Warn("new intent failed validation")
-			case IntentDeniedError:
-				log.WithError(err).Warn("new intent was denied")
-			case StaleStateError:
-				log.WithError(err).Warn("detected a client with stale state")
-			default:
-				log.WithError(err).Warn("failure checking if new intent was allowed")
-			}
-			return handleSubmitIntentError(streamer, err)
-		}
+		return handleSubmitIntentError(streamer, err)
 	}
 
 	type fulfillmentWithSigningMetadata struct {
@@ -344,7 +295,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	}
 
 	// Convert all actions into a set of fulfillments
-	var actionHandlers []BaseActionHandler
+	var actionHandlers []CreateActionHandler
 	var actionRecords []*action.Record
 	var fulfillments []fulfillmentWithSigningMetadata
 	var reservedNonces []*transaction.SelectedNonce
@@ -354,7 +305,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		// Figure out what kind of action we're operating on and initialize the
 		// action handler
-		var actionHandler BaseActionHandler
+		var actionHandler CreateActionHandler
 		var actionType action.Type
 		switch typed := protoAction.Type.(type) {
 		case *transactionpb.Action_OpenAccount:
@@ -381,127 +332,73 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return handleSubmitIntentError(streamer, errors.New("error initializing action handler"))
 		}
 
-		var isUpgradeActionOperation bool
-		switch actionHandler.(type) {
-		case UpgradeActionHandler:
-			isUpgradeActionOperation = true
-		}
-
-		// Updates equate to only upgrading existing fulfillments, and vice versa, for now.
-		if isUpgradeActionOperation != isIntentUpdateOperation {
-			// If we hit this, then we've failed somewhere in the validation code.
-			log.Warn("intent update status != action upgrade status")
-			return handleSubmitIntentError(streamer, errors.New("intent update status != action upgrade status"))
-		}
-
 		actionHandlers = append(actionHandlers, actionHandler)
 
-		// Upgrades cannot create new actions.
-		if !isUpgradeActionOperation {
-			// Construct the equivalent action record
-			actionRecord := &action.Record{
-				Intent:     intentRecord.IntentId,
-				IntentType: intentRecord.IntentType,
+		// Construct the equivalent action record
+		actionRecord := &action.Record{
+			Intent:     intentRecord.IntentId,
+			IntentType: intentRecord.IntentType,
 
-				ActionId:   protoAction.Id,
-				ActionType: actionType,
+			ActionId:   protoAction.Id,
+			ActionType: actionType,
 
-				State: action.StateUnknown,
-			}
-
-			err := actionHandler.(CreateActionHandler).PopulateMetadata(actionRecord)
-			if err != nil {
-				log.WithError(err).Warn("failure populating action metadata")
-				return handleSubmitIntentError(streamer, err)
-			}
-
-			actionRecords = append(actionRecords, actionRecord)
+			State: action.StateUnknown,
 		}
+
+		err := actionHandler.PopulateMetadata(actionRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure populating action metadata")
+			return handleSubmitIntentError(streamer, err)
+		}
+
+		actionRecords = append(actionRecords, actionRecord)
 
 		// Get action-specific server parameters needed by client to construct the transaction
 		serverParameter := actionHandler.GetServerParameter()
 		serverParameter.ActionId = protoAction.Id
 		serverParameters = append(serverParameters, serverParameter)
 
-		fulfillmentCount := 1
-		if !isUpgradeActionOperation {
-			fulfillmentCount = actionHandler.(CreateActionHandler).FulfillmentCount()
-		}
+		fulfillmentCount := actionHandler.FulfillmentCount()
 
 		for j := 0; j < fulfillmentCount; j++ {
 			var newFulfillmentMetadata *newFulfillmentMetadata
-			var selectedNonce *transaction.SelectedNonce
 			var actionId uint32
-			if isUpgradeActionOperation {
-				upgradeActionHandler := actionHandler.(UpgradeActionHandler)
 
-				// Find the fulfillment that is being upgraded.
-				fulfillmentToUpgrade := upgradeActionHandler.GetFulfillmentBeingUpgraded()
-				if fulfillmentToUpgrade.State != fulfillment.StateUnknown {
-					log.Warn("fulfillment being upgraded isn't in the unknown state")
-					return handleSubmitIntentError(streamer, errors.New("invalid fulfillment to upgrade"))
-				}
-
-				// Re-use the same nonce as the one in the fulfillment we're upgrading,
-				// so we avoid server from submitting both.
-				selectedNonce, err = transaction.SelectVirtualNonceFromFulfillmentToUpgrade(ctx, s.data, fulfillmentToUpgrade)
+			// Select any available nonce reserved for use for a client transaction,
+			// if it's required
+			var selectedNonce *transaction.SelectedNonce
+			var nonceAccount *common.Account
+			var nonceBlockchash solana.Blockhash
+			if actionHandler.RequiresNonce(j) {
+				selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
 				if err != nil {
-					log.WithError(err).Warn("failure selecting nonce from existing fulfillment")
+					log.WithError(err).Warn("failure selecting available nonce")
 					return handleSubmitIntentError(streamer, err)
 				}
-				defer selectedNonce.Unlock()
-
-				// Get metadata for the fulfillment being upgraded
-				newFulfillmentMetadata, err = upgradeActionHandler.GetFulfillmentMetadata(
-					selectedNonce.Account,
-					selectedNonce.Blockhash,
-				)
-				if err != nil {
-					log.WithError(err).Warn("failure getting fulfillment metadata")
-					return handleSubmitIntentError(streamer, err)
-				}
-
-				actionId = fulfillmentToUpgrade.ActionId
-			} else {
-				createActionHandler := actionHandler.(CreateActionHandler)
-
-				// Select any available nonce reserved for use for a client transaction,
-				// if it's required
-				var nonceAccount *common.Account
-				var nonceBlockchash solana.Blockhash
-				if createActionHandler.RequiresNonce(j) {
-					selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
-					if err != nil {
-						log.WithError(err).Warn("failure selecting available nonce")
-						return handleSubmitIntentError(streamer, err)
-					}
-					defer func() {
-						// If we never assign the nonce a signature in the action creation flow,
-						// it's safe to put it back in the available pool. The client will have
-						// caused a failed RPC call, and we want to avoid malicious or erroneous
-						// clients from consuming our nonce pool!
-						selectedNonce.ReleaseIfNotReserved()
-						selectedNonce.Unlock()
-					}()
-					nonceAccount = selectedNonce.Account
-					nonceBlockchash = selectedNonce.Blockhash
-				} else {
-					selectedNonce = nil
-				}
-
-				// Get metadata for the new fulfillment being created
-				newFulfillmentMetadata, err = createActionHandler.GetFulfillmentMetadata(
-					j,
-					nonceAccount,
-					nonceBlockchash,
-				)
-				if err != nil {
-					log.WithError(err).Warn("failure getting fulfillment metadata")
-					return handleSubmitIntentError(streamer, err)
-				}
-
-				actionId = protoAction.Id
+				defer func() {
+					// If we never assign the nonce a signature in the action creation flow,
+					// it's safe to put it back in the available pool. The client will have
+					// caused a failed RPC call, and we want to avoid malicious or erroneous
+					// clients from consuming our nonce pool!
+					selectedNonce.ReleaseIfNotReserved()
+					selectedNonce.Unlock()
+				}()
+				nonceAccount = selectedNonce.Account
+				nonceBlockchash = selectedNonce.Blockhash
 			}
+
+			// Get metadata for the new fulfillment being created
+			newFulfillmentMetadata, err = actionHandler.GetFulfillmentMetadata(
+				j,
+				nonceAccount,
+				nonceBlockchash,
+			)
+			if err != nil {
+				log.WithError(err).Warn("failure getting fulfillment metadata")
+				return handleSubmitIntentError(streamer, err)
+			}
+
+			actionId = protoAction.Id
 
 			// Construct the fulfillment record
 			fulfillmentRecord := &fulfillment.Record{
@@ -575,9 +472,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	}
 
 	metricsIntentTypeValue := intentRecord.IntentType.String()
-	if isIntentUpdateOperation {
-		metricsIntentTypeValue = "upgrade_privacy"
-	}
 	latencyBeforeSignatureSubmission := time.Since(start)
 	recordSubmitIntentLatencyBreakdownEvent(
 		ctx,
@@ -653,21 +547,18 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	// operation. Not all store implementations have real support for this, so
 	// if anything is added, then ensure it does!
 	err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
-		// Updates cannot create new intent or action records, yet.
-		if !isIntentUpdateOperation {
-			// Save the intent record
-			err = s.data.SaveIntent(ctx, intentRecord)
-			if err != nil {
-				log.WithError(err).Warn("failure saving intent record")
-				return err
-			}
+		// Save the intent record
+		err = s.data.SaveIntent(ctx, intentRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure saving intent record")
+			return err
+		}
 
-			// Save all actions
-			err = s.data.PutAllActions(ctx, actionRecords...)
-			if err != nil {
-				log.WithError(err).Warn("failure saving action records")
-				return err
-			}
+		// Save all actions
+		err = s.data.PutAllActions(ctx, actionRecords...)
+		if err != nil {
+			log.WithError(err).Warn("failure saving action records")
+			return err
 		}
 
 		// Save all fulfillment records
@@ -682,11 +573,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			// Reserve the nonce with the latest server-signed fulfillment.
 			if fulfillmentWithMetadata.requiresClientSignature {
 				nonceToReserve := reservedNonces[i]
-				if isIntentUpdateOperation {
-					err = nonceToReserve.UpdateSignature(ctx, *fulfillmentWithMetadata.record.VirtualSignature)
-				} else {
-					err = nonceToReserve.MarkReservedWithSignature(ctx, *fulfillmentWithMetadata.record.VirtualSignature)
-				}
+
+				err = nonceToReserve.MarkReservedWithSignature(ctx, *fulfillmentWithMetadata.record.VirtualSignature)
 				if err != nil {
 					log.WithError(err).Warn("failure reserving nonce with fulfillment signature")
 					return err
@@ -708,53 +596,18 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			}
 		}
 
-		// Updates apply to intents that have already been created, and consequently,
-		// been previously moved to the pending state.
-		if !isIntentUpdateOperation {
-			// Save additional state related to the intent
-			err = intentHandler.(CreateIntentHandler).OnSaveToDB(ctx, intentRecord)
-			if err != nil {
-				log.WithError(err).Warn("failure executing intent db save callback")
-				return err
-			}
+		// Save additional state related to the intent
+		err = intentHandler.OnSaveToDB(ctx, intentRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure executing intent db save callback")
+			return err
+		}
 
-			// Mark the intent as pending once everything else has succeeded
-			err = s.markIntentAsPending(ctx, intentRecord)
-			if err != nil {
-				log.WithError(err).Warn("failure marking the intent as pending")
-				return err
-			}
-
-			// Mark the associated webhook as pending, if it was registered
-			/*
-				err = s.markWebhookAsPending(ctx, intentRecord.IntentId)
-				if err != nil {
-					log.WithError(err).Warn("failure marking webhook as pending")
-					return err
-				}
-			*/
-
-			// Create a message on the intent ID to indicate the intent was submitted
-			//
-			// Note: This function only errors on the DB save, and not forwarding, which
-			//       is ideal for this use case.
-			//
-			// todo: We could also make this an account update event by creating the message
-			//       on each involved owner accounts' stream.
-			/*
-				_, err = s.messagingClient.InternallyCreateMessage(ctx, rendezvousKey, &messagingpb.Message{
-					Kind: &messagingpb.Message_IntentSubmitted{
-						IntentSubmitted: &messagingpb.IntentSubmitted{
-							IntentId: submitActionsReq.Id,
-							Metadata: submitActionsReq.Metadata,
-						},
-					},
-				})
-				if err != nil {
-					log.WithError(err).Warn("failure creating intent submitted message")
-					return err
-				}
-			*/
+		// Mark the intent as pending once everything else has succeeded
+		err = s.markIntentAsPending(ctx, intentRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure marking the intent as pending")
+			return err
 		}
 
 		return nil
@@ -772,17 +625,14 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	log.Debug("intent submitted")
 
 	// Post-processing when an intent has been committed to the DB.
-	if !isIntentUpdateOperation {
-		err = intentHandler.(CreateIntentHandler).OnCommittedToDB(ctx, intentRecord)
-		if err != nil {
-			log.WithError(err).Warn("failure executing intent committed callback handler handler")
-		}
+
+	err = intentHandler.OnCommittedToDB(ctx, intentRecord)
+	if err != nil {
+		log.WithError(err).Warn("failure executing intent committed callback handler handler")
 	}
 
 	// Fire off some success metrics
-	if !isIntentUpdateOperation {
-		recordUserIntentCreatedEvent(ctx, intentRecord)
-	}
+	recordUserIntentCreatedEvent(ctx, intentRecord)
 
 	latencyAfterSignatureSubmission := time.Since(tsAfterSignatureSubmission)
 	recordSubmitIntentLatencyBreakdownEvent(
@@ -835,23 +685,6 @@ func (s *transactionServer) markIntentAsPending(ctx context.Context, record *int
 
 	record.State = intent.StatePending
 	return s.data.SaveIntent(ctx, record)
-}
-
-func (s *transactionServer) markWebhookAsPending(ctx context.Context, id string) error {
-	webhookRecord, err := s.data.GetWebhook(ctx, id)
-	if err == webhook.ErrNotFound {
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	if webhookRecord.State != webhook.StateUnknown {
-		return nil
-	}
-
-	webhookRecord.NextAttemptAt = pointer.Time(time.Now())
-	webhookRecord.State = webhook.StatePending
-	return s.data.UpdateWebhook(ctx, webhookRecord)
 }
 
 func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transactionpb.GetIntentMetadataRequest) (*transactionpb.GetIntentMetadataResponse, error) {

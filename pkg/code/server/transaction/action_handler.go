@@ -43,32 +43,18 @@ type newFulfillmentMetadata struct {
 	disableActiveScheduling     bool
 }
 
-// BaseActionHandler is a base interface for operation-specific action handlers
-//
-// Note: Action handlers should load all required state on initialization to
-// avoid duplicated work across interface method calls.
-type BaseActionHandler interface {
-	// GetServerParameter gets the server parameter for the action within the context
-	// of the intent.
-	GetServerParameter() *transactionpb.ServerParameter
-
-	// OnSaveToDB is a callback when the action is being saved to the DB
-	// within the scope of a DB transaction. Additional supporting DB records
-	// (ie. not the action or fulfillment records) relevant to the action should
-	// be saved here.
-	OnSaveToDB(ctx context.Context) error
-}
-
 // CreateActionHandler is an interface for creating new actions
 type CreateActionHandler interface {
-	BaseActionHandler
-
 	// FulfillmentCount returns the total number of fulfillments that
 	// will be created for the action.
 	FulfillmentCount() int
 
 	// PopulateMetadata populates action metadata into the provided record
 	PopulateMetadata(actionRecord *action.Record) error
+
+	// GetServerParameter gets the server parameter for the action within the context
+	// of the intent.
+	GetServerParameter() *transactionpb.ServerParameter
 
 	// RequiresNonce determines whether a nonce should be acquired for the
 	// fulfillment being created. This should be true whenever a virtual
@@ -81,22 +67,12 @@ type CreateActionHandler interface {
 		nonce *common.Account,
 		bh solana.Blockhash,
 	) (*newFulfillmentMetadata, error)
-}
 
-// UpgradeActionHandler is an interface for upgrading existing actions. It's
-// assumed we'll only be upgrading a single fulfillment.
-type UpgradeActionHandler interface {
-	BaseActionHandler
-
-	// GetFulfillmentBeingUpgraded gets the original fulfillment that's being
-	// upgraded.
-	GetFulfillmentBeingUpgraded() *fulfillment.Record
-
-	// GetFulfillmentMetadata gets upgraded fulfillment metadata
-	GetFulfillmentMetadata(
-		nonce *common.Account,
-		bh solana.Blockhash,
-	) (*newFulfillmentMetadata, error)
+	// OnSaveToDB is a callback when the action is being saved to the DB
+	// within the scope of a DB transaction. Additional supporting DB records
+	// (ie. not the action or fulfillment records) relevant to the action should
+	// be saved here.
+	OnSaveToDB(ctx context.Context) error
 }
 
 type OpenAccountActionHandler struct {
