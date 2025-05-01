@@ -484,7 +484,7 @@ func dbMarkAsActivelyScheduled(ctx context.Context, db *sqlx.DB, id uint64) erro
 		}
 
 		query := `UPDATE ` + fulfillmentTableName + ` SET disable_active_scheduling = false WHERE id = $1`
-		res, err := db.ExecContext(ctx, query, id)
+		res, err := tx.ExecContext(ctx, query, id)
 		if err != nil {
 			return err
 		}
