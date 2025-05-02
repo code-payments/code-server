@@ -10,7 +10,6 @@ import (
 
 	geyserpb "github.com/code-payments/code-server/pkg/code/async/geyser/api/gen"
 
-	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -94,11 +93,7 @@ func (p *service) subscribeToProgramUpdatesFromGeyser(ctx context.Context, endpo
 	}
 
 	streamer, err := client.SubscribeProgramUpdates(ctx, &geyserpb.SubscribeProgramsUpdatesRequest{
-		Programs: [][]byte{
-			token.ProgramKey,
-			timelock_token_v1.PROGRAM_ID,
-			// splitter_token.PROGRAM_ID,
-		},
+		Programs: [][]byte{token.ProgramKey},
 	})
 	if err != nil {
 		return errors.Wrap(err, "error opening subscription stream")
