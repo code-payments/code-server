@@ -139,36 +139,6 @@ func getVirtualDurableNonceAccountStateInMemory(ctx context.Context, vmIndexerCl
 	return &state, memory, uint16(protoMemory.Index), nil
 }
 
-func getVirtualRelayAccountStateInMemory(ctx context.Context, vmIndexerClient indexerpb.IndexerClient, vm, relay *common.Account) (*cvm.VirtualRelayAccount, *common.Account, uint16, error) {
-	resp, err := vmIndexerClient.GetVirtualRelayAccount(ctx, &indexerpb.GetVirtualRelayAccountRequest{
-		VmAccount: &indexerpb.Address{Value: vm.PublicKey().ToBytes()},
-		Address:   &indexerpb.Address{Value: relay.PublicKey().ToBytes()},
-	})
-	if err != nil {
-		return nil, nil, 0, err
-	} else if resp.Result != indexerpb.GetVirtualRelayAccountResponse_OK {
-		return nil, nil, 0, errors.Errorf("received rpc result %s", resp.Result.String())
-	}
-
-	protoMemory := resp.Item.Storage.GetMemory()
-	if protoMemory == nil {
-		return nil, nil, 0, errors.New("account is compressed")
-	}
-
-	memory, err := common.NewAccountFromPublicKeyBytes(protoMemory.Account.Value)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-
-	protoAccount := resp.Item.Account
-	state := cvm.VirtualRelayAccount{
-		Target:      protoAccount.Target.Value,
-		Destination: protoAccount.Destination.Value,
-	}
-
-	return &state, memory, uint16(protoMemory.Index), nil
-}
-
 func isInternalVmTransfer(ctx context.Context, data code_data.Provider, destination *common.Account) (bool, error) {
 	// We only track Timelock managed within our VM, so the presence of a record
 	// is sufficient to determine internal/external transfer status

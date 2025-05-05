@@ -155,13 +155,37 @@ func TestGetTimelockAccounts(t *testing.T) {
 	actual, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
 	require.NoError(t, err)
 	assert.EqualValues(t, vmAccount.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
+	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
 	assert.EqualValues(t, expectedStateAddress, actual.State.PublicKey().ToBytes())
 	assert.Equal(t, expectedStateBump, actual.StateBump)
 	assert.EqualValues(t, expectedVaultAddress, actual.Vault.PublicKey().ToBytes())
 	assert.Equal(t, expectedVaultBump, actual.VaultBump)
 	assert.EqualValues(t, expectedUnlockAddress, actual.Unlock.PublicKey().ToBytes())
 	assert.Equal(t, expectedUnlockBump, actual.UnlockBump)
+	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
+}
+
+func TestGetVmDepositAccounts(t *testing.T) {
+	vmAccount := newRandomTestAccount(t)
+	ownerAccount := newRandomTestAccount(t)
+	mintAccount := newRandomTestAccount(t)
+
+	expectedDepositPdaAddress, expectedDepositPdaBump, err := cvm.GetVmDepositAddress(&cvm.GetVmDepositAddressArgs{
+		Depositor: ownerAccount.PublicKey().ToBytes(),
+		Vm:        vmAccount.PublicKey().ToBytes(),
+	})
+	require.NoError(t, err)
+
+	expectedDepositAtaAddress, err := token.GetAssociatedAccount(expectedDepositPdaAddress, mintAccount.PublicKey().ToBytes())
+	require.NoError(t, err)
+
+	actual, err := ownerAccount.GetVmDepositAccounts(vmAccount, mintAccount)
+	require.NoError(t, err)
+	assert.EqualValues(t, vmAccount.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
+	assert.EqualValues(t, expectedDepositPdaAddress, actual.Pda.PublicKey().ToBytes())
+	assert.Equal(t, expectedDepositPdaBump, actual.PdaBump)
+	assert.EqualValues(t, expectedDepositAtaAddress, actual.Ata.PublicKey().ToBytes())
 	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 

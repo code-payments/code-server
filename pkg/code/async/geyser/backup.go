@@ -7,6 +7,8 @@ import (
 
 	"github.com/newrelic/go-agent/v3/newrelic"
 
+	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
@@ -123,9 +125,39 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
 				m := nr.StartTransaction("async__geyser_consumer_service__backup_external_deposit_worker")
 				defer m.End()
-				// tracedCtx := newrelic.NewContext(serviceCtx, m)
+				tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				// todo: implement me
+				accountInfoRecords, err := p.data.GetPrioritizedAccountInfosRequiringDepositSync(tracedCtx, 256)
+				if err == account.ErrAccountInfoNotFound {
+					return
+				} else if err != nil {
+					log.WithError(err).Warn("failed to get account info records")
+					return
+				}
+
+				var wg sync.WaitGroup
+				for _, accountInfoRecord := range accountInfoRecords {
+					wg.Add(1)
+
+					go func(accountInfoRecord *account.Record) {
+						defer wg.Done()
+
+						authorityAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.AuthorityAccount)
+						if err != nil {
+							log.WithError(err).Warn("invalid authority account")
+							return
+						}
+
+						log := log.WithField("authority", authorityAccount.PublicKey().ToBase58())
+
+						err = fixMissingExternalDeposits(tracedCtx, p.data, p.vmIndexerClient, authorityAccount)
+						if err != nil {
+							log.WithError(err).Warn("failed to fix missing external deposits")
+						}
+					}(accountInfoRecord)
+				}
+
+				wg.Wait()
 			}()
 		case <-serviceCtx.Done():
 			return serviceCtx.Err()
