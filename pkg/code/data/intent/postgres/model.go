@@ -221,7 +221,7 @@ func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cu
 
 	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, created_at
 		FROM ` + intentTableName + `
-		WHERE owner = $1 OR destination_owner = $1
+		WHERE (owner = $1 OR destination_owner = $1)
 	`
 
 	opts := []any{owner}
