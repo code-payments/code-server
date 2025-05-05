@@ -27,6 +27,8 @@ type Account struct {
 type TimelockAccounts struct {
 	Vm *Account
 
+	VaultOwner *Account
+
 	State     *Account
 	StateBump uint8
 
@@ -36,7 +38,18 @@ type TimelockAccounts struct {
 	Unlock     *Account
 	UnlockBump uint8
 
+	Mint *Account
+}
+
+type VmDepositAccounts struct {
+	Vm *Account
+
 	VaultOwner *Account
+
+	Pda     *Account
+	PdaBump uint8
+
+	Ata *Account
 
 	Mint *Account
 }
@@ -182,6 +195,18 @@ func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
 	return NewAccountFromPublicKeyBytes(ata)
 }
 
+func (a *Account) ToVmDepositAssociatedTokenAccount(vm, mint *Account) (*Account, error) {
+	if err := a.Validate(); err != nil {
+		return nil, errors.Wrap(err, "error validating owner account")
+	}
+
+	vmDepositAccounts, err := a.GetVmDepositAccounts(vm, mint)
+	if err != nil {
+		return nil, err
+	}
+	return vmDepositAccounts.Ata, nil
+}
+
 func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
@@ -241,6 +266,44 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 
 		Unlock:     unlockAccount,
 		UnlockBump: unlockBump,
+
+		Mint: mint,
+	}, nil
+}
+
+func (a *Account) GetVmDepositAccounts(vm, mint *Account) (*VmDepositAccounts, error) {
+	depositPdaAddress, depositPdaBump, err := cvm.GetVmDepositAddress(&cvm.GetVmDepositAddressArgs{
+		Depositor: a.PublicKey().ToBytes(),
+		Vm:        vm.PublicKey().ToBytes(),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting deposit pda address")
+	}
+
+	depositAtaAddress, err := token.GetAssociatedAccount(depositPdaAddress, mint.PublicKey().ToBytes())
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting deposit ata address")
+	}
+
+	depositPdaAccount, err := NewAccountFromPublicKeyBytes(depositPdaAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid deposit pda address")
+	}
+
+	depositAtaAccount, err := NewAccountFromPublicKeyBytes(depositAtaAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid deposit ata address")
+	}
+
+	return &VmDepositAccounts{
+		Vm: vm,
+
+		Pda:     depositPdaAccount,
+		PdaBump: depositPdaBump,
+
+		Ata: depositAtaAccount,
+
+		VaultOwner: a,
 
 		Mint: mint,
 	}, nil

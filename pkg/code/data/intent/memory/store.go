@@ -63,17 +63,6 @@ func (s *store) findIntent(intentID string) *intent.Record {
 	return nil
 }
 
-func (s *store) findByState(state intent.State) []*intent.Record {
-	res := make([]*intent.Record, 0)
-	for _, item := range s.records {
-		if item.State == state {
-			res = append(res, item)
-			continue
-		}
-	}
-	return res
-}
-
 func (s *store) findByOwner(owner string) []*intent.Record {
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
@@ -83,11 +72,6 @@ func (s *store) findByOwner(owner string) []*intent.Record {
 		}
 
 		if item.SendPublicPaymentMetadata != nil && item.SendPublicPaymentMetadata.DestinationOwnerAccount == owner {
-			res = append(res, item)
-			continue
-		}
-
-		if item.ExternalDepositMetadata != nil && item.ExternalDepositMetadata.DestinationOwnerAccount == owner {
 			res = append(res, item)
 			continue
 		}

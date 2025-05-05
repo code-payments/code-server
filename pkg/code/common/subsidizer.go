@@ -29,6 +29,7 @@ const (
 	minSubsidizerBalance = 10_000_000_000 // 10 SOL
 )
 
+// todo: doesn't consider external deposits
 var (
 	// This doesn't account for recovery of rent, which implies some fulfillments
 	// actually have negative fees. We often need to think about "in flight" costs

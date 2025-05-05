@@ -77,7 +77,6 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 			IntentType:            intent.ExternalDeposit,
 			InitiatorOwnerAccount: "test_owner",
 			ExternalDepositMetadata: &intent.ExternalDepositMetadata{
-				DestinationOwnerAccount: "test_destination_owner",
 				DestinationTokenAccount: "test_destination_token",
 				Quantity:                12345,
 				UsdMarketValue:          1.2345,
@@ -96,7 +95,6 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.ExternalDepositMetadata)
-		assert.Equal(t, cloned.ExternalDepositMetadata.DestinationOwnerAccount, actual.ExternalDepositMetadata.DestinationOwnerAccount)
 		assert.Equal(t, cloned.ExternalDepositMetadata.DestinationTokenAccount, actual.ExternalDepositMetadata.DestinationTokenAccount)
 		assert.Equal(t, cloned.ExternalDepositMetadata.Quantity, actual.ExternalDepositMetadata.Quantity)
 		assert.Equal(t, cloned.ExternalDepositMetadata.UsdMarketValue, actual.ExternalDepositMetadata.UsdMarketValue)
@@ -281,7 +279,7 @@ func testGetOriginalGiftCardIssuedIntent(t *testing.T, s intent.Store) {
 
 			{IntentId: "i2", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 			{IntentId: "i3", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-			{IntentId: "i4", IntentType: intent.ExternalDeposit, ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i4", IntentType: intent.ExternalDeposit, ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a2", Quantity: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "o2", State: intent.StateConfirmed},
 
 			{IntentId: "i5", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 			{IntentId: "i6", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},

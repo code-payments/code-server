@@ -67,7 +67,6 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 	switch obj.IntentType {
 	case intent.OpenAccounts:
 	case intent.ExternalDeposit:
-		m.DestinationOwnerAccount = obj.ExternalDepositMetadata.DestinationOwnerAccount
 		m.DestinationTokenAccount = obj.ExternalDepositMetadata.DestinationTokenAccount
 		m.Quantity = obj.ExternalDepositMetadata.Quantity
 		m.UsdMarketValue = obj.ExternalDepositMetadata.UsdMarketValue
@@ -119,7 +118,6 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 		record.OpenAccountsMetadata = &intent.OpenAccountsMetadata{}
 	case intent.ExternalDeposit:
 		record.ExternalDepositMetadata = &intent.ExternalDepositMetadata{
-			DestinationOwnerAccount: obj.DestinationOwnerAccount,
 			DestinationTokenAccount: obj.DestinationTokenAccount,
 			Quantity:                obj.Quantity,
 			UsdMarketValue:          obj.UsdMarketValue,

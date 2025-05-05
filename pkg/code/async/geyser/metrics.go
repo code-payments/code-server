@@ -39,7 +39,7 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 			//p.recordEventWorkerStatusPollingEvent(ctx)
 			//p.recordEventQueueStatusPollingEvent(ctx)
 			p.recordBackupWorkerStatusPollingEvent(ctx)
-			//p.recordBackupQueueStatusPollingEvent(ctx)
+			p.recordBackupQueueStatusPollingEvent(ctx)
 
 			delay = time.Second - time.Since(start)
 		}
@@ -120,17 +120,10 @@ func (p *service) recordBackupWorkerStatusPollingEvent(ctx context.Context) {
 	}
 	metrics.RecordEvent(ctx, backupWorkerStatusEventName, timelockMetrics)
 
-	/*
-		metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
-			"worker_type": externalDepositWorkerName,
-			"is_active":   p.backupExternalDepositWorkerStatus,
-		})
-
-		metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
-			"worker_type": messagingWorkerName,
-			"is_active":   p.backupMessagingWorkerStatus,
-		})
-	*/
+	metrics.RecordEvent(ctx, backupWorkerStatusEventName, map[string]interface{}{
+		"worker_type": externalDepositWorkerName,
+		"is_active":   p.backupExternalDepositWorkerStatus,
+	})
 }
 
 func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {

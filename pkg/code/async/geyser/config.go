@@ -22,20 +22,11 @@ const (
 	BackupTimelockWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_TIMELOCK_WORKER_INTERVAL"
 	defaultBackupTimelockWorkerInterval       = 1 * time.Minute
 
-	BackupExternalDepositWorkerCountConfigEnvName = envConfigPrefix + "BACKUP_EXTERNAL_DEPOSIT_WORKER_COUNT"
-	defaultBackupExternalDepositWorkerCount       = 32
-
 	BackupExternalDepositWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_EXTERNAL_DEPOSIT_WORKER_INTERVAL"
 	defaultBackupExternalDepositWorkerInterval       = 15 * time.Second
 
-	MessagingFeeCollectorPublicKeyConfigEnvName = envConfigPrefix + "MESSAGING_FEE_COLLECTOR_PUBLIC_KEY"
-	defaultMessagingFeeCollectorPublicKey       = "invalid" // ensure something valid is set
-
 	SwapSubsidizerPublicKeyConfigEnvName = envConfigPrefix + "SWAP_SUBSIDIZER_PUBLIC_KEY"
 	defaultSwapSubsidizerPublicKey       = "invalid" // ensure something valid is set
-
-	BackupMessagingWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_MESSAGING_WORKER_INTERVAL"
-	defaultBackupMessagingWorkerInterval       = 15 * time.Minute // Decrease significantly once feature is live
 )
 
 type conf struct {
@@ -44,13 +35,9 @@ type conf struct {
 	programUpdateWorkerCount config.Uint64
 	programUpdateQueueSize   config.Uint64
 
-	backupExternalDepositWorkerCount    config.Uint64
 	backupExternalDepositWorkerInterval config.Duration
 
 	backupTimelockWorkerInterval config.Duration
-
-	messagingFeeCollectorPublicKey config.String
-	backupMessagingWorkerInterval  config.Duration
 
 	swapSubsidizerPublicKey config.String
 }
@@ -67,13 +54,9 @@ func WithEnvConfigs() ConfigProvider {
 			programUpdateWorkerCount: env.NewUint64Config(ProgramUpdateWorkerCountConfigEnvName, defaultProgramUpdateWorkerCount),
 			programUpdateQueueSize:   env.NewUint64Config(ProgramUpdateQueueSizeConfigEnvName, defaultProgramUpdateQueueSize),
 
-			backupExternalDepositWorkerCount:    env.NewUint64Config(BackupExternalDepositWorkerCountConfigEnvName, defaultBackupExternalDepositWorkerCount),
 			backupExternalDepositWorkerInterval: env.NewDurationConfig(BackupExternalDepositWorkerIntervalConfigEnvName, defaultBackupExternalDepositWorkerInterval),
 
 			backupTimelockWorkerInterval: env.NewDurationConfig(BackupTimelockWorkerIntervalConfigEnvName, defaultBackupTimelockWorkerInterval),
-
-			messagingFeeCollectorPublicKey: env.NewStringConfig(MessagingFeeCollectorPublicKeyConfigEnvName, defaultMessagingFeeCollectorPublicKey),
-			backupMessagingWorkerInterval:  env.NewDurationConfig(BackupMessagingWorkerIntervalConfigEnvName, defaultBackupMessagingWorkerInterval),
 
 			swapSubsidizerPublicKey: env.NewStringConfig(SwapSubsidizerPublicKeyConfigEnvName, defaultSwapSubsidizerPublicKey),
 		}

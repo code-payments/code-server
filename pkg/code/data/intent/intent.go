@@ -66,7 +66,6 @@ type OpenAccountsMetadata struct {
 }
 
 type ExternalDepositMetadata struct {
-	DestinationOwnerAccount string
 	DestinationTokenAccount string
 	Quantity                uint64
 	UsdMarketValue          float64
@@ -244,7 +243,6 @@ func (m *OpenAccountsMetadata) Validate() error {
 
 func (m *ExternalDepositMetadata) Clone() ExternalDepositMetadata {
 	return ExternalDepositMetadata{
-		DestinationOwnerAccount: m.DestinationOwnerAccount,
 		DestinationTokenAccount: m.DestinationTokenAccount,
 		Quantity:                m.Quantity,
 		UsdMarketValue:          m.UsdMarketValue,
@@ -252,17 +250,12 @@ func (m *ExternalDepositMetadata) Clone() ExternalDepositMetadata {
 }
 
 func (m *ExternalDepositMetadata) CopyTo(dst *ExternalDepositMetadata) {
-	dst.DestinationOwnerAccount = m.DestinationOwnerAccount
 	dst.DestinationTokenAccount = m.DestinationTokenAccount
 	dst.Quantity = m.Quantity
 	dst.UsdMarketValue = m.UsdMarketValue
 }
 
 func (m *ExternalDepositMetadata) Validate() error {
-	if len(m.DestinationOwnerAccount) == 0 {
-		return errors.New("destination owner account is required")
-	}
-
 	if len(m.DestinationTokenAccount) == 0 {
 		return errors.New("destination token account is required")
 	}
