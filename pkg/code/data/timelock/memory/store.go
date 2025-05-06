@@ -91,6 +91,16 @@ func (s *store) GetByVault(_ context.Context, vault string) (*timelock.Record, e
 	return nil, timelock.ErrTimelockNotFound
 }
 
+func (s *store) GetByDepositPda(ctx context.Context, depositPda string) (*timelock.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if item := s.findByDepositPda(depositPda); item != nil {
+		return item.Clone(), nil
+	}
+	return nil, timelock.ErrTimelockNotFound
+}
+
 // GetByVaultBatch implements timelock.Store.GetByVaultBatch
 func (s *store) GetByVaultBatch(ctx context.Context, vaults ...string) (map[string]*timelock.Record, error) {
 	s.mu.Lock()
@@ -159,6 +169,15 @@ func (s *store) findByAddress(address string) *timelock.Record {
 func (s *store) findByVault(vault string) *timelock.Record {
 	for _, item := range s.records {
 		if vault == item.VaultAddress {
+			return item
+		}
+	}
+	return nil
+}
+
+func (s *store) findByDepositPda(depositPda string) *timelock.Record {
+	for _, item := range s.records {
+		if depositPda == item.DepositPdaAddress {
 			return item
 		}
 	}
