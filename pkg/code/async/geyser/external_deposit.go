@@ -79,6 +79,14 @@ func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Prov
 	if balance == 0 {
 		return nil
 	}
+	return initiateExternalDepositIntoVm(ctx, data, vmIndexerClient, userAuthority, balance)
+}
+
+func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority *common.Account, balance uint64) error {
+	vmDepositAccounts, err := userAuthority.GetVmDepositAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	if err != nil {
+		return errors.Wrap(err, "error getting vm deposit ata")
+	}
 
 	memoryAccount, memoryIndex, err := getVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, common.CodeVmAccount, userAuthority)
 	if err != nil {

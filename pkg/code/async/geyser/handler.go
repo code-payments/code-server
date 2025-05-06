@@ -102,7 +102,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 		}
 
 		if unmarshalled.Amount > 0 {
-			err = maybeInitiateExternalDepositIntoVm(ctx, h.data, h.vmIndexerClient, userAuthorityAccount)
+			err = initiateExternalDepositIntoVm(ctx, h.data, h.vmIndexerClient, userAuthorityAccount, unmarshalled.Amount)
 			if err != nil {
 				return errors.Wrap(err, "error depositing into the vm")
 			}
