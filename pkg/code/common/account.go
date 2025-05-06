@@ -25,8 +25,6 @@ type Account struct {
 }
 
 type TimelockAccounts struct {
-	Vm *Account
-
 	VaultOwner *Account
 
 	State     *Account
@@ -38,12 +36,13 @@ type TimelockAccounts struct {
 	Unlock     *Account
 	UnlockBump uint8
 
+	VmDepositAccounts *VmDepositAccounts
+
+	Vm   *Account
 	Mint *Account
 }
 
 type VmDepositAccounts struct {
-	Vm *Account
-
 	VaultOwner *Account
 
 	Pda     *Account
@@ -51,6 +50,7 @@ type VmDepositAccounts struct {
 
 	Ata *Account
 
+	Vm   *Account
 	Mint *Account
 }
 
@@ -253,9 +253,12 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 		return nil, errors.Wrap(err, "invalid unlock address")
 	}
 
-	return &TimelockAccounts{
-		Vm: vm,
+	vmDepositAccounts, err := a.GetVmDepositAccounts(vm, mint)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting vm deposit accounts")
+	}
 
+	return &TimelockAccounts{
 		VaultOwner: a,
 
 		State:     stateAccount,
@@ -267,6 +270,9 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 		Unlock:     unlockAccount,
 		UnlockBump: unlockBump,
 
+		VmDepositAccounts: vmDepositAccounts,
+
+		Vm:   vm,
 		Mint: mint,
 	}, nil
 }
@@ -296,8 +302,6 @@ func (a *Account) GetVmDepositAccounts(vm, mint *Account) (*VmDepositAccounts, e
 	}
 
 	return &VmDepositAccounts{
-		Vm: vm,
-
 		Pda:     depositPdaAccount,
 		PdaBump: depositPdaBump,
 
@@ -305,6 +309,7 @@ func (a *Account) GetVmDepositAccounts(vm, mint *Account) (*VmDepositAccounts, e
 
 		VaultOwner: a,
 
+		Vm:   vm,
 		Mint: mint,
 	}, nil
 }
@@ -388,6 +393,9 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 		VaultBump:    a.VaultBump,
 		VaultOwner:   a.VaultOwner.publicKey.ToBase58(),
 		VaultState:   timelock_token_v1.StateUnknown,
+
+		DepositPdaAddress: a.VmDepositAccounts.Pda.publicKey.ToBase58(),
+		DepositPdaBump:    a.VmDepositAccounts.PdaBump,
 
 		UnlockAt: nil,
 

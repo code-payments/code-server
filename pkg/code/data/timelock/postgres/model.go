@@ -30,6 +30,9 @@ type model struct {
 	VaultOwner   string `db:"vault_owner"`
 	VaultState   uint   `db:"vault_state"`
 
+	DepositPdaAddress string `db:"deposit_pda_address"`
+	DepositPdaBump    uint   `db:"deposit_pda_bump"`
+
 	UnlockAt sql.NullInt64 `db:"unlock_at"`
 
 	Block uint64 `db:"block"`
@@ -57,6 +60,9 @@ func toModel(obj *timelock.Record) (*model, error) {
 		VaultOwner:   obj.VaultOwner,
 		VaultState:   uint(obj.VaultState),
 
+		DepositPdaAddress: obj.DepositPdaAddress,
+		DepositPdaBump:    uint(obj.DepositPdaBump),
+
 		UnlockAt: unlockAt,
 
 		Block: obj.Block,
@@ -83,6 +89,9 @@ func fromModel(obj *model) *timelock.Record {
 		VaultOwner:   obj.VaultOwner,
 		VaultState:   timelock_token.TimelockState(obj.VaultState),
 
+		DepositPdaAddress: obj.DepositPdaAddress,
+		DepositPdaBump:    uint8(obj.DepositPdaBump),
+
 		UnlockAt: unlockAt,
 
 		Block: obj.Block,
@@ -94,16 +103,16 @@ func fromModel(obj *model) *timelock.Record {
 func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + tableName + `
-			(address, bump, vault_address, vault_bump, vault_owner, vault_state, unlock_at, block, last_updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			(address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 
 			ON CONFLICT (address)
 			DO UPDATE
-				SET vault_state = $6, unlock_at = $7, block = $8, last_updated_at = $9
-				WHERE ` + tableName + `.address = $1 AND ` + tableName + `.vault_address = $3 AND ` + tableName + `.block < $8
+				SET vault_state = $6, unlock_at = $9, block = $10, last_updated_at = $11
+				WHERE ` + tableName + `.address = $1 AND ` + tableName + `.vault_address = $3 AND ` + tableName + `.block < $10
 
 			RETURNING
-				id, address, bump, vault_address, vault_bump, vault_owner, vault_state, unlock_at, block, last_updated_at`
+				id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at`
 
 		m.LastUpdatedAt = time.Now()
 
@@ -118,6 +127,9 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.VaultBump,
 			m.VaultOwner,
 			m.VaultState,
+
+			m.DepositPdaAddress,
+			m.DepositPdaBump,
 
 			m.UnlockAt,
 
@@ -134,7 +146,7 @@ func dbGetByAddress(ctx context.Context, db *sqlx.DB, address string) (*model, e
 	res := &model{}
 
 	query := `SELECT
-		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, unlock_at, block, last_updated_at
+		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
 		FROM ` + tableName + `
 		WHERE address = $1
 		LIMIT 1`
@@ -150,12 +162,28 @@ func dbGetByVault(ctx context.Context, db *sqlx.DB, vault string) (*model, error
 	res := &model{}
 
 	query := `SELECT
-		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, unlock_at, block, last_updated_at
+		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
 		FROM ` + tableName + `
 		WHERE vault_address = $1
 		LIMIT 1`
 
 	err := db.GetContext(ctx, res, query, vault)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, timelock.ErrTimelockNotFound)
+	}
+	return res, nil
+}
+
+func dbGetByDepositPda(ctx context.Context, db *sqlx.DB, depositPda string) (*model, error) {
+	res := &model{}
+
+	query := `SELECT
+		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
+		FROM ` + tableName + `
+		WHERE deposit_pda_address = $1
+		LIMIT 1`
+
+	err := db.GetContext(ctx, res, query, depositPda)
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, timelock.ErrTimelockNotFound)
 	}
@@ -171,7 +199,7 @@ func dbGetByVaultBatch(ctx context.Context, db *sqlx.DB, vaults ...string) ([]*m
 	}
 
 	query := fmt.Sprintf(
-		`SELECT id, address, bump, vault_address, vault_bump, vault_owner, vault_state, unlock_at, block, last_updated_at
+		`SELECT id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
 		FROM `+tableName+`
 		WHERE vault_address IN (%s)`,
 		strings.Join(individualFilters, ", "),
@@ -191,7 +219,7 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state timelock_token.Time
 	res := []*model{}
 
 	query := `SELECT
-		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, unlock_at, block, last_updated_at
+		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
 		FROM ` + tableName + `
 		WHERE (vault_state = $1)
 	`

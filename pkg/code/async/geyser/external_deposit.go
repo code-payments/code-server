@@ -398,7 +398,7 @@ func getSyncedVmDepositCacheKey(signature string, vmDepositAta *common.Account) 
 	return fmt.Sprintf("%s:%s", signature, vmDepositAta.PublicKey().ToBase58())
 }
 
-// todo: below code needs to be reimagined for the VM
+// todo: below swap code needs to be reimagined for the VM
 
 /*
 	func markRequiringSwapRetries(ctx context.Context, data code_data.Provider, accountInfoRecord *account.Record) error {

@@ -51,7 +51,7 @@ func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, confi
 		vmIndexerClient:            vmIndexerClient,
 		conf:                       configProvider(),
 		programUpdatesChan:         make(chan *geyserpb.AccountUpdate, conf.programUpdateQueueSize.Get(context.Background())),
-		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data),
+		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data, vmIndexerClient),
 		programUpdateWorkerMetrics: make(map[int]*eventWorkerMetrics),
 	}
 }

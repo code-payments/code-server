@@ -6,9 +6,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/database/query"
 	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
 type store struct {
@@ -52,6 +52,16 @@ func (s *store) GetByAddress(ctx context.Context, address string) (*timelock.Rec
 // GetByVault implements timelock.Store.GetByVault
 func (s *store) GetByVault(ctx context.Context, vault string) (*timelock.Record, error) {
 	model, err := dbGetByVault(ctx, s.db, vault)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromModel(model), nil
+}
+
+// GetByDepositPda implements timelock.Store.GetByDepositPda
+func (s *store) GetByDepositPda(ctx context.Context, depositPda string) (*timelock.Record, error) {
+	model, err := dbGetByDepositPda(ctx, s.db, depositPda)
 	if err != nil {
 		return nil, err
 	}

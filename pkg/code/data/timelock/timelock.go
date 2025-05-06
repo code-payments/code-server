@@ -28,6 +28,9 @@ type Record struct {
 	VaultOwner   string
 	VaultState   timelock_token_v1.TimelockState // Uses the original Timelock account state since the CVM only defines enum states for unlock
 
+	DepositPdaAddress string
+	DepositPdaBump    uint8
+
 	UnlockAt *uint64
 
 	Block uint64
@@ -72,6 +75,9 @@ func (r *Record) Clone() *Record {
 		VaultOwner:   r.VaultOwner,
 		VaultState:   r.VaultState,
 
+		DepositPdaAddress: r.DepositPdaAddress,
+		DepositPdaBump:    r.DepositPdaBump,
+
 		UnlockAt: unlockAt,
 
 		Block: r.Block,
@@ -97,6 +103,9 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.VaultOwner = r.VaultOwner
 	dst.VaultState = r.VaultState
 
+	dst.DepositPdaAddress = r.DepositPdaAddress
+	dst.DepositPdaBump = r.DepositPdaBump
+
 	dst.UnlockAt = unlockAt
 
 	dst.Block = r.Block
@@ -119,6 +128,10 @@ func (r *Record) Validate() error {
 
 	if len(r.VaultOwner) == 0 {
 		return errors.New("vault owner is required")
+	}
+
+	if len(r.DepositPdaAddress) == 0 {
+		return errors.New("deposit pda address is required")
 	}
 
 	return nil

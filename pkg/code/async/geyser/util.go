@@ -5,57 +5,41 @@ import (
 
 	"github.com/pkg/errors"
 
-	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
-
 	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
 var (
-	codeTimelockAccountStatusCache = cache.NewCache(1_000_000)
-	codeSwapAccontStatusCache      = cache.NewCache(1_000_000)
+	depositPdaToUserAuthorityCache = cache.NewCache(1_000_000)
 )
 
 // todo: use a bloom filter, but a caching strategy might be ok for now
-func testForKnownCodeTimelockAccount(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (bool, error) {
-	status, ok := codeTimelockAccountStatusCache.Retrieve(tokenAccount.PublicKey().ToBase58())
+func testForKnownUserAuthorityFromDepositPda(ctx context.Context, data code_data.Provider, depositPdaAccount *common.Account) (bool, *common.Account, error) {
+	cached, ok := depositPdaToUserAuthorityCache.Retrieve(depositPdaAccount.PublicKey().ToBase58())
 	if ok {
-		return status.(bool), nil
+		userAuthorityAccountPublicKeyString := cached.(string)
+		if len(userAuthorityAccountPublicKeyString) > 0 {
+			userAuthorityAccount, _ := common.NewAccountFromPublicKeyString(userAuthorityAccountPublicKeyString)
+			return true, userAuthorityAccount, nil
+		}
+		return false, nil, nil
 	}
 
-	_, err := data.GetTimelockByVault(ctx, tokenAccount.PublicKey().ToBase58())
+	timelockRecord, err := data.GetTimelockByDepositPda(ctx, depositPdaAccount.PublicKey().ToBase58())
 	switch err {
 	case timelock.ErrTimelockNotFound:
-		codeTimelockAccountStatusCache.Insert(tokenAccount.PublicKey().ToBase58(), false, 1)
-		return false, nil
+		depositPdaToUserAuthorityCache.Insert(depositPdaAccount.PublicKey().ToBase58(), "", 1)
+		return false, nil, nil
 	case nil:
-		codeTimelockAccountStatusCache.Insert(tokenAccount.PublicKey().ToBase58(), true, 1)
-		return true, nil
+		userAuthorityAccount, err := common.NewAccountFromPublicKeyString(timelockRecord.VaultOwner)
+		if err != nil {
+			return false, nil, errors.New("invalid vault owner account")
+		}
+		depositPdaToUserAuthorityCache.Insert(depositPdaAccount.PublicKey().ToBase58(), userAuthorityAccount.PublicKey().ToBase58(), 1)
+		return true, userAuthorityAccount, nil
 	default:
-		return false, errors.Wrap(err, "error getting timelock record")
-	}
-}
-
-// todo: use a bloom filter, but a caching strategy might be ok for now
-func testForKnownCodeSwapAccount(ctx context.Context, data code_data.Provider, tokenAccount *common.Account) (bool, error) {
-	status, ok := codeSwapAccontStatusCache.Retrieve(tokenAccount.PublicKey().ToBase58())
-	if ok {
-		return status.(bool), nil
-	}
-
-	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.PublicKey().ToBase58())
-	switch err {
-	case account.ErrAccountInfoNotFound:
-		codeSwapAccontStatusCache.Insert(tokenAccount.PublicKey().ToBase58(), false, 1)
-		return false, nil
-	case nil:
-		isSwapAccount := accountInfoRecord.AccountType == commonpb.AccountType_SWAP
-		codeSwapAccontStatusCache.Insert(tokenAccount.PublicKey().ToBase58(), isSwapAccount, 1)
-		return isSwapAccount, nil
-	default:
-		return false, errors.Wrap(err, "error getting account info record")
+		return false, nil, errors.Wrap(err, "error getting timelock record")
 	}
 }
