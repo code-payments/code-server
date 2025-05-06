@@ -135,10 +135,10 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 	var confirmedTxn *solana.ConfirmedTransaction
 	_, err = retry.Retry(
 		func() error {
-			confirmedTxn, err = data.GetBlockchainTransaction(ctx, base58.Encode(signature[:]), solana.CommitmentFinalized)
+			confirmedTxn, err = data.GetBlockchainTransaction(ctx, base58.Encode(signature[:]), solana.CommitmentConfirmed)
 			return err
 		},
-		waitForFinalizationRetryStrategies...,
+		waitForConfirmationRetryStrategies...,
 	)
 	if err != nil {
 		return errors.Wrap(err, "error getting confirmed transaction")
