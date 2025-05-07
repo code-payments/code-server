@@ -934,18 +934,9 @@ func (m *MaybePartialAccountUpdate) validate(all bool) error {
 
 	var errors []error
 
-	switch v := m.Msg.(type) {
+	switch m.Msg.(type) {
+
 	case *MaybePartialAccountUpdate_PartialAccountUpdate:
-		if v == nil {
-			err := MaybePartialAccountUpdateValidationError{
-				field:  "Msg",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
 
 		if all {
 			switch v := interface{}(m.GetPartialAccountUpdate()).(type) {
@@ -977,16 +968,6 @@ func (m *MaybePartialAccountUpdate) validate(all bool) error {
 		}
 
 	case *MaybePartialAccountUpdate_Hb:
-		if v == nil {
-			err := MaybePartialAccountUpdateValidationError{
-				field:  "Msg",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
 
 		if all {
 			switch v := interface{}(m.GetHb()).(type) {
@@ -1017,8 +998,6 @@ func (m *MaybePartialAccountUpdate) validate(all bool) error {
 			}
 		}
 
-	default:
-		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -1390,6 +1369,14 @@ func (m *BlockUpdate) validate(all bool) error {
 
 	if m.BlockHeight != nil {
 		// no validation rules for BlockHeight
+	}
+
+	if m.ExecutedTransactionCount != nil {
+		// no validation rules for ExecutedTransactionCount
+	}
+
+	if m.EntryCount != nil {
+		// no validation rules for EntryCount
 	}
 
 	if len(errors) > 0 {
@@ -2448,3 +2435,345 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = GetHeartbeatIntervalResponseValidationError{}
+
+// Validate checks the field values on SlotEntryUpdate with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *SlotEntryUpdate) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SlotEntryUpdate with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SlotEntryUpdateMultiError, or nil if none found.
+func (m *SlotEntryUpdate) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SlotEntryUpdate) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Slot
+
+	// no validation rules for Index
+
+	// no validation rules for ExecutedTransactionCount
+
+	if len(errors) > 0 {
+		return SlotEntryUpdateMultiError(errors)
+	}
+
+	return nil
+}
+
+// SlotEntryUpdateMultiError is an error wrapping multiple validation errors
+// returned by SlotEntryUpdate.ValidateAll() if the designated constraints
+// aren't met.
+type SlotEntryUpdateMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SlotEntryUpdateMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SlotEntryUpdateMultiError) AllErrors() []error { return m }
+
+// SlotEntryUpdateValidationError is the validation error returned by
+// SlotEntryUpdate.Validate if the designated constraints aren't met.
+type SlotEntryUpdateValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SlotEntryUpdateValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SlotEntryUpdateValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SlotEntryUpdateValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SlotEntryUpdateValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SlotEntryUpdateValidationError) ErrorName() string { return "SlotEntryUpdateValidationError" }
+
+// Error satisfies the builtin error interface
+func (e SlotEntryUpdateValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSlotEntryUpdate.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SlotEntryUpdateValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SlotEntryUpdateValidationError{}
+
+// Validate checks the field values on TimestampedSlotEntryUpdate with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *TimestampedSlotEntryUpdate) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on TimestampedSlotEntryUpdate with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// TimestampedSlotEntryUpdateMultiError, or nil if none found.
+func (m *TimestampedSlotEntryUpdate) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *TimestampedSlotEntryUpdate) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Ts
+
+	if all {
+		switch v := interface{}(m.GetEntryUpdate()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, TimestampedSlotEntryUpdateValidationError{
+					field:  "EntryUpdate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, TimestampedSlotEntryUpdateValidationError{
+					field:  "EntryUpdate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetEntryUpdate()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return TimestampedSlotEntryUpdateValidationError{
+				field:  "EntryUpdate",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return TimestampedSlotEntryUpdateMultiError(errors)
+	}
+
+	return nil
+}
+
+// TimestampedSlotEntryUpdateMultiError is an error wrapping multiple
+// validation errors returned by TimestampedSlotEntryUpdate.ValidateAll() if
+// the designated constraints aren't met.
+type TimestampedSlotEntryUpdateMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m TimestampedSlotEntryUpdateMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m TimestampedSlotEntryUpdateMultiError) AllErrors() []error { return m }
+
+// TimestampedSlotEntryUpdateValidationError is the validation error returned
+// by TimestampedSlotEntryUpdate.Validate if the designated constraints aren't met.
+type TimestampedSlotEntryUpdateValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e TimestampedSlotEntryUpdateValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e TimestampedSlotEntryUpdateValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e TimestampedSlotEntryUpdateValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e TimestampedSlotEntryUpdateValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e TimestampedSlotEntryUpdateValidationError) ErrorName() string {
+	return "TimestampedSlotEntryUpdateValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e TimestampedSlotEntryUpdateValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sTimestampedSlotEntryUpdate.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = TimestampedSlotEntryUpdateValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = TimestampedSlotEntryUpdateValidationError{}
+
+// Validate checks the field values on SubscribeSlotEntryUpdateRequest with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *SubscribeSlotEntryUpdateRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SubscribeSlotEntryUpdateRequest with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// SubscribeSlotEntryUpdateRequestMultiError, or nil if none found.
+func (m *SubscribeSlotEntryUpdateRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SubscribeSlotEntryUpdateRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return SubscribeSlotEntryUpdateRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// SubscribeSlotEntryUpdateRequestMultiError is an error wrapping multiple
+// validation errors returned by SubscribeSlotEntryUpdateRequest.ValidateAll()
+// if the designated constraints aren't met.
+type SubscribeSlotEntryUpdateRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SubscribeSlotEntryUpdateRequestMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SubscribeSlotEntryUpdateRequestMultiError) AllErrors() []error { return m }
+
+// SubscribeSlotEntryUpdateRequestValidationError is the validation error
+// returned by SubscribeSlotEntryUpdateRequest.Validate if the designated
+// constraints aren't met.
+type SubscribeSlotEntryUpdateRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SubscribeSlotEntryUpdateRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SubscribeSlotEntryUpdateRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SubscribeSlotEntryUpdateRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SubscribeSlotEntryUpdateRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SubscribeSlotEntryUpdateRequestValidationError) ErrorName() string {
+	return "SubscribeSlotEntryUpdateRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SubscribeSlotEntryUpdateRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSubscribeSlotEntryUpdateRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SubscribeSlotEntryUpdateRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SubscribeSlotEntryUpdateRequestValidationError{}
