@@ -189,6 +189,35 @@ func (m *ConfirmedBlock) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetNumPartitions()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ConfirmedBlockValidationError{
+					field:  "NumPartitions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ConfirmedBlockValidationError{
+					field:  "NumPartitions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetNumPartitions()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ConfirmedBlockValidationError{
+				field:  "NumPartitions",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return ConfirmedBlockMultiError(errors)
 	}
@@ -1516,6 +1545,116 @@ var _ interface {
 	ErrorName() string
 } = InnerInstructionsValidationError{}
 
+// Validate checks the field values on InnerInstruction with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *InnerInstruction) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on InnerInstruction with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// InnerInstructionMultiError, or nil if none found.
+func (m *InnerInstruction) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *InnerInstruction) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for ProgramIdIndex
+
+	// no validation rules for Accounts
+
+	// no validation rules for Data
+
+	if m.StackHeight != nil {
+		// no validation rules for StackHeight
+	}
+
+	if len(errors) > 0 {
+		return InnerInstructionMultiError(errors)
+	}
+
+	return nil
+}
+
+// InnerInstructionMultiError is an error wrapping multiple validation errors
+// returned by InnerInstruction.ValidateAll() if the designated constraints
+// aren't met.
+type InnerInstructionMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m InnerInstructionMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m InnerInstructionMultiError) AllErrors() []error { return m }
+
+// InnerInstructionValidationError is the validation error returned by
+// InnerInstruction.Validate if the designated constraints aren't met.
+type InnerInstructionValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e InnerInstructionValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e InnerInstructionValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e InnerInstructionValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e InnerInstructionValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e InnerInstructionValidationError) ErrorName() string { return "InnerInstructionValidationError" }
+
+// Error satisfies the builtin error interface
+func (e InnerInstructionValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sInnerInstruction.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = InnerInstructionValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = InnerInstructionValidationError{}
+
 // Validate checks the field values on CompiledInstruction with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -2134,6 +2273,35 @@ func (m *Rewards) validate(all bool) error {
 
 	}
 
+	if all {
+		switch v := interface{}(m.GetNumPartitions()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RewardsValidationError{
+					field:  "NumPartitions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RewardsValidationError{
+					field:  "NumPartitions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetNumPartitions()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RewardsValidationError{
+				field:  "NumPartitions",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return RewardsMultiError(errors)
 	}
@@ -2413,3 +2581,105 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = BlockHeightValidationError{}
+
+// Validate checks the field values on NumPartitions with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *NumPartitions) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on NumPartitions with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in NumPartitionsMultiError, or
+// nil if none found.
+func (m *NumPartitions) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *NumPartitions) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for NumPartitions
+
+	if len(errors) > 0 {
+		return NumPartitionsMultiError(errors)
+	}
+
+	return nil
+}
+
+// NumPartitionsMultiError is an error wrapping multiple validation errors
+// returned by NumPartitions.ValidateAll() if the designated constraints
+// aren't met.
+type NumPartitionsMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m NumPartitionsMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m NumPartitionsMultiError) AllErrors() []error { return m }
+
+// NumPartitionsValidationError is the validation error returned by
+// NumPartitions.Validate if the designated constraints aren't met.
+type NumPartitionsValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e NumPartitionsValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e NumPartitionsValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e NumPartitionsValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e NumPartitionsValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e NumPartitionsValidationError) ErrorName() string { return "NumPartitionsValidationError" }
+
+// Error satisfies the builtin error interface
+func (e NumPartitionsValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sNumPartitions.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = NumPartitionsValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = NumPartitionsValidationError{}

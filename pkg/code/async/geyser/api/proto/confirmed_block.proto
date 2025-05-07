@@ -1,4 +1,4 @@
-// Source: https://github.com/jito-foundation/geyser-grpc-plugin/tree/v1.14.17-jito-1/proto/proto/confirmed_block.proto
+// Source: https://github.com/jito-foundation/geyser-grpc-plugin/blob/v2.2/proto/proto/confirmed_block.proto
 
 syntax = "proto3";
 
@@ -14,6 +14,7 @@ message ConfirmedBlock {
     repeated Reward rewards = 5;
     UnixTimestamp block_time = 6;
     BlockHeight block_height = 7;
+    NumPartitions num_partitions = 8;
 }
 
 message ConfirmedTransaction {
@@ -76,7 +77,18 @@ message TransactionError {
 
 message InnerInstructions {
     uint32 index = 1;
-    repeated CompiledInstruction instructions = 2;
+    repeated InnerInstruction instructions = 2;
+}
+
+message InnerInstruction {
+    uint32 program_id_index = 1;
+    bytes accounts = 2;
+    bytes data = 3;
+
+    // Invocation stack height of an inner instruction.
+    // Available since Solana v1.14.6
+    // Set to `None` for txs executed on earlier versions.
+    optional uint32 stack_height = 4;
 }
 
 message CompiledInstruction {
@@ -123,6 +135,7 @@ message Reward {
 
 message Rewards {
     repeated Reward rewards = 1;
+    NumPartitions num_partitions = 2;
 }
 
 message UnixTimestamp {
@@ -131,4 +144,8 @@ message UnixTimestamp {
 
 message BlockHeight {
     uint64 block_height = 1;
+}
+
+message NumPartitions {
+    uint64 num_partitions = 1;
 }
