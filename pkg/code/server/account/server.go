@@ -97,8 +97,13 @@ func (s *server) LinkAdditionalAccounts(ctx context.Context, req *accountpb.Link
 	log := s.log.WithField("method", "LinkAdditionalAccounts")
 	log = client.InjectLoggingMetadata(ctx, log)
 
-	if common.CoreMintAccount.PublicKey().ToBase58() == common.UsdcMintAccount.PublicKey().ToBase58() {
-		log.Warn("core mint account is usdc")
+	if common.IsCoreMintUsdStableCoin() {
+		log.Warn("core mint account is usd stable coin")
+		return nil, status.Error(codes.Unavailable, "")
+	}
+
+	// Disable linking swap accounts until swaps implemented fully with the VM
+	if true {
 		return nil, status.Error(codes.Unavailable, "")
 	}
 

@@ -43,8 +43,13 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
 	}
 
-	if common.CoreMintAccount.PublicKey().ToBase58() == common.UsdcMintAccount.PublicKey().ToBase58() {
-		log.Warn("core mint account is usdc")
+	if common.IsCoreMintUsdStableCoin() {
+		log.Warn("core mint account is usd stable coin")
+		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
+	}
+
+	// Disable swaps until implemented fully with the VM
+	if true {
 		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
 	}
 

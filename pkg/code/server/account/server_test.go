@@ -614,6 +614,8 @@ func TestGetTokenAccountInfos_NoTokenAccounts(t *testing.T) {
 }
 
 func TestLinkAdditionalAccounts_HappyPath(t *testing.T) {
+	t.Skip("rpc disabled")
+
 	env, cleanup := setup(t)
 	defer cleanup()
 
@@ -656,6 +658,8 @@ func TestLinkAdditionalAccounts_HappyPath(t *testing.T) {
 }
 
 func TestLinkAdditionalAccounts_UserAccountsNotOpened(t *testing.T) {
+	t.Skip("rpc disabled")
+
 	env, cleanup := setup(t)
 	defer cleanup()
 
@@ -683,6 +687,8 @@ func TestLinkAdditionalAccounts_UserAccountsNotOpened(t *testing.T) {
 }
 
 func TestLinkAdditionalAccounts_InvalidSwapAuthority(t *testing.T) {
+	t.Skip("rpc disabled")
+
 	ownerAccount := testutil.NewRandomAccount(t)
 	swapAuthorityAccount := testutil.NewRandomAccount(t)
 	expectedSwapUsdcAta, err := swapAuthorityAccount.ToAssociatedTokenAccount(common.UsdcMintAccount)
@@ -763,7 +769,7 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	defer cleanup()
 
 	ownerAccount := testutil.NewRandomAccount(t)
-	swapAuthorityAccount := testutil.NewRandomAccount(t)
+	// swapAuthorityAccount := testutil.NewRandomAccount(t)
 	maliciousAccount := testutil.NewRandomAccount(t)
 
 	isCodeAccountReq := &accountpb.IsCodeAccountRequest{
@@ -790,23 +796,25 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	_, err = env.client.GetTokenAccountInfos(env.ctx, getTokenAccountInfosReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 
-	for i := 0; i < 2; i++ {
-		linkReq := &accountpb.LinkAdditionalAccountsRequest{
-			Owner:         ownerAccount.ToProto(),
-			SwapAuthority: swapAuthorityAccount.ToProto(),
-		}
-		reqBytes, err = proto.Marshal(linkReq)
-		require.NoError(t, err)
-		signatures := []*commonpb.Signature{
-			{Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes)},
-			{Value: ed25519.Sign(swapAuthorityAccount.PrivateKey().ToBytes(), reqBytes)},
-		}
-		signatures[i].Value = ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes)
-		linkReq.Signatures = signatures
+	/*
+		for i := 0; i < 2; i++ {
+			linkReq := &accountpb.LinkAdditionalAccountsRequest{
+				Owner:         ownerAccount.ToProto(),
+				SwapAuthority: swapAuthorityAccount.ToProto(),
+			}
+			reqBytes, err = proto.Marshal(linkReq)
+			require.NoError(t, err)
+			signatures := []*commonpb.Signature{
+				{Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes)},
+				{Value: ed25519.Sign(swapAuthorityAccount.PrivateKey().ToBytes(), reqBytes)},
+			}
+			signatures[i].Value = ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes)
+			linkReq.Signatures = signatures
 
-		_, err = env.client.LinkAdditionalAccounts(env.ctx, linkReq)
-		testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
-	}
+			_, err = env.client.LinkAdditionalAccounts(env.ctx, linkReq)
+			testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+		}
+	*/
 }
 
 func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
