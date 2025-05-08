@@ -102,6 +102,11 @@ func (s *server) LinkAdditionalAccounts(ctx context.Context, req *accountpb.Link
 		return nil, status.Error(codes.Unavailable, "")
 	}
 
+	// Disable linking swap accounts until swaps implemented fully with the VM
+	if true {
+		return nil, status.Error(codes.Unavailable, "")
+	}
+
 	owner, err := common.NewAccountFromProto(req.Owner)
 	if err != nil {
 		log.WithError(err).Warn("invalid owner account")

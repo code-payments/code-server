@@ -48,6 +48,11 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
 	}
 
+	// Disable swaps until implemented fully with the VM
+	if true {
+		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
+	}
+
 	req, err := s.boundedSwapRecv(ctx, streamer)
 	if err != nil {
 		log.WithError(err).Info("error receiving request from client")
