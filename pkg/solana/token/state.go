@@ -20,6 +20,8 @@ const AccountSize = 165
 // Reference: https://github.com/solana-labs/solana-program-library/blob/8944f428fe693c3a4226bf766a79be9c75e8e520/token/program/src/state.rs#L214
 const MultisigAccountSize = 355
 
+const optionSize = 4
+
 type Account struct {
 	// The mint associated with this account
 	Mint ed25519.PublicKey
@@ -49,12 +51,12 @@ func (a *Account) Marshal() []byte {
 	binary.PutKey32(b, a.Mint, &offset)
 	binary.PutKey32(b[offset:], a.Owner, &offset)
 	binary.PutUint64(b[offset:], a.Amount, &offset)
-	binary.PutOptionalKey32(b[offset:], a.Delegate, &offset)
+	binary.PutOptionalKey32(b[offset:], a.Delegate, &offset, optionSize)
 	b[offset] = byte(a.State)
 	offset++
-	binary.PutOptionalUint64(b[offset:], a.IsNative, &offset)
+	binary.PutOptionalUint64(b[offset:], a.IsNative, &offset, optionSize)
 	binary.PutUint64(b[offset:], a.DelegatedAmount, &offset)
-	binary.PutOptionalKey32(b[offset:], a.CloseAuthority, &offset)
+	binary.PutOptionalKey32(b[offset:], a.CloseAuthority, &offset, optionSize)
 
 	return b
 }
@@ -68,12 +70,12 @@ func (a *Account) Unmarshal(b []byte) bool {
 	binary.GetKey32(b, &a.Mint, &offset)
 	binary.GetKey32(b[offset:], &a.Owner, &offset)
 	binary.GetUint64(b[offset:], &a.Amount, &offset)
-	binary.GetOptionalKey32(b[offset:], &a.Delegate, &offset)
+	binary.GetOptionalKey32(b[offset:], &a.Delegate, &offset, optionSize)
 	a.State = AccountState(b[offset])
 	offset++
-	binary.GetOptionalUint64(b[offset:], &a.IsNative, &offset)
+	binary.GetOptionalUint64(b[offset:], &a.IsNative, &offset, optionSize)
 	binary.GetUint64(b[offset:], &a.DelegatedAmount, &offset)
-	binary.GetOptionalKey32(b[offset:], &a.CloseAuthority, &offset)
+	binary.GetOptionalKey32(b[offset:], &a.CloseAuthority, &offset, optionSize)
 
 	return true
 }
