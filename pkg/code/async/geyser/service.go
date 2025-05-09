@@ -20,13 +20,14 @@ type eventWorkerMetrics struct {
 	eventsProcessed int
 }
 
+// todo: we can consolidate the various subscription streams into one
 type service struct {
 	log             *logrus.Entry
 	data            code_data.Provider
 	vmIndexerClient indexerpb.IndexerClient
 	conf            *conf
 
-	programUpdatesChan    chan *geyserpb.AccountUpdate
+	programUpdatesChan    chan *geyserpb.SubscribeUpdateAccount
 	programUpdateHandlers map[string]ProgramAccountUpdateHandler
 
 	metricStatusLock sync.RWMutex
@@ -35,7 +36,7 @@ type service struct {
 	programUpdateWorkerMetrics      map[int]*eventWorkerMetrics
 
 	slotUpdateSubscriptionStatus bool
-	highestObservedRootedSlot    uint64
+	highestObservedFinalizedSlot uint64
 
 	oldestTimelockRecord            *time.Time
 	backupTimelockStateWorkerStatus bool
@@ -50,7 +51,7 @@ func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, confi
 		data:                       data,
 		vmIndexerClient:            vmIndexerClient,
 		conf:                       configProvider(),
-		programUpdatesChan:         make(chan *geyserpb.AccountUpdate, conf.programUpdateQueueSize.Get(context.Background())),
+		programUpdatesChan:         make(chan *geyserpb.SubscribeUpdateAccount, conf.programUpdateQueueSize.Get(context.Background())),
 		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data, vmIndexerClient),
 		programUpdateWorkerMetrics: make(map[int]*eventWorkerMetrics),
 	}
