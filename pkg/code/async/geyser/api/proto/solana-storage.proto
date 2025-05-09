@@ -1,4 +1,4 @@
-// Source: https://github.com/jito-foundation/geyser-grpc-plugin/blob/v2.2/proto/proto/confirmed_block.proto
+// Source: https://github.com/rpcpool/yellowstone-grpc/blob/v6.0.0%2Bsolana.2.2.12/yellowstone-grpc-proto/proto/solana-storage.proto
 
 syntax = "proto3";
 
@@ -134,8 +134,8 @@ message Reward {
 }
 
 message Rewards {
-    repeated Reward rewards = 1;
-    NumPartitions num_partitions = 2;
+  repeated Reward rewards = 1;
+  NumPartitions num_partitions = 2;
 }
 
 message UnixTimestamp {

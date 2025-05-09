@@ -24,7 +24,7 @@ type ProgramAccountUpdateHandler interface {
 	// to come in order. Implementations must be idempotent and should not
 	// trust the account data passed in. Always refer to finalized blockchain
 	// state from another RPC provider.
-	Handle(ctx context.Context, update *geyserpb.AccountUpdate) error
+	Handle(ctx context.Context, update *geyserpb.SubscribeUpdateAccount) error
 }
 
 type TokenProgramAccountHandler struct {
@@ -42,31 +42,32 @@ func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider, vmIndexe
 }
 
 // todo: This needs to handle swaps
-func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserpb.AccountUpdate) error {
-	if !bytes.Equal(update.Owner, token.ProgramKey) {
+func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserpb.SubscribeUpdateAccount) error {
+	if !bytes.Equal(update.Account.Owner, token.ProgramKey) {
 		return ErrUnexpectedProgramOwner
 	}
 
 	// We need to know the amount being deposited, and that's impossible without
 	// a transaction signature.
-	if update.TxSignature == nil {
+	if len(update.Account.TxnSignature) == 0 {
 		return nil
 	}
+	signature := base58.Encode(update.Account.TxnSignature)
 
 	// We need to know more about the account before accessing our data stores,
 	// so skip anything that doesn't have data. I'm assuming this means the account
 	// is closed anyways.
-	if len(update.Data) == 0 {
+	if len(update.Account.Data) == 0 {
 		return nil
 	}
 
 	var unmarshalled token.Account
-	if !unmarshalled.Unmarshal(update.Data) {
+	if !unmarshalled.Unmarshal(update.Account.Data) {
 		// Probably not a token account (eg. mint)
 		return nil
 	}
 
-	tokenAccount, err := common.NewAccountFromPublicKeyBytes(update.Pubkey)
+	tokenAccount, err := common.NewAccountFromPublicKeyBytes(update.Account.Pubkey)
 	if err != nil {
 		return errors.Wrap(err, "invalid token account")
 	}
@@ -96,7 +97,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 			return nil
 		}
 
-		err = processPotentialExternalDepositIntoVm(ctx, h.data, *update.TxSignature, userAuthorityAccount)
+		err = processPotentialExternalDepositIntoVm(ctx, h.data, signature, userAuthorityAccount)
 		if err != nil {
 			return errors.Wrap(err, "error processing signature for external deposit into vm")
 		}

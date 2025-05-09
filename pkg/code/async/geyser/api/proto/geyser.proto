@@ -1,224 +1,274 @@
-// Source: https://github.com/jito-foundation/geyser-grpc-plugin/blob/v2.2/proto/proto/geyser.proto
+// Source: https://github.com/rpcpool/yellowstone-grpc/blob/v6.0.0%2Bsolana.2.2.12/yellowstone-grpc-proto/proto/geyser.proto
 
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-import "confirmed_block.proto";
-
-package solana.geyser;
+import public "solana-storage.proto";
 
 option go_package = ".;geyser";
 
-message PartialAccountUpdate {
-  // Slot this update occurred.
-  uint64 slot = 1;
+package geyser;
 
-  // Account's pubkey.
-  bytes pubkey = 2;
-
-  // Account's owner.
-  bytes owner = 3;
-
-  // Flags whether this update was streamed as part of startup, hence not a realtime update.
-  bool is_startup = 4;
-
-  // A monotonically increasing number specifying the order of this update.
-  // Can be used to determine what the latest update for an account was at
-  // a given slot, assuming there were multiple updates.
-  uint64 seq = 5;
-
-  // Transaction signature that caused this update.
-  optional string tx_signature = 6;
-
-  // AccountReplica version.
-  uint32 replica_version = 7;
+service Geyser {
+  rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeUpdate) {}
+  rpc Ping(PingRequest) returns (PongResponse) {}
+  rpc GetLatestBlockhash(GetLatestBlockhashRequest) returns (GetLatestBlockhashResponse) {}
+  rpc GetBlockHeight(GetBlockHeightRequest) returns (GetBlockHeightResponse) {}
+  rpc GetSlot(GetSlotRequest) returns (GetSlotResponse) {}
+  rpc IsBlockhashValid(IsBlockhashValidRequest) returns (IsBlockhashValidResponse) {}
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse) {}
 }
 
-message AccountUpdate {
-  // Slot this update occurred.
-  uint64 slot = 1;
-
-  // Account's pubkey.
-  bytes pubkey = 2;
-
-  // Account's lamports post update.
-  uint64 lamports = 3;
-
-  // Account's owner.
-  bytes owner = 4;
-
-  // Flags whether an account is executable.
-  bool is_executable = 5;
-
-  // The epoch at which this account will next owe rent.
-  uint64 rent_epoch = 6;
-
-  // Account's data post update.
-  bytes data = 7;
-
-  // A monotonically increasing number specifying the order of this update.
-  // Can be used to determine what the latest update for an account was at
-  // a given slot, assuming there were multiple updates.
-  uint64 seq = 8;
-
-  // Flags whether this update was streamed as part of startup i.e. not a real-time update.
-  bool is_startup = 9;
-
-  // Transaction signature that caused this update.
-  optional string tx_signature = 10;
-
-  // AccountReplica version.
-  uint32 replica_version = 11;
+enum CommitmentLevel {
+  PROCESSED = 0;
+  CONFIRMED = 1;
+  FINALIZED = 2;
 }
 
-enum SlotUpdateStatus {
-  CONFIRMED = 0;
-  PROCESSED = 1;
-  ROOTED = 2;
-  FIRST_SHRED_RECEIVED = 3;
-  COMPLETED = 4;
-  CREATED_BANK = 5;
-  DEAD = 6;
+enum SlotStatus {
+  SLOT_PROCESSED = 0;
+  SLOT_CONFIRMED = 1;
+  SLOT_FINALIZED = 2;
+  SLOT_FIRST_SHRED_RECEIVED = 3;
+  SLOT_COMPLETED = 4;
+  SLOT_CREATED_BANK = 5;
+  SLOT_DEAD = 6;
 }
 
-message SlotUpdate {
-  uint64 slot = 1;
-  optional uint64 parent_slot = 2;
-  SlotUpdateStatus status = 3;
+message SubscribeRequest {
+  map<string, SubscribeRequestFilterAccounts> accounts = 1;
+  map<string, SubscribeRequestFilterSlots> slots = 2;
+  map<string, SubscribeRequestFilterTransactions> transactions = 3;
+  map<string, SubscribeRequestFilterTransactions> transactions_status = 10;
+  map<string, SubscribeRequestFilterBlocks> blocks = 4;
+  map<string, SubscribeRequestFilterBlocksMeta> blocks_meta = 5;
+  map<string, SubscribeRequestFilterEntry> entry = 8;
+  optional CommitmentLevel commitment = 6;
+  repeated SubscribeRequestAccountsDataSlice accounts_data_slice = 7;
+  optional SubscribeRequestPing ping = 9;
+  optional uint64 from_slot = 11;
 }
 
-message TimestampedSlotUpdate {
-  // Time at which the message was generated
-  google.protobuf.Timestamp ts = 1;
-  // Slot update
-  SlotUpdate slot_update = 2;
+message SubscribeRequestFilterAccounts {
+  repeated string account = 2;
+  repeated string owner = 3;
+  repeated SubscribeRequestFilterAccountsFilter filters = 4;
+  optional bool nonempty_txn_signature = 5;
 }
 
-message TimestampedAccountUpdate {
-  // Time at which the message was generated
-  google.protobuf.Timestamp ts = 1;
-  // Account update
-  AccountUpdate account_update = 2;
-}
-
-message SubscribeTransactionUpdatesRequest {}
-
-message SubscribeBlockUpdatesRequest {}
-
-message MaybePartialAccountUpdate {
-  oneof msg {
-    PartialAccountUpdate partial_account_update = 1;
-    Heartbeat hb = 2;
+message SubscribeRequestFilterAccountsFilter {
+  oneof filter {
+    SubscribeRequestFilterAccountsFilterMemcmp memcmp = 1;
+    uint64 datasize = 2;
+    bool token_account_state = 3;
+    SubscribeRequestFilterAccountsFilterLamports lamports = 4;
   }
 }
 
-message Heartbeat {}
-message EmptyRequest {}
-
-message BlockUpdate {
-  uint64  slot = 1;
-  string blockhash = 2;
-  repeated storage.ConfirmedBlock.Reward rewards = 3;
-  google.protobuf.Timestamp block_time = 4;
-  optional uint64 block_height = 5;
-  optional uint64 executed_transaction_count = 6;
-  optional uint64 entry_count = 7;
+message SubscribeRequestFilterAccountsFilterMemcmp {
+  uint64 offset = 1;
+  oneof data {
+    bytes bytes = 2;
+    string base58 = 3;
+    string base64 = 4;
+  }
 }
 
-message TimestampedBlockUpdate {
-  // Time at which the message was generated
-  google.protobuf.Timestamp ts = 1;
-  // Block contents
-  BlockUpdate block_update = 2;
+message SubscribeRequestFilterAccountsFilterLamports {
+  oneof cmp {
+    uint64 eq = 1;
+    uint64 ne = 2;
+    uint64 lt = 3;
+    uint64 gt = 4;
+  }
 }
 
-message TransactionUpdate {
+message SubscribeRequestFilterSlots {
+  optional bool filter_by_commitment = 1;
+  optional bool interslot_updates = 2;
+}
+
+message SubscribeRequestFilterTransactions {
+  optional bool vote = 1;
+  optional bool failed = 2;
+  optional string signature = 5;
+  repeated string account_include = 3;
+  repeated string account_exclude = 4;
+  repeated string account_required = 6;
+}
+
+message SubscribeRequestFilterBlocks {
+  repeated string account_include = 1;
+  optional bool include_transactions = 2;
+  optional bool include_accounts = 3;
+  optional bool include_entries = 4;
+}
+
+message SubscribeRequestFilterBlocksMeta {}
+
+message SubscribeRequestFilterEntry {}
+
+message SubscribeRequestAccountsDataSlice {
+  uint64 offset = 1;
+  uint64 length = 2;
+}
+
+message SubscribeRequestPing {
+  int32 id = 1;
+}
+
+message SubscribeUpdate {
+  repeated string filters = 1;
+  oneof update_oneof {
+    SubscribeUpdateAccount account = 2;
+    SubscribeUpdateSlot slot = 3;
+    SubscribeUpdateTransaction transaction = 4;
+    SubscribeUpdateTransactionStatus transaction_status = 10;
+    SubscribeUpdateBlock block = 5;
+    SubscribeUpdatePing ping = 6;
+    SubscribeUpdatePong pong = 9;
+    SubscribeUpdateBlockMeta block_meta = 7;
+    SubscribeUpdateEntry entry = 8;
+  }
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message SubscribeUpdateAccount {
+  SubscribeUpdateAccountInfo account = 1;
+  uint64 slot = 2;
+  bool is_startup = 3;
+}
+
+message SubscribeUpdateAccountInfo {
+  bytes pubkey = 1;
+  uint64 lamports = 2;
+  bytes owner = 3;
+  bool executable = 4;
+  uint64 rent_epoch = 5;
+  bytes data = 6;
+  uint64 write_version = 7;
+  optional bytes txn_signature = 8;
+}
+
+message SubscribeUpdateSlot {
   uint64 slot = 1;
-  string signature = 2;
+  optional uint64 parent = 2;
+  SlotStatus status = 3;
+  optional string dead_error = 4;
+}
+
+message SubscribeUpdateTransaction {
+  SubscribeUpdateTransactionInfo transaction = 1;
+  uint64 slot = 2;
+}
+
+message SubscribeUpdateTransactionInfo {
+  bytes signature = 1;
+  bool is_vote = 2;
+  solana.storage.ConfirmedBlock.Transaction transaction = 3;
+  solana.storage.ConfirmedBlock.TransactionStatusMeta meta = 4;
+  uint64 index = 5;
+}
+
+message SubscribeUpdateTransactionStatus {
+  uint64 slot = 1;
+  bytes signature = 2;
   bool is_vote = 3;
-  uint64 tx_idx = 4;
-  storage.ConfirmedBlock.ConfirmedTransaction tx = 5;
+  uint64 index = 4;
+  solana.storage.ConfirmedBlock.TransactionError err = 5;
 }
 
-message TimestampedTransactionUpdate {
-  google.protobuf.Timestamp ts = 1;
-  TransactionUpdate transaction = 2;
-}
-
-
-message SubscribeSlotUpdateRequest {}
-
-message SubscribeAccountUpdatesRequest {
-  repeated bytes accounts = 1;
-}
-
-message SubscribeProgramsUpdatesRequest {
-  repeated bytes programs = 1;
-}
-
-message SubscribePartialAccountUpdatesRequest {
-  // If true, will not stream vote account updates.
-  bool skip_vote_accounts = 1;
-}
-
-message GetHeartbeatIntervalResponse {
-  uint64 heartbeat_interval_ms = 1;
-}
-
-/// Modelled based off of https://github.com/solana-labs/solana/blob/v2.0/geyser-plugin-interface/src/geyser_plugin_interface.rs#L210
-/// If more details are needed can extend this structure.
-message SlotEntryUpdate {
-  // The slot number of the block containing this Entry
+message SubscribeUpdateBlock {
   uint64 slot = 1;
-  // The Entry's index in the block
+  string blockhash = 2;
+  solana.storage.ConfirmedBlock.Rewards rewards = 3;
+  solana.storage.ConfirmedBlock.UnixTimestamp block_time = 4;
+  solana.storage.ConfirmedBlock.BlockHeight block_height = 5;
+  uint64 parent_slot = 7;
+  string parent_blockhash = 8;
+  uint64 executed_transaction_count = 9;
+  repeated SubscribeUpdateTransactionInfo transactions = 6;
+  uint64 updated_account_count = 10;
+  repeated SubscribeUpdateAccountInfo accounts = 11;
+  uint64 entries_count = 12;
+  repeated SubscribeUpdateEntry entries = 13;
+}
+
+message SubscribeUpdateBlockMeta {
+  uint64 slot = 1;
+  string blockhash = 2;
+  solana.storage.ConfirmedBlock.Rewards rewards = 3;
+  solana.storage.ConfirmedBlock.UnixTimestamp block_time = 4;
+  solana.storage.ConfirmedBlock.BlockHeight block_height = 5;
+  uint64 parent_slot = 6;
+  string parent_blockhash = 7;
+  uint64 executed_transaction_count = 8;
+  uint64 entries_count = 9;
+}
+
+message SubscribeUpdateEntry {
+  uint64 slot = 1;
   uint64 index = 2;
-  // The number of executed transactions in the Entry
-  // If this number is zero, we can assume its a tick entry
-  uint64 executed_transaction_count = 3;
+  uint64 num_hashes = 3;
+  bytes hash = 4;
+  uint64 executed_transaction_count = 5;
+  uint64 starting_transaction_index = 6; // added in v1.18, for solana 1.17 value is always 0
 }
 
-message TimestampedSlotEntryUpdate {
-  // Time at which the message was generated
-  // Send relative timestamp in micros using u32 to reduce overhead. Provides ~71 mins of accuracy between sender and receiver
-  // See [compact_timestamp::to_system_time]
-  uint32 ts = 1;
-  // SlotEntryUpdate update
-  SlotEntryUpdate entry_update = 2;
+message SubscribeUpdatePing {}
+
+message SubscribeUpdatePong {
+  int32 id = 1;
 }
 
-message SubscribeSlotEntryUpdateRequest {}
+// non-streaming methods
 
-// The following __must__ be assumed:
-//    - Clients may receive data for slots out of order.
-//    - Clients may receive account updates for a given slot out of order.
-service Geyser {
-  // Invoke to get the expected heartbeat interval.
-  rpc GetHeartbeatInterval(EmptyRequest) returns (GetHeartbeatIntervalResponse) {}
+message PingRequest {
+  int32 count = 1;
+}
 
-  // Subscribes to account updates in the accounts database; additionally pings clients with empty heartbeats.
-  // Upon initially connecting the client can expect a `highest_write_slot` set in the http headers.
-  // Subscribe to account updates
-  rpc SubscribeAccountUpdates(SubscribeAccountUpdatesRequest) returns (stream TimestampedAccountUpdate) {}
+message PongResponse {
+  int32 count = 1;
+}
 
-  // Subscribes to updates given a list of program IDs. When an account update comes in that's owned by a provided
-  // program id, one will receive an update
-  rpc SubscribeProgramUpdates(SubscribeProgramsUpdatesRequest) returns (stream TimestampedAccountUpdate) {}
+message GetLatestBlockhashRequest {
+  optional CommitmentLevel commitment = 1;
+}
 
-  // Functions similarly to `SubscribeAccountUpdates`, but consumes less bandwidth.
-  // Returns the highest slot seen thus far in the http headers named `highest-write-slot`.
-  rpc SubscribePartialAccountUpdates(SubscribePartialAccountUpdatesRequest) returns (stream MaybePartialAccountUpdate) {}
+message GetLatestBlockhashResponse {
+  uint64 slot = 1;
+  string blockhash = 2;
+  uint64 last_valid_block_height = 3;
+}
 
-  // Subscribes to slot updates.
-  // Returns the highest slot seen thus far in the http headers named `highest-write-slot`.
-  rpc SubscribeSlotUpdates(SubscribeSlotUpdateRequest) returns (stream TimestampedSlotUpdate) {}
+message GetBlockHeightRequest {
+  optional CommitmentLevel commitment = 1;
+}
 
-  // Subscribes to transaction updates.
-  rpc SubscribeTransactionUpdates(SubscribeTransactionUpdatesRequest) returns (stream TimestampedTransactionUpdate) {}
+message GetBlockHeightResponse {
+  uint64 block_height = 1;
+}
 
-  // Subscribes to block updates.
-  rpc SubscribeBlockUpdates(SubscribeBlockUpdatesRequest) returns (stream TimestampedBlockUpdate) {}
+message GetSlotRequest {
+  optional CommitmentLevel commitment = 1;
+}
 
-  // Subscribes to entry updates.
-  // Returns the highest slot seen thus far and the entry index corresponding to the tick
-  rpc SubscribeSlotEntryUpdates(SubscribeSlotEntryUpdateRequest) returns (stream TimestampedSlotEntryUpdate) {}
+message GetSlotResponse {
+  uint64 slot = 1;
+}
+
+message GetVersionRequest {}
+
+message GetVersionResponse {
+  string version = 1;
+}
+
+message IsBlockhashValidRequest {
+  string blockhash = 1;
+  optional CommitmentLevel commitment = 2;
+}
+
+message IsBlockhashValidResponse {
+  uint64 slot = 1;
+  bool valid = 2;
 }

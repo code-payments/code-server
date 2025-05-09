@@ -4,12 +4,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 func (p *service) consumeGeyserProgramUpdateEvents(ctx context.Context) error {
@@ -23,7 +24,7 @@ func (p *service) consumeGeyserProgramUpdateEvents(ctx context.Context) error {
 		default:
 		}
 
-		err := p.subscribeToProgramUpdatesFromGeyser(ctx, p.conf.grpcPluginEndpoint.Get(ctx))
+		err := p.subscribeToProgramUpdatesFromGeyser(ctx, p.conf.grpcPluginEndpoint.Get(ctx), p.conf.grpcPluginXToken.Get(ctx))
 		if err != nil && !errors.Is(err, context.Canceled) {
 			log.WithError(err).Warn("program update consumer unexpectedly terminated")
 		}
@@ -44,7 +45,7 @@ func (p *service) consumeGeyserSlotUpdateEvents(ctx context.Context) error {
 		default:
 		}
 
-		err := p.subscribeToSlotUpdatesFromGeyser(ctx, p.conf.grpcPluginEndpoint.Get(ctx))
+		err := p.subscribeToSlotUpdatesFromGeyser(ctx, p.conf.grpcPluginEndpoint.Get(ctx), p.conf.grpcPluginXToken.Get(ctx))
 		if err != nil && !errors.Is(err, context.Canceled) {
 			log.WithError(err).Warn("slot update consumer unexpectedly terminated")
 		}
@@ -90,13 +91,13 @@ func (p *service) programUpdateWorker(serviceCtx context.Context, id int) {
 				p.metricStatusLock.Unlock()
 			}()
 
-			publicKey, err := common.NewAccountFromPublicKeyBytes(update.Pubkey)
+			publicKey, err := common.NewAccountFromPublicKeyBytes(update.Account.Pubkey)
 			if err != nil {
 				log.WithError(err).Warn("invalid public key")
 				return
 			}
 
-			program, err := common.NewAccountFromPublicKeyBytes(update.Owner)
+			program, err := common.NewAccountFromPublicKeyBytes(update.Account.Owner)
 			if err != nil {
 				log.WithError(err).Warn("invalid owner account")
 				return
@@ -107,8 +108,8 @@ func (p *service) programUpdateWorker(serviceCtx context.Context, id int) {
 				"account": publicKey.PublicKey().ToBase58(),
 				"slot":    update.Slot,
 			})
-			if update.TxSignature != nil {
-				log = log.WithField("transaction", *update.TxSignature)
+			if update.Account.TxnSignature != nil {
+				log = log.WithField("transaction", base58.Encode(update.Account.TxnSignature))
 			}
 
 			handler, ok := p.programUpdateHandlers[program.PublicKey().ToBase58()]

@@ -13,6 +13,9 @@ const (
 	GrpcPluginEndointConfigEnvName = envConfigPrefix + "GRPC_PLUGIN_ENDPOINT"
 	defaultGrpcPluginEndoint       = ""
 
+	GrpcPluginXTokenConfigEnvName = envConfigPrefix + "GRPC_PLUGIN_X_TOKEN"
+	defaultGrpcPluginXToken       = ""
+
 	ProgramUpdateWorkerCountConfigEnvName = envConfigPrefix + "PROGRAM_UPDATE_WORKER_COUNT"
 	defaultProgramUpdateWorkerCount       = 1024
 
@@ -24,13 +27,11 @@ const (
 
 	BackupExternalDepositWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_EXTERNAL_DEPOSIT_WORKER_INTERVAL"
 	defaultBackupExternalDepositWorkerInterval       = 15 * time.Second
-
-	SwapSubsidizerPublicKeyConfigEnvName = envConfigPrefix + "SWAP_SUBSIDIZER_PUBLIC_KEY"
-	defaultSwapSubsidizerPublicKey       = "invalid" // ensure something valid is set
 )
 
 type conf struct {
 	grpcPluginEndpoint config.String
+	grpcPluginXToken   config.String
 
 	programUpdateWorkerCount config.Uint64
 	programUpdateQueueSize   config.Uint64
@@ -38,8 +39,6 @@ type conf struct {
 	backupExternalDepositWorkerInterval config.Duration
 
 	backupTimelockWorkerInterval config.Duration
-
-	swapSubsidizerPublicKey config.String
 }
 
 // ConfigProvider defines how config values are pulled
@@ -50,6 +49,7 @@ func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
 			grpcPluginEndpoint: env.NewStringConfig(GrpcPluginEndointConfigEnvName, defaultGrpcPluginEndoint),
+			grpcPluginXToken:   env.NewStringConfig(GrpcPluginXTokenConfigEnvName, defaultGrpcPluginXToken),
 
 			programUpdateWorkerCount: env.NewUint64Config(ProgramUpdateWorkerCountConfigEnvName, defaultProgramUpdateWorkerCount),
 			programUpdateQueueSize:   env.NewUint64Config(ProgramUpdateQueueSizeConfigEnvName, defaultProgramUpdateQueueSize),
@@ -57,8 +57,6 @@ func WithEnvConfigs() ConfigProvider {
 			backupExternalDepositWorkerInterval: env.NewDurationConfig(BackupExternalDepositWorkerIntervalConfigEnvName, defaultBackupExternalDepositWorkerInterval),
 
 			backupTimelockWorkerInterval: env.NewDurationConfig(BackupTimelockWorkerIntervalConfigEnvName, defaultBackupTimelockWorkerInterval),
-
-			swapSubsidizerPublicKey: env.NewStringConfig(SwapSubsidizerPublicKeyConfigEnvName, defaultSwapSubsidizerPublicKey),
 		}
 	}
 }
