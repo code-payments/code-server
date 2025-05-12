@@ -90,7 +90,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 			return nil
 		}
 
-		exists, userAuthorityAccount, err := testForKnownUserAuthorityFromDepositPda(ctx, h.data, tokenAccount)
+		exists, userAuthorityAccount, err := testForKnownUserAuthorityFromDepositPda(ctx, h.data, ownerAccount)
 		if err != nil {
 			return errors.Wrap(err, "error testing for user authority from deposit pda")
 		} else if !exists {
