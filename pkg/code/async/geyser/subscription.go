@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	geyserpb "github.com/code-payments/code-server/pkg/code/async/geyser/api/gen"
 
@@ -18,34 +20,30 @@ const (
 )
 
 var (
-	ErrSubscriptionFallenBehind = errors.New("subscription stream fell behind")
-	ErrTimeoutReceivingUpdate   = errors.New("timed out receiving update")
+	ErrTimeoutReceivingUpdate = errors.New("timed out receiving update")
 )
 
-func newGeyserClient(ctx context.Context, endpoint string) (geyserpb.GeyserClient, error) {
-	conn, err := grpc.Dial(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func newGeyserClient(endpoint, xToken string) (geyserpb.GeyserClient, error) {
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	if len(xToken) > 0 {
+		opts = append(
+			opts,
+			grpc.WithUnaryInterceptor(newXTokenUnaryClientInterceptor(xToken)),
+			grpc.WithStreamInterceptor(newXTokenStreamClientInterceptor(xToken)),
+		)
+	}
+
+	conn, err := grpc.NewClient(endpoint, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	client := geyserpb.NewGeyserClient(conn)
 
-	// Unfortunately the RPCs we use no longer support hearbeats. We'll let each
-	// individual subscriber determine what an appropriate timeout to receive a
-	// message should be.
-	/*
-		heartbeatResp, err := client.GetHeartbeatInterval(ctx, &geyserpb.EmptyRequest{})
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "error getting heartbeat interval")
-		}
-
-		heartbeatTimeout := time.Duration(2 * heartbeatResp.HeartbeatIntervalMs * uint64(time.Millisecond))
-	*/
-
 	return client, nil
 }
 
-func boundedProgramUpdateRecv(ctx context.Context, streamer geyserpb.Geyser_SubscribeProgramUpdatesClient, timeout time.Duration) (update *geyserpb.TimestampedAccountUpdate, err error) {
+func boundedRecv(ctx context.Context, streamer geyserpb.Geyser_SubscribeClient, timeout time.Duration) (update *geyserpb.SubscribeUpdate, err error) {
 	done := make(chan struct{})
 	go func() {
 		update, err = streamer.Recv()
@@ -53,6 +51,8 @@ func boundedProgramUpdateRecv(ctx context.Context, streamer geyserpb.Geyser_Subs
 	}()
 
 	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case <-time.After(timeout):
 		return nil, ErrTimeoutReceivingUpdate
 	case <-done:
@@ -60,22 +60,7 @@ func boundedProgramUpdateRecv(ctx context.Context, streamer geyserpb.Geyser_Subs
 	}
 }
 
-func boundedSlotUpdateRecv(ctx context.Context, streamer geyserpb.Geyser_SubscribeSlotUpdatesClient, timeout time.Duration) (update *geyserpb.TimestampedSlotUpdate, err error) {
-	done := make(chan struct{})
-	go func() {
-		update, err = streamer.Recv()
-		close(done)
-	}()
-
-	select {
-	case <-time.After(timeout):
-		return nil, ErrTimeoutReceivingUpdate
-	case <-done:
-		return update, err
-	}
-}
-
-func (p *service) subscribeToProgramUpdatesFromGeyser(ctx context.Context, endpoint string) error {
+func (p *service) subscribeToProgramUpdatesFromGeyser(ctx context.Context, endpoint, xToken string) error {
 	log := p.log.WithField("method", "subscribeToProgramUpdatesFromGeyser")
 	log.Debug("subscription started")
 
@@ -87,21 +72,32 @@ func (p *service) subscribeToProgramUpdatesFromGeyser(ctx context.Context, endpo
 		log.Debug("subscription stopped")
 	}()
 
-	client, err := newGeyserClient(ctx, endpoint)
+	client, err := newGeyserClient(endpoint, xToken)
 	if err != nil {
 		return errors.Wrap(err, "error creating client")
 	}
 
-	streamer, err := client.SubscribeProgramUpdates(ctx, &geyserpb.SubscribeProgramsUpdatesRequest{
-		Programs: [][]byte{token.ProgramKey},
-	})
+	streamer, err := client.Subscribe(ctx)
 	if err != nil {
 		return errors.Wrap(err, "error opening subscription stream")
 	}
 
+	req := &geyserpb.SubscribeRequest{
+		Accounts: make(map[string]*geyserpb.SubscribeRequestFilterAccounts),
+	}
+	req.Accounts["accounts_subscription"] = &geyserpb.SubscribeRequestFilterAccounts{
+		Owner: []string{base58.Encode(token.ProgramKey)},
+	}
+	finalizedCommitmentLevel := geyserpb.CommitmentLevel_FINALIZED
+	req.Commitment = &finalizedCommitmentLevel
+	err = streamer.Send(req)
+	if err != nil {
+		return errors.Wrap(err, "error sending subscription request")
+	}
+
 	var isSubscriptionActive bool
 	for {
-		update, err := boundedProgramUpdateRecv(ctx, streamer, defaultStreamSubscriptionTimeout)
+		update, err := boundedRecv(ctx, streamer, defaultStreamSubscriptionTimeout)
 		if err != nil {
 			return errors.Wrap(err, "error recieving update")
 		}
@@ -115,15 +111,14 @@ func (p *service) subscribeToProgramUpdatesFromGeyser(ctx context.Context, endpo
 			isSubscriptionActive = true
 		}
 
-		messageAge := time.Since(update.Ts.AsTime())
-		if messageAge > defaultStreamSubscriptionTimeout {
-			log.WithField("message_age", messageAge).Warn(ErrSubscriptionFallenBehind.Error())
-			return ErrSubscriptionFallenBehind
+		accountUpdate := update.GetAccount()
+		if accountUpdate == nil {
+			continue
 		}
 
 		// Ignore startup updates. We only care about real-time updates due to
 		// transactions.
-		if update.AccountUpdate.IsStartup {
+		if accountUpdate.IsStartup {
 			continue
 		}
 
@@ -132,14 +127,14 @@ func (p *service) subscribeToProgramUpdatesFromGeyser(ctx context.Context, endpo
 		// backing up the Geyser plugin, which kills this subscription and we end up
 		// missing updates.
 		select {
-		case p.programUpdatesChan <- update.AccountUpdate:
+		case p.programUpdatesChan <- accountUpdate:
 		default:
 			log.Warn("dropping update because queue is full")
 		}
 	}
 }
 
-func (p *service) subscribeToSlotUpdatesFromGeyser(ctx context.Context, endpoint string) error {
+func (p *service) subscribeToSlotUpdatesFromGeyser(ctx context.Context, endpoint, xToken string) error {
 	log := p.log.WithField("method", "subscribeToSlotUpdatesFromGeyser")
 	log.Debug("subscription started")
 
@@ -151,14 +146,23 @@ func (p *service) subscribeToSlotUpdatesFromGeyser(ctx context.Context, endpoint
 		log.Debug("subscription stopped")
 	}()
 
-	client, err := newGeyserClient(ctx, endpoint)
+	client, err := newGeyserClient(endpoint, xToken)
 	if err != nil {
 		return errors.Wrap(err, "error creating client")
 	}
 
-	streamer, err := client.SubscribeSlotUpdates(ctx, &geyserpb.SubscribeSlotUpdateRequest{})
+	streamer, err := client.Subscribe(ctx)
 	if err != nil {
 		return errors.Wrap(err, "error opening subscription stream")
+	}
+
+	req := &geyserpb.SubscribeRequest{
+		Slots: make(map[string]*geyserpb.SubscribeRequestFilterSlots),
+	}
+	req.Slots["slots_subscription"] = &geyserpb.SubscribeRequestFilterSlots{}
+	err = streamer.Send(req)
+	if err != nil {
+		return errors.Wrap(err, "error sending subscription request")
 	}
 
 	p.metricStatusLock.Lock()
@@ -166,25 +170,57 @@ func (p *service) subscribeToSlotUpdatesFromGeyser(ctx context.Context, endpoint
 	p.metricStatusLock.Unlock()
 
 	for {
-		update, err := boundedSlotUpdateRecv(ctx, streamer, defaultStreamSubscriptionTimeout)
+		update, err := boundedRecv(ctx, streamer, defaultStreamSubscriptionTimeout)
 		if err != nil {
 			return errors.Wrap(err, "error recieving update")
 		}
 
-		messageAge := time.Since(update.Ts.AsTime())
-		if messageAge > defaultStreamSubscriptionTimeout {
-			log.WithField("message_age", messageAge).Warn(ErrSubscriptionFallenBehind.Error())
-			return ErrSubscriptionFallenBehind
+		slotUpdate := update.GetSlot()
+		if slotUpdate == nil {
+			continue
 		}
 
-		if update.SlotUpdate.Status != geyserpb.SlotUpdateStatus_ROOTED {
+		if slotUpdate.Status != geyserpb.SlotStatus_SLOT_FINALIZED {
 			continue
 		}
 
 		p.metricStatusLock.Lock()
-		if update.SlotUpdate.Slot > p.highestObservedRootedSlot {
-			p.highestObservedRootedSlot = update.SlotUpdate.Slot
+		if slotUpdate.Slot > p.highestObservedFinalizedSlot {
+			p.highestObservedFinalizedSlot = slotUpdate.Slot
 		}
 		p.metricStatusLock.Unlock()
 	}
+}
+
+func newXTokenUnaryClientInterceptor(xToken string) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		ctx = withXToken(ctx, xToken)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+func newXTokenStreamClientInterceptor(xToken string) grpc.StreamClientInterceptor {
+	return func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		ctx = withXToken(ctx, xToken)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+}
+
+func withXToken(ctx context.Context, xToken string) context.Context {
+	md := metadata.Pairs("x-token", xToken)
+	return metadata.NewOutgoingContext(ctx, md)
 }
