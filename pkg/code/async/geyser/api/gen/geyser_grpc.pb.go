@@ -22,28 +22,13 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GeyserClient interface {
-	// Invoke to get the expected heartbeat interval.
-	GetHeartbeatInterval(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*GetHeartbeatIntervalResponse, error)
-	// Subscribes to account updates in the accounts database; additionally pings clients with empty heartbeats.
-	// Upon initially connecting the client can expect a `highest_write_slot` set in the http headers.
-	// Subscribe to account updates
-	SubscribeAccountUpdates(ctx context.Context, in *SubscribeAccountUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeAccountUpdatesClient, error)
-	// Subscribes to updates given a list of program IDs. When an account update comes in that's owned by a provided
-	// program id, one will receive an update
-	SubscribeProgramUpdates(ctx context.Context, in *SubscribeProgramsUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeProgramUpdatesClient, error)
-	// Functions similarly to `SubscribeAccountUpdates`, but consumes less bandwidth.
-	// Returns the highest slot seen thus far in the http headers named `highest-write-slot`.
-	SubscribePartialAccountUpdates(ctx context.Context, in *SubscribePartialAccountUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribePartialAccountUpdatesClient, error)
-	// Subscribes to slot updates.
-	// Returns the highest slot seen thus far in the http headers named `highest-write-slot`.
-	SubscribeSlotUpdates(ctx context.Context, in *SubscribeSlotUpdateRequest, opts ...grpc.CallOption) (Geyser_SubscribeSlotUpdatesClient, error)
-	// Subscribes to transaction updates.
-	SubscribeTransactionUpdates(ctx context.Context, in *SubscribeTransactionUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeTransactionUpdatesClient, error)
-	// Subscribes to block updates.
-	SubscribeBlockUpdates(ctx context.Context, in *SubscribeBlockUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeBlockUpdatesClient, error)
-	// Subscribes to entry updates.
-	// Returns the highest slot seen thus far and the entry index corresponding to the tick
-	SubscribeSlotEntryUpdates(ctx context.Context, in *SubscribeSlotEntryUpdateRequest, opts ...grpc.CallOption) (Geyser_SubscribeSlotEntryUpdatesClient, error)
+	Subscribe(ctx context.Context, opts ...grpc.CallOption) (Geyser_SubscribeClient, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PongResponse, error)
+	GetLatestBlockhash(ctx context.Context, in *GetLatestBlockhashRequest, opts ...grpc.CallOption) (*GetLatestBlockhashResponse, error)
+	GetBlockHeight(ctx context.Context, in *GetBlockHeightRequest, opts ...grpc.CallOption) (*GetBlockHeightResponse, error)
+	GetSlot(ctx context.Context, in *GetSlotRequest, opts ...grpc.CallOption) (*GetSlotResponse, error)
+	IsBlockhashValid(ctx context.Context, in *IsBlockhashValidRequest, opts ...grpc.CallOption) (*IsBlockhashValidResponse, error)
+	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
 }
 
 type geyserClient struct {
@@ -54,265 +39,102 @@ func NewGeyserClient(cc grpc.ClientConnInterface) GeyserClient {
 	return &geyserClient{cc}
 }
 
-func (c *geyserClient) GetHeartbeatInterval(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*GetHeartbeatIntervalResponse, error) {
-	out := new(GetHeartbeatIntervalResponse)
-	err := c.cc.Invoke(ctx, "/solana.geyser.Geyser/GetHeartbeatInterval", in, out, opts...)
+func (c *geyserClient) Subscribe(ctx context.Context, opts ...grpc.CallOption) (Geyser_SubscribeClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[0], "/geyser.Geyser/Subscribe", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &geyserSubscribeClient{stream}
+	return x, nil
+}
+
+type Geyser_SubscribeClient interface {
+	Send(*SubscribeRequest) error
+	Recv() (*SubscribeUpdate, error)
+	grpc.ClientStream
+}
+
+type geyserSubscribeClient struct {
+	grpc.ClientStream
+}
+
+func (x *geyserSubscribeClient) Send(m *SubscribeRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *geyserSubscribeClient) Recv() (*SubscribeUpdate, error) {
+	m := new(SubscribeUpdate)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *geyserClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PongResponse, error) {
+	out := new(PongResponse)
+	err := c.cc.Invoke(ctx, "/geyser.Geyser/Ping", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *geyserClient) SubscribeAccountUpdates(ctx context.Context, in *SubscribeAccountUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeAccountUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[0], "/solana.geyser.Geyser/SubscribeAccountUpdates", opts...)
+func (c *geyserClient) GetLatestBlockhash(ctx context.Context, in *GetLatestBlockhashRequest, opts ...grpc.CallOption) (*GetLatestBlockhashResponse, error) {
+	out := new(GetLatestBlockhashResponse)
+	err := c.cc.Invoke(ctx, "/geyser.Geyser/GetLatestBlockhash", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &geyserSubscribeAccountUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
 
-type Geyser_SubscribeAccountUpdatesClient interface {
-	Recv() (*TimestampedAccountUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribeAccountUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribeAccountUpdatesClient) Recv() (*TimestampedAccountUpdate, error) {
-	m := new(TimestampedAccountUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *geyserClient) SubscribeProgramUpdates(ctx context.Context, in *SubscribeProgramsUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeProgramUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[1], "/solana.geyser.Geyser/SubscribeProgramUpdates", opts...)
+func (c *geyserClient) GetBlockHeight(ctx context.Context, in *GetBlockHeightRequest, opts ...grpc.CallOption) (*GetBlockHeightResponse, error) {
+	out := new(GetBlockHeightResponse)
+	err := c.cc.Invoke(ctx, "/geyser.Geyser/GetBlockHeight", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &geyserSubscribeProgramUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
 
-type Geyser_SubscribeProgramUpdatesClient interface {
-	Recv() (*TimestampedAccountUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribeProgramUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribeProgramUpdatesClient) Recv() (*TimestampedAccountUpdate, error) {
-	m := new(TimestampedAccountUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *geyserClient) SubscribePartialAccountUpdates(ctx context.Context, in *SubscribePartialAccountUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribePartialAccountUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[2], "/solana.geyser.Geyser/SubscribePartialAccountUpdates", opts...)
+func (c *geyserClient) GetSlot(ctx context.Context, in *GetSlotRequest, opts ...grpc.CallOption) (*GetSlotResponse, error) {
+	out := new(GetSlotResponse)
+	err := c.cc.Invoke(ctx, "/geyser.Geyser/GetSlot", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &geyserSubscribePartialAccountUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
 
-type Geyser_SubscribePartialAccountUpdatesClient interface {
-	Recv() (*MaybePartialAccountUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribePartialAccountUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribePartialAccountUpdatesClient) Recv() (*MaybePartialAccountUpdate, error) {
-	m := new(MaybePartialAccountUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *geyserClient) SubscribeSlotUpdates(ctx context.Context, in *SubscribeSlotUpdateRequest, opts ...grpc.CallOption) (Geyser_SubscribeSlotUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[3], "/solana.geyser.Geyser/SubscribeSlotUpdates", opts...)
+func (c *geyserClient) IsBlockhashValid(ctx context.Context, in *IsBlockhashValidRequest, opts ...grpc.CallOption) (*IsBlockhashValidResponse, error) {
+	out := new(IsBlockhashValidResponse)
+	err := c.cc.Invoke(ctx, "/geyser.Geyser/IsBlockhashValid", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &geyserSubscribeSlotUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
 
-type Geyser_SubscribeSlotUpdatesClient interface {
-	Recv() (*TimestampedSlotUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribeSlotUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribeSlotUpdatesClient) Recv() (*TimestampedSlotUpdate, error) {
-	m := new(TimestampedSlotUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *geyserClient) SubscribeTransactionUpdates(ctx context.Context, in *SubscribeTransactionUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeTransactionUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[4], "/solana.geyser.Geyser/SubscribeTransactionUpdates", opts...)
+func (c *geyserClient) GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error) {
+	out := new(GetVersionResponse)
+	err := c.cc.Invoke(ctx, "/geyser.Geyser/GetVersion", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &geyserSubscribeTransactionUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type Geyser_SubscribeTransactionUpdatesClient interface {
-	Recv() (*TimestampedTransactionUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribeTransactionUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribeTransactionUpdatesClient) Recv() (*TimestampedTransactionUpdate, error) {
-	m := new(TimestampedTransactionUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *geyserClient) SubscribeBlockUpdates(ctx context.Context, in *SubscribeBlockUpdatesRequest, opts ...grpc.CallOption) (Geyser_SubscribeBlockUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[5], "/solana.geyser.Geyser/SubscribeBlockUpdates", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &geyserSubscribeBlockUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type Geyser_SubscribeBlockUpdatesClient interface {
-	Recv() (*TimestampedBlockUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribeBlockUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribeBlockUpdatesClient) Recv() (*TimestampedBlockUpdate, error) {
-	m := new(TimestampedBlockUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *geyserClient) SubscribeSlotEntryUpdates(ctx context.Context, in *SubscribeSlotEntryUpdateRequest, opts ...grpc.CallOption) (Geyser_SubscribeSlotEntryUpdatesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Geyser_ServiceDesc.Streams[6], "/solana.geyser.Geyser/SubscribeSlotEntryUpdates", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &geyserSubscribeSlotEntryUpdatesClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type Geyser_SubscribeSlotEntryUpdatesClient interface {
-	Recv() (*TimestampedSlotEntryUpdate, error)
-	grpc.ClientStream
-}
-
-type geyserSubscribeSlotEntryUpdatesClient struct {
-	grpc.ClientStream
-}
-
-func (x *geyserSubscribeSlotEntryUpdatesClient) Recv() (*TimestampedSlotEntryUpdate, error) {
-	m := new(TimestampedSlotEntryUpdate)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return out, nil
 }
 
 // GeyserServer is the server API for Geyser service.
 // All implementations must embed UnimplementedGeyserServer
 // for forward compatibility
 type GeyserServer interface {
-	// Invoke to get the expected heartbeat interval.
-	GetHeartbeatInterval(context.Context, *EmptyRequest) (*GetHeartbeatIntervalResponse, error)
-	// Subscribes to account updates in the accounts database; additionally pings clients with empty heartbeats.
-	// Upon initially connecting the client can expect a `highest_write_slot` set in the http headers.
-	// Subscribe to account updates
-	SubscribeAccountUpdates(*SubscribeAccountUpdatesRequest, Geyser_SubscribeAccountUpdatesServer) error
-	// Subscribes to updates given a list of program IDs. When an account update comes in that's owned by a provided
-	// program id, one will receive an update
-	SubscribeProgramUpdates(*SubscribeProgramsUpdatesRequest, Geyser_SubscribeProgramUpdatesServer) error
-	// Functions similarly to `SubscribeAccountUpdates`, but consumes less bandwidth.
-	// Returns the highest slot seen thus far in the http headers named `highest-write-slot`.
-	SubscribePartialAccountUpdates(*SubscribePartialAccountUpdatesRequest, Geyser_SubscribePartialAccountUpdatesServer) error
-	// Subscribes to slot updates.
-	// Returns the highest slot seen thus far in the http headers named `highest-write-slot`.
-	SubscribeSlotUpdates(*SubscribeSlotUpdateRequest, Geyser_SubscribeSlotUpdatesServer) error
-	// Subscribes to transaction updates.
-	SubscribeTransactionUpdates(*SubscribeTransactionUpdatesRequest, Geyser_SubscribeTransactionUpdatesServer) error
-	// Subscribes to block updates.
-	SubscribeBlockUpdates(*SubscribeBlockUpdatesRequest, Geyser_SubscribeBlockUpdatesServer) error
-	// Subscribes to entry updates.
-	// Returns the highest slot seen thus far and the entry index corresponding to the tick
-	SubscribeSlotEntryUpdates(*SubscribeSlotEntryUpdateRequest, Geyser_SubscribeSlotEntryUpdatesServer) error
+	Subscribe(Geyser_SubscribeServer) error
+	Ping(context.Context, *PingRequest) (*PongResponse, error)
+	GetLatestBlockhash(context.Context, *GetLatestBlockhashRequest) (*GetLatestBlockhashResponse, error)
+	GetBlockHeight(context.Context, *GetBlockHeightRequest) (*GetBlockHeightResponse, error)
+	GetSlot(context.Context, *GetSlotRequest) (*GetSlotResponse, error)
+	IsBlockhashValid(context.Context, *IsBlockhashValidRequest) (*IsBlockhashValidResponse, error)
+	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
 	mustEmbedUnimplementedGeyserServer()
 }
 
@@ -320,29 +142,26 @@ type GeyserServer interface {
 type UnimplementedGeyserServer struct {
 }
 
-func (UnimplementedGeyserServer) GetHeartbeatInterval(context.Context, *EmptyRequest) (*GetHeartbeatIntervalResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetHeartbeatInterval not implemented")
+func (UnimplementedGeyserServer) Subscribe(Geyser_SubscribeServer) error {
+	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
 }
-func (UnimplementedGeyserServer) SubscribeAccountUpdates(*SubscribeAccountUpdatesRequest, Geyser_SubscribeAccountUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeAccountUpdates not implemented")
+func (UnimplementedGeyserServer) Ping(context.Context, *PingRequest) (*PongResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
-func (UnimplementedGeyserServer) SubscribeProgramUpdates(*SubscribeProgramsUpdatesRequest, Geyser_SubscribeProgramUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeProgramUpdates not implemented")
+func (UnimplementedGeyserServer) GetLatestBlockhash(context.Context, *GetLatestBlockhashRequest) (*GetLatestBlockhashResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLatestBlockhash not implemented")
 }
-func (UnimplementedGeyserServer) SubscribePartialAccountUpdates(*SubscribePartialAccountUpdatesRequest, Geyser_SubscribePartialAccountUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribePartialAccountUpdates not implemented")
+func (UnimplementedGeyserServer) GetBlockHeight(context.Context, *GetBlockHeightRequest) (*GetBlockHeightResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockHeight not implemented")
 }
-func (UnimplementedGeyserServer) SubscribeSlotUpdates(*SubscribeSlotUpdateRequest, Geyser_SubscribeSlotUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeSlotUpdates not implemented")
+func (UnimplementedGeyserServer) GetSlot(context.Context, *GetSlotRequest) (*GetSlotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSlot not implemented")
 }
-func (UnimplementedGeyserServer) SubscribeTransactionUpdates(*SubscribeTransactionUpdatesRequest, Geyser_SubscribeTransactionUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeTransactionUpdates not implemented")
+func (UnimplementedGeyserServer) IsBlockhashValid(context.Context, *IsBlockhashValidRequest) (*IsBlockhashValidResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IsBlockhashValid not implemented")
 }
-func (UnimplementedGeyserServer) SubscribeBlockUpdates(*SubscribeBlockUpdatesRequest, Geyser_SubscribeBlockUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeBlockUpdates not implemented")
-}
-func (UnimplementedGeyserServer) SubscribeSlotEntryUpdates(*SubscribeSlotEntryUpdateRequest, Geyser_SubscribeSlotEntryUpdatesServer) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeSlotEntryUpdates not implemented")
+func (UnimplementedGeyserServer) GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetVersion not implemented")
 }
 func (UnimplementedGeyserServer) mustEmbedUnimplementedGeyserServer() {}
 
@@ -357,218 +176,178 @@ func RegisterGeyserServer(s grpc.ServiceRegistrar, srv GeyserServer) {
 	s.RegisterService(&Geyser_ServiceDesc, srv)
 }
 
-func _Geyser_GetHeartbeatInterval_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EmptyRequest)
+func _Geyser_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GeyserServer).Subscribe(&geyserSubscribeServer{stream})
+}
+
+type Geyser_SubscribeServer interface {
+	Send(*SubscribeUpdate) error
+	Recv() (*SubscribeRequest, error)
+	grpc.ServerStream
+}
+
+type geyserSubscribeServer struct {
+	grpc.ServerStream
+}
+
+func (x *geyserSubscribeServer) Send(m *SubscribeUpdate) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *geyserSubscribeServer) Recv() (*SubscribeRequest, error) {
+	m := new(SubscribeRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _Geyser_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GeyserServer).GetHeartbeatInterval(ctx, in)
+		return srv.(GeyserServer).Ping(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/solana.geyser.Geyser/GetHeartbeatInterval",
+		FullMethod: "/geyser.Geyser/Ping",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GeyserServer).GetHeartbeatInterval(ctx, req.(*EmptyRequest))
+		return srv.(GeyserServer).Ping(ctx, req.(*PingRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Geyser_SubscribeAccountUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeAccountUpdatesRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _Geyser_GetLatestBlockhash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLatestBlockhashRequest)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(GeyserServer).SubscribeAccountUpdates(m, &geyserSubscribeAccountUpdatesServer{stream})
-}
-
-type Geyser_SubscribeAccountUpdatesServer interface {
-	Send(*TimestampedAccountUpdate) error
-	grpc.ServerStream
-}
-
-type geyserSubscribeAccountUpdatesServer struct {
-	grpc.ServerStream
-}
-
-func (x *geyserSubscribeAccountUpdatesServer) Send(m *TimestampedAccountUpdate) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _Geyser_SubscribeProgramUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeProgramsUpdatesRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+	if interceptor == nil {
+		return srv.(GeyserServer).GetLatestBlockhash(ctx, in)
 	}
-	return srv.(GeyserServer).SubscribeProgramUpdates(m, &geyserSubscribeProgramUpdatesServer{stream})
-}
-
-type Geyser_SubscribeProgramUpdatesServer interface {
-	Send(*TimestampedAccountUpdate) error
-	grpc.ServerStream
-}
-
-type geyserSubscribeProgramUpdatesServer struct {
-	grpc.ServerStream
-}
-
-func (x *geyserSubscribeProgramUpdatesServer) Send(m *TimestampedAccountUpdate) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _Geyser_SubscribePartialAccountUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribePartialAccountUpdatesRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/geyser.Geyser/GetLatestBlockhash",
 	}
-	return srv.(GeyserServer).SubscribePartialAccountUpdates(m, &geyserSubscribePartialAccountUpdatesServer{stream})
-}
-
-type Geyser_SubscribePartialAccountUpdatesServer interface {
-	Send(*MaybePartialAccountUpdate) error
-	grpc.ServerStream
-}
-
-type geyserSubscribePartialAccountUpdatesServer struct {
-	grpc.ServerStream
-}
-
-func (x *geyserSubscribePartialAccountUpdatesServer) Send(m *MaybePartialAccountUpdate) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _Geyser_SubscribeSlotUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeSlotUpdateRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GeyserServer).GetLatestBlockhash(ctx, req.(*GetLatestBlockhashRequest))
 	}
-	return srv.(GeyserServer).SubscribeSlotUpdates(m, &geyserSubscribeSlotUpdatesServer{stream})
+	return interceptor(ctx, in, info, handler)
 }
 
-type Geyser_SubscribeSlotUpdatesServer interface {
-	Send(*TimestampedSlotUpdate) error
-	grpc.ServerStream
-}
-
-type geyserSubscribeSlotUpdatesServer struct {
-	grpc.ServerStream
-}
-
-func (x *geyserSubscribeSlotUpdatesServer) Send(m *TimestampedSlotUpdate) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _Geyser_SubscribeTransactionUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeTransactionUpdatesRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _Geyser_GetBlockHeight_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockHeightRequest)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(GeyserServer).SubscribeTransactionUpdates(m, &geyserSubscribeTransactionUpdatesServer{stream})
-}
-
-type Geyser_SubscribeTransactionUpdatesServer interface {
-	Send(*TimestampedTransactionUpdate) error
-	grpc.ServerStream
-}
-
-type geyserSubscribeTransactionUpdatesServer struct {
-	grpc.ServerStream
-}
-
-func (x *geyserSubscribeTransactionUpdatesServer) Send(m *TimestampedTransactionUpdate) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _Geyser_SubscribeBlockUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeBlockUpdatesRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+	if interceptor == nil {
+		return srv.(GeyserServer).GetBlockHeight(ctx, in)
 	}
-	return srv.(GeyserServer).SubscribeBlockUpdates(m, &geyserSubscribeBlockUpdatesServer{stream})
-}
-
-type Geyser_SubscribeBlockUpdatesServer interface {
-	Send(*TimestampedBlockUpdate) error
-	grpc.ServerStream
-}
-
-type geyserSubscribeBlockUpdatesServer struct {
-	grpc.ServerStream
-}
-
-func (x *geyserSubscribeBlockUpdatesServer) Send(m *TimestampedBlockUpdate) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _Geyser_SubscribeSlotEntryUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeSlotEntryUpdateRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/geyser.Geyser/GetBlockHeight",
 	}
-	return srv.(GeyserServer).SubscribeSlotEntryUpdates(m, &geyserSubscribeSlotEntryUpdatesServer{stream})
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GeyserServer).GetBlockHeight(ctx, req.(*GetBlockHeightRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-type Geyser_SubscribeSlotEntryUpdatesServer interface {
-	Send(*TimestampedSlotEntryUpdate) error
-	grpc.ServerStream
+func _Geyser_GetSlot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSlotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GeyserServer).GetSlot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/geyser.Geyser/GetSlot",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GeyserServer).GetSlot(ctx, req.(*GetSlotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-type geyserSubscribeSlotEntryUpdatesServer struct {
-	grpc.ServerStream
+func _Geyser_IsBlockhashValid_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IsBlockhashValidRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GeyserServer).IsBlockhashValid(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/geyser.Geyser/IsBlockhashValid",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GeyserServer).IsBlockhashValid(ctx, req.(*IsBlockhashValidRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func (x *geyserSubscribeSlotEntryUpdatesServer) Send(m *TimestampedSlotEntryUpdate) error {
-	return x.ServerStream.SendMsg(m)
+func _Geyser_GetVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GeyserServer).GetVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/geyser.Geyser/GetVersion",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GeyserServer).GetVersion(ctx, req.(*GetVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 // Geyser_ServiceDesc is the grpc.ServiceDesc for Geyser service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Geyser_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "solana.geyser.Geyser",
+	ServiceName: "geyser.Geyser",
 	HandlerType: (*GeyserServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetHeartbeatInterval",
-			Handler:    _Geyser_GetHeartbeatInterval_Handler,
+			MethodName: "Ping",
+			Handler:    _Geyser_Ping_Handler,
+		},
+		{
+			MethodName: "GetLatestBlockhash",
+			Handler:    _Geyser_GetLatestBlockhash_Handler,
+		},
+		{
+			MethodName: "GetBlockHeight",
+			Handler:    _Geyser_GetBlockHeight_Handler,
+		},
+		{
+			MethodName: "GetSlot",
+			Handler:    _Geyser_GetSlot_Handler,
+		},
+		{
+			MethodName: "IsBlockhashValid",
+			Handler:    _Geyser_IsBlockhashValid_Handler,
+		},
+		{
+			MethodName: "GetVersion",
+			Handler:    _Geyser_GetVersion_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "SubscribeAccountUpdates",
-			Handler:       _Geyser_SubscribeAccountUpdates_Handler,
+			StreamName:    "Subscribe",
+			Handler:       _Geyser_Subscribe_Handler,
 			ServerStreams: true,
-		},
-		{
-			StreamName:    "SubscribeProgramUpdates",
-			Handler:       _Geyser_SubscribeProgramUpdates_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "SubscribePartialAccountUpdates",
-			Handler:       _Geyser_SubscribePartialAccountUpdates_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "SubscribeSlotUpdates",
-			Handler:       _Geyser_SubscribeSlotUpdates_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "SubscribeTransactionUpdates",
-			Handler:       _Geyser_SubscribeTransactionUpdates_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "SubscribeBlockUpdates",
-			Handler:       _Geyser_SubscribeBlockUpdates_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "SubscribeSlotEntryUpdates",
-			Handler:       _Geyser_SubscribeSlotEntryUpdates_Handler,
-			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "geyser.proto",

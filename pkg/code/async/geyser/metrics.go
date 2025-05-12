@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -20,9 +19,6 @@ const (
 	slotUpdateWorkerName      = "SlotUpdate"
 	externalDepositWorkerName = "ExternalDeposit"
 	timelockStateWorkerName   = "TimelockState"
-	messagingWorkerName       = "Messaging"
-
-	buyModulePurchaseCompletedEventName = "BuyModulePurchaseCompleted"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
@@ -35,9 +31,9 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 		case <-time.After(delay):
 			start := time.Now()
 
-			//p.recordSubscriptionStatusPollingEvent(ctx)
-			//p.recordEventWorkerStatusPollingEvent(ctx)
-			//p.recordEventQueueStatusPollingEvent(ctx)
+			p.recordSubscriptionStatusPollingEvent(ctx)
+			p.recordEventWorkerStatusPollingEvent(ctx)
+			p.recordEventQueueStatusPollingEvent(ctx)
 			p.recordBackupWorkerStatusPollingEvent(ctx)
 			p.recordBackupQueueStatusPollingEvent(ctx)
 
@@ -58,16 +54,16 @@ func (p *service) recordSubscriptionStatusPollingEvent(ctx context.Context) {
 	})
 
 	var slotsBehind uint64
-	if currentFinalizedSlot > p.highestObservedRootedSlot {
-		slotsBehind = currentFinalizedSlot - p.highestObservedRootedSlot
+	if currentFinalizedSlot > p.highestObservedFinalizedSlot {
+		slotsBehind = currentFinalizedSlot - p.highestObservedFinalizedSlot
 	}
 
 	kvPairs := map[string]interface{}{
 		"event_type": slotUpdateWorkerName,
 		"is_active":  p.slotUpdateSubscriptionStatus,
 	}
-	if p.highestObservedRootedSlot > 0 {
-		kvPairs["highest_observed_slot"] = p.highestObservedRootedSlot
+	if p.highestObservedFinalizedSlot > 0 {
+		kvPairs["highest_observed_slot"] = p.highestObservedFinalizedSlot
 		if currentFinalizedSlot > 0 {
 			kvPairs["slots_behind"] = slotsBehind
 		}
@@ -136,17 +132,4 @@ func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {
 		"worker_type":  externalDepositWorkerName,
 		"current_size": count,
 	})
-}
-
-func recordBuyModulePurchaseCompletedEvent(ctx context.Context, deviceType client.DeviceType, purchaseInitiationTime *time.Time, usdcDepositTime *time.Time) {
-	kvs := map[string]interface{}{
-		"platform": deviceType.String(),
-	}
-	if purchaseInitiationTime != nil {
-		kvs["total_latency"] = int(time.Since(*purchaseInitiationTime) / time.Millisecond)
-	}
-	if usdcDepositTime != nil {
-		kvs["swap_latency"] = int(time.Since(*usdcDepositTime) / time.Millisecond)
-	}
-	metrics.RecordEvent(ctx, buyModulePurchaseCompletedEventName, kvs)
 }
