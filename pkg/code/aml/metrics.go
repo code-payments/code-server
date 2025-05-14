@@ -1,4 +1,4 @@
-package lawenforcement
+package aml
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	metricsStructName = "lawenforcement.anti_money_laundering_guard"
+	metricsStructName = "aml.guard"
 
 	eventName = "AntiMoneyLaunderingGuardDenial"
 )

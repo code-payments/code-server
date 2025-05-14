@@ -38,8 +38,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	log = log.WithContext(ctx)
 	log = client.InjectLoggingMetadata(ctx, log)
 
-	if s.swapSubsidizer == nil {
-		log.Warn("swap subsidizer is not configured")
+	// Disable swaps until implemented fully with the VM
+	if true {
 		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
 	}
 
@@ -48,8 +48,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
 	}
 
-	// Disable swaps until implemented fully with the VM
-	if true {
+	if s.swapSubsidizer == nil {
+		log.Warn("swap subsidizer is not configured")
 		return handleSwapError(streamer, status.Error(codes.Unavailable, ""))
 	}
 
@@ -131,8 +131,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	switch err {
 	case nil:
 		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-			// Should never happen if we're doing phone number validation against
-			// the owner account.
 			return handleSwapError(streamer, newSwapValidationError("owner must be authority to primary account"))
 		}
 	case account.ErrAccountInfoNotFound:

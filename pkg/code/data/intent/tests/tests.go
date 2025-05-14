@@ -22,6 +22,7 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testGetLatestByInitiatorAndType,
 		testGetOriginalGiftCardIssuedIntent,
 		testGetGiftCardClaimedIntent,
+		testGetTransactedAmountForAntiMoneyLaundering,
 	} {
 		tf(t, s)
 		teardown()
@@ -348,5 +349,49 @@ func testGetGiftCardClaimedIntent(t *testing.T, s intent.Store) {
 		actual, err = s.GetGiftCardClaimedIntent(ctx, "a4")
 		require.NoError(t, err)
 		assert.Equal(t, "i7", actual.IntentId)
+	})
+}
+
+func testGetTransactedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store) {
+	t.Run("testGetTransactedAmountForAntiMoneyLaundering", func(t *testing.T) {
+		ctx := context.Background()
+
+		// No intents results in zero transacted values
+		quarks, usdMarketValue, err := s.GetTransactedAmountForAntiMoneyLaundering(ctx, "o1", time.Now().Add(-24*time.Hour))
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, quarks)
+		assert.EqualValues(t, 0, usdMarketValue)
+
+		records := []intent.Record{
+			{IntentId: "t1", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2, UsdMarketValue: 2}, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
+			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20, UsdMarketValue: 20}, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
+			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o3", DestinationTokenAccount: "a3", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 200, UsdMarketValue: 200}, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
+			{IntentId: "t4", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o4", DestinationTokenAccount: "a4", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000, UsdMarketValue: 2000}, State: intent.StateFailed, CreatedAt: time.Now().Add(-4 * time.Minute)},
+			{IntentId: "t5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o5", DestinationTokenAccount: "a5", Quantity: 10000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20000, UsdMarketValue: 20000}, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
+			{IntentId: "t6", IntentType: intent.ReceivePaymentsPublicly, InitiatorOwnerAccount: "o1", ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{Source: "a6", Quantity: 100000, UsdMarketValue: 200000, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 2, OriginalNativeAmount: 200000}, State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t7", IntentType: intent.ExternalDeposit, InitiatorOwnerAccount: "o1", ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a7", Quantity: 1000000, UsdMarketValue: 20000}, State: intent.StateConfirmed, CreatedAt: time.Now()},
+		}
+
+		for _, record := range records {
+			require.NoError(t, s.Save(ctx, &record))
+		}
+
+		// Capture all intents for the owner
+		quarks, usdMarketValue, err = s.GetTransactedAmountForAntiMoneyLaundering(ctx, "o1", time.Now().Add(-24*time.Hour))
+		require.NoError(t, err)
+		assert.EqualValues(t, 1111, quarks)
+		assert.EqualValues(t, 2222, usdMarketValue)
+
+		// Capture a subset of intents based on time
+		quarks, usdMarketValue, err = s.GetTransactedAmountForAntiMoneyLaundering(ctx, "o1", time.Now().Add(-150*time.Second))
+		require.NoError(t, err)
+		assert.EqualValues(t, 11, quarks)
+		assert.EqualValues(t, 22, usdMarketValue)
+
+		// Capture no intents because the owner mismatches
+		quarks, usdMarketValue, err = s.GetTransactedAmountForAntiMoneyLaundering(ctx, "o2", time.Now().Add(-24*time.Hour))
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, quarks)
+		assert.EqualValues(t, 0, usdMarketValue)
 	})
 }

@@ -98,10 +98,10 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		intentHandler = NewOpenAccountsIntentHandler(s.conf, s.data, s.antispamGuard)
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
-		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.antispamGuard)
+		intentHandler = NewSendPublicPaymentIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 	case *transactionpb.Metadata_ReceivePaymentsPublicly:
 		log = log.WithField("intent_type", "receive_payments_publicly")
-		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard)
+		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}

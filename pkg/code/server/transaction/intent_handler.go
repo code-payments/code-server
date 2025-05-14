@@ -13,6 +13,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/aml"
 	"github.com/code-payments/code-server/pkg/code/antispam"
 	async_account "github.com/code-payments/code-server/pkg/code/async/account"
 	"github.com/code-payments/code-server/pkg/code/balance"
@@ -142,7 +143,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	}
 
 	//
-	// Part 2: Antispam checks against the phone number
+	// Part 2: Antispam checks against the owner
 	//
 
 	if !h.conf.disableAntispamChecks.Get(ctx) {
@@ -255,17 +256,20 @@ type SendPublicPaymentIntentHandler struct {
 	conf          *conf
 	data          code_data.Provider
 	antispamGuard *antispam.Guard
+	amlGuard      *aml.Guard
 }
 
 func NewSendPublicPaymentIntentHandler(
 	conf *conf,
 	data code_data.Provider,
 	antispamGuard *antispam.Guard,
+	amlGuard *aml.Guard,
 ) CreateIntentHandler {
 	return &SendPublicPaymentIntentHandler{
 		conf:          conf,
 		data:          data,
 		antispamGuard: antispamGuard,
+		amlGuard:      amlGuard,
 	}
 }
 
@@ -371,7 +375,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 2: Antispam guard checks against the phone number
+	// Part 2: Antispam guard checks against the owner
 	//
 
 	if !h.conf.disableAntispamChecks.Get(ctx) {
@@ -389,7 +393,20 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 3: Account validation to determine if it's managed by Code
+	// Part 3: AML checks against the owner
+	//
+
+	if !h.conf.disableAmlChecks.Get(ctx) {
+		allow, err := h.amlGuard.AllowMoneyMovement(ctx, intentRecord)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTransactionLimitExceeded
+		}
+	}
+
+	//
+	// Part 4: Account validation to determine if it's managed by Code
 	//
 
 	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
@@ -398,7 +415,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 4: Exchange data validation
+	// Part 5: Exchange data validation
 	//
 
 	if err := validateExchangeDataWithinIntent(ctx, h.data, intentRecord.IntentId, typedMetadata.ExchangeData); err != nil {
@@ -406,7 +423,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 5: Local simulation
+	// Part 6: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
@@ -415,7 +432,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 6: Validate fee payments
+	// Part 7: Validate fee payments
 	//
 
 	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
@@ -424,7 +441,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 7: Validate the individual actions
+	// Part 8: Validate the individual actions
 	//
 
 	return h.validateActions(
@@ -615,15 +632,22 @@ type ReceivePaymentsPubliclyIntentHandler struct {
 	conf          *conf
 	data          code_data.Provider
 	antispamGuard *antispam.Guard
+	amlGuard      *aml.Guard
 
 	cachedGiftCardIssuedIntentRecord *intent.Record
 }
 
-func NewReceivePaymentsPubliclyIntentHandler(conf *conf, data code_data.Provider, antispamGuard *antispam.Guard) CreateIntentHandler {
+func NewReceivePaymentsPubliclyIntentHandler(
+	conf *conf,
+	data code_data.Provider,
+	antispamGuard *antispam.Guard,
+	amlGuard *aml.Guard,
+) CreateIntentHandler {
 	return &ReceivePaymentsPubliclyIntentHandler{
 		conf:          conf,
 		data:          data,
 		antispamGuard: antispamGuard,
+		amlGuard:      amlGuard,
 	}
 }
 
@@ -740,7 +764,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 2: Antispam guard checks against the phone number
+	// Part 2: Antispam guard checks against the owner
 	//
 	if !h.conf.disableAntispamChecks.Get(ctx) {
 		allow, err := h.antispamGuard.AllowReceivePayments(ctx, initiatiorOwnerAccount, true)
@@ -752,7 +776,20 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 3: User account validation to determine if it's managed by Code
+	// Part 3: AML checks against the owner
+	//
+
+	if !h.conf.disableAmlChecks.Get(ctx) {
+		allow, err := h.amlGuard.AllowMoneyMovement(ctx, intentRecord)
+		if err != nil {
+			return err
+		} else if !allow {
+			return ErrTransactionLimitExceeded
+		}
+	}
+
+	//
+	// Part 4: User account validation to determine if it's managed by Code
 	//
 
 	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
@@ -761,7 +798,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 4: Gift card account validation
+	// Part 5: Gift card account validation
 	//
 
 	err = validateClaimedGiftCard(ctx, h.data, giftCardVaultAccount, typedMetadata.Quarks)
@@ -770,7 +807,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 5: Local simulation
+	// Part 6: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
@@ -779,7 +816,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 6: Validate fee payments
+	// Part 7: Validate fee payments
 	//
 
 	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
@@ -788,7 +825,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 7: Validate the individual actions
+	// Part 8: Validate the individual actions
 	//
 
 	return h.validateActions(
