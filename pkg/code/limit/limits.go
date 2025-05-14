@@ -14,17 +14,6 @@ type MicroPaymentLimit struct {
 	Max float64
 }
 
-func init() {
-	newMicroPaymentLimits := make(map[currency_lib.Code]MicroPaymentLimit)
-	for currency, limit := range MicroPaymentLimits {
-		newMicroPaymentLimits[currency] = MicroPaymentLimit{
-			Min: limit.Min,
-			Max: 5.0 * limit.Max,
-		}
-	}
-	MicroPaymentLimits = newMicroPaymentLimits
-}
-
 // todo: Better way of managing all of this
 var (
 	SendLimits = map[currency_lib.Code]SendLimit{
@@ -177,6 +166,8 @@ var (
 		"ugx":  {PerTransaction: 1_000_000.00, Daily: 3_500_000.00},
 		"usd":  {PerTransaction: 250.00, Daily: 1000.00},
 		"usdc": {PerTransaction: 250.00, Daily: 1000.00},
+		"usdg": {PerTransaction: 250.00, Daily: 1000.00},
+		"usdt": {PerTransaction: 250.00, Daily: 1000.00},
 		"uyu":  {PerTransaction: 10_000.00, Daily: 40_000.00},
 		"uzs":  {PerTransaction: 2_500_000.00, Daily: 10_000_000.00},
 		"vnd":  {PerTransaction: 5_000_000.00, Daily: 22_500_000.00},
@@ -344,6 +335,8 @@ var (
 		"ugx":  {Min: 200.00, Max: 4000.00},
 		"usd":  {Min: 0.05, Max: 1.00},
 		"usdc": {Min: 0.05, Max: 1.00},
+		"usdg": {Min: 0.05, Max: 1.00},
+		"usdt": {Min: 0.05, Max: 1.00},
 		"uyu":  {Min: 2.00, Max: 40.00},
 		"uzs":  {Min: 500.00, Max: 10000.00},
 		"vnd":  {Min: 1000.00, Max: 20000.00},

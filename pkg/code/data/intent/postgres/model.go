@@ -316,3 +316,31 @@ func dbGetGiftCardClaimedIntent(ctx context.Context, db *sqlx.DB, giftCardVault 
 
 	return res[0], nil
 }
+
+func dbGetTransactedAmountForAntiMoneyLaundering(ctx context.Context, db *sqlx.DB, owner string, since time.Time) (uint64, float64, error) {
+	res := struct {
+		TotalQuarkValue     sql.NullInt64   `db:"total_quark_value"`
+		TotalUsdMarketValue sql.NullFloat64 `db:"total_usd_value"`
+	}{}
+
+	query := `SELECT SUM(quantity) AS total_quark_value, SUM(usd_market_value) AS total_usd_value FROM ` + intentTableName + `
+		WHERE owner = $1 AND created_at >= $2 AND intent_type = $3 AND state != $4
+	`
+	err := db.GetContext(
+		ctx,
+		&res,
+		query,
+		owner,
+		since,
+		intent.SendPublicPayment,
+		intent.StateRevoked,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if !res.TotalQuarkValue.Valid || !res.TotalUsdMarketValue.Valid {
+		return 0, 0, nil
+	}
+	return uint64(res.TotalQuarkValue.Int64), res.TotalUsdMarketValue.Float64, nil
+}

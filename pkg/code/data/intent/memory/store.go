@@ -126,6 +126,20 @@ func (s *store) findByInitiatorAndType(intentType intent.Type, owner string) []*
 	return res
 }
 
+func (s *store) findByOwnerSinceTimestamp(owner string, since time.Time) []*intent.Record {
+	res := make([]*intent.Record, 0)
+	for _, item := range s.records {
+		if item.CreatedAt.Before(since) {
+			continue
+		}
+
+		if item.InitiatorOwnerAccount == owner {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
 func (s *store) filter(items []*intent.Record, cursor query.Cursor, limit uint64, direction query.Ordering) []*intent.Record {
 	var start uint64
 
@@ -201,6 +215,32 @@ func (s *store) filterByRemoteSendFlag(items []*intent.Record, want bool) []*int
 		}
 	}
 	return res
+}
+
+func sumQuarkAmount(items []*intent.Record) uint64 {
+	var value uint64
+	for _, item := range items {
+		if item.SendPublicPaymentMetadata != nil {
+			value += item.SendPublicPaymentMetadata.Quantity
+		}
+		if item.ReceivePaymentsPubliclyMetadata != nil {
+			value += item.ReceivePaymentsPubliclyMetadata.Quantity
+		}
+	}
+	return value
+}
+
+func sumUsdMarketValue(items []*intent.Record) float64 {
+	var value float64
+	for _, item := range items {
+		if item.SendPublicPaymentMetadata != nil {
+			value += item.SendPublicPaymentMetadata.UsdMarketValue
+		}
+		if item.ReceivePaymentsPubliclyMetadata != nil {
+			value += item.ReceivePaymentsPubliclyMetadata.UsdMarketValue
+		}
+	}
+	return value
 }
 
 func (s *store) Save(ctx context.Context, data *intent.Record) error {
@@ -316,4 +356,14 @@ func (s *store) GetGiftCardClaimedIntent(ctx context.Context, giftCardVault stri
 
 	cloned := items[0].Clone()
 	return &cloned, nil
+}
+
+func (s *store) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findByOwnerSinceTimestamp(owner, since)
+	items = s.filterByState(items, false, intent.StateRevoked)
+	items = s.filterByType(items, intent.SendPublicPayment)
+	return sumQuarkAmount(items), sumUsdMarketValue(items), nil
 }

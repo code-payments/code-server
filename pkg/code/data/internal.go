@@ -175,6 +175,7 @@ type DatabaseData interface {
 	GetLatestIntentByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error)
 	GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
 	GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
+	GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
 
 	// Action
 	// --------------------------------------------------------------------------------
@@ -656,6 +657,9 @@ func (dp *DatabaseProvider) GetGiftCardClaimedIntent(ctx context.Context, giftCa
 }
 func (dp *DatabaseProvider) SaveIntent(ctx context.Context, record *intent.Record) error {
 	return dp.intents.Save(ctx, record)
+}
+func (dp *DatabaseProvider) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error) {
+	return dp.intents.GetTransactedAmountForAntiMoneyLaundering(ctx, owner, since)
 }
 
 // Action

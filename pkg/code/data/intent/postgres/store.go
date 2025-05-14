@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/database/query"
@@ -98,4 +99,10 @@ func (s *store) GetGiftCardClaimedIntent(ctx context.Context, giftCardVault stri
 	}
 
 	return fromIntentModel(model), nil
+}
+
+// GetTransactedAmountForAntiMoneyLaundering gets the total transacted core mint quarks and the
+// corresponding USD market value for an owner since a timestamp.
+func (s *store) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error) {
+	return dbGetTransactedAmountForAntiMoneyLaundering(ctx, s.db, owner, since)
 }

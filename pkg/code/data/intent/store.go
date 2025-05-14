@@ -2,6 +2,7 @@ package intent
 
 import (
 	"context"
+	"time"
 
 	"github.com/code-payments/code-server/pkg/database/query"
 )
@@ -32,4 +33,8 @@ type Store interface {
 	// GetGiftCardClaimedIntent gets the intent where a gift card was claimed by its
 	// vault address.
 	GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*Record, error)
+
+	// GetTransactedAmountForAntiMoneyLaundering gets the total transacted core mint quarks and the
+	// corresponding USD market value for an owner since a timestamp.
+	GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
 }
