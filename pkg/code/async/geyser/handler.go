@@ -31,13 +31,15 @@ type TokenProgramAccountHandler struct {
 	conf            *conf
 	data            code_data.Provider
 	vmIndexerClient indexerpb.IndexerClient
+	integration     Integration
 }
 
-func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) ProgramAccountUpdateHandler {
+func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration) ProgramAccountUpdateHandler {
 	return &TokenProgramAccountHandler{
 		conf:            conf,
 		data:            data,
 		vmIndexerClient: vmIndexerClient,
+		integration:     integration,
 	}
 }
 
@@ -97,7 +99,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 			return nil
 		}
 
-		err = processPotentialExternalDepositIntoVm(ctx, h.data, signature, userAuthorityAccount)
+		err = processPotentialExternalDepositIntoVm(ctx, h.data, h.integration, signature, userAuthorityAccount)
 		if err != nil {
 			return errors.Wrap(err, "error processing signature for external deposit into vm")
 		}
@@ -116,8 +118,8 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 	}
 }
 
-func initializeProgramAccountUpdateHandlers(conf *conf, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) map[string]ProgramAccountUpdateHandler {
+func initializeProgramAccountUpdateHandlers(conf *conf, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration) map[string]ProgramAccountUpdateHandler {
 	return map[string]ProgramAccountUpdateHandler{
-		base58.Encode(token.ProgramKey): NewTokenProgramAccountHandler(conf, data, vmIndexerClient),
+		base58.Encode(token.ProgramKey): NewTokenProgramAccountHandler(conf, data, vmIndexerClient, integration),
 	}
 }

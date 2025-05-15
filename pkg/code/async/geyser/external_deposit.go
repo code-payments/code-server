@@ -38,7 +38,7 @@ var (
 	syncedDepositCache = cache.NewCache(1_000_000)
 )
 
-func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority *common.Account) error {
+func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration, userAuthority *common.Account) error {
 	err := maybeInitiateExternalDepositIntoVm(ctx, data, vmIndexerClient, userAuthority)
 	if err != nil {
 		return errors.Wrap(err, "error depositing into the vm")
@@ -51,7 +51,7 @@ func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vm
 
 	var anyError error
 	for _, signature := range signatures {
-		err := processPotentialExternalDepositIntoVm(ctx, data, signature, userAuthority)
+		err := processPotentialExternalDepositIntoVm(ctx, data, integration, signature, userAuthority)
 		if err != nil {
 			anyError = errors.Wrap(err, "error processing signature for external deposit into vm")
 		}
@@ -202,7 +202,7 @@ func findPotentialExternalDepositsIntoVm(ctx context.Context, data code_data.Pro
 	}
 }
 
-func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.Provider, signature string, userAuthority *common.Account) error {
+func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.Provider, integration Integration, signature string, userAuthority *common.Account) error {
 	vmDepositAta, err := userAuthority.ToVmDepositAssociatedTokenAccount(common.CodeVmAccount, common.CoreMintAccount)
 	if err != nil {
 		return errors.Wrap(err, "error getting vm deposit ata")
@@ -276,6 +276,11 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 			return nil
 		}
 
+		ownerAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+		if err != nil {
+			return errors.Wrap(err, "invalid owner account")
+		}
+
 		usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
 		if err != nil {
 			return errors.Wrap(err, "error getting usd rate")
@@ -287,7 +292,7 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 			IntentId:   getExternalDepositIntentID(signature, userVirtualTimelockVaultAccount),
 			IntentType: intent.ExternalDeposit,
 
-			InitiatorOwnerAccount: accountInfoRecord.OwnerAccount,
+			InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
 
 			ExternalDepositMetadata: &intent.ExternalDepositMetadata{
 				DestinationTokenAccount: userVirtualTimelockVaultAccount.PublicKey().ToBase58(),
@@ -321,6 +326,9 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		}
 
 		syncedDepositCache.Insert(cacheKey, true, 1)
+
+		// Best-effort processing for notification back to the user
+		integration.OnDepositReceived(ctx, ownerAccount, uint64(deltaQuarksIntoOmnibus))
 
 		return nil
 	default:

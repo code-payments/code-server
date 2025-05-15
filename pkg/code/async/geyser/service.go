@@ -27,6 +27,8 @@ type service struct {
 	vmIndexerClient indexerpb.IndexerClient
 	conf            *conf
 
+	integration Integration
+
 	programUpdatesChan    chan *geyserpb.SubscribeUpdateAccount
 	programUpdateHandlers map[string]ProgramAccountUpdateHandler
 
@@ -44,15 +46,16 @@ type service struct {
 	backupExternalDepositWorkerStatus bool
 }
 
-func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration, configProvider ConfigProvider) async.Service {
 	conf := configProvider()
 	return &service{
 		log:                        logrus.StandardLogger().WithField("service", "geyser_consumer"),
 		data:                       data,
 		vmIndexerClient:            vmIndexerClient,
 		conf:                       configProvider(),
+		integration:                integration,
 		programUpdatesChan:         make(chan *geyserpb.SubscribeUpdateAccount, conf.programUpdateQueueSize.Get(context.Background())),
-		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data, vmIndexerClient),
+		programUpdateHandlers:      initializeProgramAccountUpdateHandlers(conf, data, vmIndexerClient, integration),
 		programUpdateWorkerMetrics: make(map[int]*eventWorkerMetrics),
 	}
 }
