@@ -101,7 +101,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 	}
 
 	switch nextScheduledFulfillment.FulfillmentType {
-	case fulfillment.NoPrivacyTransferWithAuthority, fulfillment.NoPrivacyWithdraw, fulfillment.TransferWithCommitment:
+	case fulfillment.NoPrivacyTransferWithAuthority, fulfillment.NoPrivacyWithdraw:
 		// The account must be the receiver of funds. Obviously it cannot be
 		// sending funds if it hasn't been opened yet.
 		if nextScheduledFulfillment.Source == fulfillmentRecord.Source || *nextScheduledFulfillment.Destination != fulfillmentRecord.Source {
@@ -713,12 +713,6 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) IsRevoked(ctx context.Cont
 }
 
 func isTokenAccountOnBlockchain(ctx context.Context, data code_data.Provider, address string) (bool, error) {
-	// Optimization for external accounts managed by Code
-	switch address {
-	case "Ad4gWGCB94PsA4cP2jqSjfg7eTi4aVkrEdXXhNivT8nW": // Fee collector
-		return true, nil
-	}
-
 	// Try our cache of Code timelock accounts
 	timelockRecord, err := data.GetTimelockByVault(ctx, address)
 	if err == timelock.ErrTimelockNotFound {

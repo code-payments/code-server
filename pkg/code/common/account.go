@@ -447,7 +447,7 @@ func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, 
 	case solana.ErrNoAccountInfo, token.ErrAccountNotFound:
 		return false, fmt.Sprintf("%s doesn't exist on the blockchain", tokenAccount.publicKey.ToBase58()), nil
 	case token.ErrInvalidTokenAccount:
-		return false, fmt.Sprintf("%s is not a kin token account", tokenAccount.publicKey.ToBase58()), nil
+		return false, fmt.Sprintf("%s is not a core mint account", tokenAccount.publicKey.ToBase58()), nil
 	default:
 		// Unfortunate if Solana is down, but this only impacts withdraw flows,
 		// and we need to guarantee this isn't going to something that's not
