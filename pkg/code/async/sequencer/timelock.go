@@ -19,6 +19,10 @@ func markTimelockLocked(ctx context.Context, data code_data.Provider, vault stri
 		return err
 	}
 
+	if record.VaultState == timelock_token_v1.StateLocked {
+		return nil
+	}
+
 	record.VaultState = timelock_token_v1.StateLocked
 	record.Block = slot
 
@@ -33,6 +37,10 @@ func markTimelockClosed(ctx context.Context, data code_data.Provider, vault stri
 	record, err := data.GetTimelockByVault(ctx, vault)
 	if err != nil {
 		return err
+	}
+
+	if record.VaultState == timelock_token_v1.StateClosed {
+		return nil
 	}
 
 	record.VaultState = timelock_token_v1.StateClosed

@@ -999,6 +999,10 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 		return nil, status.Error(codes.Internal, "")
 	}
 
+	// It's ok if this fails, the auto-return worker will just process this account
+	// idempotently at a later time
+	async_account.MarkAutoReturnCheckComplete(ctx, s.data, accountInfoRecord)
+
 	return &transactionpb.VoidGiftCardResponse{
 		Result: transactionpb.VoidGiftCardResponse_OK,
 	}, nil

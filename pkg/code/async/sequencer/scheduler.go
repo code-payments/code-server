@@ -55,7 +55,7 @@ func NewContextualScheduler(data code_data.Provider, indexerClient indexerpb.Ind
 		log:                     logrus.StandardLogger().WithField("type", "sequencer/scheduler/contextual"),
 		data:                    data,
 		conf:                    configProvider(),
-		handlersByType:          getFulfillmentHandlers(data, indexerClient, configProvider),
+		handlersByType:          getFulfillmentHandlers(data, indexerClient),
 		includeSubsidizerChecks: true,
 	}
 }

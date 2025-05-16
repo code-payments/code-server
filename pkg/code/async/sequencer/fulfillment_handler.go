@@ -556,7 +556,12 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) OnSuccess(ctx context.Context, ful
 		return err
 	}
 
-	return markTimelockClosed(ctx, h.data, fulfillmentRecord.Source, txnRecord.Slot)
+	err = markTimelockClosed(ctx, h.data, fulfillmentRecord.Source, txnRecord.Slot)
+	if err != nil {
+		return err
+	}
+
+	return maybeCleanupAutoReturnAction(ctx, h.data, fulfillmentRecord.Source)
 }
 
 func (h *NoPrivacyWithdrawFulfillmentHandler) OnFailure(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) (recovered bool, err error) {
@@ -752,7 +757,7 @@ func isTokenAccountOnBlockchain(ctx context.Context, data code_data.Provider, ad
 }
 
 // todo: simplify initialization of fulfillment handlers across service and contextual scheduler
-func getFulfillmentHandlers(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) map[fulfillment.Type]FulfillmentHandler {
+func getFulfillmentHandlers(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient) map[fulfillment.Type]FulfillmentHandler {
 	handlersByType := make(map[fulfillment.Type]FulfillmentHandler)
 	handlersByType[fulfillment.InitializeLockedTimelockAccount] = NewInitializeLockedTimelockAccountFulfillmentHandler(data)
 	handlersByType[fulfillment.NoPrivacyTransferWithAuthority] = NewNoPrivacyTransferWithAuthorityFulfillmentHandler(data, vmIndexerClient)
