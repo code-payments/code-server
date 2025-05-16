@@ -101,7 +101,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 	}
 
 	switch nextScheduledFulfillment.FulfillmentType {
-	case fulfillment.NoPrivacyTransferWithAuthority, fulfillment.NoPrivacyWithdraw, fulfillment.TransferWithCommitment:
+	case fulfillment.NoPrivacyTransferWithAuthority, fulfillment.NoPrivacyWithdraw:
 		// The account must be the receiver of funds. Obviously it cannot be
 		// sending funds if it hasn't been opened yet.
 		if nextScheduledFulfillment.Source == fulfillmentRecord.Source || *nextScheduledFulfillment.Destination != fulfillmentRecord.Source {
