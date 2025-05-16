@@ -98,14 +98,14 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 		log.Trace("gift card is claimed and will be removed from worker queue")
 
 		// Cleanup anything related to gift card auto-return, since it cannot be scheduled
-		err = initiateProcessToCleanupGiftCardAutoReturn(ctx, p.data, giftCardVaultAccount)
+		err = InitiateProcessToCleanupGiftCardAutoReturn(ctx, p.data, giftCardVaultAccount)
 		if err != nil {
 			log.WithError(err).Warn("failure cleaning up auto-return action")
 			return err
 		}
 
 		// Gift card is claimed, so take it out of the worker queue.
-		return markAutoReturnCheckComplete(ctx, p.data, accountInfoRecord)
+		return MarkAutoReturnCheckComplete(ctx, p.data, accountInfoRecord)
 	} else if err != action.ErrActionNotFound {
 		return err
 	}
@@ -129,7 +129,9 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 		log.WithError(err).Warn("failure initiating process to return gift card balance to issuer")
 		return err
 	}
-	return markAutoReturnCheckComplete(ctx, p.data, accountInfoRecord)
+
+	// Gift card is auto-returned, so take it out of the worker queue
+	return MarkAutoReturnCheckComplete(ctx, p.data, accountInfoRecord)
 }
 
 // Note: This is the first instance of handling a conditional action, and could be
@@ -201,27 +203,30 @@ func InitiateProcessToAutoReturnGiftCard(ctx context.Context, data code_data.Pro
 	})
 }
 
-func initiateProcessToCleanupGiftCardAutoReturn(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account) error {
-	autoReturnAction, err := data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
+// todo: This probably belongs somewhere more common
+func InitiateProcessToCleanupGiftCardAutoReturn(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account) error {
+	return data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+		autoReturnAction, err := data.GetGiftCardAutoReturnAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+		if err != nil {
+			return err
+		}
 
-	autoReturnFulfillment, err := data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
-	if err != nil {
-		return err
-	}
+		autoReturnFulfillment, err := data.GetAllFulfillmentsByAction(ctx, autoReturnAction.Intent, autoReturnAction.ActionId)
+		if err != nil {
+			return err
+		}
 
-	err = markActionAsRevoked(ctx, data, autoReturnAction)
-	if err != nil {
-		return err
-	}
+		err = markActionAsRevoked(ctx, data, autoReturnAction)
+		if err != nil {
+			return err
+		}
 
-	// The sequencer will handle state transition and any cleanup
-	return markFulfillmentAsActivelyScheduled(ctx, data, autoReturnFulfillment[0])
+		// The sequencer will handle state transition and any cleanup
+		return markFulfillmentAsActivelyScheduled(ctx, data, autoReturnFulfillment[0])
+	})
 }
 
-func markAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, record *account.Record) error {
+func MarkAutoReturnCheckComplete(ctx context.Context, data code_data.Provider, record *account.Record) error {
 	if !record.RequiresAutoReturnCheck {
 		return nil
 	}

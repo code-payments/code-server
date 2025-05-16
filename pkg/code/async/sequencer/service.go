@@ -40,7 +40,7 @@ func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb
 		data:                      data,
 		scheduler:                 scheduler,
 		vmIndexerClient:           vmIndexerClient,
-		fulfillmentHandlersByType: getFulfillmentHandlers(data, vmIndexerClient, configProvider),
+		fulfillmentHandlersByType: getFulfillmentHandlers(data, vmIndexerClient),
 		actionHandlersByType:      getActionHandlers(data),
 		intentHandlersByType:      getIntentHandlers(data),
 	}

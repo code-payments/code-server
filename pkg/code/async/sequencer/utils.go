@@ -5,7 +5,12 @@ import (
 
 	"github.com/pkg/errors"
 
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+
+	async_account "github.com/code-payments/code-server/pkg/code/async/account"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
@@ -290,4 +295,39 @@ func (p *service) markVirtualNonceReleasedDueToSubmittedTransaction(ctx context.
 
 	nonceRecord.State = nonce.StateReleased
 	return p.data.SaveNonce(ctx, nonceRecord)
+}
+
+func maybeCleanupAutoReturnAction(ctx context.Context, data code_data.Provider, vaultAddress string) error {
+	vaultAccount, err := common.NewAccountFromPublicKeyString(vaultAddress)
+	if err != nil {
+		return err
+	}
+
+	accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, vaultAccount.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
+
+	if accountInfoRecord.AccountType != commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+		return nil
+	}
+
+	_, err = data.GetGiftCardClaimedAction(ctx, vaultAccount.PublicKey().ToBase58())
+	if err == action.ErrActionNotFound {
+		// Gift card isn't claimed, so it must've been auto-returned if it was closed
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	err = async_account.InitiateProcessToCleanupGiftCardAutoReturn(ctx, data, vaultAccount)
+	if err != nil {
+		return err
+	}
+
+	// It's ok if this fails, the auto-return worker will just process this account
+	// idempotently at a later time
+	async_account.MarkAutoReturnCheckComplete(ctx, data, accountInfoRecord)
+
+	return nil
 }
