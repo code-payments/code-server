@@ -151,6 +151,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						return newActionValidationError(submitActionsReq.Actions[0], "expected a no privacy withdraw action")
 					}
 				}
+			default:
+				return newIntentValidationError("expected a receive payments publicly intent")
 			}
 		default:
 			log.Warnf("unhandled owner account type %s", submitActionsOwnerMetadata.Type)
