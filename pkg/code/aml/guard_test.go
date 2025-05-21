@@ -12,20 +12,21 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/limit"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
-func TestGuard_SendPublicPayment_TransactionValue(t *testing.T) {
+func TestGuard_SendPublicPayment_PerTransactionValue(t *testing.T) {
 	env := setupAmlTest(t)
 
 	owner := testutil.NewRandomAccount(t)
 
 	for _, acceptableValue := range []float64{
 		1,
-		maxUsdTransactionValue / 10,
-		maxUsdTransactionValue - 1,
-		maxUsdTransactionValue,
+		limit.SendLimits[currency_lib.USD].PerTransaction / 10,
+		limit.SendLimits[currency_lib.USD].PerTransaction - 1,
+		limit.SendLimits[currency_lib.USD].PerTransaction,
 	} {
 		intentRecord := makeSendPublicPaymentIntent(t, owner, acceptableValue, time.Now())
 
@@ -35,8 +36,8 @@ func TestGuard_SendPublicPayment_TransactionValue(t *testing.T) {
 	}
 
 	for _, unacceptableValue := range []float64{
-		maxUsdTransactionValue + 1,
-		maxUsdTransactionValue * 10,
+		limit.SendLimits[currency_lib.USD].PerTransaction + 1,
+		limit.SendLimits[currency_lib.USD].PerTransaction * 10,
 	} {
 		intentRecord := makeSendPublicPaymentIntent(t, owner, unacceptableValue, time.Now())
 
