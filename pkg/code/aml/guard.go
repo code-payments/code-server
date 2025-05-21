@@ -46,6 +46,7 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	var nativeAmount float64
 	var usdMarketValue float64
 	var consumptionCalculator func(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
+	var action string
 	switch intentRecord.IntentType {
 	case intent.SendPublicPayment:
 		// Public sends are subject to limits
@@ -53,6 +54,7 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 		nativeAmount = intentRecord.SendPublicPaymentMetadata.NativeAmount
 		usdMarketValue = intentRecord.SendPublicPaymentMetadata.UsdMarketValue
 		consumptionCalculator = g.data.GetTransactedAmountForAntiMoneyLaundering
+		action = actionSendPayment
 	case intent.ReceivePaymentsPublicly:
 		// Public receives are always allowed
 		return true, nil
@@ -73,13 +75,13 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	sendLimit, ok := limit.SendLimits[currency]
 	if !ok {
 		log.Info("denying intent with unsupported currency")
-		recordDenialEvent(ctx, "unsupported currency")
+		recordDenialEvent(ctx, action, "unsupported currency")
 		return false, nil
 	}
 
 	if nativeAmount > sendLimit.PerTransaction {
 		log.Info("denying intent that exceeds per-transaction value")
-		recordDenialEvent(ctx, "exceeds per-transaction value")
+		recordDenialEvent(ctx, action, "exceeds per-transaction value")
 		return false, nil
 	}
 
@@ -93,7 +95,7 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 
 	if usdInLastDay+usdMarketValue > maxDailyUsdLimit {
 		log.Info("denying intent that exceeds daily usd limit")
-		recordDenialEvent(ctx, "exceeds daily usd value")
+		recordDenialEvent(ctx, action, "exceeds daily usd value")
 		return false, nil
 	}
 
