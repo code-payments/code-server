@@ -19,8 +19,7 @@ var (
 	// so we can do better rounding on limits per currency.
 	//
 	// todo: configurable
-	maxUsdTransactionValue = 2.0 * limit.SendLimits[currency_util.USD].PerTransaction
-	maxDailyUsdLimit       = 1.5 * limit.SendLimits[currency_util.USD].Daily
+	maxDailyUsdLimit = 1.2 * limit.SendLimits[currency_util.USD].Daily
 )
 
 // Guard gates money movement by applying rules on operations of interest to
@@ -43,11 +42,15 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowMoneyMovement")
 	defer tracer.End()
 
+	var currency currency_util.Code
+	var nativeAmount float64
 	var usdMarketValue float64
 	var consumptionCalculator func(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
 	switch intentRecord.IntentType {
 	case intent.SendPublicPayment:
-		// Public sends are subject to USD-based limits
+		// Public sends are subject to limits
+		currency = intentRecord.SendPublicPaymentMetadata.ExchangeCurrency
+		nativeAmount = intentRecord.SendPublicPaymentMetadata.NativeAmount
 		usdMarketValue = intentRecord.SendPublicPaymentMetadata.UsdMarketValue
 		consumptionCalculator = g.data.GetTransactedAmountForAntiMoneyLaundering
 	case intent.ReceivePaymentsPublicly:
@@ -60,15 +63,23 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	}
 
 	log := g.log.WithFields(logrus.Fields{
-		"method":    "AllowMoneyMovement",
-		"owner":     intentRecord.InitiatorOwnerAccount,
-		"usd_value": usdMarketValue,
+		"method":        "AllowMoneyMovement",
+		"owner":         intentRecord.InitiatorOwnerAccount,
+		"currency":      string(currency),
+		"native_amount": nativeAmount,
+		"usd_value":     usdMarketValue,
 	})
 
-	// Bound the maximum dollar value of a payment
-	if usdMarketValue > maxUsdTransactionValue {
-		log.Info("denying intent that exceeds per-transaction usd value")
-		recordDenialEvent(ctx, "exceeds per-transaction usd value")
+	sendLimit, ok := limit.SendLimits[currency]
+	if !ok {
+		log.Info("denying intent with unsupported currency")
+		recordDenialEvent(ctx, "unsupported currency")
+		return false, nil
+	}
+
+	if nativeAmount > sendLimit.PerTransaction {
+		log.Info("denying intent that exceeds per-transaction value")
+		recordDenialEvent(ctx, "exceeds per-transaction value")
 		return false, nil
 	}
 
