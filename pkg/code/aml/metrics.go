@@ -10,10 +10,13 @@ const (
 	metricsStructName = "aml.guard"
 
 	eventName = "AntiMoneyLaunderingGuardDenial"
+
+	actionSendPayment = "SendPayment"
 )
 
-func recordDenialEvent(ctx context.Context, reason string) {
+func recordDenialEvent(ctx context.Context, action, reason string) {
 	kvPairs := map[string]interface{}{
+		"action": action,
 		"reason": reason,
 		"count":  1,
 	}
