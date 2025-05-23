@@ -20,7 +20,6 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
-	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/retry/backoff"
@@ -41,7 +40,8 @@ const (
 	messageStreamWithKeepAliveTimeout    = 15 * time.Minute
 	messageStreamWithoutKeepAliveTimeout = time.Minute
 	notifyTimeout                        = 10 * time.Second
-	rendezvousRecordMaxAge               = messageStreamWithoutKeepAliveTimeout
+	rendezvousRecordExpiryTime           = 3 * time.Second
+	rendezvousRecordRefreshInterval      = 2 * time.Second
 )
 
 type server struct {
@@ -54,8 +54,6 @@ type server struct {
 	individualStreamMu map[string]*sync.Mutex
 
 	domainVerifier thirdparty.DomainVerifier
-
-	rendezvousFirstSeenAtCache cache.Cache // todo: Back with something like Redis when we go multi-server
 
 	rpcSignatureVerifier *auth.RPCSignatureVerifier
 
@@ -78,15 +76,6 @@ func NewMessagingClient(
 
 // NewMessagingClientAndServer returns a new messaging client and server bundle.
 //
-// These are currently highly coupled atm due to need to detect an active stream
-// on a local server and avoiding the network call.
-//
-// Note: The multi-server implementation of this server is not perfect, and it
-// doesn't need to be initially. We're mostly acting as a notification system
-// where updates can be sent out-of-order. If we need stronger guarantees,
-// resurrecting the Black Marlin KikX project might be necessary. Ideally we'd
-// avoid this due to the step level increase in complexity.
-//
 // todo: Proper separation of internal client and server
 func NewMessagingClientAndServer(
 	data code_data.Provider,
@@ -95,15 +84,14 @@ func NewMessagingClientAndServer(
 	configProvider ConfigProvider,
 ) *server {
 	return &server{
-		log:                        logrus.StandardLogger().WithField("type", "messaging/client_and_server"),
-		conf:                       configProvider(),
-		data:                       data,
-		streams:                    make(map[string]*messageStream),
-		individualStreamMu:         make(map[string]*sync.Mutex),
-		domainVerifier:             thirdparty.VerifyDomainNameOwnership,
-		rendezvousFirstSeenAtCache: cache.NewCache(100_000),
-		rpcSignatureVerifier:       rpcSignatureVerifier,
-		broadcastAddress:           broadcastAddress,
+		log:                  logrus.StandardLogger().WithField("type", "messaging/client_and_server"),
+		conf:                 configProvider(),
+		data:                 data,
+		streams:              make(map[string]*messageStream),
+		individualStreamMu:   make(map[string]*sync.Mutex),
+		domainVerifier:       thirdparty.VerifyDomainNameOwnership,
+		rpcSignatureVerifier: rpcSignatureVerifier,
+		broadcastAddress:     broadcastAddress,
 	}
 }
 
@@ -140,8 +128,6 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 		return status.Error(codes.Internal, "")
 	}
 
-	s.markRendezvousKeyAsSeen(rendezvousAccount)
-
 	signature := req.GetRequest().Signature
 	req.GetRequest().Signature = nil
 	if err = s.rpcSignatureVerifier.Authenticate(streamer.Context(), rendezvousAccount, req.GetRequest(), signature); err != nil {
@@ -150,16 +136,16 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 
 	s.streamsMu.Lock()
 
-	ms, exists := s.streams[streamKey]
+	existingMs, exists := s.streams[streamKey]
 	if exists {
 		s.streamsMu.Unlock()
 		// There's an existing stream on this server that must be terminated first.
 		// Warn to see how often this happens in practice
-		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", ms)
+		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", existingMs)
 		return status.Error(codes.Aborted, "stream already exists")
 	}
 
-	ms = newMessageStream(messageStreamBufferSize)
+	ms := newMessageStream(messageStreamBufferSize)
 	log.Tracef("setting up new stream (stream=%p)", ms)
 	s.streams[streamKey] = ms
 
@@ -174,18 +160,10 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 
 	s.streamsMu.Unlock()
 
-	timeoutChan := time.After(messageStreamWithKeepAliveTimeout + time.Second)
+	timeout := messageStreamWithKeepAliveTimeout + time.Second
+	timesOutAfter := time.Now().Add(timeout)
+	timeoutChan := time.After(timeout)
 
-	// Distribute lock the stream, so there's a single endpoint processing
-	// real time message updates. In order to accomplish this, we need to
-	// guarantee consistent management of the rendezvous record.
-	//
-	// todo: A real distributed lock. This approach will leak memory, but is
-	//       necessary since a striped lock could cause cross-payment delays
-	//       due to the long-lived nature of a stream.
-	// todo: This can potentially hang for a really long time. This isn't a
-	//       problem until we're actually multi-server and we have a real
-	//       distributed lock where we can timeout the lock acquire process.
 	myStreamMu.Lock()
 
 	defer func() {
@@ -203,11 +181,8 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 
 		s.streamsMu.Unlock()
 
-		// Delete the rendezvous record after killing the stream. This will allow
-		// another stream to "queue up" on the same server without failing with a
-		// duplication check while we wait for this slower DB operation.
 		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-		err := s.data.DeleteRendezvous(ctx, streamKey)
+		err := s.data.DeleteRendezvous(ctx, streamKey, s.broadcastAddress)
 		if err != nil {
 			log.WithError(err).Warn("failed to cleanup rendezvous record")
 		}
@@ -229,16 +204,21 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 
 	// Let other RPC servers know where to find the active stream
 	rendezvousRecord := &rendezvous.Record{
-		Key:           streamKey,
-		Location:      s.broadcastAddress,
-		CreatedAt:     time.Now(),
-		LastUpdatedAt: time.Now(),
+		Key:       streamKey,
+		Address:   s.broadcastAddress,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(rendezvousRecordExpiryTime),
 	}
-	err = s.data.SaveRendezvous(ctx, rendezvousRecord)
-	if err != nil {
+	err = s.data.PutRendezvous(ctx, rendezvousRecord)
+	if err == rendezvous.ErrExists {
+		log.Warnf("existing stream detected on another server (stream=%s) ; aborting", ssRef)
+		return status.Error(codes.Aborted, "stream already exists")
+	} else if err != nil {
 		log.WithError(err).Warn("failure saving rendezvous record")
 		return status.Error(codes.Internal, "")
 	}
+
+	log.Tracef("stream rendezvous record initialized (stream=%s)", ssRef)
 
 	// Since ordering doesn't matter, we can async flush QoS. Importantly, this
 	// must occur after setting the rendezvous DB record to avoid race conditions
@@ -247,7 +227,7 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 
 	sendPingCh := time.After(0)
 	streamHealthCh := s.monitorOpenMessageStreamHealth(ctx, log, ssRef, streamer)
-	updateRendezvousRecordCh := time.After(3 * rendezvousRecordMaxAge / 4)
+	updateRendezvousRecordCh := time.After(rendezvousRecordRefreshInterval)
 
 	for {
 		select {
@@ -271,14 +251,21 @@ func (s *server) OpenMessageStreamWithKeepAlive(streamer messagingpb.Messaging_O
 		case <-updateRendezvousRecordCh:
 			log.Tracef("refreshing rendezvous record (stream=%s)", ssRef)
 
-			updateRendezvousRecordCh = time.After(3 * rendezvousRecordMaxAge / 4)
+			expiry := time.Now().Add(rendezvousRecordExpiryTime)
+			if expiry.After(timesOutAfter) {
+				expiry = timesOutAfter
+			}
 
-			rendezvousRecord.LastUpdatedAt = time.Now()
-			err = s.data.SaveRendezvous(ctx, rendezvousRecord)
-			if err != nil {
+			err = s.data.ExtendRendezvousExpiry(ctx, streamKey, s.broadcastAddress, expiry)
+			if err == rendezvous.ErrNotFound {
+				log.Tracef("existing stream detected on another server ; ending stream (stream=%s)", ssRef)
+				return status.Error(codes.Aborted, "")
+			} else if err != nil {
 				log.WithError(err).Warn("failure refreshing rendezvous record")
 				return status.Error(codes.Internal, "")
 			}
+
+			updateRendezvousRecordCh = time.After(rendezvousRecordRefreshInterval)
 		case <-sendPingCh:
 			log.Tracef("sending ping to client (stream=%s)", ssRef)
 
@@ -382,8 +369,6 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 		return status.Error(codes.Internal, "")
 	}
 
-	s.markRendezvousKeyAsSeen(rendezvousAccount)
-
 	if req.Signature != nil {
 		signature := req.Signature
 		req.Signature = nil
@@ -394,16 +379,16 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 
 	s.streamsMu.Lock()
 
-	ms, exists := s.streams[streamKey]
+	existingMs, exists := s.streams[streamKey]
 	if exists {
 		s.streamsMu.Unlock()
 		// There's an existing stream on this server that must be terminated first.
 		// Warn to see how often this happens in practice
-		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", ms)
+		log.Warnf("existing stream detected on this server (stream=%p) ; aborting", existingMs)
 		return status.Error(codes.Aborted, "stream already exists")
 	}
 
-	ms = newMessageStream(messageStreamBufferSize)
+	ms := newMessageStream(messageStreamBufferSize)
 	log.Tracef("setting up new stream (stream=%p)", ms)
 	s.streams[streamKey] = ms
 
@@ -418,18 +403,10 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 
 	s.streamsMu.Unlock()
 
-	timeoutChan := time.After(messageStreamWithoutKeepAliveTimeout + time.Second)
+	timeout := messageStreamWithoutKeepAliveTimeout + time.Second
+	timesOutAfter := time.Now().Add(timeout)
+	timeoutChan := time.After(timeout)
 
-	// Distribute lock the stream, so there's a single endpoint processing
-	// real time message updates. In order to accomplish this, we need to
-	// guarantee consistent management of the rendezvous record.
-	//
-	// todo: A real distributed lock. This approach will leak memory, but is
-	//       necessary since a striped lock could cause cross-payment delays
-	//       due to the long-lived nature of a stream.
-	// todo: This can potentially hang for 60s. This isn't a problem until
-	//       we're actually multi-server and we have a real distributed lock
-	//       where we can timeout the lock acquire process.
 	myStreamMu.Lock()
 
 	defer func() {
@@ -447,11 +424,8 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 
 		s.streamsMu.Unlock()
 
-		// Delete the rendezvous record after killing the stream. This will allow
-		// another stream to "queue up" on the same server without failing with a
-		// duplication check while we wait for this slower DB operation.
 		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-		err := s.data.DeleteRendezvous(ctx, streamKey)
+		err := s.data.DeleteRendezvous(ctx, streamKey, s.broadcastAddress)
 		if err != nil {
 			log.WithError(err).Warn("failed to cleanup rendezvous record")
 		}
@@ -473,21 +447,28 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 
 	// Let other RPC servers know where to find the active stream
 	rendezvousRecord := &rendezvous.Record{
-		Key:           streamKey,
-		Location:      s.broadcastAddress,
-		CreatedAt:     time.Now(),
-		LastUpdatedAt: time.Now(),
+		Key:       streamKey,
+		Address:   s.broadcastAddress,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(rendezvousRecordExpiryTime),
 	}
-	err = s.data.SaveRendezvous(ctx, rendezvousRecord)
-	if err != nil {
+	err = s.data.PutRendezvous(ctx, rendezvousRecord)
+	if err == rendezvous.ErrExists {
+		log.Warnf("existing stream detected on another server (stream=%s) ; aborting", ssRef)
+		return status.Error(codes.Aborted, "stream already exists")
+	} else if err != nil {
 		log.WithError(err).Warn("failure saving rendezvous record")
 		return status.Error(codes.Internal, "")
 	}
+
+	log.Tracef("stream rendezvous record initialized (stream=%s)", ssRef)
 
 	// Since ordering doesn't matter, we can async flush QoS. Importantly, this
 	// must occur after setting the rendezvous DB record to avoid race conditions
 	// with the internal forwarding logic.
 	go s.flush(ctx, req.RendezvousKey, ms)
+
+	updateRendezvousRecordCh := time.After(rendezvousRecordRefreshInterval)
 
 	for {
 		select {
@@ -504,6 +485,24 @@ func (s *server) OpenMessageStream(req *messagingpb.OpenMessageStreamRequest, st
 				log.WithError(err).Info("failed to forward message")
 				return err
 			}
+		case <-updateRendezvousRecordCh:
+			log.Tracef("refreshing rendezvous record (stream=%s)", ssRef)
+
+			expiry := time.Now().Add(rendezvousRecordExpiryTime)
+			if expiry.After(timesOutAfter) {
+				expiry = timesOutAfter
+			}
+
+			err = s.data.ExtendRendezvousExpiry(ctx, streamKey, s.broadcastAddress, expiry)
+			if err == rendezvous.ErrNotFound {
+				log.Tracef("existing stream detected on another server ; ending stream (stream=%s)", ssRef)
+				return status.Error(codes.Aborted, "")
+			} else if err != nil {
+				log.WithError(err).Warn("failure refreshing rendezvous record")
+				return status.Error(codes.Internal, "")
+			}
+
+			updateRendezvousRecordCh = time.After(rendezvousRecordRefreshInterval)
 		case <-timeoutChan:
 			log.Tracef("stream timed out ; ending stream (stream=%s)", ssRef)
 			return status.Error(codes.DeadlineExceeded, "")
@@ -527,8 +526,6 @@ func (s *server) PollMessages(ctx context.Context, req *messagingpb.PollMessages
 		log.WithError(err).Warn("rendezvous key isn't a valid public key")
 		return nil, status.Error(codes.Internal, "")
 	}
-
-	s.markRendezvousKeyAsSeen(rendezvousAccount)
 
 	signature := req.Signature
 	req.Signature = nil
@@ -726,27 +723,6 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if ok, maxDuration := messageHandler.RequiresActiveStream(); ok {
-		// Is there an active stream? If not, do we have any reason to believe one
-		// may come avaliable?
-		_, err = s.data.GetRendezvous(ctx, rendezvousAccount.PublicKey().ToBase58())
-		if err == rendezvous.ErrNotFound {
-			// There is no active stream, but we need to be cautious to not introduce
-			// instability. Only deny the message once we're 100% we've passed the time
-			// when the stream is deemed valid, which is inferred by the use case.
-			ts, ok := s.rendezvousFirstSeenAtCache.Retrieve(rendezvousAccount.PublicKey().ToBase58())
-			if ok && time.Since(ts.(time.Time)) > maxDuration {
-				return &messagingpb.SendMessageResponse{
-					Result: messagingpb.SendMessageResponse_NO_ACTIVE_STREAM,
-				}, nil
-			}
-			s.markRendezvousKeyAsSeen(rendezvousAccount)
-		} else if err != nil {
-			log.WithError(err).Warn("failure getting stream status")
-			return nil, status.Error(codes.Internal, "")
-		}
-	}
-
 	// Start off by persisting the message, so any async flushes will catch it.
 	// In the same database transaction, store any supporting DB records as
 	// required by the message type.
@@ -781,6 +757,8 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 	// Next, forward the message to the receiver for a real-time update.
 	_, err = retry.Retry(
 		func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
 			return s.internallyForwardMessage(ctx, req)
 		},
 		retry.Limit(3),
@@ -839,12 +817,5 @@ func (s *server) flush(ctx context.Context, accountID *messagingpb.RendezvousKey
 			log.WithError(err).Warn("Failed to send undelivered message")
 			return
 		}
-	}
-}
-
-func (s *server) markRendezvousKeyAsSeen(rendezvousAccount *common.Account) {
-	_, ok := s.rendezvousFirstSeenAtCache.Retrieve(rendezvousAccount.PublicKey().ToBase58())
-	if !ok {
-		s.rendezvousFirstSeenAtCache.Insert(rendezvousAccount.PublicKey().ToBase58(), time.Now(), 1)
 	}
 }

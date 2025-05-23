@@ -91,18 +91,25 @@ func TestRendezvousProcess_MultipleOpenStreams(t *testing.T) {
 
 				rendezvousKey := testutil.NewRandomAccount(t)
 
-				for i := 0; i < 10; i++ {
-					env.client1.openMessageStream(t, rendezvousKey, i%2 == 0)
+				for j := 0; j < 10; j++ {
+					env.client1.openMessageStream(t, rendezvousKey, j%2 == 0)
+					env.client2.openMessageStream(t, rendezvousKey, j%2 == 1)
 				}
 				time.Sleep(500 * time.Millisecond) // allow async flush to finish
 
-				sendMessageCall := env.client2.sendRequestToGrabBillMessage(t, rendezvousKey)
+				senderClient := env.client2
+				if i%3 == 0 {
+					senderClient = env.client1
+				}
+
+				sendMessageCall := senderClient.sendRequestToGrabBillMessage(t, rendezvousKey)
 				sendMessageCall.requireSuccess(t)
 
 				records := env.server1.getMessages(t, rendezvousKey)
 				require.Len(t, records, 1)
 
 				messages := env.client1.receiveMessagesInRealTime(t, rendezvousKey)
+				messages = append(messages, env.client2.receiveMessagesInRealTime(t, rendezvousKey)...)
 				require.Len(t, messages, 1)
 
 				env.client1.closeMessageStream(t, rendezvousKey)
@@ -726,12 +733,11 @@ func TestMessagePolling_HappyPath(t *testing.T) {
 	require.Empty(t, messages)
 }
 
-// todo: need configurable timeouts so this can run faster
 func TestKeepAlive_HappyPath(t *testing.T) {
 	env, cleanup := setup(t, false)
 	defer cleanup()
 
-	absoluteTimeout := rendezvousRecordMaxAge
+	absoluteTimeout := messageStreamWithoutKeepAliveTimeout
 
 	start := time.Now()
 	rendezvousKey := testutil.NewRandomAccount(t)
@@ -745,12 +751,11 @@ func TestKeepAlive_HappyPath(t *testing.T) {
 	env.server1.assertRendezvousRecordRefreshed(t, rendezvousKey)
 }
 
-// todo: need configurable timeouts so this can run faster
 func TestKeepAlive_UnresponsiveClient(t *testing.T) {
 	env, cleanup := setup(t, false)
 	defer cleanup()
 
-	absoluteTimeout := rendezvousRecordMaxAge
+	absoluteTimeout := messageStreamWithoutKeepAliveTimeout
 
 	start := time.Now()
 	rendezvousKey := testutil.NewRandomAccount(t)
@@ -761,28 +766,4 @@ func TestKeepAlive_UnresponsiveClient(t *testing.T) {
 	assert.True(t, time.Since(start) <= messageStreamKeepAliveRecvTimeout+50*time.Millisecond)
 	assert.True(t, pingCount >= int(messageStreamKeepAliveRecvTimeout/messageStreamPingDelay))
 	assert.True(t, pingCount <= int(messageStreamKeepAliveRecvTimeout/messageStreamPingDelay)+1)
-}
-
-func TestRendezvousProcess_NoActiveStream(t *testing.T) {
-	// Manually run when needed since time consuming
-	//
-	// todo: Improve testing
-	t.Skip()
-
-	for _, enableKeepAlive := range []bool{true, false} {
-		env, cleanup := setup(t, false)
-		defer cleanup()
-
-		rendezvousKey := testutil.NewRandomAccount(t)
-
-		env.client1.openMessageStream(t, rendezvousKey, enableKeepAlive)
-		time.Sleep(time.Second)
-		env.client1.closeMessageStream(t, rendezvousKey)
-
-		time.Sleep(time.Minute)
-
-		sendMessageCall := env.client2.sendRequestToGrabBillMessage(t, rendezvousKey)
-		sendMessageCall.assertNoActiveStreamError(t)
-		env.server1.assertNoMessages(t, rendezvousKey)
-	}
 }

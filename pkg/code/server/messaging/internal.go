@@ -118,9 +118,17 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 		"rendezvous_key": streamKey,
 	})
 
+	var err error
+	if !headers.AreHeadersInitialized(ctx) {
+		ctx, err = headers.ContextWithHeaders(ctx)
+		if err != nil {
+			return errors.Wrap(err, "error initializing headers")
+		}
+	}
+
 	rendezvousRecord, err := s.data.GetRendezvous(ctx, streamKey)
 	if err == nil {
-		log := log.WithField("receiver_location", rendezvousRecord.Location)
+		log := log.WithField("receiver_address", rendezvousRecord.Address)
 
 		// We got lucky and the receiver's stream is on the same RPC server as
 		// where the message is created. No forwarding between servers is required.
@@ -128,7 +136,7 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 		// instead of checking for an active stream on this server. This server's
 		// active stream may not be holding the lock, which can only be determined
 		// by who set the location in the rendezvous record.
-		if rendezvousRecord.Location == s.broadcastAddress {
+		if rendezvousRecord.Address == s.broadcastAddress {
 			s.streamsMu.RLock()
 			stream := s.streams[streamKey]
 			s.streamsMu.RUnlock()
@@ -142,18 +150,17 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 			return nil
 		}
 
-		// Old rendezvous record that likely wasn't cleaned up. Avoid forwarding,
+		// Expired rendezvous record that likely wasn't cleaned up. Avoid forwarding,
 		// since we expect a broken state.
-		if time.Since(rendezvousRecord.LastUpdatedAt) > rendezvousRecordMaxAge {
+		if time.Since(rendezvousRecord.ExpiresAt) >= 0 {
 			return nil
 		}
 
-		client, cleanup, err := getInternalMessagingClient(rendezvousRecord.Location)
+		client, err := getInternalMessagingClient(rendezvousRecord.Address)
 		if err != nil {
 			log.WithError(err).Warn("failure creating internal grpc messaging client")
 			return err
 		}
-		defer cleanup()
 
 		reqBytes, err := proto.Marshal(req)
 		if err != nil {

@@ -14,6 +14,7 @@ import (
 func RunTests(t *testing.T, s rendezvous.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s rendezvous.Store){
 		testHappyPath,
+		testExpiredRecord,
 	} {
 		tf(t, s)
 		teardown()
@@ -24,47 +25,76 @@ func testHappyPath(t *testing.T, s rendezvous.Store) {
 	t.Run("testHappyPath", func(t *testing.T) {
 		ctx := context.Background()
 		start := time.Now()
-		time.Sleep(time.Millisecond)
 
 		record := &rendezvous.Record{
-			Key:      "key",
-			Location: "localhost:1234",
+			Key:       "key",
+			Address:   "localhost:1234",
+			ExpiresAt: time.Now().Add(time.Second),
 		}
 		cloned := record.Clone()
 
-		require.NoError(t, s.Delete(ctx, record.Key))
+		require.NoError(t, s.Delete(ctx, record.Key, record.Address))
 		_, err := s.Get(ctx, record.Key)
 		assert.Equal(t, rendezvous.ErrNotFound, err)
+		assert.Equal(t, rendezvous.ErrNotFound, s.ExtendExpiry(ctx, record.Key, record.Address, time.Now().Add(time.Minute)))
 
-		require.NoError(t, s.Save(ctx, record))
+		require.NoError(t, s.Put(ctx, record))
 
 		actual, err := s.Get(ctx, record.Key)
 		require.NoError(t, err)
 		assert.True(t, actual.Id > 0)
 		assert.True(t, actual.CreatedAt.After(start))
-		assert.True(t, actual.LastUpdatedAt.After(start))
 		assertEquivalentRecords(t, &cloned, actual)
 
-		updateTime := time.Now()
 		time.Sleep(time.Millisecond)
-		record.Location = "localhost:5678"
+		record.Address = "localhost:5678"
+		record.ExpiresAt = time.Now().Add(2 * time.Second)
 		cloned = record.Clone()
-		require.NoError(t, s.Save(ctx, record))
+		require.Equal(t, rendezvous.ErrExists, s.Put(ctx, record))
+
+		time.Sleep(time.Second)
+		require.NoError(t, s.Put(ctx, record))
 
 		actual, err = s.Get(ctx, record.Key)
 		require.NoError(t, err)
-		assert.True(t, actual.CreatedAt.Before(updateTime))
-		assert.True(t, actual.LastUpdatedAt.After(updateTime))
 		assertEquivalentRecords(t, &cloned, actual)
 
-		require.NoError(t, s.Delete(ctx, record.Key))
+		require.NoError(t, s.Delete(ctx, record.Key, "other:8888"))
+
+		actual, err = s.Get(ctx, record.Key)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		require.NoError(t, s.Delete(ctx, record.Key, record.Address))
 
 		_, err = s.Get(ctx, record.Key)
 		assert.Equal(t, rendezvous.ErrNotFound, err)
 	})
 }
 
+func testExpiredRecord(t *testing.T, s rendezvous.Store) {
+	t.Run("testExpiredRecord", func(t *testing.T) {
+		ctx := context.Background()
+
+		record := &rendezvous.Record{
+			Key:       "key",
+			Address:   "localhost:1234",
+			ExpiresAt: time.Now().Add(100 * time.Millisecond),
+		}
+		require.NoError(t, s.Put(ctx, record))
+
+		time.Sleep(200 * time.Millisecond)
+
+		_, err := s.Get(ctx, record.Key)
+		assert.Equal(t, rendezvous.ErrNotFound, err)
+		assert.Equal(t, rendezvous.ErrNotFound, s.ExtendExpiry(ctx, record.Key, record.Address, time.Now().Add(time.Minute)))
+
+		require.NoError(t, s.Delete(ctx, record.Key, record.Address))
+	})
+}
+
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *rendezvous.Record) {
 	assert.Equal(t, obj1.Key, obj2.Key)
-	assert.Equal(t, obj1.Location, obj2.Location)
+	assert.Equal(t, obj1.Address, obj2.Address)
+	assert.Equal(t, obj1.ExpiresAt.Unix(), obj2.ExpiresAt.Unix())
 }

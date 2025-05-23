@@ -225,9 +225,10 @@ type DatabaseData interface {
 
 	// Rendezvous
 	// --------------------------------------------------------------------------------
-	SaveRendezvous(ctx context.Context, record *rendezvous.Record) error
+	PutRendezvous(ctx context.Context, record *rendezvous.Record) error
+	ExtendRendezvousExpiry(ctx context.Context, key, address string, expiry time.Time) error
+	DeleteRendezvous(ctx context.Context, key, address string) error
 	GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error)
-	DeleteRendezvous(ctx context.Context, key string) error
 
 	// Requests
 	// --------------------------------------------------------------------------------
@@ -846,14 +847,17 @@ func (dp *DatabaseProvider) GetTotalExternalDepositedAmountInUsd(ctx context.Con
 
 // Rendezvous
 // --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) SaveRendezvous(ctx context.Context, record *rendezvous.Record) error {
-	return dp.rendezvous.Save(ctx, record)
+func (dp *DatabaseProvider) PutRendezvous(ctx context.Context, record *rendezvous.Record) error {
+	return dp.rendezvous.Put(ctx, record)
+}
+func (dp *DatabaseProvider) ExtendRendezvousExpiry(ctx context.Context, key, address string, expiry time.Time) error {
+	return dp.rendezvous.ExtendExpiry(ctx, key, address, expiry)
+}
+func (dp *DatabaseProvider) DeleteRendezvous(ctx context.Context, key, address string) error {
+	return dp.rendezvous.Delete(ctx, key, address)
 }
 func (dp *DatabaseProvider) GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error) {
 	return dp.rendezvous.Get(ctx, key)
-}
-func (dp *DatabaseProvider) DeleteRendezvous(ctx context.Context, key string) error {
-	return dp.rendezvous.Delete(ctx, key)
 }
 
 // Payment Request

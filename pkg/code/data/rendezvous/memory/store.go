@@ -19,8 +19,8 @@ func New() rendezvous.Store {
 	return &store{}
 }
 
-// Save implements rendezvous.Store.Save
-func (s *store) Save(_ context.Context, data *rendezvous.Record) error {
+// Put implements rendezvous.Store.Put
+func (s *store) Put(_ context.Context, data *rendezvous.Record) error {
 	if err := data.Validate(); err != nil {
 		return err
 	}
@@ -30,19 +30,58 @@ func (s *store) Save(_ context.Context, data *rendezvous.Record) error {
 
 	s.last++
 	if item := s.find(data); item != nil {
-		item.Location = data.Location
-		item.LastUpdatedAt = time.Now()
+		if item.ExpiresAt.After(time.Now()) {
+			return rendezvous.ErrExists
+		}
+
+		item.Address = data.Address
+		item.ExpiresAt = data.ExpiresAt
 
 		item.CopyTo(data)
 	} else {
 		if data.Id == 0 {
 			data.Id = s.last
 		}
-		data.CreatedAt = time.Now()
-		data.LastUpdatedAt = time.Now()
+		if data.CreatedAt.IsZero() {
+			data.CreatedAt = time.Now()
+		}
 
 		cloned := data.Clone()
 		s.records = append(s.records, &cloned)
+	}
+
+	return nil
+}
+
+// ExtendExpiry implements rendezvous.Store.ExtendExpiry
+func (s *store) ExtendExpiry(_ context.Context, key, address string, expiry time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item := s.findByKeyAndAddress(key, address)
+	if item == nil {
+		return rendezvous.ErrNotFound
+	}
+
+	if item.ExpiresAt.Before(time.Now()) {
+		return rendezvous.ErrNotFound
+	}
+
+	item.ExpiresAt = expiry
+
+	return nil
+}
+
+// Delete implements rendezvous.Store.Delete
+func (s *store) Delete(_ context.Context, key, address string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, item := range s.records {
+		if item.Key == key && item.Address == address {
+			s.records = append(s.records[:i], s.records[i+1:]...)
+			return nil
+		}
 	}
 
 	return nil
@@ -58,23 +97,12 @@ func (s *store) Get(_ context.Context, key string) (*rendezvous.Record, error) {
 		return nil, rendezvous.ErrNotFound
 	}
 
-	cloned := item.Clone()
-	return &cloned, nil
-}
-
-// Delete implements rendezvous.Store.Delete
-func (s *store) Delete(_ context.Context, key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for i, item := range s.records {
-		if item.Key == key {
-			s.records = append(s.records[:i], s.records[i+1:]...)
-			return nil
-		}
+	if item.ExpiresAt.Before(time.Now()) {
+		return nil, rendezvous.ErrNotFound
 	}
 
-	return nil
+	cloned := item.Clone()
+	return &cloned, nil
 }
 
 func (s *store) find(data *rendezvous.Record) *rendezvous.Record {
@@ -94,6 +122,16 @@ func (s *store) find(data *rendezvous.Record) *rendezvous.Record {
 func (s *store) findByKey(key string) *rendezvous.Record {
 	for _, item := range s.records {
 		if item.Key == key {
+			return item
+		}
+	}
+
+	return nil
+}
+
+func (s *store) findByKeyAndAddress(key, address string) *rendezvous.Record {
+	for _, item := range s.records {
+		if item.Key == key && item.Address == address {
 			return item
 		}
 	}

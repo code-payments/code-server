@@ -23,9 +23,9 @@ const (
 			id SERIAL NOT NULL PRIMARY KEY, 
 
 			key TEXT NOT NULL,
-			location TEXT NOT NULL,
+			address TEXT NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE,
-			last_updated_at TIMESTAMP WITH TIME ZONE,
+			expires_at TIMESTAMP WITH TIME ZONE,
 
 			CONSTRAINT codewallet__core_treasurypool__uniq__key UNIQUE (key)
 		);
