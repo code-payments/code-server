@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	internalSignatureHeaderName = "code-signature"
+	internalSignatureHeaderName = "code-internal-rpc-signature"
 )
 
 // todo: Similar to the common push package, we should put message creation and

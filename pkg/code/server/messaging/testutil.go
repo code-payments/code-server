@@ -505,11 +505,6 @@ func (c *sendMessageCallMetadata) assertPermissionDeniedError(t *testing.T, mess
 	assert.True(t, strings.Contains(strings.ToLower(status.Message()), strings.ToLower(message)))
 }
 
-func (c *sendMessageCallMetadata) assertNoActiveStreamError(t *testing.T) {
-	require.NoError(t, c.err)
-	require.Equal(t, messagingpb.SendMessageResponse_NO_ACTIVE_STREAM, c.resp.Result)
-}
-
 func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *common.Account) *sendMessageCallMetadata {
 	destination := testutil.NewRandomAccount(t)
 
