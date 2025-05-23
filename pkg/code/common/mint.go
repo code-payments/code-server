@@ -9,7 +9,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/config"
 	"github.com/code-payments/code-server/pkg/usdc"
-	"github.com/code-payments/code-server/pkg/usdg"
 	"github.com/code-payments/code-server/pkg/usdt"
 )
 
@@ -64,7 +63,7 @@ func StrToQuarks(val string) (int64, error) {
 
 func IsCoreMintUsdStableCoin() bool {
 	switch CoreMintAccount.PublicKey().ToBase58() {
-	case usdc.Mint, usdg.Mint, usdt.Mint:
+	case usdc.Mint, usdt.Mint:
 		return true
 	default:
 		return false

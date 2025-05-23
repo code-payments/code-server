@@ -12,7 +12,6 @@ import (
 	"github.com/code-payments/code-server/pkg/currency/fixer"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/usdc"
-	"github.com/code-payments/code-server/pkg/usdg"
 	"github.com/code-payments/code-server/pkg/usdt"
 )
 
@@ -52,7 +51,7 @@ func (dp *WebProvider) GetCurrentExchangeRatesFromExternalProviders(ctx context.
 	var err error
 
 	switch config.CoreMintPublicKeyString {
-	case usdc.Mint, usdg.Mint, usdt.Mint:
+	case usdc.Mint, usdt.Mint:
 		coinGeckoRates[string(currency_lib.USD)] = 1.0
 	default:
 		coinGeckoData, err := dp.coinGecko.GetCurrentRates(ctx, string(config.CoreMintSymbol))
@@ -85,7 +84,7 @@ func (dp *WebProvider) GetPastExchangeRatesFromExternalProviders(ctx context.Con
 	ts := t
 	var err error
 	switch config.CoreMintPublicKeyString {
-	case usdc.Mint, usdg.Mint, usdt.Mint:
+	case usdc.Mint, usdt.Mint:
 		coinGeckoRates[string(currency_lib.USD)] = 1.0
 	default:
 		coinGeckoData, err := dp.coinGecko.GetCurrentRates(ctx, string(config.CoreMintSymbol))
@@ -118,7 +117,7 @@ func computeAllExchangeRates(coreMintRates map[string]float64, usdRates map[stri
 		return nil, errors.New("usd rate missing")
 	}
 	switch config.CoreMintPublicKeyString {
-	case usdc.Mint, usdg.Mint, usdt.Mint:
+	case usdc.Mint, usdt.Mint:
 		coreMintToUsd = 1.0
 	}
 
