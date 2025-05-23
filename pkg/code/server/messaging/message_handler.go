@@ -33,14 +33,6 @@ type MessageHandler interface {
 	// allowed to be sent and persisted
 	Validate(ctx context.Context, rendezvous *common.Account, message *messagingpb.Message) error
 
-	// RequiresActiveStream determines whether a message can only be sent if an
-	// active stream is available. If true, then the message must also provide
-	// the maximum time it expects the stream to be valid for, which is dependent
-	// on the use case.
-	//
-	// todo: Not implemented for multi-server
-	RequiresActiveStream() (bool, time.Duration)
-
 	// OnSuccess is called upon creating the message after validation
 	OnSuccess(ctx context.Context) error
 }
@@ -78,10 +70,6 @@ func (h *RequestToGrabBillMessageHandler) Validate(ctx context.Context, rendezvo
 	}
 
 	return nil
-}
-
-func (h *RequestToGrabBillMessageHandler) RequiresActiveStream() (bool, time.Duration) {
-	return true, time.Minute
 }
 
 func (h *RequestToGrabBillMessageHandler) OnSuccess(ctx context.Context) error {
@@ -399,10 +387,6 @@ func (h *RequestToReceiveBillMessageHandler) Validate(ctx context.Context, rende
 	return nil
 }
 
-func (h *RequestToReceiveBillMessageHandler) RequiresActiveStream() (bool, time.Duration) {
-	return false, 0 * time.Minute
-}
-
 func (h *RequestToReceiveBillMessageHandler) OnSuccess(ctx context.Context) error {
 	if h.recordAlreadyExists {
 		return nil
@@ -458,10 +442,6 @@ func (h *ClientRejectedPaymentMessageHandler) Validate(ctx context.Context, rend
 	return nil
 }
 
-func (h *ClientRejectedPaymentMessageHandler) RequiresActiveStream() (bool, time.Duration) {
-	return false, 0 * time.Minute
-}
-
 func (h *ClientRejectedPaymentMessageHandler) OnSuccess(ctx context.Context) error {
 	return nil
 }
@@ -480,10 +460,6 @@ func (h *CodeScannedMessageHandler) Validate(ctx context.Context, rendezvous *co
 	}
 
 	return nil
-}
-
-func (h *CodeScannedMessageHandler) RequiresActiveStream() (bool, time.Duration) {
-	return false, 0 * time.Minute
 }
 
 func (h *CodeScannedMessageHandler) OnSuccess(ctx context.Context) error {
