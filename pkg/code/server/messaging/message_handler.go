@@ -37,6 +37,8 @@ type MessageHandler interface {
 	// active stream is available. If true, then the message must also provide
 	// the maximum time it expects the stream to be valid for, which is dependent
 	// on the use case.
+	//
+	// todo: Not implemented for multi-server
 	RequiresActiveStream() (bool, time.Duration)
 
 	// OnSuccess is called upon creating the message after validation

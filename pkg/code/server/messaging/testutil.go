@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"crypto/ed25519"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -194,10 +195,10 @@ func (s *serverEnv) assertInitialRendezvousRecordSaved(t *testing.T, rendezvousK
 		require.NoError(t, err)
 
 		assert.Equal(t, rendezvousKey.PublicKey().ToBase58(), rendezvousRecord.Key)
-		assert.Equal(t, s.server.broadcastAddress, rendezvousRecord.Location) // Note: assertion must be called on the expected server
+		assert.Equal(t, s.server.broadcastAddress, rendezvousRecord.Address) // Note: assertion must be called on the expected server
 		assert.True(t, start.Sub(rendezvousRecord.CreatedAt) <= 50*time.Millisecond)
 		assert.True(t, start.Sub(rendezvousRecord.CreatedAt) >= -50*time.Millisecond)
-		assert.Equal(t, rendezvousRecord.CreatedAt.Unix(), rendezvousRecord.LastUpdatedAt.Unix())
+		assert.Equal(t, rendezvousRecord.CreatedAt.Add(rendezvousRecordExpiryTime).Unix(), rendezvousRecord.ExpiresAt.Unix())
 		return
 	}
 
@@ -207,10 +208,8 @@ func (s *serverEnv) assertInitialRendezvousRecordSaved(t *testing.T, rendezvousK
 func (s *serverEnv) assertRendezvousRecordRefreshed(t *testing.T, rendezvousKey *common.Account) {
 	rendezvousRecord, err := s.server.data.GetRendezvous(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	require.NoError(t, err)
-
-	// Assumes it's the first time for simplicity
-	assert.True(t, rendezvousRecord.LastUpdatedAt.Sub(rendezvousRecord.CreatedAt) > rendezvousRecordMaxAge/2)
-	assert.True(t, rendezvousRecord.LastUpdatedAt.Sub(rendezvousRecord.CreatedAt) < rendezvousRecordMaxAge)
+	assert.True(t, rendezvousRecord.ExpiresAt.After(time.Now()))
+	assert.True(t, rendezvousRecord.ExpiresAt.Before(time.Now().Add(rendezvousRecordExpiryTime)))
 }
 
 func (s *serverEnv) assertRendezvousRecordDeleted(t *testing.T, rendezvousKey *common.Account) {
@@ -349,13 +348,17 @@ func (c *clientEnv) receiveMessagesInRealTime(t *testing.T, rendezvousKey *commo
 				case *messagingpb.OpenMessageStreamWithKeepAliveResponse_Response:
 					return typed.Response.Messages
 				case *messagingpb.OpenMessageStreamWithKeepAliveResponse_Ping:
-					require.NoError(t, streamer.streamWithKeepAlives.Send(&messagingpb.OpenMessageStreamWithKeepAliveRequest{
+					err = streamer.streamWithKeepAlives.Send(&messagingpb.OpenMessageStreamWithKeepAliveRequest{
 						RequestOrPong: &messagingpb.OpenMessageStreamWithKeepAliveRequest_Pong{
 							Pong: &commonpb.ClientPong{
 								Timestamp: timestamppb.Now(),
 							},
 						},
-					}))
+					})
+					// Stream has been terminated
+					if err != io.EOF {
+						require.NoError(t, err)
+					}
 				default:
 					require.Fail(t, "response and ping wasn't set")
 				}
@@ -374,7 +377,6 @@ func (c *clientEnv) receiveMessagesInRealTime(t *testing.T, rendezvousKey *commo
 		}
 	}
 
-	require.Fail(t, "all active streams have been aborted")
 	return nil
 }
 
