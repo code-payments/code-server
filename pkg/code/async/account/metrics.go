@@ -12,7 +12,7 @@ const (
 	giftCardWorkerEventName  = "GiftCardWorkerPollingCheck"
 	swapRetryWorkerEventName = "SwapRetryWorkerPollingCheck"
 
-	airdropperBalanceEventName = "AirdropperBalance"
+	airdropperBalanceEventName = "AirdropperBalancePollingCheck"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
