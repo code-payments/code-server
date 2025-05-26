@@ -4,12 +4,15 @@ import (
 	"context"
 	"time"
 
+	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
 
 const (
 	giftCardWorkerEventName  = "GiftCardWorkerPollingCheck"
 	swapRetryWorkerEventName = "SwapRetryWorkerPollingCheck"
+
+	airdropperBalanceEventName = "AirdropperBalance"
 )
 
 func (p *service) metricsGaugeWorker(ctx context.Context) error {
@@ -23,6 +26,7 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 			start := time.Now()
 
 			p.recordBackupQueueStatusPollingEvent(ctx)
+			p.recordAidropAccountBalance(ctx)
 
 			delay = time.Second - time.Since(start)
 		}
@@ -36,11 +40,18 @@ func (p *service) recordBackupQueueStatusPollingEvent(ctx context.Context) {
 			"queue_size": count,
 		})
 	}
+}
 
-	count, err = p.data.GetAccountInfoCountRequiringSwapRetry(ctx)
+func (p *service) recordAidropAccountBalance(ctx context.Context) {
+	if p.airdropper == nil {
+		return
+	}
+
+	quarks, err := balance.CalculateFromCache(ctx, p.data, p.airdropper.Vault)
 	if err == nil {
-		metrics.RecordEvent(ctx, swapRetryWorkerEventName, map[string]interface{}{
-			"queue_size": count,
+		metrics.RecordEvent(ctx, airdropperBalanceEventName, map[string]interface{}{
+			"owner":   p.airdropper.VaultOwner.PublicKey().ToBase58(),
+			"balance": quarks,
 		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/code-payments/code-server/pkg/code/async"
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 )
 
@@ -14,14 +15,25 @@ type service struct {
 	log  *logrus.Entry
 	conf *conf
 	data code_data.Provider
+
+	airdropper *common.TimelockAccounts
 }
 
 func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
-	return &service{
+	ctx := context.Background()
+
+	p := &service{
 		log:  logrus.StandardLogger().WithField("service", "account"),
 		conf: configProvider(),
 		data: data,
 	}
+
+	airdropper := p.conf.airdropperOwnerPublicKey.Get(ctx)
+	if len(airdropper) > 0 && airdropper != defaultAirdropperOwnerPublicKey {
+		p.mustLoadAirdropper(ctx)
+	}
+
+	return p
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
@@ -33,16 +45,6 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		}
 	}()
 
-	// todo: the open code protocol needs to get the push token from the implementing app
-	/*
-		go func() {
-			err := p.swapRetryWorker(ctx, interval)
-			if err != nil && err != context.Canceled {
-				p.log.WithError(err).Warn("swap retry processing loop terminated unexpectedly")
-			}
-		}()
-	*/
-
 	go func() {
 		err := p.metricsGaugeWorker(ctx)
 		if err != nil && err != context.Canceled {
@@ -53,5 +55,35 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+}
+
+func (p *service) mustLoadAirdropper(ctx context.Context) {
+	log := p.log.WithFields(logrus.Fields{
+		"method": "mustLoadAirdropper",
+		"key":    p.conf.airdropperOwnerPublicKey.Get(ctx),
+	})
+
+	err := func() error {
+		vaultRecord, err := p.data.GetKey(ctx, p.conf.airdropperOwnerPublicKey.Get(ctx))
+		if err != nil {
+			return err
+		}
+
+		ownerAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+		if err != nil {
+			return err
+		}
+
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+		if err != nil {
+			return err
+		}
+
+		p.airdropper = timelockAccounts
+		return nil
+	}()
+	if err != nil {
+		log.WithError(err).Fatal("failure loading account")
 	}
 }
