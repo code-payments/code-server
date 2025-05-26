@@ -13,25 +13,17 @@ import (
 
 const (
 	userIntentCreatedEventName            = "UserIntentCreated"
-	privateUpgradeEventName               = "PrivateTransferUpgraded"
 	submitIntentLatencyBreakdownEventName = "SubmitIntentLatencyBreakdown"
-	airdropEventName                      = "Airdrop"
-	buyModulePurchaseInitiatedEventName   = "BuyModulePurchaseInitiated"
+
+	airdropEventName = "Airdrop"
+
+	buyModulePurchaseInitiatedEventName = "BuyModulePurchaseInitiated"
 )
 
 func recordUserIntentCreatedEvent(ctx context.Context, intentRecord *intent.Record) {
 	metrics.RecordEvent(ctx, userIntentCreatedEventName, map[string]interface{}{
 		"id":   intentRecord.IntentId,
 		"type": intentRecord.IntentType.String(),
-	})
-}
-
-func recordPrivacyUpgradedEvent(ctx context.Context, intentRecord *intent.Record, numUpgraded int) {
-	upgradeTimeInMs := time.Since(intentRecord.CreatedAt) / time.Millisecond
-	metrics.RecordEvent(ctx, privateUpgradeEventName, map[string]interface{}{
-		"intent":             intentRecord.IntentId,
-		"num_upgraded":       numUpgraded,
-		"time_to_upgrade_ms": int(upgradeTimeInMs),
 	})
 }
 
