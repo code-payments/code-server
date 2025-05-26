@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/code-payments/code-server/pkg/code/balance"
+	"github.com/code-payments/code-server/pkg/code/config"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
 
@@ -50,8 +51,9 @@ func (p *service) recordAidropAccountBalance(ctx context.Context) {
 	quarks, err := balance.CalculateFromCache(ctx, p.data, p.airdropper.Vault)
 	if err == nil {
 		metrics.RecordEvent(ctx, airdropperBalanceEventName, map[string]interface{}{
-			"owner":   p.airdropper.VaultOwner.PublicKey().ToBase58(),
-			"balance": quarks,
+			"owner":           p.airdropper.VaultOwner.PublicKey().ToBase58(),
+			"quarks":          quarks,
+			"quarks_per_unit": config.CoreMintQuarksPerUnit,
 		})
 	}
 }
