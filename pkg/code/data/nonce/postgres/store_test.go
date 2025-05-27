@@ -22,17 +22,22 @@ const (
 		CREATE TABLE codewallet__core_nonce(
 			id SERIAL NOT NULL PRIMARY KEY,
 
-			address text NOT NULL UNIQUE, 
-			authority text NOT NULL,
-			blockhash text NULL,
+			address TEXT NOT NULL UNIQUE, 
+			authority TEXT NOT NULL,
+			blockhash TEXT NULL,
 
-			environment integer NOT NULL,
-			environment_instance text NOT NULL,
+			environment INTEGER NOT NULL,
+			environment_instance TEXT NOT NULL,
 
-			purpose integer NOT NULL,
-			state integer NOT NULL,
+			purpose INTEGER NOT NULL,
+			state INTEGER NOT NULL,
 
-			signature text NULL
+			signature TEXT NULL,
+
+			claim_node_id TEXT NULL,
+			claim_expires_at BIGINT NULL,
+
+			version BIGINT NOT NULL
 		);
 	`
 

@@ -95,15 +95,19 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 					blockhash yet.
 
 				StateAvailable:
-					Available to be used by a payment intent, subscription, or
-					other nonce-related transaction/instruction.
+					Available to be by a fulfillment for a virtual instruction
+					or transaction.
 
 				StateReserved:
-					Reserved by a payment intent, subscription, or other
-					nonce-related transaction/instruction.
+					Reserved by a by a fulfillment for a virtual instruction
+					or transaction.
 
 				StateInvalid:
 					The nonce account is invalid (e.g. insufficient funds, etc).
+
+				StateClaimed:
+					The nonce is claimed by a process for future use (identified
+					by a node ID)
 
 			Transitions:
 				StateUnknown
@@ -112,13 +116,14 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 				StateReleased
 					-> StateAvailable
 				StateAvailable
-					-> [externally] StateReserved (nonce used in a new transaction)
+					-> [externally] StateClaimed (nonce claimed by a process for future use)
+				StateClaimed
+					-> [externally] StateAvailable (nonce released by the process that claimed it)
+					-> [externally] StateReserved (nonce reserved for future use in a virtual instruction or transaction)
 				StateReserved
-					-> [externally] StateReleased (nonce used in a submitted transaction)
-					-> [externally] StateAvailable (nonce will never be submitted in the transaction - eg. it became revoked)
+					-> [externally] StateReleased (nonce used in a submitted virtual instruction or transaction)
+					-> [externally] StateAvailable (nonce will never be submitted in the virtual instruction or transaction - eg. it became revoked)
 	*/
-
-	// todo: distributed lock on the nonce
 
 	switch record.State {
 	case nonce.StateUnknown:
@@ -131,6 +136,8 @@ func (p *service) handle(ctx context.Context, record *nonce.Record) error {
 		return p.handleReserved(ctx, record)
 	case nonce.StateInvalid:
 		return p.handleInvalid(ctx, record)
+	case nonce.StateClaimed:
+		return p.handleClaimed(ctx, record)
 	default:
 		return nil
 	}
@@ -257,5 +264,10 @@ func (p *service) handleAvailable(ctx context.Context, record *nonce.Record) err
 func (p *service) handleInvalid(ctx context.Context, record *nonce.Record) error {
 	// We could try to recover this nonce account here but let's just leave it
 	// as is for further investigation.
+	return nil
+}
+
+func (p *service) handleClaimed(ctx context.Context, record *nonce.Record) error {
+	// Nothing to do here
 	return nil
 }

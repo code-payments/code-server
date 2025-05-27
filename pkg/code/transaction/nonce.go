@@ -83,7 +83,7 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, env nonc
 			return err
 		}
 
-		if record.State != nonce.StateAvailable {
+		if !record.IsAvailable() {
 			// Unlock and try again
 			lock.Unlock()
 			return errors.New("selected nonce that became unavailable")
@@ -104,6 +104,8 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, env nonc
 
 		// Reserve the nonce for use with a fulfillment
 		record.State = nonce.StateReserved
+		record.ClaimNodeID = nil
+		record.ClaimExpiresAt = nil
 		err = data.SaveNonce(ctx, record)
 		if err != nil {
 			lock.Unlock()
@@ -152,12 +154,14 @@ func (n *SelectedNonce) MarkReservedWithSignature(ctx context.Context, sig strin
 		return n.data.SaveNonce(ctx, n.record)
 	}
 
-	if n.record.State != nonce.StateAvailable {
+	if !n.record.IsAvailable() {
 		return errors.New("nonce must be available to reserve")
 	}
 
 	n.record.State = nonce.StateReserved
 	n.record.Signature = sig
+	n.record.ClaimNodeID = nil
+	n.record.ClaimExpiresAt = nil
 	return n.data.SaveNonce(ctx, n.record)
 }
 
@@ -173,7 +177,7 @@ func (n *SelectedNonce) ReleaseIfNotReserved() error {
 		return errors.New("nonce is unlocked")
 	}
 
-	if n.record.State == nonce.StateAvailable {
+	if n.record.IsAvailable() {
 		return nil
 	}
 
@@ -184,6 +188,8 @@ func (n *SelectedNonce) ReleaseIfNotReserved() error {
 		defer cancel()
 
 		n.record.State = nonce.StateAvailable
+		n.record.ClaimNodeID = nil
+		n.record.ClaimExpiresAt = nil
 		return n.data.SaveNonce(ctx, n.record)
 	}
 
