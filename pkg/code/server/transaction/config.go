@@ -33,6 +33,9 @@ const (
 	AirdropperOwnerPublicKeyEnvName = envConfigPrefix + "AIRDROPPER_OWNER_PUBLIC_KEY"
 	defaultAirdropperOwnerPublicKey = "invalid" // Ensure something valid is set
 
+	MaxAirdropUsdValueEnvName = envConfigPrefix + "_MAX_AIRDROP_USD_VALUE"
+	defaultMaxAirdropUsdValue = 1.0
+
 	SwapSubsidizerOwnerPublicKeyEnvName = envConfigPrefix + "SWAP_SUBSIDIZER_OWNER_PUBLIC_KEY"
 	defaultSwapSubsidizerOwnerPublicKey = "invalid" // Ensure something valid is set
 
@@ -52,8 +55,8 @@ type conf struct {
 	clientReceiveTimeout         config.Duration
 	feeCollectorTokenPublicKey   config.String
 	enableAirdrops               config.Bool
-	enableAsyncAirdropProcessing config.Bool
 	airdropperOwnerPublicKey     config.String
+	maxAirdropUsdValue           config.Float64
 	swapSubsidizerOwnerPublicKey config.String
 	swapTimeout                  config.Duration
 	swapPriorityFeeMultiple      config.Float64
@@ -75,8 +78,8 @@ func WithEnvConfigs() ConfigProvider {
 			clientReceiveTimeout:         env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
 			feeCollectorTokenPublicKey:   env.NewStringConfig(FeeCollectorTokenPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
 			enableAirdrops:               env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
-			enableAsyncAirdropProcessing: wrapper.NewBoolConfig(memory.NewConfig(true), true),
 			airdropperOwnerPublicKey:     env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
+			maxAirdropUsdValue:           env.NewFloat64Config(MaxAirdropUsdValueEnvName, defaultMaxAirdropUsdValue),
 			swapSubsidizerOwnerPublicKey: env.NewStringConfig(SwapSubsidizerOwnerPublicKeyEnvName, defaultSwapSubsidizerOwnerPublicKey),
 			swapTimeout:                  env.NewDurationConfig(SwapTimeoutConfigEnvName, defaultSwapTimeout),
 			swapPriorityFeeMultiple:      env.NewFloat64Config(SwapPriorityFeeMultiple, defaultSwapPriorityFeeMultiple),
@@ -105,8 +108,8 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 			clientReceiveTimeout:         wrapper.NewDurationConfig(memory.NewConfig(overrides.clientReceiveTimeout), defaultClientReceiveTimeout),
 			feeCollectorTokenPublicKey:   wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorTokenPublicKey), defaultFeeCollectorPublicKey),
 			enableAirdrops:               wrapper.NewBoolConfig(memory.NewConfig(overrides.enableAirdrops), false),
-			enableAsyncAirdropProcessing: wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			airdropperOwnerPublicKey:     wrapper.NewStringConfig(memory.NewConfig(defaultAirdropperOwnerPublicKey), defaultAirdropperOwnerPublicKey),
+			maxAirdropUsdValue:           wrapper.NewFloat64Config(memory.NewConfig(defaultMaxAirdropUsdValue), defaultMaxAirdropUsdValue),
 			swapSubsidizerOwnerPublicKey: wrapper.NewStringConfig(memory.NewConfig(defaultSwapSubsidizerOwnerPublicKey), defaultSwapSubsidizerOwnerPublicKey),
 			swapTimeout:                  wrapper.NewDurationConfig(memory.NewConfig(defaultSwapTimeout), defaultSwapTimeout),
 			swapPriorityFeeMultiple:      wrapper.NewFloat64Config(memory.NewConfig(defaultSwapPriorityFeeMultiple), defaultSwapPriorityFeeMultiple),
