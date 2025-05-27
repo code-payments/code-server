@@ -218,6 +218,10 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	default:
 		return nil, errors.New("unhandled airdrop type")
 	}
+	log = log.WithFields(logrus.Fields{
+		"native_amount": nativeAmount,
+		"currency":      currencyCode,
+	})
 
 	exchangeRateTime := exchange_rate_util.GetLatestExchangeRateTime()
 
