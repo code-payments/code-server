@@ -248,6 +248,12 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	coreMintAmount := nativeAmount / otherRateRecord.Rate
 	quarkAmount := uint64(coreMintAmount * float64(common.CoreMintQuarksPerUnit))
 
+	usdValue := usdRateRecord.Rate * coreMintAmount
+	if usdValue > s.conf.maxAirdropUsdValue.Get(ctx) {
+		log.Warn("airdrop exceeds max usd value")
+		return nil, ErrIneligibleForAirdrop
+	}
+
 	var isAirdropperManuallyUnlocked bool
 	s.airdropperLock.Lock()
 	defer func() {
@@ -318,7 +324,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			ExchangeCurrency: currencyCode,
 			ExchangeRate:     otherRateRecord.Rate,
 			NativeAmount:     nativeAmount,
-			UsdMarketValue:   usdRateRecord.Rate * coreMintAmount,
+			UsdMarketValue:   usdValue,
 
 			IsWithdrawal: false,
 		},
