@@ -33,7 +33,7 @@ const (
 	AirdropperOwnerPublicKeyEnvName = envConfigPrefix + "AIRDROPPER_OWNER_PUBLIC_KEY"
 	defaultAirdropperOwnerPublicKey = "invalid" // Ensure something valid is set
 
-	MaxAirdropUsdValueEnvName = envConfigPrefix + "_MAX_AIRDROP_USD_VALUE"
+	MaxAirdropUsdValueEnvName = envConfigPrefix + "MAX_AIRDROP_USD_VALUE"
 	defaultMaxAirdropUsdValue = 1.0
 
 	SwapSubsidizerOwnerPublicKeyEnvName = envConfigPrefix + "SWAP_SUBSIDIZER_OWNER_PUBLIC_KEY"
