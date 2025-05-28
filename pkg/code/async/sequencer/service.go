@@ -37,15 +37,8 @@ type service struct {
 }
 
 func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb.IndexerClient, noncePool *transaction.LocalNoncePool, configProvider ConfigProvider) (async.Service, error) {
-	noncePoolEnv, noncePoolEnvInstance, noncePoolType := noncePool.GetConfiguration()
-	if noncePoolEnv != nonce.EnvironmentSolana {
-		return nil, errors.Errorf("nonce pool environment must be %s", nonce.EnvironmentSolana)
-	}
-	if noncePoolEnvInstance != nonce.EnvironmentInstanceSolanaMainnet {
-		return nil, errors.Errorf("nonce pool environment instance must be %s", nonce.EnvironmentInstanceSolanaMainnet)
-	}
-	if noncePoolType != nonce.PurposeOnDemandTransaction {
-		return nil, errors.Errorf("nonce pool type must be %s", nonce.PurposeOnDemandTransaction)
+	if err := noncePool.Validate(nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction); err != nil {
+		return nil, err
 	}
 
 	return &service{

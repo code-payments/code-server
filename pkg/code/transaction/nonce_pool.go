@@ -323,8 +323,21 @@ func (np *LocalNoncePool) GetNonce(ctx context.Context) (*Nonce, error) {
 	return n, nil
 }
 
-func (np *LocalNoncePool) GetConfiguration() (nonce.Environment, string, nonce.Purpose) {
-	return np.env, np.envInstance, np.poolType
+func (np *LocalNoncePool) Validate(
+	env nonce.Environment,
+	envInstance string,
+	poolType nonce.Purpose,
+) error {
+	if np.env != env {
+		return errors.Errorf("nonce pool environment must be %s", env)
+	}
+	if np.envInstance != envInstance {
+		return errors.Errorf("nonce pool environment instance must be %s", envInstance)
+	}
+	if np.poolType != poolType {
+		return errors.Errorf("nonce pool type must be %s", poolType)
+	}
+	return nil
 }
 
 func (np *LocalNoncePool) Close() error {

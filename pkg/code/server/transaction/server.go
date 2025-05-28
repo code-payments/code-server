@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
@@ -67,15 +66,8 @@ func NewTransactionServer(
 
 	stripedLockParallelization := uint(conf.stripedLockParallelization.Get(ctx))
 
-	noncePoolEnv, noncePoolEnvInstance, noncePoolType := noncePool.GetConfiguration()
-	if noncePoolEnv != nonce.EnvironmentCvm {
-		return nil, errors.Errorf("nonce pool environment must be %s", nonce.EnvironmentCvm)
-	}
-	if noncePoolEnvInstance != common.CodeVmAccount.PublicKey().ToBase58() {
-		return nil, errors.Errorf("nonce pool environment instance must be %s", common.CodeVmAccount.PublicKey().ToBase58())
-	}
-	if noncePoolType != nonce.PurposeClientTransaction {
-		return nil, errors.Errorf("nonce pool type must be %s", nonce.PurposeClientTransaction)
+	if err := noncePool.Validate(nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction); err != nil {
+		return nil, err
 	}
 
 	s := &transactionServer{
