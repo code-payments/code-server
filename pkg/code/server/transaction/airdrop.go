@@ -301,7 +301,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		return nil, err
 	}
 	defer func() {
-		selectedNonce.ReleaseIfNotReserved()
+		selectedNonce.ReleaseIfNotReserved(ctx)
 	}()
 
 	vixnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{

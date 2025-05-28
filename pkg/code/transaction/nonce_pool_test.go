@@ -106,7 +106,7 @@ func testLocalNoncePoolHappyPath(nt *localNoncePoolTest) {
 	// Releasing back to the pool should allow us to re-use the nonces that
 	// weren't reserved
 	for _, v := range observed {
-		v.ReleaseIfNotReserved()
+		v.ReleaseIfNotReserved(ctx)
 	}
 	clear(observed)
 
@@ -127,7 +127,7 @@ func testLocalNoncePoolHappyPath(nt *localNoncePoolTest) {
 	// Releasing back to the pool will allow us to make nonces available to
 	// claim
 	for _, v := range observed {
-		v.ReleaseIfNotReserved()
+		v.ReleaseIfNotReserved(ctx)
 	}
 
 	require.NoError(nt.t, nt.pool.Close())

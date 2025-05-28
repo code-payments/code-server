@@ -228,7 +228,7 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 			return err
 		}
 		defer func() {
-			selectedNonce.ReleaseIfNotReserved()
+			selectedNonce.ReleaseIfNotReserved(ctx)
 		}()
 
 		err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {

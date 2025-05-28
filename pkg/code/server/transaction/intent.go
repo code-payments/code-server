@@ -381,7 +381,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 					// it's safe to put it back in the available pool. The client will have
 					// caused a failed RPC call, and we want to avoid malicious or erroneous
 					// clients from consuming our nonce pool!
-					selectedNonce.ReleaseIfNotReserved()
+					selectedNonce.ReleaseIfNotReserved(ctx)
 				}()
 				nonceAccount = selectedNonce.Account
 				nonceBlockchash = selectedNonce.Blockhash

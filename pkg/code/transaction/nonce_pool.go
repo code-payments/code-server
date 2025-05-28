@@ -16,8 +16,14 @@ import (
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana"
+)
+
+const (
+	nonceMetricsStructName          = "transaction.Nonce"
+	localNoncePoolMetricsStructName = "transaction.LocalNoncePool"
 )
 
 var (
@@ -165,33 +171,43 @@ type Nonce struct {
 
 // MarkReservedWithSignature marks the nonce as reserved with a signature
 func (n *Nonce) MarkReservedWithSignature(ctx context.Context, sig string) error {
-	if len(sig) == 0 {
-		return errors.New("signature is empty")
-	}
+	tracer := metrics.TraceMethodCall(ctx, nonceMetricsStructName, "MarkReservedWithSignature")
+	defer tracer.End()
 
-	if n.record.Signature == sig {
-		return nil
-	}
+	err := func() error {
+		if len(sig) == 0 {
+			return errors.New("signature is empty")
+		}
 
-	if n.record.State == nonce.StateReserved || len(n.record.Signature) != 0 {
-		return errors.New("nonce already reserved with a different signature")
-	}
+		if n.record.Signature == sig {
+			return nil
+		}
 
-	if !n.record.CanReserveWithSignature() {
-		return errors.New("nonce is not in a valid state to reserve with signature")
-	}
+		if n.record.State == nonce.StateReserved || len(n.record.Signature) != 0 {
+			return errors.New("nonce already reserved with a different signature")
+		}
 
-	n.record.State = nonce.StateReserved
-	n.record.Signature = sig
-	n.record.ClaimNodeID = nil
-	n.record.ClaimExpiresAt = nil
-	return n.pool.data.SaveNonce(ctx, n.record)
+		if !n.record.CanReserveWithSignature() {
+			return errors.New("nonce is not in a valid state to reserve with signature")
+		}
+
+		n.record.State = nonce.StateReserved
+		n.record.Signature = sig
+		n.record.ClaimNodeID = nil
+		n.record.ClaimExpiresAt = nil
+		return n.pool.data.SaveNonce(ctx, n.record)
+	}()
+	tracer.OnError(err)
+	return err
 }
 
 // ReleaseIfNotReserved releases the nonce back to the pool if
 // the nonce has not yet been reserved (or more specifically, is
 // still owned by the pool).
-func (n *Nonce) ReleaseIfNotReserved() {
+func (n *Nonce) ReleaseIfNotReserved(ctx context.Context) {
+	tracer := metrics.TraceMethodCall(ctx, nonceMetricsStructName, "ReleaseIfNotReserved")
+	defer tracer.End()
+
 	if n.record.State != nonce.StateClaimed {
 		return
 	}
@@ -295,32 +311,39 @@ func NewLocalNoncePool(
 }
 
 func (np *LocalNoncePool) GetNonce(ctx context.Context) (*Nonce, error) {
-	var n *Nonce
+	tracer := metrics.TraceMethodCall(ctx, localNoncePoolMetricsStructName, "GetNonce")
+	defer tracer.End()
 
-	np.mu.Lock()
-	if np.isClosed {
-		np.mu.Unlock()
-		return nil, ErrNoncePoolClosed
-	}
+	n, err := func() (*Nonce, error) {
+		var n *Nonce
 
-	size := len(np.freeList)
-	if size > 0 {
-		n = np.freeList[0]
-		np.freeList = np.freeList[1:]
-	}
-	np.mu.Unlock()
-
-	if size < np.opts.desiredPoolSize/2 {
-		select {
-		case np.refreshPoolCh <- struct{}{}:
-		default:
+		np.mu.Lock()
+		if np.isClosed {
+			np.mu.Unlock()
+			return nil, ErrNoncePoolClosed
 		}
-	}
 
-	if n == nil {
-		return nil, ErrNoAvailableNonces
-	}
-	return n, nil
+		size := len(np.freeList)
+		if size > 0 {
+			n = np.freeList[0]
+			np.freeList = np.freeList[1:]
+		}
+		np.mu.Unlock()
+
+		if size < np.opts.desiredPoolSize/2 {
+			select {
+			case np.refreshPoolCh <- struct{}{}:
+			default:
+			}
+		}
+
+		if n == nil {
+			return nil, ErrNoAvailableNonces
+		}
+		return n, nil
+	}()
+	tracer.OnError(err)
+	return n, err
 }
 
 func (np *LocalNoncePool) Validate(
@@ -345,6 +368,10 @@ func (np *LocalNoncePool) Close() error {
 
 	np.mu.Lock()
 	defer np.mu.Unlock()
+
+	if np.isClosed {
+		return nil
+	}
 
 	np.isClosed = true
 	np.cancelWorkerCtx()
