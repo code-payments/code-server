@@ -72,14 +72,6 @@ func (s *store) GetAllByState(ctx context.Context, env nonce.Environment, instan
 	return nonces, nil
 }
 
-func (s *store) GetRandomAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error) {
-	model, err := dbGetRandomAvailableByPurpose(ctx, s.db, env, instance, purpose)
-	if err != nil {
-		return nil, err
-	}
-	return fromNonceModel(model), nil
-}
-
 func (s *store) BatchClaimAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose, limit int, nodeID string, minExpireAt, maxExpireAt time.Time) ([]*nonce.Record, error) {
 	models, err := dbBatchClaimAvailableByPurpose(ctx, s.db, env, instance, purpose, limit, nodeID, minExpireAt, maxExpireAt)
 	if err != nil {

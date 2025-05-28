@@ -23,7 +23,6 @@ func RunTests(t *testing.T, s nonce.Store, teardown func()) {
 		testUpdate,
 		testGetAllByState,
 		testGetCount,
-		testGetRandomAvailableByPurpose,
 		testBatchClaimAvailableByPurpose,
 		testBatchClaimAvailableByPurposeExpirationRandomness,
 	} {
@@ -282,105 +281,6 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeInternalServerProcess)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, count)
-	})
-}
-
-func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
-	t.Run("testGetRandomAvailableByPurpose", func(t *testing.T) {
-		ctx := context.Background()
-
-		_, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
-		assert.Equal(t, nonce.ErrNonceNotFound, err)
-
-		for _, purpose := range []nonce.Purpose{
-			nonce.PurposeClientTransaction,
-			nonce.PurposeInternalServerProcess,
-		} {
-			for _, state := range []nonce.State{
-				nonce.StateUnknown,
-				nonce.StateAvailable,
-				nonce.StateReserved,
-				nonce.StateReleased,
-				nonce.StateClaimed,
-			} {
-				for i := 0; i < 50; i++ {
-					record := &nonce.Record{
-						Address:             fmt.Sprintf("nonce_%s_%s_%d", purpose, state, i),
-						Authority:           "authority",
-						Blockhash:           "bh",
-						Environment:         nonce.EnvironmentSolana,
-						EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
-						Purpose:             purpose,
-						State:               state,
-						Signature:           "",
-					}
-					if state == nonce.StateClaimed {
-						record.ClaimNodeID = pointer.String("node_id")
-
-						if i < 25 {
-							record.ClaimExpiresAt = pointer.Time(time.Now().Add(-time.Hour))
-						} else {
-							record.ClaimExpiresAt = pointer.Time(time.Now().Add(time.Hour))
-						}
-					}
-					require.NoError(t, s.Save(ctx, record))
-				}
-			}
-		}
-
-		for i := 0; i < 100; i++ {
-			record := &nonce.Record{
-				Address:             fmt.Sprintf("nonce_devnet_%d", i),
-				Authority:           "authority",
-				Blockhash:           "bh",
-				Environment:         nonce.EnvironmentSolana,
-				EnvironmentInstance: nonce.EnvironmentInstanceSolanaDevnet,
-				Purpose:             nonce.PurposeInternalServerProcess,
-				State:               nonce.StateAvailable,
-				Signature:           "",
-			}
-			require.NoError(t, s.Save(ctx, record))
-
-			record = &nonce.Record{
-				Address:             fmt.Sprintf("nonce_cvm_%d", i),
-				Authority:           "authority",
-				Blockhash:           "bh",
-				Environment:         nonce.EnvironmentCvm,
-				EnvironmentInstance: "pubkey",
-				Purpose:             nonce.PurposeClientTransaction,
-				State:               nonce.StateClaimed,
-				Signature:           "",
-				ClaimNodeID:         pointer.String("node_id"),
-				ClaimExpiresAt:      pointer.Time(time.Now().Add(-time.Hour)),
-			}
-			require.NoError(t, s.Save(ctx, record))
-		}
-
-		for _, purpose := range []nonce.Purpose{nonce.PurposeClientTransaction, nonce.PurposeInternalServerProcess} {
-			availableState, claimedState := 0, 0
-			selectedByAddress := make(map[string]struct{})
-			for i := 0; i < 100; i++ {
-				actual, err := s.GetRandomAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, purpose)
-				require.NoError(t, err)
-				assert.Equal(t, purpose, actual.Purpose)
-				assert.Equal(t, nonce.EnvironmentSolana, actual.Environment)
-				assert.Equal(t, nonce.EnvironmentInstanceSolanaMainnet, actual.EnvironmentInstance)
-				assert.True(t, actual.IsAvailableToClaim())
-				assert.True(t, actual.CanReserveWithSignature())
-				switch actual.State {
-				case nonce.StateAvailable:
-					availableState++
-				case nonce.StateClaimed:
-					claimedState++
-					assert.True(t, time.Now().After(*actual.ClaimExpiresAt))
-				default:
-				}
-				selectedByAddress[actual.Address] = struct{}{}
-			}
-			assert.True(t, len(selectedByAddress) > 10)
-			assert.NotZero(t, availableState)
-			assert.NotZero(t, claimedState)
-		}
 	})
 }
 

@@ -201,53 +201,6 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, env nonce.Environment, in
 	return res, nil
 }
 
-// todo: Implementation still isn't perfect, but better than no randomness. It's
-// sufficiently efficient, as long as our nonce pool is larger than the max offset.
-// todo: We may need to tune the offset based on pool size and environment, but it
-// should be sufficiently good enough for now.
-func dbGetRandomAvailableByPurpose(ctx context.Context, db *sqlx.DB, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonceModel, error) {
-	res := &nonceModel{}
-
-	// Signature null check is required because some legacy records didn't have this
-	// set and causes this call to fail. This is a result of the field not being
-	// defined at the time of record creation.
-	//
-	// todo: Fix said nonce records
-	query := `SELECT
-		id, address, authority, blockhash, environment, environment_instance, purpose, state, signature, claim_node_id, claim_expires_at, version
-		FROM ` + nonceTableName + `
-		WHERE environment = $1 AND environment_instance = $2 AND ((state = $3) OR (state = $4 AND claim_expires_at < $5)) AND purpose = $6 AND signature IS NOT NULL
-		OFFSET FLOOR(RANDOM() * 100)
-		LIMIT 1
-	`
-	fallbackQuery := `SELECT
-		id, address, authority, blockhash, environment, environment_instance, purpose, state, signature, claim_node_id, claim_expires_at, version
-		FROM ` + nonceTableName + `
-		WHERE environment = $1 AND environment_instance = $2 AND ((state = $3) OR (state = $4 AND claim_expires_at < $5)) AND purpose = $6 AND signature IS NOT NULL
-		LIMIT 1
-	`
-
-	nowMs := time.Now().UnixMilli()
-	err := db.GetContext(ctx, res, query, env, instance, nonce.StateAvailable, nonce.StateClaimed, nowMs, purpose)
-	if err != nil {
-		err = pgutil.CheckNoRows(err, nonce.ErrNonceNotFound)
-
-		// No nonces found. Because our query isn't perfect, fall back to a
-		// strategy that will guarantee to select something if an available
-		// nonce exists.
-		if err == nonce.ErrNonceNotFound {
-			err := db.GetContext(ctx, res, fallbackQuery, env, instance, nonce.StateAvailable, nonce.StateClaimed, nowMs, purpose)
-			if err != nil {
-				return nil, pgutil.CheckNoRows(err, nonce.ErrNonceNotFound)
-			}
-			return res, nil
-		}
-
-		return nil, err
-	}
-	return res, nil
-}
-
 func dbBatchClaimAvailableByPurpose(
 	ctx context.Context,
 	db *sqlx.DB,

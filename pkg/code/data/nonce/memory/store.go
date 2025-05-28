@@ -232,22 +232,6 @@ func (s *store) GetAllByState(ctx context.Context, env nonce.Environment, instan
 	return nil, nonce.ErrNonceNotFound
 }
 
-func (s *store) GetRandomAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findByStateAndPurpose(env, instance, nonce.StateAvailable, purpose)
-	items = append(items, s.findByStateAndPurpose(env, instance, nonce.StateClaimed, purpose)...)
-	items = s.filterAvailableToClaim(items)
-	if len(items) == 0 {
-		return nil, nonce.ErrNonceNotFound
-	}
-
-	index := rand.Intn(len(items))
-	cloned := items[index].Clone()
-	return &cloned, nil
-}
-
 func (s *store) BatchClaimAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose, limit int, nodeID string, minExpireAt, maxExpireAt time.Time) ([]*nonce.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
