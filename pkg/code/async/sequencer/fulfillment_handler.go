@@ -46,7 +46,7 @@ type FulfillmentHandler interface {
 	// to the blockchain. This is an optimization for the nonce pool. Implementations
 	// should not modify the provided fulfillment record or selected nonce, but rather
 	// use relevant fields to make the corresponding transaction.
-	MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error)
+	MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error)
 
 	// OnSuccess is a callback function executed on a finalized transaction.
 	OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, txnRecord *transaction.Record) error
@@ -123,7 +123,7 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) SupportsOnDemandTran
 	return true
 }
 
-func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+func (h *InitializeLockedTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
 	if fulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
 	}
@@ -268,7 +268,7 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) SupportsOnDemandTrans
 	return true
 }
 
-func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
 	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
 	if err != nil {
 		return nil, err
@@ -444,7 +444,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) SupportsOnDemandTransactions() boo
 	return true
 }
 
-func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
 	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
 	if err != nil {
 		return nil, err
@@ -634,7 +634,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) SupportsOnDemandTransactio
 	return true
 }
 
-func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+func (h *CloseEmptyTimelockAccountFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
 	if fulfillmentRecord.FulfillmentType != fulfillment.CloseEmptyTimelockAccount {
 		return nil, errors.New("invalid fulfillment type")
 	}

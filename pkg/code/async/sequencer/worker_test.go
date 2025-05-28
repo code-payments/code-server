@@ -105,6 +105,7 @@ func TestFulfillmentWorker_StatePending_OnDemandTransactionCreation_HappyPath(t 
 	env.fulfillmentHandler.supportsOnDemandTxnCreation = true
 
 	nonceRecord := env.generateAvailableNonce(t)
+	time.Sleep(time.Second) // todo: Better way of waiting for nonce to be claimed
 
 	fulfillmentRecord := env.createAnyFulfillmentInState(t, fulfillment.StatePending)
 	fulfillmentRecord.Signature = nil
@@ -226,12 +227,23 @@ func setupWorkerEnv(t *testing.T) *workerTestEnv {
 	db := code_data.NewTestDataProvider()
 
 	scheduler := &mockScheduler{}
+	noncePool, err := transaction_util.NewLocalNoncePool(
+		db,
+		nil,
+		nonce.EnvironmentSolana,
+		nonce.EnvironmentInstanceSolanaMainnet,
+		nonce.PurposeOnDemandTransaction,
+		transaction_util.WithNoncePoolRefreshPoolInterval(time.Second),
+	)
+	require.NoError(t, err)
 	fulfillmentHandler := &mockFulfillmentHandler{}
 	actionHandler := &mockActionHandler{}
 	intentHandler := &mockIntentHandler{}
 
 	// todo: setup a test vm indexer
-	worker := New(db, scheduler, nil, withManualTestOverrides(&testOverrides{})).(*service)
+	workerInterface, err := New(db, scheduler, nil, noncePool, withManualTestOverrides(&testOverrides{}))
+	require.NoError(t, err)
+	worker := workerInterface.(*service)
 	for key := range worker.fulfillmentHandlersByType {
 		worker.fulfillmentHandlersByType[key] = fulfillmentHandler
 	}

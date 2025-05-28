@@ -12,9 +12,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -225,13 +223,12 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 			return errors.New("unexpected scheduled fulfillment without transaction data")
 		}
 
-		selectedNonce, err := transaction_util.SelectAvailableNonce(ctx, p.data, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction)
+		selectedNonce, err := p.noncePool.GetNonce(ctx)
 		if err != nil {
 			return err
 		}
 		defer func() {
 			selectedNonce.ReleaseIfNotReserved()
-			selectedNonce.Unlock()
 		}()
 
 		err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {

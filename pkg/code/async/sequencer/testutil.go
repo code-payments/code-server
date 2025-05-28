@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/code-payments/code-server/pkg/solana"
-	"github.com/code-payments/code-server/pkg/solana/memo"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/memo"
 )
 
 type mockScheduler struct {
@@ -42,7 +42,7 @@ func (h *mockFulfillmentHandler) SupportsOnDemandTransactions() bool {
 	return h.supportsOnDemandTxnCreation
 }
 
-func (h *mockFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.SelectedNonce) (*solana.Transaction, error) {
+func (h *mockFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
 	if !h.supportsOnDemandTxnCreation {
 		return nil, errors.New("not supported")
 	}
