@@ -149,18 +149,23 @@ func (r *Record) Validate() error {
 	return nil
 }
 
-func (r *Record) IsAvailable() bool {
+func (r *Record) IsAvailableToClaim() bool {
 	if r.State == StateAvailable {
 		return true
 	}
 	if r.State != StateClaimed {
 		return false
 	}
-	if r.ClaimExpiresAt == nil {
-		return false
-	}
+	return r.ClaimExpiresAt.Before(time.Now())
+}
 
-	return time.Now().After(*r.ClaimExpiresAt)
+func (r *Record) CanReserveWithSignature() bool {
+	if r.State == StateAvailable {
+		return true
+	}
+	// Allow a small buffer against expiration timestamp to account for DB
+	// call latency
+	return r.State == StateClaimed && r.ClaimExpiresAt.After(time.Now().Add(time.Second))
 }
 
 func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {

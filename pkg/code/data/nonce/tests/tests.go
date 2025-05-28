@@ -365,7 +365,8 @@ func testGetRandomAvailableByPurpose(t *testing.T, s nonce.Store) {
 				assert.Equal(t, purpose, actual.Purpose)
 				assert.Equal(t, nonce.EnvironmentSolana, actual.Environment)
 				assert.Equal(t, nonce.EnvironmentInstanceSolanaMainnet, actual.EnvironmentInstance)
-				assert.True(t, actual.IsAvailable())
+				assert.True(t, actual.IsAvailableToClaim())
+				assert.True(t, actual.CanReserveWithSignature())
 				switch actual.State {
 				case nonce.StateAvailable:
 					availableState++

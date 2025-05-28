@@ -133,10 +133,10 @@ func (s *store) filter(items []*nonce.Record, cursor query.Cursor, limit uint64,
 	return res
 }
 
-func (s *store) filterAvailable(items []*nonce.Record) []*nonce.Record {
+func (s *store) filterAvailableToClaim(items []*nonce.Record) []*nonce.Record {
 	var res []*nonce.Record
 	for _, item := range items {
-		if item.IsAvailable() {
+		if item.IsAvailableToClaim() {
 			res = append(res, item)
 		}
 	}
@@ -238,7 +238,7 @@ func (s *store) GetRandomAvailableByPurpose(ctx context.Context, env nonce.Envir
 
 	items := s.findByStateAndPurpose(env, instance, nonce.StateAvailable, purpose)
 	items = append(items, s.findByStateAndPurpose(env, instance, nonce.StateClaimed, purpose)...)
-	items = s.filterAvailable(items)
+	items = s.filterAvailableToClaim(items)
 	if len(items) == 0 {
 		return nil, nonce.ErrNonceNotFound
 	}
@@ -254,7 +254,7 @@ func (s *store) BatchClaimAvailableByPurpose(ctx context.Context, env nonce.Envi
 
 	items := s.findByStateAndPurpose(env, instance, nonce.StateAvailable, purpose)
 	items = append(items, s.findByStateAndPurpose(env, instance, nonce.StateClaimed, purpose)...)
-	items = s.filterAvailable(items)
+	items = s.filterAvailableToClaim(items)
 	if len(items) == 0 {
 		return nil, nonce.ErrNonceNotFound
 	}

@@ -15,9 +15,7 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-var (
-	ErrNoAvailableNonces = errors.New("no available nonces")
-)
+// todo: Deprecate this in favour of LocalNoncePool
 
 var (
 	// Temporary global lock, so we avoid any chance of double locking a nonce,
@@ -83,7 +81,7 @@ func SelectAvailableNonce(ctx context.Context, data code_data.Provider, env nonc
 			return err
 		}
 
-		if !record.IsAvailable() {
+		if !record.IsAvailableToClaim() {
 			// Unlock and try again
 			lock.Unlock()
 			return errors.New("selected nonce that became unavailable")
@@ -154,7 +152,7 @@ func (n *SelectedNonce) MarkReservedWithSignature(ctx context.Context, sig strin
 		return n.data.SaveNonce(ctx, n.record)
 	}
 
-	if !n.record.IsAvailable() {
+	if !n.record.CanReserveWithSignature() {
 		return errors.New("nonce must be available to reserve")
 	}
 
@@ -177,7 +175,7 @@ func (n *SelectedNonce) ReleaseIfNotReserved() error {
 		return errors.New("nonce is unlocked")
 	}
 
-	if n.record.IsAvailable() {
+	if n.record.IsAvailableToClaim() {
 		return nil
 	}
 
