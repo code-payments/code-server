@@ -2,19 +2,22 @@ package transaction
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mr-tron/base58/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 var (
@@ -153,6 +156,9 @@ func (opts *noncePoolOpts) validate() error {
 
 // Nonce represents a handle to a nonce that is owned by a local nonce pool.
 type Nonce struct {
+	Account   *common.Account
+	Blockhash solana.Blockhash
+
 	pool   *LocalNoncePool
 	record *nonce.Record
 }
@@ -317,6 +323,10 @@ func (np *LocalNoncePool) GetNonce(ctx context.Context) (*Nonce, error) {
 	return n, nil
 }
 
+func (np *LocalNoncePool) GetConfiguration() (nonce.Environment, string, nonce.Purpose) {
+	return np.env, np.envInstance, np.poolType
+}
+
 func (np *LocalNoncePool) Close() error {
 	log := np.log.WithField("method", "Close")
 
@@ -376,13 +386,33 @@ func (np *LocalNoncePool) load(ctx context.Context, limit int) (int, error) {
 		return 0, ErrNoAvailableNonces
 	}
 
-	np.mu.Lock()
-	for i := range records {
-		np.freeList = append(np.freeList, &Nonce{pool: np, record: records[i]})
+	var newNonces []*Nonce
+	for _, record := range records {
+		account, err := common.NewAccountFromPublicKeyString(record.Address)
+		if err != nil {
+			return 0, errors.Wrap(err, "invalid address")
+		}
+
+		decodedBh, err := base58.Decode(record.Blockhash)
+		if err != nil {
+			return 0, errors.Wrap(err, "invalid blochash")
+		}
+		var bh solana.Blockhash
+		copy(bh[:], decodedBh)
+
+		newNonces = append(newNonces, &Nonce{
+			Account:   account,
+			Blockhash: bh,
+			pool:      np,
+			record:    record,
+		})
 	}
+
+	np.mu.Lock()
+	np.freeList = append(np.freeList, newNonces...)
 	np.mu.Unlock()
 
-	return len(records), nil
+	return len(newNonces), nil
 }
 
 func (np *LocalNoncePool) refreshPool() {

@@ -25,7 +25,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/grpc/client"
@@ -300,7 +299,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	var actionHandlers []CreateActionHandler
 	var actionRecords []*action.Record
 	var fulfillments []fulfillmentWithSigningMetadata
-	var reservedNonces []*transaction.SelectedNonce
+	var reservedNonces []*transaction.Nonce
 	var serverParameters []*transactionpb.ServerParameter
 	for i, protoAction := range submitActionsReq.Actions {
 		log := log.WithField("action_id", i)
@@ -368,11 +367,11 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 			// Select any available nonce reserved for use for a client transaction,
 			// if it's required
-			var selectedNonce *transaction.SelectedNonce
+			var selectedNonce *transaction.Nonce
 			var nonceAccount *common.Account
 			var nonceBlockchash solana.Blockhash
 			if actionHandler.RequiresNonce(j) {
-				selectedNonce, err = transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
+				selectedNonce, err = s.noncePool.GetNonce(ctx)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting available nonce")
 					return handleSubmitIntentError(streamer, err)
@@ -383,7 +382,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 					// caused a failed RPC call, and we want to avoid malicious or erroneous
 					// clients from consuming our nonce pool!
 					selectedNonce.ReleaseIfNotReserved()
-					selectedNonce.Unlock()
 				}()
 				nonceAccount = selectedNonce.Account
 				nonceBlockchash = selectedNonce.Blockhash

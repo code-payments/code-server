@@ -2,14 +2,18 @@ package transaction
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -60,6 +64,8 @@ func testLocalNoncePoolHappyPath(nt *localNoncePoolTest) {
 		require.NoError(nt.t, err)
 		require.NotNil(nt.t, n)
 		require.NotContains(nt.t, observed, n.record.Address)
+		require.Equal(nt.t, n.Account.PublicKey().ToBase58(), n.record.Address)
+		require.Equal(nt.t, base58.Encode(n.Blockhash[:]), n.record.Blockhash)
 		observed[n.record.Address] = n
 
 		actual, err := nt.data.GetNonce(ctx, n.record.Address)
@@ -157,6 +163,8 @@ func testLocalNoncePoolReload(nt *localNoncePoolTest) {
 		require.NoError(nt.t, err)
 		require.NotNil(nt.t, n)
 		require.NotContains(nt.t, observed, n.record.Address)
+		require.Equal(nt.t, n.Account.PublicKey().ToBase58(), n.record.Address)
+		require.Equal(nt.t, base58.Encode(n.Blockhash[:]), n.record.Blockhash)
 		observed[n.record.Address] = n
 
 		actual, err := nt.data.GetNonce(ctx, n.record.Address)
@@ -193,6 +201,8 @@ func testLocalNoncePoolRefresh(nt *localNoncePoolTest) {
 		require.NoError(nt.t, err)
 		require.NotNil(nt.t, n)
 		require.NotContains(nt.t, observed, n.record.Address)
+		require.Equal(nt.t, n.Account.PublicKey().ToBase58(), n.record.Address)
+		require.Equal(nt.t, base58.Encode(n.Blockhash[:]), n.record.Blockhash)
 		observed[n.record.Address] = n
 
 		actual, err := nt.data.GetNonce(ctx, n.record.Address)
@@ -235,6 +245,8 @@ type localNoncePoolTest struct {
 func newLocalNoncePoolTest(t *testing.T) *localNoncePoolTest {
 	data := code_data.NewTestDataProvider()
 
+	testutil.SetupRandomSubsidizer(t, data)
+
 	pool, err := NewLocalNoncePool(
 		data,
 		nil,
@@ -257,9 +269,12 @@ func newLocalNoncePoolTest(t *testing.T) *localNoncePoolTest {
 
 func (np *localNoncePoolTest) initializeNonces(amount int, env nonce.Environment, envInstance string, purpose nonce.Purpose) {
 	for i := 0; i < amount; i++ {
+		var bh solana.Blockhash
+		rand.Read(bh[:])
 		err := np.data.SaveNonce(context.Background(), &nonce.Record{
-			Address:             fmt.Sprintf("addr-%s-%s-%s-%d", env.String(), envInstance, purpose.String(), i),
-			Authority:           "my authority!",
+			Address:             testutil.NewRandomAccount(np.t).PublicKey().ToBase58(),
+			Blockhash:           base58.Encode(bh[:]),
+			Authority:           common.GetSubsidizer().PublicKey().ToBase58(),
 			Environment:         env,
 			EnvironmentInstance: envInstance,
 			Purpose:             purpose,
