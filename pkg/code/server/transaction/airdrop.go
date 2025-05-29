@@ -25,9 +25,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	"github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -297,14 +295,13 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	//       Instead of constructing and validating everything manually, we could
 	//       have a proper client call SubmitIntent in a worker.
 
-	selectedNonce, err := transaction.SelectAvailableNonce(ctx, s.data, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction)
+	selectedNonce, err := s.noncePool.GetNonce(ctx)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return nil, err
 	}
 	defer func() {
-		selectedNonce.ReleaseIfNotReserved()
-		selectedNonce.Unlock()
+		selectedNonce.ReleaseIfNotReserved(ctx)
 	}()
 
 	vixnHash := cvm.GetCompactTransferMessage(&cvm.GetCompactTransferMessageArgs{
@@ -424,34 +421,24 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	return intentRecord, nil
 }
 
-func (s *transactionServer) mustLoadAirdropper(ctx context.Context) {
-	log := s.log.WithFields(logrus.Fields{
-		"method": "mustLoadAirdropper",
-		"key":    s.conf.airdropperOwnerPublicKey.Get(ctx),
-	})
-
-	err := func() error {
-		vaultRecord, err := s.data.GetKey(ctx, s.conf.airdropperOwnerPublicKey.Get(ctx))
-		if err != nil {
-			return err
-		}
-
-		ownerAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
-		if err != nil {
-			return err
-		}
-
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
-		if err != nil {
-			return err
-		}
-
-		s.airdropper = timelockAccounts
-		return nil
-	}()
+func (s *transactionServer) loadAirdropper(ctx context.Context) error {
+	vaultRecord, err := s.data.GetKey(ctx, s.conf.airdropperOwnerPublicKey.Get(ctx))
 	if err != nil {
-		log.WithError(err).Fatal("failure loading account")
+		return err
 	}
+
+	ownerAccount, err := common.NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+	if err != nil {
+		return err
+	}
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	if err != nil {
+		return err
+	}
+
+	s.airdropper = timelockAccounts
+	return nil
 }
 
 func GetOldAirdropIntentId(airdropType AirdropType, reference string) string {

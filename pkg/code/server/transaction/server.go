@@ -13,6 +13,8 @@ import (
 	auth_util "github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/jupiter"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
@@ -29,6 +31,8 @@ type transactionServer struct {
 
 	antispamGuard *antispam.Guard
 	amlGuard      *aml.Guard
+
+	noncePool *transaction.LocalNoncePool
 
 	airdropperLock sync.Mutex
 	airdropper     *common.TimelockAccounts
@@ -53,13 +57,18 @@ func NewTransactionServer(
 	airdropIntegration AirdropIntegration,
 	antispamGuard *antispam.Guard,
 	amlGuard *aml.Guard,
+	noncePool *transaction.LocalNoncePool,
 	configProvider ConfigProvider,
-) transactionpb.TransactionServer {
+) (transactionpb.TransactionServer, error) {
 	ctx := context.Background()
 
 	conf := configProvider()
 
 	stripedLockParallelization := uint(conf.stripedLockParallelization.Get(ctx))
+
+	if err := noncePool.Validate(nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction); err != nil {
+		return nil, err
+	}
 
 	s := &transactionServer{
 		log:  logrus.StandardLogger().WithField("type", "transaction/v2/server"),
@@ -74,6 +83,8 @@ func NewTransactionServer(
 		antispamGuard: antispamGuard,
 		amlGuard:      amlGuard,
 
+		noncePool: noncePool,
+
 		intentLocks:   sync_util.NewStripedLock(stripedLockParallelization),
 		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
@@ -81,8 +92,11 @@ func NewTransactionServer(
 
 	airdropper := s.conf.airdropperOwnerPublicKey.Get(ctx)
 	if len(airdropper) > 0 && airdropper != defaultAirdropperOwnerPublicKey {
-		s.mustLoadAirdropper(ctx)
+		err := s.loadAirdropper(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return s
+	return s, nil
 }

@@ -3,7 +3,9 @@ package nonce
 import (
 	"crypto/ed25519"
 	"errors"
+	"time"
 
+	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/mr-tron/base58"
 )
 
@@ -22,8 +24,8 @@ const (
 )
 
 var (
+	ErrStaleVersion  = errors.New("nonce version is stale")
 	ErrNonceNotFound = errors.New("no records could be found")
-	ErrInvalidNonce  = errors.New("invalid nonce")
 )
 
 type State uint8
@@ -31,13 +33,13 @@ type State uint8
 const (
 	StateUnknown   State = iota
 	StateReleased        // The nonce is almost ready but we don't know its blockhash yet.
-	StateAvailable       // The nonce is available to be used by a payment intent, subscription, or other nonce-related transaction/instruction.
-	StateReserved        // The nonce is reserved by a payment intent, subscription, or other nonce-related transaction/instruction.
+	StateAvailable       // The nonce is available to be used by a fulfillment for a virtual instruction or transaction.
+	StateReserved        // The nonce is reserved by a fulfillment for a virtual instruction or transaction.
 	StateInvalid         // The nonce account is invalid (e.g. insufficient funds, etc).
+	StateClaimed         // The nonce is claimed by a process for future use (identified by a node ID)
 )
 
-// Split nonce pool across different use cases. This has an added benefit of:
-//   - Solving for race conditions without distributed locks.
+// Split nonce pool across different use cases. This has an added benefit of:.
 //   - Avoiding different use cases from starving each other and ending up in a
 //     deadlocked state. Concretely, it would be really bad if clients could starve
 //     internal processes from creating transactions that would allow us to progress
@@ -65,10 +67,11 @@ type Record struct {
 	State   State
 
 	Signature string
-}
 
-func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {
-	return base58.Decode(r.Address)
+	ClaimNodeID    *string
+	ClaimExpiresAt *time.Time
+
+	Version uint64
 }
 
 func (r *Record) Clone() Record {
@@ -82,6 +85,9 @@ func (r *Record) Clone() Record {
 		Purpose:             r.Purpose,
 		State:               r.State,
 		Signature:           r.Signature,
+		ClaimNodeID:         pointer.StringCopy(r.ClaimNodeID),
+		ClaimExpiresAt:      pointer.TimeCopy(r.ClaimExpiresAt),
+		Version:             r.Version,
 	}
 }
 
@@ -95,30 +101,75 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.Purpose = r.Purpose
 	dst.State = r.State
 	dst.Signature = r.Signature
+	dst.ClaimNodeID = pointer.StringCopy(r.ClaimNodeID)
+	dst.ClaimExpiresAt = pointer.TimeCopy(r.ClaimExpiresAt)
+	dst.Version = r.Version
 }
 
-func (v *Record) Validate() error {
-	if len(v.Address) == 0 {
+func (r *Record) Validate() error {
+	if len(r.Address) == 0 {
 		return errors.New("nonce account address is required")
 	}
 
-	if len(v.Authority) == 0 {
+	if len(r.Authority) == 0 {
 		return errors.New("authority address is required")
 	}
 
-	if v.Environment == EnvironmentUnknown {
+	if r.Environment == EnvironmentUnknown {
 		return errors.New("nonce environment must be set")
 	}
 
-	if len(v.EnvironmentInstance) == 0 {
+	if len(r.EnvironmentInstance) == 0 {
 		return errors.New("nonce environment instance must be set")
 	}
 
-	if v.Purpose == PurposeUnknown {
+	if r.Purpose == PurposeUnknown {
 		return errors.New("nonce purpose must be set")
 	}
 
+	switch r.State {
+	case StateClaimed:
+		if r.ClaimNodeID == nil {
+			return errors.New("claim node id is required")
+		}
+
+		if r.ClaimExpiresAt == nil {
+			return errors.New("claim expiration timestamp is required")
+		}
+	default:
+		if r.ClaimNodeID != nil {
+			return errors.New("claim node id cannot be set")
+		}
+
+		if r.ClaimExpiresAt != nil {
+			return errors.New("claim expiration timestamp cannot be set")
+		}
+	}
+
 	return nil
+}
+
+func (r *Record) IsAvailableToClaim() bool {
+	if r.State == StateAvailable {
+		return true
+	}
+	if r.State != StateClaimed {
+		return false
+	}
+	return r.ClaimExpiresAt.Before(time.Now())
+}
+
+func (r *Record) CanReserveWithSignature() bool {
+	if r.State == StateAvailable {
+		return true
+	}
+	// Allow a small buffer against expiration timestamp to account for DB
+	// call latency
+	return r.State == StateClaimed && r.ClaimExpiresAt.After(time.Now().Add(time.Second))
+}
+
+func (r *Record) GetPublicKey() (ed25519.PublicKey, error) {
+	return base58.Decode(r.Address)
 }
 
 func (e Environment) String() string {
@@ -145,6 +196,8 @@ func (s State) String() string {
 		return "reserved"
 	case StateInvalid:
 		return "invalid"
+	case StateClaimed:
+		return "claimed"
 	}
 
 	return "unknown"

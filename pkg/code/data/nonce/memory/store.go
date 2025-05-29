@@ -5,9 +5,11 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type store struct {
@@ -131,6 +133,16 @@ func (s *store) filter(items []*nonce.Record, cursor query.Cursor, limit uint64,
 	return res
 }
 
+func (s *store) filterAvailableToClaim(items []*nonce.Record) []*nonce.Record {
+	var res []*nonce.Record
+	for _, item := range items {
+		if item.IsAvailableToClaim() {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
 func (s *store) Count(ctx context.Context, env nonce.Environment, instance string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,13 +177,25 @@ func (s *store) Save(ctx context.Context, data *nonce.Record) error {
 
 	s.last++
 	if item := s.find(data); item != nil {
+		if item.Version != data.Version {
+			return nonce.ErrStaleVersion
+		}
+
+		data.Version++
+
 		item.Blockhash = data.Blockhash
-		item.State = data.State
 		item.Signature = data.Signature
+		item.State = data.State
+		item.ClaimNodeID = pointer.StringCopy(data.ClaimNodeID)
+		item.ClaimExpiresAt = pointer.TimeCopy(data.ClaimExpiresAt)
+		item.Version = data.Version
 	} else {
 		if data.Id == 0 {
 			data.Id = s.last
 		}
+
+		data.Version++
+
 		c := data.Clone()
 		s.records = append(s.records, &c)
 	}
@@ -184,7 +208,8 @@ func (s *store) Get(ctx context.Context, address string) (*nonce.Record, error) 
 	defer s.mu.Unlock()
 
 	if item := s.findAddress(address); item != nil {
-		return item, nil
+		cloned := item.Clone()
+		return &cloned, nil
 	}
 
 	return nil, nonce.ErrNonceNotFound
@@ -201,21 +226,48 @@ func (s *store) GetAllByState(ctx context.Context, env nonce.Environment, instan
 			return nil, nonce.ErrNonceNotFound
 		}
 
-		return res, nil
+		return clonedRecords(res), nil
 	}
 
 	return nil, nonce.ErrNonceNotFound
 }
 
-func (s *store) GetRandomAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose) (*nonce.Record, error) {
+func (s *store) BatchClaimAvailableByPurpose(ctx context.Context, env nonce.Environment, instance string, purpose nonce.Purpose, limit int, nodeID string, minExpireAt, maxExpireAt time.Time) ([]*nonce.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	items := s.findByStateAndPurpose(env, instance, nonce.StateAvailable, purpose)
+	items = append(items, s.findByStateAndPurpose(env, instance, nonce.StateClaimed, purpose)...)
+	items = s.filterAvailableToClaim(items)
 	if len(items) == 0 {
 		return nil, nonce.ErrNonceNotFound
 	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
 
-	index := rand.Intn(len(items))
-	return items[index], nil
+	for i, l := 0, len(items); i < l; i++ {
+		j := rand.Intn(l)
+		items[i], items[j] = items[j], items[i]
+	}
+	for i := 0; i < len(items); i++ {
+		window := maxExpireAt.Sub(minExpireAt)
+		expiry := minExpireAt.Add(time.Duration(rand.Intn(int(window))))
+
+		items[i].State = nonce.StateClaimed
+		items[i].ClaimNodeID = pointer.String(nodeID)
+		items[i].ClaimExpiresAt = pointer.Time(expiry)
+		items[i].Version++
+	}
+
+	return clonedRecords(items), nil
+}
+
+func clonedRecords(items []*nonce.Record) []*nonce.Record {
+	res := make([]*nonce.Record, len(items))
+	for i, item := range items {
+		cloned := item.Clone()
+		res[i] = &cloned
+	}
+	return res
 }

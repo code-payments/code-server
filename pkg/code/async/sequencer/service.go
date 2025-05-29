@@ -14,6 +14,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/transaction"
 )
 
 var (
@@ -28,22 +30,28 @@ type service struct {
 	data                      code_data.Provider
 	scheduler                 Scheduler
 	vmIndexerClient           indexerpb.IndexerClient
+	noncePool                 *transaction.LocalNoncePool
 	fulfillmentHandlersByType map[fulfillment.Type]FulfillmentHandler
 	actionHandlersByType      map[action.Type]ActionHandler
 	intentHandlersByType      map[intent.Type]IntentHandler
 }
 
-func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb.IndexerClient, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb.IndexerClient, noncePool *transaction.LocalNoncePool, configProvider ConfigProvider) (async.Service, error) {
+	if err := noncePool.Validate(nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction); err != nil {
+		return nil, err
+	}
+
 	return &service{
 		log:                       logrus.StandardLogger().WithField("service", "sequencer"),
 		conf:                      configProvider(),
 		data:                      data,
 		scheduler:                 scheduler,
 		vmIndexerClient:           vmIndexerClient,
+		noncePool:                 noncePool, // todo: validate configuration
 		fulfillmentHandlersByType: getFulfillmentHandlers(data, vmIndexerClient),
 		actionHandlersByType:      getActionHandlers(data),
 		intentHandlersByType:      getIntentHandlers(data),
-	}
+	}, nil
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
