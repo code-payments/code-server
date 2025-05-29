@@ -31,6 +31,7 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 				nonce.StateAvailable,
 				nonce.StateReserved,
 				nonce.StateInvalid,
+				nonce.StateClaimed,
 			} {
 				count, err := p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, nonce.PurposeClientTransaction)
 				if err != nil {
