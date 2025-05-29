@@ -234,6 +234,22 @@ func testLocalNoncePoolReserveWithSignatureEdgeCases(nt *localNoncePoolTest) {
 	require.NoError(nt.t, err)
 	require.Equal(nt.t, actual.State, nonce.StateReserved)
 	require.Equal(nt.t, actual.Signature, "signature1")
+
+	n, err = nt.pool.GetNonce(ctx)
+	require.NoError(nt.t, err)
+	require.NotNil(nt.t, n)
+
+	n.record.State = nonce.StateUnknown
+	n.record.ClaimNodeID = nil
+	n.record.ClaimExpiresAt = nil
+	require.NoError(nt.t, nt.data.SaveNonce(ctx, n.record))
+
+	require.Error(nt.t, n.MarkReservedWithSignature(ctx, "signature3"))
+
+	actual, err = nt.data.GetNonce(ctx, n.record.Address)
+	require.NoError(nt.t, err)
+	require.Equal(nt.t, actual.State, nonce.StateUnknown)
+	require.Empty(nt.t, actual.Signature)
 }
 
 type localNoncePoolTest struct {

@@ -284,16 +284,14 @@ func NewLocalNoncePool(
 		refreshPoolCh: make(chan struct{}),
 	}
 
-	np.workerCtx, np.cancelWorkerCtx = context.WithCancel(context.Background())
-
 	for _, o := range opts {
 		o(&np.opts)
 	}
-
 	if err := np.opts.validate(); err != nil {
-		np.cancelWorkerCtx()
 		return nil, err
 	}
+
+	np.workerCtx, np.cancelWorkerCtx = context.WithCancel(context.Background())
 
 	_, err := np.load(np.workerCtx, np.opts.desiredPoolSize)
 	switch err {
