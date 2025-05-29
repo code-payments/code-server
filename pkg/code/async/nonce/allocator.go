@@ -43,6 +43,11 @@ func (p *service) generateNonceAccountsOnSolanaMainnet(serviceCtx context.Contex
 				return err
 			}
 
+			num_claimed, err := p.data.GetNonceCountByState(tracedCtx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateClaimed)
+			if err != nil {
+				return err
+			}
+
 			num_released, err := p.data.GetNonceCountByState(tracedCtx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReleased)
 			if err != nil {
 				return err
@@ -55,7 +60,7 @@ func (p *service) generateNonceAccountsOnSolanaMainnet(serviceCtx context.Contex
 
 			// Get a count of nonces that are available or potentially available
 			// within a short amount of time.
-			num_potentially_available := num_available + num_released + num_unknown
+			num_potentially_available := num_available + num_claimed + num_released + num_unknown
 			if num_potentially_available >= p.conf.solanaMainnetNoncePoolSize.Get(serviceCtx) {
 				if hasWarnedUser {
 					p.log.Warn("The nonce pool size is reached.")
