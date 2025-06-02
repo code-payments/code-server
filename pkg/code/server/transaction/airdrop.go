@@ -20,31 +20,24 @@ import (
 	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
 
-// This is a quick and dirty file to get an initial airdrop feature out
-//
-// Important Note: If this code is executed elsewhere (eg. a worker), we'll want to either
-// use an actual client that hits SubmitIntent directly, or update this code to for an
-// intenral server process (eg. by using the correct nonce pool to avoid race conditions
-// without distributed locks).
-
 type AirdropType uint8
 
 const (
 	AirdropTypeUnknown AirdropType = iota
-	AirdropTypeGiveFirstCrypto
-	AirdropTypeGetFirstCrypto
+	AirdropTypeOnboardingBonus
+	AirdropTypeWelcomeBonus
 )
 
 var (
@@ -107,22 +100,16 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 	ownerLock.Lock()
 	defer ownerLock.Unlock()
 
-	newIntentId := GetNewAirdropIntentId(AirdropTypeGetFirstCrypto, owner.PublicKey().ToBase58())
-	oldIntentId := GetOldAirdropIntentId(AirdropTypeGetFirstCrypto, owner.PublicKey().ToBase58())
-	for _, intentId := range []string{
-		newIntentId,
-		oldIntentId,
-	} {
-		_, err = s.data.GetIntent(ctx, intentId)
-		if err == nil {
-			cachedAirdropStatus.Insert(cacheKey, true, 1)
-			return &transactionpb.AirdropResponse{
-				Result: transactionpb.AirdropResponse_ALREADY_CLAIMED,
-			}, nil
-		} else if err != intent.ErrIntentNotFound {
-			log.WithError(err).Warn("failure checking if airdrop was already claimed")
-			return nil, status.Error(codes.Internal, "")
-		}
+	intentId := GetAirdropIntentId(AirdropTypeWelcomeBonus, owner.PublicKey().ToBase58())
+	_, err = s.data.GetIntent(ctx, intentId)
+	if err == nil {
+		cachedAirdropStatus.Insert(cacheKey, true, 1)
+		return &transactionpb.AirdropResponse{
+			Result: transactionpb.AirdropResponse_ALREADY_CLAIMED,
+		}, nil
+	} else if err != intent.ErrIntentNotFound {
+		log.WithError(err).Warn("failure checking if airdrop was already claimed")
+		return nil, status.Error(codes.Internal, "")
 	}
 
 	if !s.conf.enableAirdrops.Get(ctx) {
@@ -131,7 +118,7 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 		}, nil
 	}
 
-	if req.AirdropType != transactionpb.AirdropType_GET_FIRST_CRYPTO {
+	if req.AirdropType != transactionpb.AirdropType_WELCOME_BONUS {
 		return &transactionpb.AirdropResponse{
 			Result: transactionpb.AirdropResponse_UNAVAILABLE,
 		}, nil
@@ -149,7 +136,7 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 		}
 	}
 
-	intentRecord, err := s.airdrop(ctx, newIntentId, owner, AirdropTypeGetFirstCrypto)
+	intentRecord, err := s.airdrop(ctx, intentId, owner, AirdropTypeWelcomeBonus)
 	switch err {
 	case nil:
 	case ErrInsufficientAirdropperBalance, ErrInvalidAirdropTarget, ErrIneligibleForAirdrop:
@@ -203,7 +190,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	var nativeAmount float64
 	var currencyCode currency_lib.Code
 	switch airdropType {
-	case AirdropTypeGetFirstCrypto:
+	case AirdropTypeWelcomeBonus:
 		nativeAmount, currencyCode, err = s.airdropIntegration.GetWelcomeBonusAmount(ctx, owner)
 		if err != nil {
 			log.WithError(err).Warn("failure getting welcome bonus amount from integration")
@@ -221,7 +208,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		"currency":      currencyCode,
 	})
 
-	exchangeRateTime := exchange_rate_util.GetLatestExchangeRateTime()
+	exchangeRateTime := currency_util.GetLatestExchangeRateTime()
 
 	usdRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, exchangeRateTime)
 	if err != nil {
@@ -441,14 +428,9 @@ func (s *transactionServer) loadAirdropper(ctx context.Context) error {
 	return nil
 }
 
-func GetOldAirdropIntentId(airdropType AirdropType, reference string) string {
-	return fmt.Sprintf("airdrop-%d-%s", airdropType, reference)
-}
-
-// Consistent intent ID that maps to a 32 byte buffer
-func GetNewAirdropIntentId(airdropType AirdropType, reference string) string {
-	old := GetOldAirdropIntentId(airdropType, reference)
-	hashed := sha256.Sum256([]byte(old))
+func GetAirdropIntentId(airdropType AirdropType, reference string) string {
+	combined := fmt.Sprintf("airdrop-%d-%s", airdropType, reference)
+	hashed := sha256.Sum256([]byte(combined))
 	return base58.Encode(hashed[:])
 }
 
@@ -460,10 +442,10 @@ func (t AirdropType) String() string {
 	switch t {
 	case AirdropTypeUnknown:
 		return "unknown"
-	case AirdropTypeGiveFirstCrypto:
-		return "give_first_crypto"
-	case AirdropTypeGetFirstCrypto:
-		return "get_first_crypto"
+	case AirdropTypeOnboardingBonus:
+		return "onboarding_bonus"
+	case AirdropTypeWelcomeBonus:
+		return "welcome_bonus"
 	}
 	return "unknown"
 }

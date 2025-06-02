@@ -9,8 +9,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/common"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	"github.com/code-payments/code-server/pkg/code/limit"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 )
@@ -32,7 +31,7 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		return nil, err
 	}
 
-	multiRateRecord, err := s.data.GetAllExchangeRates(ctx, exchange_rate_util.GetLatestExchangeRateTime())
+	multiRateRecord, err := s.data.GetAllExchangeRates(ctx, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		log.WithError(err).Warn("failure getting current exchange rates")
 		return nil, status.Error(codes.Internal, "")
@@ -50,12 +49,9 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	//
-	// Part 1: Calculate send limits
-	//
-
+	// Calculate send limits
 	sendLimits := make(map[string]*transactionpb.SendLimit)
-	for currency, sendLimit := range limit.SendLimits {
+	for currency, sendLimit := range currency_util.SendLimits {
 		otherRate, ok := multiRateRecord.Rates[string(currency)]
 		if !ok {
 			log.Debugf("%s rate is missing", currency)
@@ -95,35 +91,9 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		MaxPerDay:         usdSendLimits.MaxPerDay / float32(usdRate),
 	}
 
-	//
-	// Part 2: Calculate micropayment limits
-	//
-
-	microPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
-	for currency, limits := range limit.MicroPaymentLimits {
-		microPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
-			MaxPerTransaction: float32(limits.Max),
-			MinPerTransaction: float32(limits.Min),
-		}
-	}
-
-	//
-	// Part 3: Calculate buy module limits
-	//
-
-	buyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
-	for currency, limits := range limit.SendLimits {
-		buyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
-			MaxPerTransaction: float32(limits.PerTransaction),
-			MinPerTransaction: float32(limits.PerTransaction / 10),
-		}
-	}
-
 	return &transactionpb.GetLimitsResponse{
-		Result:                       transactionpb.GetLimitsResponse_OK,
-		SendLimitsByCurrency:         sendLimits,
-		MicroPaymentLimitsByCurrency: microPaymentLimits,
-		BuyModuleLimitsByCurrency:    buyModuleLimits,
-		UsdTransacted:                consumedUsdForPayments,
+		Result:               transactionpb.GetLimitsResponse_OK,
+		SendLimitsByCurrency: sendLimits,
+		UsdTransacted:        consumedUsdForPayments,
 	}, nil
 }

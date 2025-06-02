@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/limit"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -24,9 +24,9 @@ func TestGuard_SendPublicPayment_PerTransactionValue(t *testing.T) {
 
 	for _, acceptableValue := range []float64{
 		1,
-		limit.SendLimits[currency_lib.USD].PerTransaction / 10,
-		limit.SendLimits[currency_lib.USD].PerTransaction - 1,
-		limit.SendLimits[currency_lib.USD].PerTransaction,
+		currency_util.SendLimits[currency_lib.USD].PerTransaction / 10,
+		currency_util.SendLimits[currency_lib.USD].PerTransaction - 1,
+		currency_util.SendLimits[currency_lib.USD].PerTransaction,
 	} {
 		for _, isWithdraw := range []bool{true, false} {
 			intentRecord := makeSendPublicPaymentIntent(t, owner, acceptableValue, isWithdraw, time.Now())
@@ -38,8 +38,8 @@ func TestGuard_SendPublicPayment_PerTransactionValue(t *testing.T) {
 	}
 
 	for _, unacceptableValue := range []float64{
-		limit.SendLimits[currency_lib.USD].PerTransaction + 1,
-		limit.SendLimits[currency_lib.USD].PerTransaction * 10,
+		currency_util.SendLimits[currency_lib.USD].PerTransaction + 1,
+		currency_util.SendLimits[currency_lib.USD].PerTransaction * 10,
 	} {
 		for _, isWithdraw := range []bool{true, false} {
 			intentRecord := makeSendPublicPaymentIntent(t, owner, unacceptableValue, isWithdraw, time.Now())

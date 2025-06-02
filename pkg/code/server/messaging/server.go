@@ -29,7 +29,6 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
-	"github.com/code-payments/code-server/pkg/code/thirdparty"
 )
 
 const (
@@ -52,8 +51,6 @@ type server struct {
 	streamsMu          sync.RWMutex
 	streams            map[string]*messageStream
 	individualStreamMu map[string]*sync.Mutex
-
-	domainVerifier thirdparty.DomainVerifier
 
 	rpcSignatureVerifier *auth.RPCSignatureVerifier
 
@@ -89,7 +86,6 @@ func NewMessagingClientAndServer(
 		data:                 data,
 		streams:              make(map[string]*messageStream),
 		individualStreamMu:   make(map[string]*sync.Mutex),
-		domainVerifier:       thirdparty.VerifyDomainNameOwnership,
 		rpcSignatureVerifier: rpcSignatureVerifier,
 		broadcastAddress:     broadcastAddress,
 	}
@@ -661,30 +657,6 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 	case *messagingpb.Message_RequestToGrabBill:
 		log = log.WithField("message_type", "request_to_grab_bill")
 		messageHandler = NewRequestToGrabBillMessageHandler(s.data)
-
-	//
-	// Section: Payment Request
-	//
-
-	case *messagingpb.Message_RequestToReceiveBill:
-		return nil, status.Error(codes.InvalidArgument, "payment requests require rewrite")
-
-		log = log.WithField("message_type", "request_to_receive_bill")
-		messageHandler = NewRequestToReceiveBillMessageHandler(s.conf, s.data, s.rpcSignatureVerifier, s.domainVerifier)
-	case *messagingpb.Message_ClientRejectedPayment:
-		return nil, status.Error(codes.InvalidArgument, "payment requests require rewrite")
-
-		log = log.WithField("message_type", "client_rejected_payment")
-		messageHandler = NewClientRejectedPaymentMessageHandler()
-	case *messagingpb.Message_CodeScanned:
-		return nil, status.Error(codes.InvalidArgument, "payment requests require rewrite")
-
-		log = log.WithField("message_type", "code_scanned")
-		messageHandler = NewCodeScannedMessageHandler()
-	case *messagingpb.Message_IntentSubmitted:
-		return nil, status.Error(codes.InvalidArgument, "message.kind cannot be intent_submitted")
-	case *messagingpb.Message_WebhookCalled:
-		return nil, status.Error(codes.InvalidArgument, "message.kind cannot be webhook_called")
 
 	default:
 		return nil, status.Error(codes.InvalidArgument, "message.kind must be set")

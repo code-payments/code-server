@@ -3,11 +3,9 @@ package transaction_v2
 import (
 	"bytes"
 	"context"
-	"math"
 	"strings"
 	"time"
 
-	"github.com/mr-tron/base58/base58"
 	"github.com/pkg/errors"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -18,12 +16,11 @@ import (
 	async_account "github.com/code-payments/code-server/pkg/code/async/account"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -134,16 +131,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	}
 
 	//
-	// Part 1: Intent ID validation
-	//
-
-	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 2: Antispam checks against the owner
+	// Part 1: Antispam checks against the owner
 	//
 
 	if !h.conf.disableAntispamChecks.Get(ctx) {
@@ -156,7 +144,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	}
 
 	//
-	// Part 3: Validate the owner hasn't already created an OpenAccounts intent
+	// Part 2: Validate the owner hasn't already created an OpenAccounts intent
 	//
 
 	_, err = h.data.GetLatestIntentByInitiatorAndType(ctx, intent.OpenAccounts, initiatiorOwnerAccount.PublicKey().ToBase58())
@@ -167,7 +155,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	}
 
 	//
-	// Part 4: Validate the individual actions
+	// Part 3: Validate the individual actions
 	//
 
 	err = h.validateActions(ctx, initiatiorOwnerAccount, actions)
@@ -176,7 +164,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	}
 
 	//
-	// Part 5: Local simulation
+	// Part 4: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
@@ -185,10 +173,10 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	}
 
 	//
-	// Part 6: Validate fee payments
+	// Part 5: Validate fee payments
 	//
 
-	return validateFeePayments(ctx, h.data, intentRecord, simResult)
+	return validateFeePayments(simResult)
 }
 
 func (h *OpenAccountsIntentHandler) validateActions(ctx context.Context, initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
@@ -281,7 +269,7 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 
 	exchangeData := typedProtoMetadata.ExchangeData
 
-	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return errors.Wrap(err, "error getting current usd exchange rate")
 	}
@@ -366,16 +354,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 1: Intent ID validation
-	//
-
-	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 2: Antispam guard checks against the owner
+	// Part 1: Antispam guard checks against the owner
 	//
 
 	if !h.conf.disableAntispamChecks.Get(ctx) {
@@ -393,7 +372,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 3: AML checks against the owner
+	// Part 2: AML checks against the owner
 	//
 
 	if !h.conf.disableAmlChecks.Get(ctx) {
@@ -406,7 +385,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 4: Account validation to determine if it's managed by Code
+	// Part 3: Account validation to determine if it's managed by Code
 	//
 
 	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
@@ -415,15 +394,15 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 5: Exchange data validation
+	// Part 4: Exchange data validation
 	//
 
-	if err := validateExchangeDataWithinIntent(ctx, h.data, intentRecord.IntentId, typedMetadata.ExchangeData); err != nil {
+	if err := validateExchangeDataWithinIntent(ctx, h.data, typedMetadata.ExchangeData); err != nil {
 		return err
 	}
 
 	//
-	// Part 6: Local simulation
+	// Part 5: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
@@ -432,16 +411,16 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 7: Validate fee payments
+	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(simResult)
 	if err != nil {
 		return err
 	}
 
 	//
-	// Part 8: Validate the individual actions
+	// Part 7: Validate the individual actions
 	//
 
 	return h.validateActions(
@@ -662,7 +641,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Cont
 		return err
 	}
 
-	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return errors.Wrap(err, "error getting current usd exchange rate")
 	}
@@ -755,16 +734,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 1: Intent ID validation
-	//
-
-	err = validateIntentIdIsNotRequest(ctx, h.data, intentRecord.IntentId)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 2: Antispam guard checks against the owner
+	// Part 1: Antispam guard checks against the owner
 	//
 	if !h.conf.disableAntispamChecks.Get(ctx) {
 		allow, err := h.antispamGuard.AllowReceivePayments(ctx, initiatiorOwnerAccount, true)
@@ -776,7 +746,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 3: AML checks against the owner
+	// Part 2: AML checks against the owner
 	//
 
 	if !h.conf.disableAmlChecks.Get(ctx) {
@@ -789,7 +759,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 4: User account validation to determine if it's managed by Code
+	// Part 3: User account validation to determine if it's managed by Code
 	//
 
 	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
@@ -798,7 +768,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 5: Gift card account validation
+	// Part 4: Gift card account validation
 	//
 
 	err = validateClaimedGiftCard(ctx, h.data, giftCardVaultAccount, typedMetadata.Quarks)
@@ -807,7 +777,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 6: Local simulation
+	// Part 5: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
@@ -816,16 +786,16 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 7: Validate fee payments
+	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayments(ctx, h.data, intentRecord, simResult)
+	err = validateFeePayments(simResult)
 	if err != nil {
 		return err
 	}
 
 	//
-	// Part 8: Validate the individual actions
+	// Part 7: Validate the individual actions
 	//
 
 	return h.validateActions(
@@ -1091,36 +1061,9 @@ func validateExternalTokenAccountWithinIntent(ctx context.Context, data code_dat
 	return nil
 }
 
-func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, intentId string, proto *transactionpb.ExchangeData) error {
-	// If there's a payment request record, then validate exchange data client
-	// provided matches exactly. The payment request record should already have
-	// validated exchange data before it was created.
-	requestRecord, err := data.GetRequest(ctx, intentId)
-	if err == nil {
-		if !requestRecord.RequiresPayment() {
-			return newIntentValidationError("request doesn't require payment")
-		}
-
-		if proto.Currency != string(*requestRecord.ExchangeCurrency) {
-			return newIntentValidationErrorf("payment has a request for %s currency", *requestRecord.ExchangeCurrency)
-		}
-
-		absNativeAmountDiff := math.Abs(proto.NativeAmount - *requestRecord.NativeAmount)
-		if absNativeAmountDiff > 0.0001 {
-			return newIntentValidationErrorf("payment has a request for %.2f native amount", *requestRecord.NativeAmount)
-		}
-
-		// No need to validate exchange details in the payment request. Only Kin has
-		// exact exchange data requirements, which has already been validated at time
-		// of payment intent creation. We do leave the ability open to reserve an exchange
-		// rate, but no use cases warrant that atm.
-
-	} else if err != paymentrequest.ErrPaymentRequestNotFound {
-		return err
-	}
-
-	// Otherwise, validate exchange data fully using the common method
-	isValid, message, err := exchange_rate_util.ValidateClientExchangeData(ctx, data, proto)
+func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) error {
+	// Validate exchange data fully using the common method
+	isValid, message, err := currency_util.ValidateClientExchangeData(ctx, data, proto)
 	if err != nil {
 		return err
 	} else if !isValid {
@@ -1132,116 +1075,10 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 	return nil
 }
 
-// Generically validates fee payments as much as possible, but won't cover any
-// intent-specific nuances (eg. where the fee payment comes from)
-//
-// This assumes source and destination accounts interacting with fees and the
-// remaining amount don't have minimum bucket size requirements. Intent validation
-// logic is responsible for these checks and guarantees.
-func validateFeePayments(
-	ctx context.Context,
-	data code_data.Provider,
-	intentRecord *intent.Record,
-	simResult *LocalSimulationResult,
-) error {
-	var requiresFee bool
-	var totalQuarksSent uint64
-	switch intentRecord.IntentType {
-	}
-
-	if !requiresFee && simResult.HasAnyFeePayments() {
+func validateFeePayments(simResult *LocalSimulationResult) error {
+	if simResult.HasAnyFeePayments() {
 		return newIntentValidationError("intent doesn't require a fee payment")
 	}
-
-	if requiresFee && !simResult.HasAnyFeePayments() {
-		return newIntentValidationError("intent requires a fee payment")
-	}
-
-	if !requiresFee {
-		return nil
-	}
-
-	requestRecord, err := data.GetRequest(ctx, intentRecord.IntentId)
-	if err != nil {
-		return err
-	}
-
-	if !requestRecord.RequiresPayment() {
-		return newIntentValidationError("request doesn't require payment")
-	}
-
-	additionalRequestedFees := requestRecord.Fees
-
-	feePayments := simResult.GetFeePayments()
-	if len(feePayments) != len(additionalRequestedFees)+1 {
-		return newIntentValidationErrorf("expected %d fee payment action", len(additionalRequestedFees)+1)
-	}
-
-	codeFeePayment := feePayments[0]
-
-	if codeFeePayment.Action.GetFeePayment().Type != transactionpb.FeePaymentAction_CODE {
-		return newActionValidationError(codeFeePayment.Action, "fee payment type must be CODE")
-	}
-
-	if codeFeePayment.Action.GetFeePayment().Destination != nil {
-		return newActionValidationError(codeFeePayment.Action, "code fee payment destination is configured by server")
-	}
-
-	feeAmount := codeFeePayment.DeltaQuarks
-	if feeAmount >= 0 {
-		return newActionValidationError(codeFeePayment.Action, "fee payment amount is negative")
-	}
-	feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
-
-	var foundUsdExchangeRecord bool
-	usdExchangeRecords, err := exchange_rate_util.GetPotentialClientExchangeRates(ctx, data, currency_lib.USD)
-	if err != nil {
-		return err
-	}
-	for _, exchangeRecord := range usdExchangeRecords {
-		usdValue := exchangeRecord.Rate * float64(feeAmount) / float64(common.CoreMintQuarksPerUnit)
-
-		// Allow for some small margin of error
-		//
-		// todo: Hardcoded as a penny USD, but might want a dynamic amount if we
-		//       have use cases with different fee amounts.
-		if usdValue > 0.0099 && usdValue < 0.0101 {
-			foundUsdExchangeRecord = true
-			break
-		}
-	}
-
-	if !foundUsdExchangeRecord {
-		return newActionValidationError(codeFeePayment.Action, "code fee payment amount must be $0.01 USD")
-	}
-
-	for i, additionalFee := range feePayments[1:] {
-		if additionalFee.Action.GetFeePayment().Type != transactionpb.FeePaymentAction_THIRD_PARTY {
-			return newActionValidationError(additionalFee.Action, "fee payment type must be THIRD_PARTY")
-		}
-
-		destination := additionalFee.Action.GetFeePayment().Destination
-		if destination == nil {
-			return newActionValidationError(additionalFee.Action, "fee payment destination is required")
-		}
-
-		// The destination should already be validated as a valid payment destination
-		if base58.Encode(destination.Value) != additionalRequestedFees[i].DestinationTokenAccount {
-			return newActionValidationErrorf(additionalFee.Action, "fee payment destination must be %s", additionalRequestedFees[i].DestinationTokenAccount)
-		}
-
-		feeAmount := additionalFee.DeltaQuarks
-		if feeAmount >= 0 {
-			return newActionValidationError(additionalFee.Action, "fee payment amount is negative")
-		}
-		feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
-
-		requestedAmount := (uint64(additionalRequestedFees[i].BasisPoints) * totalQuarksSent) / 10000
-		if feeAmount != int64(requestedAmount) {
-			return newActionValidationErrorf(additionalFee.Action, "fee payment amount must be for %d bps of total amount", additionalRequestedFees[i].BasisPoints)
-		}
-	}
-
 	return nil
 }
 
@@ -1327,16 +1164,6 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 		return newStaleStateError("gift card is expired")
 	}
 
-	return nil
-}
-
-func validateIntentIdIsNotRequest(ctx context.Context, data code_data.Provider, intentId string) error {
-	_, err := data.GetRequest(ctx, intentId)
-	if err == nil {
-		return newIntentDeniedError("intent id is reserved for a request")
-	} else if err != paymentrequest.ErrPaymentRequestNotFound {
-		return err
-	}
 	return nil
 }
 

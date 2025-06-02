@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -19,19 +18,15 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
-	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	"github.com/code-payments/code-server/pkg/code/thirdparty"
-	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -72,14 +67,13 @@ func setup(t *testing.T, enableMultiServer bool) (env testEnv, cleanup func()) {
 	subsidizer := testutil.SetupRandomSubsidizer(t, data)
 
 	require.NoError(t, data.ImportExchangeRates(context.Background(), &currency.MultiRateRecord{
-		Time: exchange_rate_util.GetLatestExchangeRateTime(),
+		Time: currency_util.GetLatestExchangeRateTime(),
 		Rates: map[string]float64{
 			"usd": 0.1,
 		},
 	}))
 
 	s1 := NewMessagingClientAndServer(data, auth.NewRPCSignatureVerifier(data), conn1.Target(), withManualTestOverrides(&testOverrides{}))
-	s1.domainVerifier = mockDomainVerifier
 	env.server1 = &serverEnv{
 		ctx:        context.Background(),
 		server:     s1,
@@ -87,7 +81,6 @@ func setup(t *testing.T, enableMultiServer bool) (env testEnv, cleanup func()) {
 	}
 
 	s2 := NewMessagingClientAndServer(data, auth.NewRPCSignatureVerifier(data), conn2.Target(), withManualTestOverrides(&testOverrides{}))
-	s2.domainVerifier = mockDomainVerifier
 	env.server2 = &serverEnv{
 		ctx:        context.Background(),
 		server:     s2,
@@ -129,58 +122,6 @@ func (s *serverEnv) assertNoMessages(t *testing.T, rendezvousKey *common.Account
 	messages, err := s.server.data.GetMessages(s.ctx, rendezvousKey.PublicKey().ToBase58())
 	require.NoError(t, err)
 	assert.Empty(t, messages)
-}
-
-func (s *serverEnv) assertPaymentRequestRecordSaved(t *testing.T, rendezvousKey *common.Account, msg *messagingpb.RequestToReceiveBill) {
-	var asciiBaseDomain string
-	var err error
-	if msg.Domain != nil {
-		asciiBaseDomain, err = thirdparty.GetAsciiBaseDomain(msg.Domain.Value)
-		require.NoError(t, err)
-	}
-
-	requestRecord, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
-	require.NoError(t, err)
-
-	assert.Equal(t, requestRecord.Intent, rendezvousKey.PublicKey().ToBase58())
-	assert.Equal(t, base58.Encode(msg.RequestorAccount.Value), *requestRecord.DestinationTokenAccount)
-
-	switch typed := msg.ExchangeData.(type) {
-	case *messagingpb.RequestToReceiveBill_Exact:
-		assert.EqualValues(t, typed.Exact.Currency, *requestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Exact.NativeAmount, *requestRecord.NativeAmount)
-		require.NotNil(t, requestRecord.ExchangeRate)
-		assert.Equal(t, typed.Exact.ExchangeRate, *requestRecord.ExchangeRate)
-		require.NotNil(t, requestRecord.Quantity)
-		assert.Equal(t, typed.Exact.Quarks, *requestRecord.Quantity)
-	case *messagingpb.RequestToReceiveBill_Partial:
-		assert.EqualValues(t, typed.Partial.Currency, *requestRecord.ExchangeCurrency)
-		assert.Equal(t, typed.Partial.NativeAmount, *requestRecord.NativeAmount)
-		assert.Nil(t, requestRecord.ExchangeRate)
-		assert.Nil(t, requestRecord.Quantity)
-	default:
-		require.Fail(t, "unhandled exchange data type")
-	}
-
-	if len(asciiBaseDomain) == 0 {
-		assert.Nil(t, requestRecord.Domain)
-		assert.False(t, requestRecord.IsVerified)
-	} else {
-		require.NotNil(t, requestRecord.Domain)
-		assert.Equal(t, asciiBaseDomain, *requestRecord.Domain)
-		assert.Equal(t, msg.Verifier != nil, requestRecord.IsVerified)
-	}
-
-	require.Len(t, requestRecord.Fees, len(msg.AdditionalFees))
-	for i, expectedFee := range msg.AdditionalFees {
-		assert.Equal(t, base58.Encode(expectedFee.Destination.Value), requestRecord.Fees[i].DestinationTokenAccount)
-		assert.EqualValues(t, expectedFee.FeeBps, requestRecord.Fees[i].BasisPoints)
-	}
-}
-
-func (s *serverEnv) assertRequestRecordNotSaved(t *testing.T, rendezvousKey *common.Account) {
-	_, err := s.server.data.GetRequest(s.ctx, rendezvousKey.PublicKey().ToBase58())
-	assert.Equal(t, paymentrequest.ErrPaymentRequestNotFound, err)
 }
 
 func (s *serverEnv) assertInitialRendezvousRecordSaved(t *testing.T, rendezvousKey *common.Account) {
@@ -495,16 +436,6 @@ func (c *sendMessageCallMetadata) assertUnauthenticatedError(t *testing.T, messa
 	assert.True(t, strings.Contains(strings.ToLower(status.Message()), strings.ToLower(message)))
 }
 
-func (c *sendMessageCallMetadata) assertPermissionDeniedError(t *testing.T, message string) {
-	require.Error(t, c.err)
-	require.Nil(t, c.resp)
-
-	status, ok := status.FromError(c.err)
-	require.True(t, ok)
-	assert.Equal(t, codes.PermissionDenied, status.Code())
-	assert.True(t, strings.Contains(strings.ToLower(status.Message()), strings.ToLower(message)))
-}
-
 func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *common.Account) *sendMessageCallMetadata {
 	destination := testutil.NewRandomAccount(t)
 
@@ -531,381 +462,6 @@ func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *co
 				RequestToGrabBill: &messagingpb.RequestToGrabBill{
 					RequestorAccount: destination.ToProto(),
 				},
-			},
-		},
-		RendezvousKey: &messagingpb.RendezvousKey{
-			Value: rendezvousKey.PublicKey().ToBytes(),
-		},
-	}
-
-	return c.sendMessage(t, req, rendezvousKey)
-}
-
-type testRequestToReceiveBillConf struct {
-	usePrimaryAccount         bool
-	useRelationshipAccount    bool
-	disableDomainVerification bool
-}
-
-// todo: code duplication with fiat variant
-func (c *clientEnv) sendRequestToReceiveKinBillMessage(
-	t *testing.T,
-	rendezvousKey *common.Account,
-	conf *testRequestToReceiveBillConf,
-) *sendMessageCallMetadata {
-	authority, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
-	require.NoError(t, err)
-
-	if c.conf.simulateDoesntOwnDomain {
-		authority = testutil.NewRandomAccount(t)
-	}
-
-	destination := testutil.NewRandomAccount(t)
-
-	if conf.usePrimaryAccount {
-		owner := testutil.NewRandomAccount(t)
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     owner.PublicKey().ToBase58(),
-			AuthorityAccount: owner.PublicKey().ToBase58(),
-			TokenAccount:     destination.PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_PRIMARY,
-			Index:            0,
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	} else if conf.useRelationshipAccount {
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     destination.PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_RELATIONSHIP,
-			Index:            0,
-			RelationshipTo:   pointer.String("getcode.com"),
-		}
-		if c.conf.simulateInvalidRelationship {
-			accountInfoRecord.RelationshipTo = pointer.String("example.com")
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	}
-
-	if c.conf.simulateInvalidAccountType {
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     destination.PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
-			Index:            0,
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	}
-
-	exchangeData := &transactionpb.ExchangeData{
-		Currency:     string(common.CoreMintSymbol),
-		ExchangeRate: 1.0,
-		NativeAmount: 2,
-		Quarks:       common.ToCoreMintQuarks(2),
-	}
-
-	if c.conf.simulateInvalidCurrency {
-		exchangeData.Currency = "usd"
-	}
-	if c.conf.simulateInvalidExchangeRate {
-		exchangeData.ExchangeRate *= 2.0
-		exchangeData.NativeAmount *= 2.0
-	}
-	if c.conf.simulateInvalidNativeAmount {
-		exchangeData.NativeAmount += 2
-	}
-	if c.conf.simulateSmallNativeAmount {
-		exchangeData.NativeAmount = 0.01
-		exchangeData.Quarks = common.CoreMintQuarksPerUnit / 100
-	}
-	if c.conf.simulateLargeNativeAmount {
-		exchangeData.NativeAmount = 10
-		exchangeData.Quarks = common.ToCoreMintQuarks(10)
-	}
-
-	additionalFees := []*transactionpb.AdditionalFeePayment{
-		{
-			Destination: testutil.NewRandomAccount(t).ToProto(),
-			FeeBps:      1234,
-		},
-		{
-			Destination: testutil.NewRandomAccount(t).ToProto(),
-			FeeBps:      56,
-		},
-		{
-			Destination: testutil.NewRandomAccount(t).ToProto(),
-			FeeBps:      789,
-		},
-	}
-
-	if c.conf.simulateLargeFeePercentage {
-		additionalFees[0].FeeBps = 8000
-	}
-	if c.conf.simulateDuplicatedFeeTaker {
-		additionalFees[0].Destination = additionalFees[2].Destination
-	}
-	if c.conf.simulateFeeTakerIsPaymentDestination {
-		additionalFees[0].Destination = destination.ToProto()
-	}
-
-	feeCodeAccountOwner := testutil.NewRandomAccount(t)
-	feeCodeAccountAuthority := feeCodeAccountOwner
-	feeCodeAccountType := commonpb.AccountType_PRIMARY
-	if c.conf.simulateInvalidFeeCodeAccount {
-		feeCodeAccountType = commonpb.AccountType_TEMPORARY_INCOMING
-		feeCodeAccountAuthority = testutil.NewRandomAccount(t)
-	}
-	require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
-		OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
-		AuthorityAccount: feeCodeAccountAuthority.PublicKey().ToBase58(),
-		TokenAccount:     base58.Encode(additionalFees[0].Destination.Value),
-		MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-		AccountType:      feeCodeAccountType,
-		Index:            0,
-	}))
-	if !conf.disableDomainVerification {
-		feeRelationship := "getcode.com"
-		if c.conf.simulateInvalidFeeRelationship {
-			feeRelationship = "example.com"
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
-			OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     base58.Encode(additionalFees[1].Destination.Value),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_RELATIONSHIP,
-			Index:            0,
-			RelationshipTo:   &feeRelationship,
-		}))
-	}
-
-	msg := &messagingpb.RequestToReceiveBill{
-		RequestorAccount: destination.ToProto(),
-		ExchangeData: &messagingpb.RequestToReceiveBill_Exact{
-			Exact: exchangeData,
-		},
-		Domain: &commonpb.Domain{
-			Value: "app.getcode.com",
-		},
-		Verifier: authority.ToProto(),
-		RendezvousKey: &messagingpb.RendezvousKey{
-			Value: rendezvousKey.PublicKey().ToBytes(),
-		},
-		AdditionalFees: additionalFees,
-	}
-
-	if conf.disableDomainVerification {
-		msg.Verifier = nil
-		msg.RendezvousKey = nil
-	}
-
-	if c.conf.simulateInvalidDomain {
-		msg.Domain.Value = "localhost"
-	}
-
-	if c.conf.simulateInvalidRendezvousKey {
-		msg.RendezvousKey.Value = testutil.NewRandomAccount(t).PublicKey().ToBytes()
-	}
-
-	messageBytes, err := proto.Marshal(msg)
-	require.NoError(t, err)
-
-	if !conf.disableDomainVerification {
-		signer := authority
-		if c.conf.simulateInvalidMessageSignature {
-			signer = testutil.NewRandomAccount(t)
-		}
-		msg.Signature = &commonpb.Signature{
-			Value: ed25519.Sign(signer.PrivateKey().ToBytes(), messageBytes),
-		}
-	}
-
-	req := &messagingpb.SendMessageRequest{
-		Message: &messagingpb.Message{
-			Kind: &messagingpb.Message_RequestToReceiveBill{
-				RequestToReceiveBill: msg,
-			},
-		},
-		RendezvousKey: &messagingpb.RendezvousKey{
-			Value: rendezvousKey.PublicKey().ToBytes(),
-		},
-	}
-
-	return c.sendMessage(t, req, rendezvousKey)
-}
-
-// todo: code duplication with kin variant
-func (c *clientEnv) sendRequestToReceiveFiatBillMessage(
-	t *testing.T,
-	rendezvousKey *common.Account,
-	conf *testRequestToReceiveBillConf,
-) *sendMessageCallMetadata {
-	authority, err := common.NewAccountFromPrivateKeyString("dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno")
-	require.NoError(t, err)
-
-	if c.conf.simulateDoesntOwnDomain {
-		authority = testutil.NewRandomAccount(t)
-	}
-
-	destination := testutil.NewRandomAccount(t)
-
-	if conf.usePrimaryAccount {
-		owner := testutil.NewRandomAccount(t)
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
-			OwnerAccount:     owner.PublicKey().ToBase58(),
-			AuthorityAccount: owner.PublicKey().ToBase58(),
-			TokenAccount:     destination.PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_PRIMARY,
-			Index:            0,
-		}))
-	} else if conf.useRelationshipAccount {
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     destination.PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_RELATIONSHIP,
-			Index:            0,
-			RelationshipTo:   pointer.String("getcode.com"),
-		}
-		if c.conf.simulateInvalidRelationship {
-			accountInfoRecord.RelationshipTo = pointer.String("example.com")
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	}
-
-	if c.conf.simulateInvalidAccountType {
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     destination.PublicKey().ToBase58(),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_TEMPORARY_INCOMING,
-			Index:            0,
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))
-	}
-
-	exchangeData := &transactionpb.ExchangeDataWithoutRate{
-		Currency:     "usd",
-		NativeAmount: .50,
-	}
-	if c.conf.simulateInvalidCurrency {
-		exchangeData.Currency = string(common.CoreMintSymbol)
-	}
-	if c.conf.simulateSmallNativeAmount {
-		exchangeData.NativeAmount = 0.01
-	}
-	if c.conf.simulateLargeNativeAmount {
-		exchangeData.NativeAmount = 5.01
-	}
-
-	additionalFees := []*transactionpb.AdditionalFeePayment{
-		{
-			Destination: testutil.NewRandomAccount(t).ToProto(),
-			FeeBps:      1234,
-		},
-		{
-			Destination: testutil.NewRandomAccount(t).ToProto(),
-			FeeBps:      56,
-		},
-		{
-			Destination: testutil.NewRandomAccount(t).ToProto(),
-			FeeBps:      789,
-		},
-	}
-
-	if c.conf.simulateLargeFeePercentage {
-		additionalFees[0].FeeBps = 8000
-	}
-	if c.conf.simulateDuplicatedFeeTaker {
-		additionalFees[0].Destination = additionalFees[2].Destination
-	}
-	if c.conf.simulateFeeTakerIsPaymentDestination {
-		additionalFees[0].Destination = destination.ToProto()
-	}
-
-	feeCodeAccountOwner := testutil.NewRandomAccount(t)
-	feeCodeAccountAuthority := feeCodeAccountOwner
-	feeCodeAccountType := commonpb.AccountType_PRIMARY
-	if c.conf.simulateInvalidFeeCodeAccount {
-		feeCodeAccountType = commonpb.AccountType_TEMPORARY_INCOMING
-		feeCodeAccountAuthority = testutil.NewRandomAccount(t)
-	}
-	require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
-		OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
-		AuthorityAccount: feeCodeAccountAuthority.PublicKey().ToBase58(),
-		TokenAccount:     base58.Encode(additionalFees[0].Destination.Value),
-		MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-		AccountType:      feeCodeAccountType,
-		Index:            0,
-	}))
-	if !conf.disableDomainVerification {
-		feeRelationship := "getcode.com"
-		if c.conf.simulateInvalidFeeRelationship {
-			feeRelationship = "example.com"
-		}
-		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, &account.Record{
-			OwnerAccount:     feeCodeAccountOwner.PublicKey().ToBase58(),
-			AuthorityAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			TokenAccount:     base58.Encode(additionalFees[1].Destination.Value),
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
-			AccountType:      commonpb.AccountType_RELATIONSHIP,
-			Index:            0,
-			RelationshipTo:   &feeRelationship,
-		}))
-	}
-
-	msg := &messagingpb.RequestToReceiveBill{
-		RequestorAccount: destination.ToProto(),
-		ExchangeData: &messagingpb.RequestToReceiveBill_Partial{
-			Partial: exchangeData,
-		},
-		Domain: &commonpb.Domain{
-			Value: "app.getcode.com",
-		},
-		Verifier: authority.ToProto(),
-		RendezvousKey: &messagingpb.RendezvousKey{
-			Value: rendezvousKey.PublicKey().ToBytes(),
-		},
-		AdditionalFees: additionalFees,
-	}
-
-	if conf.disableDomainVerification {
-		msg.Verifier = nil
-		msg.RendezvousKey = nil
-	}
-
-	if c.conf.simulateInvalidDomain {
-		msg.Domain.Value = "localhost"
-	}
-
-	if c.conf.simulateInvalidRendezvousKey {
-		msg.RendezvousKey.Value = testutil.NewRandomAccount(t).PublicKey().ToBytes()
-	}
-
-	messageBytes, err := proto.Marshal(msg)
-	require.NoError(t, err)
-
-	if !conf.disableDomainVerification {
-		signer := authority
-		if c.conf.simulateInvalidMessageSignature {
-			signer = testutil.NewRandomAccount(t)
-		}
-		msg.Signature = &commonpb.Signature{
-			Value: ed25519.Sign(signer.PrivateKey().ToBytes(), messageBytes),
-		}
-	}
-
-	req := &messagingpb.SendMessageRequest{
-		Message: &messagingpb.Message{
-			Kind: &messagingpb.Message_RequestToReceiveBill{
-				RequestToReceiveBill: msg,
 			},
 		},
 		RendezvousKey: &messagingpb.RendezvousKey{
@@ -950,9 +506,4 @@ func (c *clientEnv) ackMessages(t *testing.T, rendezvousKey *common.Account, ids
 
 func (c *clientEnv) resetConf() {
 	c.conf = &clientConf{}
-}
-
-func mockDomainVerifier(ctx context.Context, owner *common.Account, domain string) (bool, error) {
-	// Private key: dr2MUzL4NCS45qyp16vDXiSdHqqdg2DF79xKaYMB1vzVtDDjPvyQ8xTH4VsTWXSDP3NFzsdCV6gEoChKftzwLno
-	return owner.PublicKey().ToBase58() == "AiXmGd1DkRbVyfiLLNxC6EFF9ZidCdGpyVY9QFH966Bm", nil
 }

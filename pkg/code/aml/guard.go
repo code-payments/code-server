@@ -7,10 +7,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/limit"
-	currency_util "github.com/code-payments/code-server/pkg/currency"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
 
@@ -19,7 +19,7 @@ var (
 	// so we can do better rounding on limits per currency.
 	//
 	// todo: configurable
-	maxDailyUsdLimit = 1.2 * limit.SendLimits[currency_util.USD].Daily
+	maxDailyUsdLimit = 1.2 * currency_util.SendLimits[currency_lib.USD].Daily
 )
 
 // Guard gates money movement by applying rules on operations of interest to
@@ -42,7 +42,7 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowMoneyMovement")
 	defer tracer.End()
 
-	var currency currency_util.Code
+	var currency currency_lib.Code
 	var nativeAmount float64
 	var usdMarketValue float64
 	var consumptionCalculator func(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
@@ -77,7 +77,7 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 		"usd_value":     usdMarketValue,
 	})
 
-	sendLimit, ok := limit.SendLimits[currency]
+	sendLimit, ok := currency_util.SendLimits[currency]
 	if !ok {
 		log.Info("denying intent with unsupported currency")
 		recordDenialEvent(ctx, action, "unsupported currency")

@@ -12,6 +12,8 @@ import (
 )
 
 func TestProtoEncoding_CrossLanguageSupport(t *testing.T) {
+	t.Skip("need new sdk example when supported")
+
 	goValue := "CtYBKtMBCiIKIKuIZy+UTqRbPCXCbXMtLl5A1cfBYsPNaFjVyVoj+jRVIhEKD2FwcC5nZXRjb2RlLmNvbSoiCiCQXMeWrnoZmEYYNs2fWQUviipSzVObQX5XfBGCg9KgbDJCCkBgpVkQnlTv9ackQCHPV39NBCHOKh0N5n8gSwQ7Hz8nFldMcdI+TbF+9foOcW/0g+DSnR5kbxbRYEWuRTKo5O8BOiIKIHCkrraPdjY/ImaB3xZiv8D2Qjbpenpkh0Zqk5lUXnr7Gg4KA3VzZBEAAAAAAADgPxIiCiBwpK62j3Y2PyJmgd8WYr/A9kI26Xp6ZIdGapOZVF56+xpCCkDU3CnRyHQ4w0O5D5eIqizAoaBwDft+RjWsGl+Wzo+jCGyE7u+Siw4uZT7U4VcLV6lcsfe9XeB66E7RYlmwAv0I"
 	otherLanguageValue := "CtYBKtMBCiIKIKuIZy+UTqRbPCXCbXMtLl5A1cfBYsPNaFjVyVoj+jRVGg4KA3VzZBEAAAAAAADgPyIRCg9hcHAuZ2V0Y29kZS5jb20qIgogkFzHlq56GZhGGDbNn1kFL4oqUs1Tm0F+V3wRgoPSoGwyQgpAYKVZEJ5U7/WnJEAhz1d/TQQhziodDeZ/IEsEOx8/JxZXTHHSPk2xfvX6DnFv9IPg0p0eZG8W0WBFrkUyqOTvAToiCiBwpK62j3Y2PyJmgd8WYr/A9kI26Xp6ZIdGapOZVF56+xIiCiBwpK62j3Y2PyJmgd8WYr/A9kI26Xp6ZIdGapOZVF56+xpCCkDU3CnRyHQ4w0O5D5eIqizAoaBwDft+RjWsGl+Wzo+jCGyE7u+Siw4uZT7U4VcLV6lcsfe9XeB66E7RYlmwAv0I"
 
@@ -47,6 +49,8 @@ func TestProtoEncoding_CrossLanguageSupport(t *testing.T) {
 }
 
 func TestProtoEncoding_SDKTestParity(t *testing.T) {
+	t.Skip("need new sdk example when supported")
+
 	expected := []byte{
 		0x2a, 0xd3, 0x01, 0x0a, 0x22, 0x0a, 0x20, 0xab, 0x88, 0x67,
 		0x2f, 0x94, 0x4e, 0xa4, 0x5b, 0x3c, 0x25, 0xc2, 0x6d, 0x73,
