@@ -16,11 +16,11 @@ import (
 	async_account "github.com/code-payments/code-server/pkg/code/async/account"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -269,7 +269,7 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 
 	exchangeData := typedProtoMetadata.ExchangeData
 
-	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return errors.Wrap(err, "error getting current usd exchange rate")
 	}
@@ -397,7 +397,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 4: Exchange data validation
 	//
 
-	if err := validateExchangeDataWithinIntent(ctx, h.data, intentRecord.IntentId, typedMetadata.ExchangeData); err != nil {
+	if err := validateExchangeDataWithinIntent(ctx, h.data, typedMetadata.ExchangeData); err != nil {
 		return err
 	}
 
@@ -641,7 +641,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Cont
 		return err
 	}
 
-	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, exchange_rate_util.GetLatestExchangeRateTime())
+	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return errors.Wrap(err, "error getting current usd exchange rate")
 	}
@@ -1061,9 +1061,9 @@ func validateExternalTokenAccountWithinIntent(ctx context.Context, data code_dat
 	return nil
 }
 
-func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, intentId string, proto *transactionpb.ExchangeData) error {
-	// Otherwise, validate exchange data fully using the common method
-	isValid, message, err := exchange_rate_util.ValidateClientExchangeData(ctx, data, proto)
+func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) error {
+	// Validate exchange data fully using the common method
+	isValid, message, err := currency_util.ValidateClientExchangeData(ctx, data, proto)
 	if err != nil {
 		return err
 	} else if !isValid {

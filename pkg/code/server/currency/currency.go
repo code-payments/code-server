@@ -12,9 +12,9 @@ import (
 
 	currencypb "github.com/code-payments/code-protobuf-api/generated/go/currency/v1"
 
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 )
 
@@ -68,7 +68,7 @@ func (s *currencyServer) LoadExchangeRatesForTime(ctx context.Context, t time.Ti
 }
 
 func (s *currencyServer) LoadExchangeRatesLatest(ctx context.Context) (*currency.MultiRateRecord, error) {
-	latest, err := s.data.GetAllExchangeRates(ctx, exchange_rate_util.GetLatestExchangeRateTime())
+	latest, err := s.data.GetAllExchangeRates(ctx, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get latest price record")
 	}

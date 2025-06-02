@@ -20,12 +20,12 @@ import (
 	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -221,7 +221,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		"currency":      currencyCode,
 	})
 
-	exchangeRateTime := exchange_rate_util.GetLatestExchangeRateTime()
+	exchangeRateTime := currency_util.GetLatestExchangeRateTime()
 
 	usdRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, exchangeRateTime)
 	if err != nil {

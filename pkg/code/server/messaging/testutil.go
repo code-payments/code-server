@@ -21,12 +21,12 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/auth"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
 
@@ -67,7 +67,7 @@ func setup(t *testing.T, enableMultiServer bool) (env testEnv, cleanup func()) {
 	subsidizer := testutil.SetupRandomSubsidizer(t, data)
 
 	require.NoError(t, data.ImportExchangeRates(context.Background(), &currency.MultiRateRecord{
-		Time: exchange_rate_util.GetLatestExchangeRateTime(),
+		Time: currency_util.GetLatestExchangeRateTime(),
 		Rates: map[string]float64{
 			"usd": 0.1,
 		},

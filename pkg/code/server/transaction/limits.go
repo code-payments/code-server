@@ -9,8 +9,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/common"
-	exchange_rate_util "github.com/code-payments/code-server/pkg/code/exchangerate"
-	"github.com/code-payments/code-server/pkg/code/limit"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 )
@@ -32,7 +31,7 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		return nil, err
 	}
 
-	multiRateRecord, err := s.data.GetAllExchangeRates(ctx, exchange_rate_util.GetLatestExchangeRateTime())
+	multiRateRecord, err := s.data.GetAllExchangeRates(ctx, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		log.WithError(err).Warn("failure getting current exchange rates")
 		return nil, status.Error(codes.Internal, "")
@@ -55,7 +54,7 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 	//
 
 	sendLimits := make(map[string]*transactionpb.SendLimit)
-	for currency, sendLimit := range limit.SendLimits {
+	for currency, sendLimit := range currency_util.SendLimits {
 		otherRate, ok := multiRateRecord.Rates[string(currency)]
 		if !ok {
 			log.Debugf("%s rate is missing", currency)
@@ -100,10 +99,10 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 	//
 
 	microPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
-	for currency, limits := range limit.MicroPaymentLimits {
+	for currency := range sendLimits {
 		microPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
-			MaxPerTransaction: float32(limits.Max),
-			MinPerTransaction: float32(limits.Min),
+			MaxPerTransaction: 0,
+			MinPerTransaction: 0,
 		}
 	}
 
@@ -112,10 +111,10 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 	//
 
 	buyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
-	for currency, limits := range limit.SendLimits {
+	for currency := range sendLimits {
 		buyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
-			MaxPerTransaction: float32(limits.PerTransaction),
-			MinPerTransaction: float32(limits.PerTransaction / 10),
+			MaxPerTransaction: 0,
+			MinPerTransaction: 0,
 		}
 	}
 

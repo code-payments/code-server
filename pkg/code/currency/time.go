@@ -1,4 +1,4 @@
-package exchangerate
+package currency
 
 import (
 	"time"
