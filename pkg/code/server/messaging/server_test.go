@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	messagingpb "github.com/code-payments/code-protobuf-api/generated/go/messaging/v1"
 
@@ -125,56 +124,7 @@ func TestRendezvousProcess_MultipleOpenStreams(t *testing.T) {
 }
 
 func TestRendezvousProcess_InternallyGeneratedMessage(t *testing.T) {
-	for _, enableMultiServer := range []bool{true, false} {
-		func() {
-			env, cleanup := setup(t, enableMultiServer)
-			defer cleanup()
-
-			rendezvousKey := testutil.NewRandomAccount(t)
-
-			env.client1.openMessageStream(t, rendezvousKey, false)
-			time.Sleep(500 * time.Millisecond) // allow async flush to finish
-
-			expectedMessage := &messagingpb.Message{
-				Kind: &messagingpb.Message_CodeScanned{
-					CodeScanned: &messagingpb.CodeScanned{
-						Timestamp: timestamppb.Now(),
-					},
-				},
-			}
-			serverEnv := env.server1
-			if enableMultiServer {
-				serverEnv = env.server2
-			}
-			messageId, err := serverEnv.server.InternallyCreateMessage(serverEnv.ctx, rendezvousKey, expectedMessage)
-			require.NoError(t, err)
-
-			records := env.server1.getMessages(t, rendezvousKey)
-			require.Len(t, records, 1)
-			assert.Equal(t, rendezvousKey.PublicKey().ToBase58(), records[0].Account)
-			assert.Equal(t, messageId[:], records[0].MessageID[:])
-
-			var savedProtoMessage messagingpb.Message
-			require.NoError(t, proto.Unmarshal(records[0].Message, &savedProtoMessage))
-
-			assert.Equal(t, messageId[:], savedProtoMessage.Id.Value)
-			require.NotNil(t, savedProtoMessage.GetCodeScanned())
-			assert.True(t, proto.Equal(expectedMessage.GetCodeScanned(), savedProtoMessage.GetCodeScanned()))
-			assert.Nil(t, savedProtoMessage.SendMessageRequestSignature)
-
-			messages := env.client1.receiveMessagesInRealTime(t, rendezvousKey)
-			require.Len(t, messages, 1)
-
-			env.client1.closeMessageStream(t, rendezvousKey)
-
-			actualMessage := messages[0]
-			assert.Equal(t, messageId[:], actualMessage.Id.Value)
-			assert.True(t, proto.Equal(expectedMessage, actualMessage))
-
-			env.client1.ackMessages(t, rendezvousKey, actualMessage.Id)
-			env.server1.assertNoMessages(t, rendezvousKey)
-		}()
-	}
+	t.Skip("no internally forwarded messages defined")
 }
 
 func TestSendMessage_RequestToGrabBill_HappyPath(t *testing.T) {

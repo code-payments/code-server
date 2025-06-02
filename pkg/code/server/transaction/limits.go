@@ -49,10 +49,7 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	//
-	// Part 1: Calculate send limits
-	//
-
+	// Calculate send limits
 	sendLimits := make(map[string]*transactionpb.SendLimit)
 	for currency, sendLimit := range currency_util.SendLimits {
 		otherRate, ok := multiRateRecord.Rates[string(currency)]
@@ -94,35 +91,9 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		MaxPerDay:         usdSendLimits.MaxPerDay / float32(usdRate),
 	}
 
-	//
-	// Part 2: Calculate micropayment limits
-	//
-
-	microPaymentLimits := make(map[string]*transactionpb.MicroPaymentLimit)
-	for currency := range sendLimits {
-		microPaymentLimits[string(currency)] = &transactionpb.MicroPaymentLimit{
-			MaxPerTransaction: 0,
-			MinPerTransaction: 0,
-		}
-	}
-
-	//
-	// Part 3: Calculate buy module limits
-	//
-
-	buyModuleLimits := make(map[string]*transactionpb.BuyModuleLimit)
-	for currency := range sendLimits {
-		buyModuleLimits[string(currency)] = &transactionpb.BuyModuleLimit{
-			MaxPerTransaction: 0,
-			MinPerTransaction: 0,
-		}
-	}
-
 	return &transactionpb.GetLimitsResponse{
-		Result:                       transactionpb.GetLimitsResponse_OK,
-		SendLimitsByCurrency:         sendLimits,
-		MicroPaymentLimitsByCurrency: microPaymentLimits,
-		BuyModuleLimitsByCurrency:    buyModuleLimits,
-		UsdTransacted:                consumedUsdForPayments,
+		Result:               transactionpb.GetLimitsResponse_OK,
+		SendLimitsByCurrency: sendLimits,
+		UsdTransacted:        consumedUsdForPayments,
 	}, nil
 }
