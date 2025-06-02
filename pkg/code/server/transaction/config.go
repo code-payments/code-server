@@ -35,32 +35,20 @@ const (
 
 	MaxAirdropUsdValueEnvName = envConfigPrefix + "MAX_AIRDROP_USD_VALUE"
 	defaultMaxAirdropUsdValue = 1.0
-
-	SwapSubsidizerOwnerPublicKeyEnvName = envConfigPrefix + "SWAP_SUBSIDIZER_OWNER_PUBLIC_KEY"
-	defaultSwapSubsidizerOwnerPublicKey = "invalid" // Ensure something valid is set
-
-	SwapTimeoutConfigEnvName = envConfigPrefix + "SWAP_TIMEOUT"
-	defaultSwapTimeout       = 60 * time.Second
-
-	SwapPriorityFeeMultiple        = envConfigPrefix + "SWAP_PRIORITY_FEE_MULTIPLE"
-	defaultSwapPriorityFeeMultiple = 1.0
 )
 
 type conf struct {
-	disableSubmitIntent          config.Bool
-	disableAntispamChecks        config.Bool // To avoid limits during testing
-	disableAmlChecks             config.Bool // To avoid limits during testing
-	disableBlockchainChecks      config.Bool
-	submitIntentTimeout          config.Duration
-	clientReceiveTimeout         config.Duration
-	feeCollectorTokenPublicKey   config.String
-	enableAirdrops               config.Bool
-	airdropperOwnerPublicKey     config.String
-	maxAirdropUsdValue           config.Float64
-	swapSubsidizerOwnerPublicKey config.String
-	swapTimeout                  config.Duration
-	swapPriorityFeeMultiple      config.Float64
-	stripedLockParallelization   config.Uint64
+	disableSubmitIntent        config.Bool
+	disableAntispamChecks      config.Bool // To avoid limits during testing
+	disableAmlChecks           config.Bool // To avoid limits during testing
+	disableBlockchainChecks    config.Bool
+	submitIntentTimeout        config.Duration
+	clientReceiveTimeout       config.Duration
+	feeCollectorTokenPublicKey config.String
+	enableAirdrops             config.Bool
+	airdropperOwnerPublicKey   config.String
+	maxAirdropUsdValue         config.Float64
+	stripedLockParallelization config.Uint64
 }
 
 // ConfigProvider defines how config values are pulled
@@ -70,20 +58,17 @@ type ConfigProvider func() *conf
 func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
-			disableSubmitIntent:          env.NewBoolConfig(DisableSubmitIntentConfigEnvName, defaultDisableSubmitIntent),
-			disableAntispamChecks:        wrapper.NewBoolConfig(memory.NewConfig(false), false),
-			disableAmlChecks:             wrapper.NewBoolConfig(memory.NewConfig(false), false),
-			disableBlockchainChecks:      env.NewBoolConfig(DisableBlockchainChecksConfigEnvName, defaultDisableBlockchainChecks),
-			submitIntentTimeout:          env.NewDurationConfig(SubmitIntentTimeoutConfigEnvName, defaultSubmitIntentTimeout),
-			clientReceiveTimeout:         env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
-			feeCollectorTokenPublicKey:   env.NewStringConfig(FeeCollectorTokenPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
-			enableAirdrops:               env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
-			airdropperOwnerPublicKey:     env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
-			maxAirdropUsdValue:           env.NewFloat64Config(MaxAirdropUsdValueEnvName, defaultMaxAirdropUsdValue),
-			swapSubsidizerOwnerPublicKey: env.NewStringConfig(SwapSubsidizerOwnerPublicKeyEnvName, defaultSwapSubsidizerOwnerPublicKey),
-			swapTimeout:                  env.NewDurationConfig(SwapTimeoutConfigEnvName, defaultSwapTimeout),
-			swapPriorityFeeMultiple:      env.NewFloat64Config(SwapPriorityFeeMultiple, defaultSwapPriorityFeeMultiple),
-			stripedLockParallelization:   wrapper.NewUint64Config(memory.NewConfig(8192), 8192),
+			disableSubmitIntent:        env.NewBoolConfig(DisableSubmitIntentConfigEnvName, defaultDisableSubmitIntent),
+			disableAntispamChecks:      wrapper.NewBoolConfig(memory.NewConfig(false), false),
+			disableAmlChecks:           wrapper.NewBoolConfig(memory.NewConfig(false), false),
+			disableBlockchainChecks:    env.NewBoolConfig(DisableBlockchainChecksConfigEnvName, defaultDisableBlockchainChecks),
+			submitIntentTimeout:        env.NewDurationConfig(SubmitIntentTimeoutConfigEnvName, defaultSubmitIntentTimeout),
+			clientReceiveTimeout:       env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
+			feeCollectorTokenPublicKey: env.NewStringConfig(FeeCollectorTokenPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
+			enableAirdrops:             env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
+			airdropperOwnerPublicKey:   env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
+			maxAirdropUsdValue:         env.NewFloat64Config(MaxAirdropUsdValueEnvName, defaultMaxAirdropUsdValue),
+			stripedLockParallelization: wrapper.NewUint64Config(memory.NewConfig(8192), 8192),
 		}
 	}
 }
@@ -100,20 +85,17 @@ type testOverrides struct {
 func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 	return func() *conf {
 		return &conf{
-			disableSubmitIntent:          wrapper.NewBoolConfig(memory.NewConfig(overrides.disableSubmitIntent), defaultDisableSubmitIntent),
-			disableAntispamChecks:        wrapper.NewBoolConfig(memory.NewConfig(!overrides.enableAntispamChecks), false),
-			disableAmlChecks:             wrapper.NewBoolConfig(memory.NewConfig(!overrides.enableAmlChecks), false),
-			disableBlockchainChecks:      wrapper.NewBoolConfig(memory.NewConfig(true), true),
-			submitIntentTimeout:          wrapper.NewDurationConfig(memory.NewConfig(defaultSubmitIntentTimeout), defaultSubmitIntentTimeout),
-			clientReceiveTimeout:         wrapper.NewDurationConfig(memory.NewConfig(overrides.clientReceiveTimeout), defaultClientReceiveTimeout),
-			feeCollectorTokenPublicKey:   wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorTokenPublicKey), defaultFeeCollectorPublicKey),
-			enableAirdrops:               wrapper.NewBoolConfig(memory.NewConfig(overrides.enableAirdrops), false),
-			airdropperOwnerPublicKey:     wrapper.NewStringConfig(memory.NewConfig(defaultAirdropperOwnerPublicKey), defaultAirdropperOwnerPublicKey),
-			maxAirdropUsdValue:           wrapper.NewFloat64Config(memory.NewConfig(defaultMaxAirdropUsdValue), defaultMaxAirdropUsdValue),
-			swapSubsidizerOwnerPublicKey: wrapper.NewStringConfig(memory.NewConfig(defaultSwapSubsidizerOwnerPublicKey), defaultSwapSubsidizerOwnerPublicKey),
-			swapTimeout:                  wrapper.NewDurationConfig(memory.NewConfig(defaultSwapTimeout), defaultSwapTimeout),
-			swapPriorityFeeMultiple:      wrapper.NewFloat64Config(memory.NewConfig(defaultSwapPriorityFeeMultiple), defaultSwapPriorityFeeMultiple),
-			stripedLockParallelization:   wrapper.NewUint64Config(memory.NewConfig(4), 4),
+			disableSubmitIntent:        wrapper.NewBoolConfig(memory.NewConfig(overrides.disableSubmitIntent), defaultDisableSubmitIntent),
+			disableAntispamChecks:      wrapper.NewBoolConfig(memory.NewConfig(!overrides.enableAntispamChecks), false),
+			disableAmlChecks:           wrapper.NewBoolConfig(memory.NewConfig(!overrides.enableAmlChecks), false),
+			disableBlockchainChecks:    wrapper.NewBoolConfig(memory.NewConfig(true), true),
+			submitIntentTimeout:        wrapper.NewDurationConfig(memory.NewConfig(defaultSubmitIntentTimeout), defaultSubmitIntentTimeout),
+			clientReceiveTimeout:       wrapper.NewDurationConfig(memory.NewConfig(overrides.clientReceiveTimeout), defaultClientReceiveTimeout),
+			feeCollectorTokenPublicKey: wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorTokenPublicKey), defaultFeeCollectorPublicKey),
+			enableAirdrops:             wrapper.NewBoolConfig(memory.NewConfig(overrides.enableAirdrops), false),
+			airdropperOwnerPublicKey:   wrapper.NewStringConfig(memory.NewConfig(defaultAirdropperOwnerPublicKey), defaultAirdropperOwnerPublicKey),
+			maxAirdropUsdValue:         wrapper.NewFloat64Config(memory.NewConfig(defaultMaxAirdropUsdValue), defaultMaxAirdropUsdValue),
+			stripedLockParallelization: wrapper.NewUint64Config(memory.NewConfig(4), 4),
 		}
 	}
 }

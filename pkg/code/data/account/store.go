@@ -54,12 +54,4 @@ type Store interface {
 	// CountRequiringAutoReturnCheck counts the number of account info objects where
 	// RequiresAutoReturnCheck is true
 	CountRequiringAutoReturnCheck(ctx context.Context) (uint64, error)
-
-	// GetPrioritizedRequiringSwapRetry gets a set of account info objects where RequiresSwapRetry
-	// is true and records are prioritized by LastSwapRetryAt that are older than minAge
-	GetPrioritizedRequiringSwapRetry(ctx context.Context, minAge time.Duration, limit uint64) ([]*Record, error)
-
-	// CountRequiringSwapRetry counts the number of account info objects where RequiresSwapRetry
-	// is true
-	CountRequiringSwapRetry(ctx context.Context) (uint64, error)
 }

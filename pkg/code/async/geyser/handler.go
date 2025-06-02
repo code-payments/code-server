@@ -43,7 +43,6 @@ func NewTokenProgramAccountHandler(conf *conf, data code_data.Provider, vmIndexe
 	}
 }
 
-// todo: This needs to handle swaps
 func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserpb.SubscribeUpdateAccount) error {
 	if !bytes.Equal(update.Account.Owner, token.ProgramKey) {
 		return ErrUnexpectedProgramOwner

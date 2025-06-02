@@ -70,17 +70,3 @@ func (g *Guard) AllowReceivePayments(ctx context.Context, owner *common.Account,
 	}
 	return allow, nil
 }
-
-func (g *Guard) AllowSwap(ctx context.Context, owner *common.Account) (bool, error) {
-	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowSwap")
-	defer tracer.End()
-
-	allow, reason, err := g.integration.AllowSwap(ctx, owner)
-	if err != nil {
-		return false, err
-	}
-	if !allow {
-		recordDenialEvent(ctx, actionSwap, reason)
-	}
-	return allow, nil
-}

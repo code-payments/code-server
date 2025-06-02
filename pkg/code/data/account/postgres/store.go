@@ -146,22 +146,3 @@ func (s *store) GetPrioritizedRequiringAutoReturnCheck(ctx context.Context, minA
 func (s *store) CountRequiringAutoReturnCheck(ctx context.Context) (uint64, error) {
 	return dbCountRequiringAutoReturnCheck(ctx, s.db)
 }
-
-// GetPrioritizedRequiringSwapRetry implements account.Store.GetPrioritizedRequiringSwapRetry
-func (s *store) GetPrioritizedRequiringSwapRetry(ctx context.Context, minAge time.Duration, limit uint64) ([]*account.Record, error) {
-	models, err := dbGetPrioritizedRequiringSwapRetry(ctx, s.db, minAge, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	res := make([]*account.Record, len(models))
-	for i, model := range models {
-		res[i] = fromModel(model)
-	}
-	return res, nil
-}
-
-// CountRequiringSwapRetry implements account.Store.CountRequiringSwapRetry
-func (s *store) CountRequiringSwapRetry(ctx context.Context) (uint64, error) {
-	return dbCountRequiringSwapRetry(ctx, s.db)
-}

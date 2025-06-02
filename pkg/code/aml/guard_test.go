@@ -28,22 +28,26 @@ func TestGuard_SendPublicPayment_PerTransactionValue(t *testing.T) {
 		limit.SendLimits[currency_lib.USD].PerTransaction - 1,
 		limit.SendLimits[currency_lib.USD].PerTransaction,
 	} {
-		intentRecord := makeSendPublicPaymentIntent(t, owner, acceptableValue, time.Now())
+		for _, isWithdraw := range []bool{true, false} {
+			intentRecord := makeSendPublicPaymentIntent(t, owner, acceptableValue, isWithdraw, time.Now())
 
-		allow, err := env.guard.AllowMoneyMovement(env.ctx, intentRecord)
-		require.NoError(t, err)
-		assert.True(t, allow)
+			allow, err := env.guard.AllowMoneyMovement(env.ctx, intentRecord)
+			require.NoError(t, err)
+			assert.True(t, allow)
+		}
 	}
 
 	for _, unacceptableValue := range []float64{
 		limit.SendLimits[currency_lib.USD].PerTransaction + 1,
 		limit.SendLimits[currency_lib.USD].PerTransaction * 10,
 	} {
-		intentRecord := makeSendPublicPaymentIntent(t, owner, unacceptableValue, time.Now())
+		for _, isWithdraw := range []bool{true, false} {
+			intentRecord := makeSendPublicPaymentIntent(t, owner, unacceptableValue, isWithdraw, time.Now())
 
-		allow, err := env.guard.AllowMoneyMovement(env.ctx, intentRecord)
-		require.NoError(t, err)
-		assert.False(t, allow)
+			allow, err := env.guard.AllowMoneyMovement(env.ctx, intentRecord)
+			require.NoError(t, err)
+			assert.Equal(t, isWithdraw, allow)
+		}
 	}
 }
 
@@ -87,20 +91,29 @@ func TestGuard_SendPublicPayment_DailyUsdLimit(t *testing.T) {
 		},
 	} {
 		owner := testutil.NewRandomAccount(t)
-		intentRecord := makeSendPublicPaymentIntent(t, owner, 1, time.Now())
+		giveIntentRecord := makeSendPublicPaymentIntent(t, owner, 1, false, time.Now())
+		withdrawIntentRecord := makeSendPublicPaymentIntent(t, owner, 1, true, time.Now())
 
-		// Sanity check the intent for $1 USD is allowed
-		allow, err := env.guard.AllowMoneyMovement(env.ctx, intentRecord)
+		// Sanity check the intents for $1 USD is allowed
+		allow, err := env.guard.AllowMoneyMovement(env.ctx, giveIntentRecord)
+		require.NoError(t, err)
+		assert.True(t, allow)
+		allow, err = env.guard.AllowMoneyMovement(env.ctx, withdrawIntentRecord)
 		require.NoError(t, err)
 		assert.True(t, allow)
 
 		// Save an intent to bring the user up to the desired consumed daily USD value
-		require.NoError(t, env.data.SaveIntent(env.ctx, makeSendPublicPaymentIntent(t, owner, tc.consumedUsdValue, tc.at)))
+		require.NoError(t, env.data.SaveIntent(env.ctx, makeSendPublicPaymentIntent(t, owner, tc.consumedUsdValue, false, tc.at)))
 
-		// Check whether we allow the $1 USD intent
-		allow, err = env.guard.AllowMoneyMovement(env.ctx, intentRecord)
+		// Check whether we allow the $1 USD give intent
+		allow, err = env.guard.AllowMoneyMovement(env.ctx, giveIntentRecord)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expected, allow)
+
+		// Check whether we allow the $1 USD withdraw intent
+		allow, err = env.guard.AllowMoneyMovement(env.ctx, withdrawIntentRecord)
+		require.NoError(t, err)
+		assert.True(t, allow)
 	}
 }
 
@@ -145,7 +158,7 @@ func setupAmlTest(t *testing.T) (env amlTestEnv) {
 	return env
 }
 
-func makeSendPublicPaymentIntent(t *testing.T, owner *common.Account, usdMarketValue float64, at time.Time) *intent.Record {
+func makeSendPublicPaymentIntent(t *testing.T, owner *common.Account, usdMarketValue float64, isWithdraw bool, at time.Time) *intent.Record {
 	return &intent.Record{
 		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		IntentType: intent.SendPublicPayment,
@@ -159,6 +172,8 @@ func makeSendPublicPaymentIntent(t *testing.T, owner *common.Account, usdMarketV
 			ExchangeCurrency: currency_lib.USD,
 			NativeAmount:     usdMarketValue,
 			UsdMarketValue:   usdMarketValue,
+
+			IsWithdrawal: isWithdraw,
 		},
 
 		InitiatorOwnerAccount: owner.PublicKey().ToBase58(),

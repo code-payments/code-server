@@ -31,7 +31,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
-	"github.com/code-payments/code-server/pkg/code/data/onramp"
 	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
@@ -51,7 +50,6 @@ import (
 	merkletree_memory_client "github.com/code-payments/code-server/pkg/code/data/merkletree/memory"
 	messaging_memory_client "github.com/code-payments/code-server/pkg/code/data/messaging/memory"
 	nonce_memory_client "github.com/code-payments/code-server/pkg/code/data/nonce/memory"
-	onramp_memory_client "github.com/code-payments/code-server/pkg/code/data/onramp/memory"
 	paymentrequest_memory_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/memory"
 	rendezvous_memory_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/memory"
 	timelock_memory_client "github.com/code-payments/code-server/pkg/code/data/timelock/memory"
@@ -71,7 +69,6 @@ import (
 	merkletree_postgres_client "github.com/code-payments/code-server/pkg/code/data/merkletree/postgres"
 	messaging_postgres_client "github.com/code-payments/code-server/pkg/code/data/messaging/postgres"
 	nonce_postgres_client "github.com/code-payments/code-server/pkg/code/data/nonce/postgres"
-	onramp_postgres_client "github.com/code-payments/code-server/pkg/code/data/onramp/postgres"
 	paymentrequest_postgres_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/postgres"
 	rendezvous_postgres_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/postgres"
 	timelock_postgres_client "github.com/code-payments/code-server/pkg/code/data/timelock/postgres"
@@ -108,10 +105,8 @@ type DatabaseData interface {
 	GetRelationshipAccountInfoByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error)
 	GetPrioritizedAccountInfosRequiringDepositSync(ctx context.Context, limit uint64) ([]*account.Record, error)
 	GetPrioritizedAccountInfosRequiringAutoReturnCheck(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error)
-	GetPrioritizedAccountInfosRequiringSwapRetry(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error)
 	GetAccountInfoCountRequiringDepositSync(ctx context.Context) (uint64, error)
 	GetAccountInfoCountRequiringAutoReturnCheck(ctx context.Context) (uint64, error)
-	GetAccountInfoCountRequiringSwapRetry(ctx context.Context) (uint64, error)
 
 	// Currency
 	// --------------------------------------------------------------------------------
@@ -248,11 +243,6 @@ type DatabaseData interface {
 	SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error
 	GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error)
 
-	// Onramp
-	// --------------------------------------------------------------------------------
-	PutFiatOnrampPurchase(ctx context.Context, record *onramp.Record) error
-	GetFiatOnrampPurchase(ctx context.Context, nonce uuid.UUID) (*onramp.Record, error)
-
 	// CVM RAM
 	// --------------------------------------------------------------------------------
 	InitializeVmMemory(ctx context.Context, record *cvm_ram.Record) error
@@ -292,7 +282,6 @@ type DatabaseProvider struct {
 	paymentRequest paymentrequest.Store
 	webhook        webhook.Store
 	balance        balance.Store
-	onramp         onramp.Store
 	cvmRam         cvm_ram.Store
 	cvmStorage     cvm_storage.Store
 
@@ -340,7 +329,6 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		paymentRequest: paymentrequest_postgres_client.New(db),
 		webhook:        webhook_postgres_client.New(db),
 		balance:        balance_postgres_client.New(db),
-		onramp:         onramp_postgres_client.New(db),
 		cvmRam:         cvm_ram_postgres_client.New(db),
 		cvmStorage:     cvm_storage_postgres_client.New(db),
 
@@ -369,7 +357,6 @@ func NewTestDatabaseProvider() DatabaseData {
 		paymentRequest: paymentrequest_memory_client.New(),
 		webhook:        webhook_memory_client.New(),
 		balance:        balance_memory_client.New(),
-		onramp:         onramp_memory_client.New(),
 		cvmRam:         cvm_ram_memory_client.New(),
 		cvmStorage:     cvm_storage_memory_client.New(),
 
@@ -415,17 +402,11 @@ func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringDepositSync(ctx c
 func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringAutoReturnCheck(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error) {
 	return dp.accounts.GetPrioritizedRequiringAutoReturnCheck(ctx, maxAge, limit)
 }
-func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringSwapRetry(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error) {
-	return dp.accounts.GetPrioritizedRequiringSwapRetry(ctx, maxAge, limit)
-}
 func (dp *DatabaseProvider) GetAccountInfoCountRequiringDepositSync(ctx context.Context) (uint64, error) {
 	return dp.accounts.CountRequiringDepositSync(ctx)
 }
 func (dp *DatabaseProvider) GetAccountInfoCountRequiringAutoReturnCheck(ctx context.Context) (uint64, error) {
 	return dp.accounts.CountRequiringAutoReturnCheck(ctx)
-}
-func (dp *DatabaseProvider) GetAccountInfoCountRequiringSwapRetry(ctx context.Context) (uint64, error) {
-	return dp.accounts.CountRequiringSwapRetry(ctx)
 }
 
 // Currency
@@ -894,15 +875,6 @@ func (dp *DatabaseProvider) SaveBalanceCheckpoint(ctx context.Context, record *b
 }
 func (dp *DatabaseProvider) GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error) {
 	return dp.balance.GetCheckpoint(ctx, account)
-}
-
-// Onramp
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) PutFiatOnrampPurchase(ctx context.Context, record *onramp.Record) error {
-	return dp.onramp.Put(ctx, record)
-}
-func (dp *DatabaseProvider) GetFiatOnrampPurchase(ctx context.Context, nonce uuid.UUID) (*onramp.Record, error) {
-	return dp.onramp.Get(ctx, nonce)
 }
 
 // VM RAM
