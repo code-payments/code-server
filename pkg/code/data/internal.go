@@ -31,12 +31,10 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
-	"github.com/code-payments/code-server/pkg/code/data/paymentrequest"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
-	"github.com/code-payments/code-server/pkg/code/data/webhook"
 
 	account_memory_client "github.com/code-payments/code-server/pkg/code/data/account/memory"
 	action_memory_client "github.com/code-payments/code-server/pkg/code/data/action/memory"
@@ -50,12 +48,10 @@ import (
 	merkletree_memory_client "github.com/code-payments/code-server/pkg/code/data/merkletree/memory"
 	messaging_memory_client "github.com/code-payments/code-server/pkg/code/data/messaging/memory"
 	nonce_memory_client "github.com/code-payments/code-server/pkg/code/data/nonce/memory"
-	paymentrequest_memory_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/memory"
 	rendezvous_memory_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/memory"
 	timelock_memory_client "github.com/code-payments/code-server/pkg/code/data/timelock/memory"
 	transaction_memory_client "github.com/code-payments/code-server/pkg/code/data/transaction/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
-	webhook_memory_client "github.com/code-payments/code-server/pkg/code/data/webhook/memory"
 
 	account_postgres_client "github.com/code-payments/code-server/pkg/code/data/account/postgres"
 	action_postgres_client "github.com/code-payments/code-server/pkg/code/data/action/postgres"
@@ -69,12 +65,10 @@ import (
 	merkletree_postgres_client "github.com/code-payments/code-server/pkg/code/data/merkletree/postgres"
 	messaging_postgres_client "github.com/code-payments/code-server/pkg/code/data/messaging/postgres"
 	nonce_postgres_client "github.com/code-payments/code-server/pkg/code/data/nonce/postgres"
-	paymentrequest_postgres_client "github.com/code-payments/code-server/pkg/code/data/paymentrequest/postgres"
 	rendezvous_postgres_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/postgres"
 	timelock_postgres_client "github.com/code-payments/code-server/pkg/code/data/timelock/postgres"
 	transaction_postgres_client "github.com/code-payments/code-server/pkg/code/data/transaction/postgres"
 	vault_postgres_client "github.com/code-payments/code-server/pkg/code/data/vault/postgres"
-	webhook_postgres_client "github.com/code-payments/code-server/pkg/code/data/webhook/postgres"
 )
 
 // Cache Constants
@@ -225,19 +219,6 @@ type DatabaseData interface {
 	DeleteRendezvous(ctx context.Context, key, address string) error
 	GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error)
 
-	// Requests
-	// --------------------------------------------------------------------------------
-	CreateRequest(ctx context.Context, record *paymentrequest.Record) error
-	GetRequest(ctx context.Context, intentId string) (*paymentrequest.Record, error)
-
-	// Webhook
-	// --------------------------------------------------------------------------------
-	CreateWebhook(ctx context.Context, record *webhook.Record) error
-	UpdateWebhook(ctx context.Context, record *webhook.Record) error
-	GetWebhook(ctx context.Context, webhookId string) (*webhook.Record, error)
-	CountWebhookByState(ctx context.Context, state webhook.State) (uint64, error)
-	GetAllPendingWebhooksReadyToSend(ctx context.Context, limit uint64) ([]*webhook.Record, error)
-
 	// Balance
 	// --------------------------------------------------------------------------------
 	SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error
@@ -266,24 +247,22 @@ type DatabaseData interface {
 }
 
 type DatabaseProvider struct {
-	accounts       account.Store
-	currencies     currency.Store
-	vault          vault.Store
-	nonces         nonce.Store
-	fulfillments   fulfillment.Store
-	intents        intent.Store
-	actions        action.Store
-	transactions   transaction.Store
-	messages       messaging.Store
-	timelock       timelock.Store
-	merkleTree     merkletree.Store
-	deposits       deposit.Store
-	rendezvous     rendezvous.Store
-	paymentRequest paymentrequest.Store
-	webhook        webhook.Store
-	balance        balance.Store
-	cvmRam         cvm_ram.Store
-	cvmStorage     cvm_storage.Store
+	accounts     account.Store
+	currencies   currency.Store
+	vault        vault.Store
+	nonces       nonce.Store
+	fulfillments fulfillment.Store
+	intents      intent.Store
+	actions      action.Store
+	transactions transaction.Store
+	messages     messaging.Store
+	timelock     timelock.Store
+	merkleTree   merkletree.Store
+	deposits     deposit.Store
+	rendezvous   rendezvous.Store
+	balance      balance.Store
+	cvmRam       cvm_ram.Store
+	cvmStorage   cvm_storage.Store
 
 	exchangeCache cache.Cache
 	timelockCache cache.Cache
@@ -313,24 +292,22 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 	db.SetConnMaxLifetime(time.Hour)
 
 	return &DatabaseProvider{
-		accounts:       account_postgres_client.New(db),
-		currencies:     currency_postgres_client.New(db),
-		nonces:         nonce_postgres_client.New(db),
-		fulfillments:   fulfillment_postgres_client.New(db),
-		intents:        intent_postgres_client.New(db),
-		actions:        action_postgres_client.New(db),
-		transactions:   transaction_postgres_client.New(db),
-		messages:       messaging_postgres_client.New(db),
-		timelock:       timelock_postgres_client.New(db),
-		vault:          vault_postgres_client.New(db),
-		merkleTree:     merkletree_postgres_client.New(db),
-		deposits:       deposit_postgres_client.New(db),
-		rendezvous:     rendezvous_postgres_client.New(db),
-		paymentRequest: paymentrequest_postgres_client.New(db),
-		webhook:        webhook_postgres_client.New(db),
-		balance:        balance_postgres_client.New(db),
-		cvmRam:         cvm_ram_postgres_client.New(db),
-		cvmStorage:     cvm_storage_postgres_client.New(db),
+		accounts:     account_postgres_client.New(db),
+		currencies:   currency_postgres_client.New(db),
+		nonces:       nonce_postgres_client.New(db),
+		fulfillments: fulfillment_postgres_client.New(db),
+		intents:      intent_postgres_client.New(db),
+		actions:      action_postgres_client.New(db),
+		transactions: transaction_postgres_client.New(db),
+		messages:     messaging_postgres_client.New(db),
+		timelock:     timelock_postgres_client.New(db),
+		vault:        vault_postgres_client.New(db),
+		merkleTree:   merkletree_postgres_client.New(db),
+		deposits:     deposit_postgres_client.New(db),
+		rendezvous:   rendezvous_postgres_client.New(db),
+		balance:      balance_postgres_client.New(db),
+		cvmRam:       cvm_ram_postgres_client.New(db),
+		cvmStorage:   cvm_storage_postgres_client.New(db),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: cache.NewCache(maxTimelockCacheBudget),
@@ -341,24 +318,22 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 
 func NewTestDatabaseProvider() DatabaseData {
 	return &DatabaseProvider{
-		accounts:       account_memory_client.New(),
-		currencies:     currency_memory_client.New(),
-		nonces:         nonce_memory_client.New(),
-		fulfillments:   fulfillment_memory_client.New(),
-		intents:        intent_memory_client.New(),
-		actions:        action_memory_client.New(),
-		transactions:   transaction_memory_client.New(),
-		timelock:       timelock_memory_client.New(),
-		vault:          vault_memory_client.New(),
-		merkleTree:     merkletree_memory_client.New(),
-		messages:       messaging_memory_client.New(),
-		deposits:       deposit_memory_client.New(),
-		rendezvous:     rendezvous_memory_client.New(),
-		paymentRequest: paymentrequest_memory_client.New(),
-		webhook:        webhook_memory_client.New(),
-		balance:        balance_memory_client.New(),
-		cvmRam:         cvm_ram_memory_client.New(),
-		cvmStorage:     cvm_storage_memory_client.New(),
+		accounts:     account_memory_client.New(),
+		currencies:   currency_memory_client.New(),
+		nonces:       nonce_memory_client.New(),
+		fulfillments: fulfillment_memory_client.New(),
+		intents:      intent_memory_client.New(),
+		actions:      action_memory_client.New(),
+		transactions: transaction_memory_client.New(),
+		timelock:     timelock_memory_client.New(),
+		vault:        vault_memory_client.New(),
+		merkleTree:   merkletree_memory_client.New(),
+		messages:     messaging_memory_client.New(),
+		deposits:     deposit_memory_client.New(),
+		rendezvous:   rendezvous_memory_client.New(),
+		balance:      balance_memory_client.New(),
+		cvmRam:       cvm_ram_memory_client.New(),
+		cvmStorage:   cvm_storage_memory_client.New(),
 
 		exchangeCache: cache.NewCache(maxExchangeRateCacheBudget),
 		timelockCache: nil, // Shouldn't be used for tests
@@ -839,33 +814,6 @@ func (dp *DatabaseProvider) DeleteRendezvous(ctx context.Context, key, address s
 }
 func (dp *DatabaseProvider) GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error) {
 	return dp.rendezvous.Get(ctx, key)
-}
-
-// Payment Request
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) CreateRequest(ctx context.Context, record *paymentrequest.Record) error {
-	return dp.paymentRequest.Put(ctx, record)
-}
-func (dp *DatabaseProvider) GetRequest(ctx context.Context, intentId string) (*paymentrequest.Record, error) {
-	return dp.paymentRequest.Get(ctx, intentId)
-}
-
-// Webhook
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) CreateWebhook(ctx context.Context, record *webhook.Record) error {
-	return dp.webhook.Put(ctx, record)
-}
-func (dp *DatabaseProvider) UpdateWebhook(ctx context.Context, record *webhook.Record) error {
-	return dp.webhook.Update(ctx, record)
-}
-func (dp *DatabaseProvider) GetWebhook(ctx context.Context, webhookId string) (*webhook.Record, error) {
-	return dp.webhook.Get(ctx, webhookId)
-}
-func (dp *DatabaseProvider) CountWebhookByState(ctx context.Context, state webhook.State) (uint64, error) {
-	return dp.webhook.CountByState(ctx, state)
-}
-func (dp *DatabaseProvider) GetAllPendingWebhooksReadyToSend(ctx context.Context, limit uint64) ([]*webhook.Record, error) {
-	return dp.webhook.GetAllPendingReadyToSend(ctx, limit)
 }
 
 // Balance
