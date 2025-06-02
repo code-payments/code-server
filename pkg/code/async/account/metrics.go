@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	giftCardWorkerEventName  = "GiftCardWorkerPollingCheck"
-	swapRetryWorkerEventName = "SwapRetryWorkerPollingCheck"
+	giftCardWorkerEventName = "GiftCardWorkerPollingCheck"
 
 	airdropperBalanceEventName = "AirdropperBalancePollingCheck"
 )

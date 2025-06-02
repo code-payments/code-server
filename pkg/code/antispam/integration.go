@@ -16,8 +16,6 @@ type Integration interface {
 	AllowSendPayment(ctx context.Context, owner, destination *common.Account, isPublic bool) (bool, string, error)
 
 	AllowReceivePayments(ctx context.Context, owner *common.Account, isPublic bool) (bool, string, error)
-
-	AllowSwap(ctx context.Context, owner *common.Account) (bool, string, error)
 }
 
 type allowEverythingIntegration struct {
@@ -41,9 +39,5 @@ func (i *allowEverythingIntegration) AllowSendPayment(ctx context.Context, owner
 }
 
 func (i *allowEverythingIntegration) AllowReceivePayments(ctx context.Context, owner *common.Account, isPublic bool) (bool, string, error) {
-	return true, "", nil
-}
-
-func (i *allowEverythingIntegration) AllowSwap(ctx context.Context, owner *common.Account) (bool, string, error) {
 	return true, "", nil
 }

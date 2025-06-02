@@ -360,46 +360,6 @@ func dbCountRequiringAutoReturnCheck(ctx context.Context, db *sqlx.DB) (uint64, 
 	return res, nil
 }
 
-func dbGetPrioritizedRequiringSwapRetry(ctx context.Context, db *sqlx.DB, minAge time.Duration, limit uint64) ([]*model, error) {
-	var res []*model
-
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
-		WHERE requires_swap_retry = TRUE AND last_swap_retry_at <= $1
-		ORDER BY last_swap_retry_at ASC
-		LIMIT $2
-	`
-	err := db.SelectContext(
-		ctx,
-		&res,
-		query,
-		time.Now().Add(-minAge),
-		limit,
-	)
-	if err != nil {
-		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
-	}
-
-	if len(res) == 0 {
-		return nil, account.ErrAccountInfoNotFound
-	}
-	return res, nil
-}
-
-func dbCountRequiringSwapRetry(ctx context.Context, db *sqlx.DB) (uint64, error) {
-	var res uint64
-
-	query := `SELECT COUNT(*) FROM ` + tableName + `
-		WHERE requires_swap_retry = TRUE
-	`
-
-	err := db.GetContext(ctx, &res, query)
-	if err != nil {
-		return 0, err
-	}
-
-	return res, nil
-}
-
 func equivalentModels(obj1, obj2 *model) bool {
 	if obj1.OwnerAccount != obj2.OwnerAccount {
 		return false

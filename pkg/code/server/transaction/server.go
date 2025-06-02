@@ -15,7 +15,6 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/transaction"
-	"github.com/code-payments/code-server/pkg/jupiter"
 	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 
@@ -39,10 +38,6 @@ type transactionServer struct {
 
 	// Not configured, since micropeayments require new implementation and are disabled
 	feeCollector *common.Account
-
-	// Not configured, since swaps require new implementation and are disabled
-	jupiterClient  *jupiter.Client
-	swapSubsidizer *common.Account
 
 	// todo: distributed locks
 	intentLocks   *sync_util.StripedLock
