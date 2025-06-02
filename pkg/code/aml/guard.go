@@ -49,7 +49,12 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	var action string
 	switch intentRecord.IntentType {
 	case intent.SendPublicPayment:
-		// Public sends are subject to limits
+		// Public withdrawals are always allowed
+		if intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+			return true, nil
+		}
+
+		// Public gives and sends are subject to limits
 		currency = intentRecord.SendPublicPaymentMetadata.ExchangeCurrency
 		nativeAmount = intentRecord.SendPublicPaymentMetadata.NativeAmount
 		usdMarketValue = intentRecord.SendPublicPaymentMetadata.UsdMarketValue

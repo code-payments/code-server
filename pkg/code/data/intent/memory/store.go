@@ -217,6 +217,19 @@ func (s *store) filterByRemoteSendFlag(items []*intent.Record, want bool) []*int
 	return res
 }
 
+func (s *store) filterByWithdrawalFlag(items []*intent.Record, want bool) []*intent.Record {
+	var res []*intent.Record
+	for _, item := range items {
+		switch item.IntentType {
+		case intent.SendPublicPayment:
+			if item.SendPublicPaymentMetadata.IsWithdrawal == want {
+				res = append(res, item)
+			}
+		}
+	}
+	return res
+}
+
 func sumQuarkAmount(items []*intent.Record) uint64 {
 	var value uint64
 	for _, item := range items {
@@ -363,7 +376,8 @@ func (s *store) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, o
 	defer s.mu.Unlock()
 
 	items := s.findByOwnerSinceTimestamp(owner, since)
-	items = s.filterByState(items, false, intent.StateRevoked)
 	items = s.filterByType(items, intent.SendPublicPayment)
+	items = s.filterByState(items, false, intent.StateRevoked)
+	items = s.filterByWithdrawalFlag(items, false)
 	return sumQuarkAmount(items), sumUsdMarketValue(items), nil
 }

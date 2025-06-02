@@ -324,7 +324,7 @@ func dbGetTransactedAmountForAntiMoneyLaundering(ctx context.Context, db *sqlx.D
 	}{}
 
 	query := `SELECT SUM(quantity) AS total_quark_value, SUM(usd_market_value) AS total_usd_value FROM ` + intentTableName + `
-		WHERE owner = $1 AND created_at >= $2 AND intent_type = $3 AND state != $4
+		WHERE owner = $1 AND created_at >= $2 AND intent_type = $3 AND state != $4 AND is_withdraw = FALSE
 	`
 	err := db.GetContext(
 		ctx,
