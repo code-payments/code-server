@@ -176,7 +176,7 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	// Part 5: Validate fee payments
 	//
 
-	return validateFeePayments(simResult)
+	return validateFeePayments(ctx, h.data, h.conf, intentRecord, simResult)
 }
 
 func (h *OpenAccountsIntentHandler) validateActions(ctx context.Context, initiatiorOwnerAccount *common.Account, actions []*transactionpb.Action) error {
@@ -300,10 +300,12 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 
 	if destinationAccountInfo != nil {
 		intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount = destinationAccountInfo.OwnerAccount
-	}
-
-	if intentRecord.SendPublicPaymentMetadata.IsRemoteSend && intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
-		return newIntentValidationError("remote send cannot be a withdraw")
+	} else if typedProtoMetadata.IsWithdrawal && typedProtoMetadata.DestinationOwner != nil {
+		destinationOwner, err := common.NewAccountFromProto(typedProtoMetadata.DestinationOwner)
+		if err != nil {
+			return err
+		}
+		intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount = destinationOwner.PublicKey().ToBase58()
 	}
 
 	return nil
@@ -414,7 +416,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayments(simResult)
+	err = validateFeePayments(ctx, h.data, h.conf, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -434,7 +436,6 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	)
 }
 
-// todo: For remote send, we still need to fully validate the auto-return action
 func (h *SendPublicPaymentIntentHandler) validateActions(
 	ctx context.Context,
 	initiatorOwnerAccount *common.Account,
@@ -444,13 +445,6 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	actions []*transactionpb.Action,
 	simResult *LocalSimulationResult,
 ) error {
-	if !metadata.IsRemoteSend && len(actions) != 1 {
-		return newIntentValidationError("expected 1 action")
-	}
-	if metadata.IsRemoteSend && len(actions) != 3 {
-		return newIntentValidationError("expected 3 actions")
-	}
-
 	var source *common.Account
 	var err error
 	if metadata.Source != nil {
@@ -472,7 +466,32 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return err
 	}
 
-	// Part 1: Check the source and destination accounts are valid
+	//
+	// Part 1: High-level action validation based on intent metadata
+	//
+
+	if metadata.IsRemoteSend && metadata.IsWithdrawal {
+		return newIntentValidationError("remote send cannot be a withdraw")
+	}
+
+	if !metadata.IsWithdrawal && !metadata.IsRemoteSend && len(actions) != 1 {
+		return newIntentValidationError("expected 1 action for payment")
+	}
+	if metadata.IsWithdrawal && len(actions) != 1 && len(actions) != 2 {
+		return newIntentValidationError("expected 1 or 2 actions for withdrawal")
+	}
+	if metadata.IsRemoteSend && len(actions) != 3 {
+		return newIntentValidationError("expected 3 actions for remote send")
+	}
+
+	//
+	// Part 2: Check the source and destination accounts are valid
+	//
+
+	sourceAccountRecords, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
+	if !ok || sourceAccountRecords.General.AccountType != commonpb.AccountType_PRIMARY {
+		return newIntentValidationError("source account must be a deposit account")
+	}
 
 	destinationAccountInfo, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
 	switch err {
@@ -487,48 +506,115 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 			return newIntentValidationError("destination account must be a deposit account")
 		}
 
+		// Fee payments are not required for Code->Code public withdraws
+		if metadata.IsWithdrawal && simResult.HasAnyFeePayments() {
+			return newIntentValidationErrorf("%s fee payment not required for code destination", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL.String())
+		}
+
 		// And the destination cannot be the source of funds, since that results in a no-op
 		if source.PublicKey().ToBase58() == destinationAccountInfo.TokenAccount {
 			return newIntentValidationError("payment is a no-op")
 		}
 	case account.ErrAccountInfoNotFound:
-		// Check whether the destination account is a core mint token account that's
-		// been created on the blockchain. Exception is made when we're doing a remote
-		// send, since we expect the gift card account to no yet exist.
-		if !metadata.IsRemoteSend && !h.conf.disableBlockchainChecks.Get(ctx) {
-			err = validateExternalTokenAccountWithinIntent(ctx, h.data, destination)
-			if err != nil {
-				return err
+		err = func() error {
+			// Destination is to a brand new gift card that will be created as part of this
+			// intent
+			if metadata.IsRemoteSend {
+				return nil
 			}
+
+			// All payments to external destinations must be withdraws
+			if !metadata.IsWithdrawal {
+				return newIntentValidationError("payments to external destinations must be withdrawals")
+			}
+
+			// Ensure the destination is the core mint ATA for the client-provided owner,
+			// if provided. We'll check later if this is absolutely required.
+			if metadata.DestinationOwner != nil {
+				destinationOwner, err := common.NewAccountFromProto(metadata.DestinationOwner)
+				if err != nil {
+					return err
+				}
+
+				ata, err := destinationOwner.ToAssociatedTokenAccount(common.CoreMintAccount)
+				if err != nil {
+					return err
+				}
+
+				if ata.PublicKey().ToBase58() != destination.PublicKey().ToBase58() {
+					return newIntentValidationErrorf("destination is not the ata for %s", destinationOwner.PublicKey().ToBase58())
+				}
+			}
+
+			// Technically we should always enforce a fee payment, but these checks are only
+			// disabled for tests
+			if h.conf.disableBlockchainChecks.Get(ctx) {
+				return nil
+			}
+
+			// Check whether the destination account is a core mint token account that's
+			// been created on the blockchain. If not, a fee is required
+			err = validateExternalTokenAccountWithinIntent(ctx, h.data, destination)
+			switch err {
+			case nil:
+				if simResult.HasAnyFeePayments() {
+					return newIntentValidationErrorf("%s fee payment not required when external destination exists", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL.String())
+				}
+			default:
+				if !strings.Contains(strings.ToLower(err.Error()), "doesn't exist on the blockchain") {
+					return err
+				}
+
+				if !simResult.HasAnyFeePayments() {
+					return newIntentValidationErrorf("%s fee payment is required", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL.String())
+				}
+
+				if metadata.DestinationOwner == nil {
+					return newIntentValidationError("destination owner account is required to derive ata")
+				}
+			}
+
+			return nil
+		}()
+		if err != nil {
+			return err
 		}
 	default:
 		return err
 	}
 
-	sourceAccountRecords, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
-	if !ok || sourceAccountRecords.General.AccountType != commonpb.AccountType_PRIMARY {
-		return newIntentValidationError("source account must be a deposit account")
+	//
+	// Part 3 Validate actions match intent metadata
+	//
+
+	//
+	// Part 3.1: Check destination account is paid exact quark amount from the deposit account
+	//           minus any fees
+	//
+
+	expectedDestinationPayment := int64(metadata.ExchangeData.Quarks)
+
+	// Minimal validation required here since validateFeePayments generically handles
+	// most checks that isn't specific to an intent.
+	feePayments := simResult.GetFeePayments()
+	if len(feePayments) > 1 {
+		return newIntentValidationError("expected at most 1 fee payment")
 	}
-
-	//
-	// Part 2: Validate actions match intent metadata
-	//
-
-	//
-	// Part 2.1: Check destination account is paid exact quark amount from the deposit account
-	//
+	for _, feePayment := range feePayments {
+		expectedDestinationPayment += feePayment.DeltaQuarks
+	}
 
 	destinationSimulation, ok := simResult.SimulationsByAccount[destination.PublicKey().ToBase58()]
 	if !ok {
 		return newIntentValidationErrorf("must send payment to destination account %s", destination.PublicKey().ToBase58())
 	} else if destinationSimulation.Transfers[0].IsPrivate || destinationSimulation.Transfers[0].IsWithdraw {
 		return newActionValidationError(destinationSimulation.Transfers[0].Action, "payment sent to destination must be a public transfer")
-	} else if destinationSimulation.GetDeltaQuarks(false) != int64(metadata.ExchangeData.Quarks) {
-		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "must send %d quarks to destination account", metadata.ExchangeData.Quarks)
+	} else if destinationSimulation.GetDeltaQuarks(false) != expectedDestinationPayment {
+		return newActionValidationErrorf(destinationSimulation.Transfers[0].Action, "must send %d quarks to destination account", expectedDestinationPayment)
 	}
 
 	//
-	// Part 2.2: Check that the user's deposit account was used as the source of funds
+	// Part 3.2: Check that the user's deposit account was used as the source of funds
 	//           as specified in the metadata
 	//
 
@@ -539,14 +625,14 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return newActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must send %d quarks from source account", metadata.ExchangeData.Quarks)
 	}
 
-	// Part 3: Generic validation of actions that move money
+	// Part 4: Generic validation of actions that move money
 
 	err = validateMoneyMovementActionUserAccounts(intent.SendPublicPayment, initiatorAccountsByVault, actions)
 	if err != nil {
 		return err
 	}
 
-	// Part 4: Validate open and closed accounts
+	// Part 5: Validate open and closed accounts
 
 	if metadata.IsRemoteSend {
 		if len(simResult.GetOpenedAccounts()) != 1 {
@@ -789,7 +875,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	// Part 6: Validate fee payments
 	//
 
-	err = validateFeePayments(simResult)
+	err = validateFeePayments(ctx, h.data, h.conf, intentRecord, simResult)
 	if err != nil {
 		return err
 	}
@@ -1062,7 +1148,6 @@ func validateExternalTokenAccountWithinIntent(ctx context.Context, data code_dat
 }
 
 func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) error {
-	// Validate exchange data fully using the common method
 	isValid, message, err := currency_util.ValidateClientExchangeData(ctx, data, proto)
 	if err != nil {
 		return err
@@ -1075,10 +1160,82 @@ func validateExchangeDataWithinIntent(ctx context.Context, data code_data.Provid
 	return nil
 }
 
-func validateFeePayments(simResult *LocalSimulationResult) error {
-	if simResult.HasAnyFeePayments() {
+func validateFeePayments(
+	ctx context.Context,
+	data code_data.Provider,
+	conf *conf,
+	intentRecord *intent.Record,
+	simResult *LocalSimulationResult,
+) error {
+	var isFeeOptional bool
+	var expectedFeeType transactionpb.FeePaymentAction_FeeType
+	switch intentRecord.IntentType {
+	case intent.SendPublicPayment:
+		if intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+			isFeeOptional = true
+			expectedFeeType = transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL
+		}
+	}
+
+	if simResult.HasAnyFeePayments() && expectedFeeType == transactionpb.FeePaymentAction_UNKNOWN {
 		return newIntentValidationError("intent doesn't require a fee payment")
 	}
+	if expectedFeeType == transactionpb.FeePaymentAction_UNKNOWN {
+		return nil
+	}
+
+	if !simResult.HasAnyFeePayments() && !isFeeOptional {
+		return newIntentValidationErrorf("expected a %s fee payment", expectedFeeType.String())
+	}
+	if !simResult.HasAnyFeePayments() && isFeeOptional {
+		return nil
+	}
+
+	feePayments := simResult.GetFeePayments()
+	if len(feePayments) > 1 {
+		return newIntentValidationError("expected at most 1 fee payment")
+	} else if len(feePayments) == 0 {
+		return nil
+	}
+	feePayment := feePayments[0]
+
+	if feePayment.Action.GetFeePayment().Type != expectedFeeType {
+		return newActionValidationErrorf(feePayment.Action, "expected a %s fee payment", expectedFeeType.String())
+	}
+
+	var expectedUsdValue float64
+	switch expectedFeeType {
+	case transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL:
+		expectedUsdValue = conf.createOnSendWithdrawalUsdFee.Get(ctx)
+	default:
+		return errors.New("unhandled fee type")
+	}
+
+	feeAmount := feePayment.DeltaQuarks
+	if feeAmount >= 0 {
+		return newActionValidationError(feePayment.Action, "fee payment amount is negative")
+	}
+	feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
+
+	var foundUsdExchangeRecord bool
+	usdExchangeRecords, err := currency_util.GetPotentialClientExchangeRates(ctx, data, currency_lib.USD)
+	if err != nil {
+		return err
+	}
+	for _, exchangeRecord := range usdExchangeRecords {
+		usdValue := exchangeRecord.Rate * float64(feeAmount) / float64(common.CoreMintQuarksPerUnit)
+
+		// Allow for some small margin of error
+		if usdValue > expectedUsdValue-0.0001 && usdValue < expectedUsdValue+0.0001 {
+			foundUsdExchangeRecord = true
+			break
+		}
+	}
+
+	if !foundUsdExchangeRecord {
+		return newActionValidationErrorf(feePayment.Action, "code fee payment amount must be $%.2f USD", expectedUsdValue)
+	}
+
 	return nil
 }
 

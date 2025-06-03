@@ -38,10 +38,6 @@ func (h *OpenAccountsIntentHandler) OnActionUpdated(ctx context.Context, intentI
 	}
 
 	for _, actionRecord := range actionRecords {
-		if actionRecord.ActionType != action.OpenAccount {
-			continue
-		}
-
 		// Intent is failed if at least one OpenAccount action fails
 		if actionRecord.State == action.StateFailed {
 			return markIntentFailed(ctx, h.data, intentId)
@@ -73,11 +69,11 @@ func (h *SendPublicPaymentIntentHandler) OnActionUpdated(ctx context.Context, in
 	}
 
 	actionRecordsToCheck := actionRecords
-	if len(actionRecords) > 1 {
+	if len(actionRecords) > 2 {
 		// Do not include the auto-return action, which is a different server-side
 		// initiated intent using the final action here.
 		//
-		// todo: Assumes > 1 case is just remote send
+		// todo: Assumes > 2 case is just remote send, but saves a DB call
 		actionRecordsToCheck = actionRecordsToCheck[:len(actionRecordsToCheck)-1]
 	}
 

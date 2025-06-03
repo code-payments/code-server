@@ -35,7 +35,8 @@ func TestCreateAssociatedAccount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, expectedAddr, addr)
 
-	assert.Empty(t, instruction.Data)
+	assert.Len(t, instruction.Data, 1)
+	assert.Equal(t, commandCreate, instruction.Data[0])
 	assert.Equal(t, 7, len(instruction.Accounts))
 	assert.True(t, instruction.Accounts[0].IsSigner)
 	assert.True(t, instruction.Accounts[0].IsWritable)
@@ -51,6 +52,39 @@ func TestCreateAssociatedAccount(t *testing.T) {
 	assert.EqualValues(t, system.RentSysVar, instruction.Accounts[6].PublicKey)
 
 	decompiled, err := DecompileCreateAssociatedAccount(solana.NewTransaction(keys[0], instruction).Message, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, keys[0], decompiled.Subsidizer)
+	assert.Equal(t, keys[1], decompiled.Owner)
+	assert.Equal(t, keys[2], decompiled.Mint)
+}
+
+func TestCreateAssociatedAccountIdempotent(t *testing.T) {
+	keys := generateKeys(t, 3)
+
+	expectedAddr, err := GetAssociatedAccount(keys[1], keys[2])
+	require.NoError(t, err)
+
+	instruction, addr, err := CreateAssociatedTokenAccountIdempotent(keys[0], keys[1], keys[2])
+	require.NoError(t, err)
+	assert.Equal(t, expectedAddr, addr)
+
+	assert.Len(t, instruction.Data, 1)
+	assert.Equal(t, commandCreateIdempotent, instruction.Data[0])
+	assert.Equal(t, 7, len(instruction.Accounts))
+	assert.True(t, instruction.Accounts[0].IsSigner)
+	assert.True(t, instruction.Accounts[0].IsWritable)
+	assert.False(t, instruction.Accounts[1].IsSigner)
+	assert.True(t, instruction.Accounts[1].IsWritable)
+	for i := 2; i < len(instruction.Accounts); i++ {
+		assert.False(t, instruction.Accounts[i].IsSigner)
+		assert.False(t, instruction.Accounts[i].IsWritable)
+	}
+
+	assert.EqualValues(t, system.ProgramKey[:], instruction.Accounts[4].PublicKey)
+	assert.EqualValues(t, ProgramKey, instruction.Accounts[5].PublicKey)
+	assert.EqualValues(t, system.RentSysVar, instruction.Accounts[6].PublicKey)
+
+	decompiled, err := DecompileCreateAssociatedAccountIdempotent(solana.NewTransaction(keys[0], instruction).Message, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, keys[0], decompiled.Subsidizer)
 	assert.Equal(t, keys[1], decompiled.Owner)

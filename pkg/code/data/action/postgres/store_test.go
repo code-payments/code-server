@@ -32,6 +32,8 @@ const (
 			destination TEXT NULL,
 			quantity INTEGER NULL,
 
+			fee_type INTEGER NULL,
+
 			state INTEGER NOT NULL,
 
 			created_at timestamp with time zone NOT NULL, 

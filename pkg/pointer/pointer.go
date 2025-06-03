@@ -32,6 +32,36 @@ func StringCopy(value *string) *string {
 	return String(*value)
 }
 
+// Int32 returns a pointer to the provided int32 value
+func Int32(value int32) *int32 {
+	return &value
+}
+
+// Int32OrDefault returns the pointer if not nil, otherwise the default value
+func Int32OrDefault(value *int32, defaultValue int32) *int32 {
+	if value != nil {
+		return value
+	}
+	return &defaultValue
+}
+
+// Int32IfValid returns a pointer to the value if it's valid, otherwise nil
+func Int32IfValid(valid bool, value int32) *int32 {
+	if valid {
+		return &value
+	}
+	return nil
+}
+
+// Int32Copy returns a pointer that's a copy of the provided value
+func Int32Copy(value *int32) *int32 {
+	if value == nil {
+		return nil
+	}
+
+	return Int32(*value)
+}
+
 // Uint32 returns a pointer to the provided uint32 value
 func Uint32(value uint32) *uint32 {
 	return &value

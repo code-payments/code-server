@@ -451,7 +451,7 @@ func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, 
 	default:
 		// Unfortunate if Solana is down, but this only impacts withdraw flows,
 		// and we need to guarantee this isn't going to something that's not
-		// a Kin token acocunt.
+		// a core mint token acocunt.
 		return false, "", err
 	}
 }
