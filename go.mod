@@ -3,6 +3,7 @@ module github.com/code-payments/code-server
 go 1.23.0
 
 require (
+	filippo.io/edwards25519 v1.1.0
 	github.com/aws/aws-sdk-go-v2 v0.17.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
 	github.com/code-payments/code-protobuf-api v1.19.1-0.20250603030803-cbe2bfca5052
