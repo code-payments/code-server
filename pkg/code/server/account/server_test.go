@@ -340,7 +340,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			expectedBalanceSource:    accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
 			expectedBlockchainState:  accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS,
 			expectedManagementState:  accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED,
-			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED,
+			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED,
 		},
 		{
 			balance:                  42,
@@ -350,7 +350,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			expectedBalanceSource:    accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
 			expectedBlockchainState:  accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS,
 			expectedManagementState:  accountpb.TokenAccountInfo_MANAGEMENT_STATE_UNLOCKED,
-			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED,
+			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED,
 		},
 		{
 			balance:                  42,
@@ -360,7 +360,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			expectedBalanceSource:    accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE,
 			expectedBlockchainState:  accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_DOES_NOT_EXIST,
 			expectedManagementState:  accountpb.TokenAccountInfo_MANAGEMENT_STATE_CLOSED,
-			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED,
+			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED,
 		},
 	} {
 		ownerAccount := testutil.NewRandomAccount(t)
