@@ -85,7 +85,7 @@ type Instruction struct {
 }
 
 // NewInstruction creates a new instruction.
-func NewInstruction(program, data ed25519.PublicKey, accounts ...AccountMeta) Instruction {
+func NewInstruction(program ed25519.PublicKey, data []byte, accounts ...AccountMeta) Instruction {
 	return Instruction{
 		Program:  program,
 		Data:     data,

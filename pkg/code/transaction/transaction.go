@@ -10,6 +10,7 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
+	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
 // todo: The argument sizes are blowing out of proportion, though there's likely
@@ -210,7 +211,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 	destinationMemory *common.Account,
 	destinationIndex uint16,
 
-	kinAmountInQuarks uint64,
+	coreMintQuarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
 	if err != nil {
@@ -218,7 +219,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 	}
 
 	vixn := cvm.NewTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
-		Amount:    kinAmountInQuarks,
+		Amount:    coreMintQuarks,
 		Signature: cvm.Signature(virtualSignature),
 	})
 
@@ -260,8 +261,11 @@ func MakeExternalTransferWithAuthorityTransaction(
 	sourceMemory *common.Account,
 	sourceIndex uint16,
 
+	isCreateOnSend bool,
+	externalDestinationOwner *common.Account,
 	externalDestination *common.Account,
-	kinAmountInQuarks uint64,
+
+	coreMintQuarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory)
 	if err != nil {
@@ -273,7 +277,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
 	vixn := cvm.NewExternalTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
-		Amount:    kinAmountInQuarks,
+		Amount:    coreMintQuarks,
 		Signature: cvm.Signature(virtualSignature),
 	})
 
@@ -294,11 +298,34 @@ func MakeExternalTransferWithAuthorityTransaction(
 		},
 	)
 
+	computeLimit := 100_000
+	if isCreateOnSend {
+		computeLimit = 125_000
+	}
+
 	instructions := []solana.Instruction{
 		compute_budget.SetComputeUnitPrice(1_000),
-		compute_budget.SetComputeUnitLimit(100_000),
-		execInstruction,
+		compute_budget.SetComputeUnitLimit(uint32(computeLimit)),
 	}
+	if isCreateOnSend {
+		if externalDestinationOwner == nil {
+			return solana.Transaction{}, errors.New("destination owner is required")
+		}
+
+		createIdempotentInstruction, ata, err := token.CreateAssociatedTokenAccountIdempotent(
+			common.GetSubsidizer().PublicKey().ToBytes(),
+			externalDestinationOwner.PublicKey().ToBytes(),
+			common.CoreMintAccount.PublicKey().ToBytes(),
+		)
+		if err != nil {
+			return solana.Transaction{}, err
+		} else if !bytes.Equal(externalDestination.PublicKey().ToBytes(), ata) {
+			return solana.Transaction{}, errors.New("invalid destination owner")
+		}
+
+		instructions = append(instructions, createIdempotentInstruction)
+	}
+	instructions = append(instructions, execInstruction)
 	return MakeNoncedTransaction(nonce, bh, instructions...)
 }
 

@@ -25,8 +25,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/transaction"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -210,7 +210,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	intentRecord := &intent.Record{
 		IntentId:              intentId,
 		InitiatorOwnerAccount: initiatorOwnerAccount.PublicKey().ToBase58(),
-		State:                 intent.StateUnknown,
+		State:                 intent.StatePending,
 		CreatedAt:             time.Now(),
 	}
 
@@ -554,11 +554,27 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return err
 		}
 
+		// Save additional state related to the intent
+		err = intentHandler.OnSaveToDB(ctx, intentRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure executing intent db save callback")
+			return err
+		}
+
 		// Save all actions
 		err = s.data.PutAllActions(ctx, actionRecords...)
 		if err != nil {
 			log.WithError(err).Warn("failure saving action records")
 			return err
+		}
+
+		// Save additional state related to each action
+		for _, actionHandler := range actionHandlers {
+			err = actionHandler.OnSaveToDB(ctx)
+			if err != nil {
+				log.WithError(err).Warn("failure executing action db save callback handler")
+				return err
+			}
 		}
 
 		// Save all fulfillment records
@@ -584,29 +600,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		err = s.data.PutAllFulfillments(ctx, fulfillmentRecordsToSave...)
 		if err != nil {
 			log.WithError(err).Warn("failure saving fulfillment records")
-			return err
-		}
-
-		// Save additional state related to each action
-		for _, actionHandler := range actionHandlers {
-			err = actionHandler.OnSaveToDB(ctx)
-			if err != nil {
-				log.WithError(err).Warn("failure executing action db save callback handler")
-				return err
-			}
-		}
-
-		// Save additional state related to the intent
-		err = intentHandler.OnSaveToDB(ctx, intentRecord)
-		if err != nil {
-			log.WithError(err).Warn("failure executing intent db save callback")
-			return err
-		}
-
-		// Mark the intent as pending once everything else has succeeded
-		err = s.markIntentAsPending(ctx, intentRecord)
-		if err != nil {
-			log.WithError(err).Warn("failure marking the intent as pending")
 			return err
 		}
 
@@ -670,21 +663,6 @@ func (s *transactionServer) boundedSubmitIntentRecv(ctx context.Context, streame
 	case <-done:
 		return req, err
 	}
-}
-
-func (s *transactionServer) markIntentAsPending(ctx context.Context, record *intent.Record) error {
-	if record.State != intent.StateUnknown {
-		return nil
-	}
-
-	// After one minute, we mark the intent as revoked, so avoid the race with
-	// a time-based check until we have distributed locks
-	if time.Since(record.CreatedAt) > time.Minute {
-		return errors.New("took too long to mark intent as pending")
-	}
-
-	record.State = intent.StatePending
-	return s.data.SaveIntent(ctx, record)
 }
 
 func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transactionpb.GetIntentMetadataRequest) (*transactionpb.GetIntentMetadataResponse, error) {
@@ -811,7 +789,6 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 	}, nil
 }
 
-// todo: Test the blockchain checks when we have a mocked Solana client
 func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *transactionpb.CanWithdrawToAccountRequest) (*transactionpb.CanWithdrawToAccountResponse, error) {
 	log := s.log.WithField("method", "CanWithdrawToAccount")
 	log = client.InjectLoggingMetadata(ctx, log)
@@ -827,46 +804,33 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	log = log.WithField("account", accountToCheck.PublicKey().ToBase58())
 
 	//
-	// Part 1: Is this a legacy Code timelock account? If so, deny it.
+	// Part 1: Is this a timelock vault? If so, only allow primary accounts.
 	//
 
-	timelockRecord, err := s.data.GetTimelockByVault(ctx, accountToCheck.PublicKey().ToBase58())
+	accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, accountToCheck.PublicKey().ToBase58())
 	switch err {
 	case nil:
-	case timelock.ErrTimelockNotFound:
+		return &transactionpb.CanWithdrawToAccountResponse{
+			IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY,
+			AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
+		}, nil
+	case account.ErrAccountInfoNotFound:
 		// Nothing to do
 	default:
-		log.WithError(err).Warn("failure checking timelock db")
+		log.WithError(err).Warn("failure checking account info db")
 		return nil, status.Error(codes.Internal, "")
 	}
 
 	//
-	// Part 2: Is this a privacy-based timelock vault? If so, only allow primary accounts.
-	//
-
-	if timelockRecord != nil {
-		accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, accountToCheck.PublicKey().ToBase58())
-		if err == nil {
-			return &transactionpb.CanWithdrawToAccountResponse{
-				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY,
-			}, nil
-		} else {
-			log.WithError(err).Warn("failure checking account info db")
-			return nil, status.Error(codes.Internal, "")
-		}
-	}
-
-	//
-	// Part 3: Is this an opened Kin token account? If so, allow it.
+	// Part 2: Is this an opened core mint token account? If so, allow it.
 	//
 
 	_, err = s.data.GetBlockchainTokenAccountInfo(ctx, accountToCheck.PublicKey().ToBase58(), solana.CommitmentFinalized)
 	switch err {
 	case nil:
 		return &transactionpb.CanWithdrawToAccountResponse{
-			AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
 			IsValidPaymentDestination: true,
+			AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
 		}, nil
 	case token.ErrAccountNotFound, solana.ErrNoAccountInfo, token.ErrInvalidTokenAccount:
 		// Nothing to do
@@ -876,7 +840,8 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	}
 
 	//
-	// Part 4: Is this an owner account with an opened Core Mint ATA? If so, allow it.
+	// Part 3: Is this an owner account with an opened Core Mint ATA? If so, allow it.
+	//         If not, indicate to the client to pay a fee for a create-on-send withdrawal.
 	//
 
 	ata, err := accountToCheck.ToAssociatedTokenAccount(common.CoreMintAccount)
@@ -885,7 +850,6 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	var requiresInitialization bool
 	_, err = s.data.GetBlockchainTokenAccountInfo(ctx, ata.PublicKey().ToBase58(), solana.CommitmentFinalized)
 	switch err {
 	case nil:
@@ -895,20 +859,25 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 		}, nil
 	case token.ErrAccountNotFound, solana.ErrNoAccountInfo:
 		// ATA doesn't exist, and we won't be subsidizing it. Let the client know
-		// they should initialize it first.
-		requiresInitialization = true
+		// they require a fee.
+		return &transactionpb.CanWithdrawToAccountResponse{
+			IsValidPaymentDestination: true,
+			AccountType:               transactionpb.CanWithdrawToAccountResponse_OwnerAccount,
+			RequiresInitialization:    true,
+			FeeAmount: &transactionpb.ExchangeDataWithoutRate{
+				Currency:     string(currency_lib.USD),
+				NativeAmount: s.conf.createOnSendWithdrawalUsdFee.Get(ctx),
+			},
+		}, nil
 	case token.ErrInvalidTokenAccount:
-		// Nothing to do
+		return &transactionpb.CanWithdrawToAccountResponse{
+			IsValidPaymentDestination: false,
+			AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
+		}, nil
 	default:
 		log.WithError(err).Warn("failure checking against blockchain as an owner account")
 		return nil, status.Error(codes.Internal, "")
 	}
-
-	return &transactionpb.CanWithdrawToAccountResponse{
-		AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
-		IsValidPaymentDestination: false,
-		RequiresInitialization:    requiresInitialization,
-	}, nil
 }
 
 func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb.VoidGiftCardRequest) (*transactionpb.VoidGiftCardResponse, error) {

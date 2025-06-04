@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/pointer"
 )
@@ -49,7 +51,7 @@ type Record struct {
 	Source      string  // Source token account involved
 	Destination *string // Destination token account involved, when it makes sense
 
-	// Kin quark amount involved, when it makes sense. This must be set for actions
+	// Core mint quark amount involved, when it makes sense. This must be set for actions
 	// that make balance changes across Code accounts! For deferred actions that are
 	// initially in the unknown state, the balance may be nil and updated at a later
 	// time. Store implementations will enforce which actions will allow quantity updates.
@@ -59,6 +61,8 @@ type Record struct {
 	//       as needed and include everything in the calculation). We'll wait for more
 	//       use cases before forming a firm opinion.
 	Quantity *uint64
+
+	FeeType *transactionpb.FeePaymentAction_FeeType
 
 	State State
 
@@ -92,6 +96,10 @@ func (r *Record) Validate() error {
 		return errors.New("quantity is required when set")
 	}
 
+	if r.FeeType != nil && *r.FeeType == transactionpb.FeePaymentAction_UNKNOWN {
+		return errors.New("fee type is required when set")
+	}
+
 	return nil
 }
 
@@ -109,6 +117,8 @@ func (r *Record) Clone() Record {
 		Destination: pointer.StringCopy(r.Destination),
 		Quantity:    pointer.Uint64Copy(r.Quantity),
 
+		FeeType: (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32Copy((*int32)(r.FeeType))),
+
 		State: r.State,
 
 		CreatedAt: r.CreatedAt,
@@ -125,8 +135,10 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.ActionType = r.ActionType
 
 	dst.Source = r.Source
-	dst.Destination = r.Destination
-	dst.Quantity = r.Quantity
+	dst.Destination = pointer.StringCopy(r.Destination)
+	dst.Quantity = pointer.Uint64Copy(r.Quantity)
+
+	dst.FeeType = (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32Copy((*int32)(r.FeeType)))
 
 	dst.State = r.State
 

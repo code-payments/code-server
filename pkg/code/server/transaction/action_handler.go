@@ -183,11 +183,10 @@ func (h *OpenAccountActionHandler) OnSaveToDB(ctx context.Context) error {
 }
 
 type NoPrivacyTransferActionHandler struct {
-	source           *common.TimelockAccounts
-	destination      *common.Account
-	amount           uint64
-	isFeePayment     bool // Internally, the mechanics of a fee payment are exactly the same
-	isCodeFeePayment bool
+	source      *common.TimelockAccounts
+	destination *common.Account
+	amount      uint64
+	feeType     transactionpb.FeePaymentAction_FeeType // Internally, the mechanics of a fee payment are exactly the same
 }
 
 func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTransferAction) (CreateActionHandler, error) {
@@ -207,10 +206,9 @@ func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTrans
 	}
 
 	return &NoPrivacyTransferActionHandler{
-		source:       source,
-		destination:  destination,
-		amount:       protoAction.Amount,
-		isFeePayment: false,
+		source:      source,
+		destination: destination,
+		amount:      protoAction.Amount,
 	}, nil
 }
 
@@ -225,24 +223,11 @@ func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, fee
 		return nil, err
 	}
 
-	var destination *common.Account
-	var isCodeFeePayment bool
-	if protoAction.Type == transactionpb.FeePaymentAction_CODE {
-		destination = feeCollector
-		isCodeFeePayment = true
-	} else {
-		destination, err = common.NewAccountFromProto(protoAction.Destination)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &NoPrivacyTransferActionHandler{
-		source:           source,
-		destination:      destination,
-		amount:           protoAction.Amount,
-		isFeePayment:     true,
-		isCodeFeePayment: isCodeFeePayment,
+		source:      source,
+		destination: feeCollector,
+		amount:      protoAction.Amount,
+		feeType:     protoAction.Type,
 	}, nil
 }
 
@@ -257,21 +242,20 @@ func (h *NoPrivacyTransferActionHandler) PopulateMetadata(actionRecord *action.R
 
 	actionRecord.Quantity = &h.amount
 
+	if h.isFeePayment() {
+		actionRecord.FeeType = &h.feeType
+	}
+
 	actionRecord.State = action.StatePending
 
 	return nil
 }
 func (h *NoPrivacyTransferActionHandler) GetServerParameter() *transactionpb.ServerParameter {
-	if h.isFeePayment {
-		var codeDestination *commonpb.SolanaAccountId
-		if h.isCodeFeePayment {
-			codeDestination = h.destination.ToProto()
-		}
-
+	if h.isFeePayment() {
 		return &transactionpb.ServerParameter{
 			Type: &transactionpb.ServerParameter_FeePayment{
 				FeePayment: &transactionpb.FeePaymentServerParameter{
-					CodeDestination: codeDestination,
+					Destination: h.destination.ToProto(),
 				},
 			},
 		}
@@ -312,7 +296,6 @@ func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 			source:                   h.source.Vault,
 			destination:              h.destination,
 			fulfillmentOrderingIndex: 0,
-			disableActiveScheduling:  h.isFeePayment,
 		}, nil
 	default:
 		return nil, errors.New("invalid transaction index")
@@ -321,6 +304,10 @@ func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 
 func (h *NoPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) error {
 	return nil
+}
+
+func (h *NoPrivacyTransferActionHandler) isFeePayment() bool {
+	return h.feeType != transactionpb.FeePaymentAction_UNKNOWN
 }
 
 type NoPrivacyWithdrawActionHandler struct {

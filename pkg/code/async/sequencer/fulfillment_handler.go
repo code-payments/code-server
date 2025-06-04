@@ -7,6 +7,7 @@ import (
 	"github.com/mr-tron/base58"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
@@ -209,7 +210,7 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlockchain
 
 	// The source user account is a Code account, so we must validate it exists on
 	// the blockchain prior to sending funds from it.
-	isSourceAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, fulfillmentRecord.Source)
+	isSourceAccountCreated, err := isAccountInitialized(ctx, h.data, fulfillmentRecord.Source)
 	if err != nil {
 		return false, err
 	} else if !isSourceAccountCreated {
@@ -217,12 +218,27 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlockchain
 	}
 
 	// The destination user account might be a Code account or external wallet, so we
-	// must validate it exists on the blockchain prior to send funds to it.
-	isDestinationAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, *fulfillmentRecord.Destination)
+	// must validate it exists on the blockchain prior to sending funds to it, or if we'll
+	// be creating it at time of send.
+	destinationAccount, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.Destination)
 	if err != nil {
 		return false, err
-	} else if !isDestinationAccountCreated {
-		return false, nil
+	}
+	isInternalTransfer, err := isInternalVmTransfer(ctx, h.data, destinationAccount)
+	if err != nil {
+		return false, err
+	}
+	hasCreateOnSendFee, err := h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+	if err != nil {
+		return false, err
+	}
+	if isInternalTransfer || !hasCreateOnSendFee {
+		isDestinationAccountCreated, err := isAccountInitialized(ctx, h.data, *fulfillmentRecord.Destination)
+		if err != nil {
+			return false, err
+		} else if !isDestinationAccountCreated {
+			return false, nil
+		}
 	}
 
 	// Check whether there's an earlier fulfillment that should be scheduled first
@@ -269,17 +285,17 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) SupportsOnDemandTrans
 }
 
 func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
+	actionRecord, err := h.data.GetActionById(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
+	if err != nil {
+		return nil, err
+	}
+
 	virtualSignatureBytes, err := base58.Decode(*fulfillmentRecord.VirtualSignature)
 	if err != nil {
 		return nil, err
 	}
 
 	virtualNonce, err := common.NewAccountFromPublicKeyString(*fulfillmentRecord.VirtualNonce)
-	if err != nil {
-		return nil, err
-	}
-
-	actionRecord, err := h.data.GetActionById(ctx, fulfillmentRecord.Intent, fulfillmentRecord.ActionId)
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +370,24 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			*actionRecord.Quantity,
 		)
 	} else {
+		isCreateOnSend, err := h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+		if err != nil {
+			return &solana.Transaction{}, err
+		}
+
+		var destinationOwnerAccount *common.Account
+		if isCreateOnSend {
+			intentRecord, err := h.data.GetIntent(ctx, fulfillmentRecord.Intent)
+			if err != nil {
+				return nil, err
+			}
+
+			destinationOwnerAccount, err = common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		txn, makeTxnErr = transaction_util.MakeExternalTransferWithAuthorityTransaction(
 			selectedNonce.Account,
 			selectedNonce.Blockhash,
@@ -368,7 +402,10 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			sourceMemory,
 			sourceIndex,
 
+			isCreateOnSend,
+			destinationOwnerAccount,
 			destinationTokenAccount,
+
 			*actionRecord.Quantity,
 		)
 	}
@@ -397,7 +434,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) CanSubmitToBlockchain(ctx context.
 
 	// The source user account is a Code account, so we must validate it exists on
 	// the blockchain prior to sending funds from it.
-	isSourceAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, fulfillmentRecord.Source)
+	isSourceAccountCreated, err := isAccountInitialized(ctx, h.data, fulfillmentRecord.Source)
 	if err != nil {
 		return false, err
 	} else if !isSourceAccountCreated {
@@ -406,7 +443,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) CanSubmitToBlockchain(ctx context.
 
 	// The destination user account might be a Code account or external wallet, so we
 	// must validate it exists on the blockchain prior to send funds to it.
-	isDestinationAccountCreated, err := isTokenAccountOnBlockchain(ctx, h.data, *fulfillmentRecord.Destination)
+	isDestinationAccountCreated, err := isAccountInitialized(ctx, h.data, *fulfillmentRecord.Destination)
 	if err != nil {
 		return false, err
 	} else if !isDestinationAccountCreated {
@@ -700,7 +737,6 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) OnFailure(ctx context.Cont
 	// is dust in the account.
 	//
 	// todo: Implement auto-recovery when we know the account is empty
-	// todo: Do "something" to indicate the client needs to resign a new transaction
 	return false, nil
 }
 
@@ -712,7 +748,7 @@ func (h *CloseEmptyTimelockAccountFulfillmentHandler) IsRevoked(ctx context.Cont
 	return false, false, nil
 }
 
-func isTokenAccountOnBlockchain(ctx context.Context, data code_data.Provider, address string) (bool, error) {
+func isAccountInitialized(ctx context.Context, data code_data.Provider, address string) (bool, error) {
 	// Try our cache of Code timelock accounts
 	timelockRecord, err := data.GetTimelockByVault(ctx, address)
 	if err == timelock.ErrTimelockNotFound {

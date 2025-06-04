@@ -70,7 +70,7 @@ func (s *store) GetQuarkAmount(_ context.Context, account string) (uint64, error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.getKinAmount(account), nil
+	return s.getQuarkAmount(account), nil
 }
 
 // GetQuarkAmountBatch implements deposit.Store.GetQuarkAmountBatch
@@ -80,7 +80,7 @@ func (s *store) GetQuarkAmountBatch(_ context.Context, accounts ...string) (map[
 
 	res := make(map[string]uint64)
 	for _, account := range accounts {
-		res[account] = s.getKinAmount(account)
+		res[account] = s.getQuarkAmount(account)
 	}
 	return res, nil
 }
@@ -93,7 +93,7 @@ func (s *store) GetUsdAmount(ctx context.Context, account string) (float64, erro
 	return s.getUsdAmount(account), nil
 }
 
-func (s *store) getKinAmount(account string) uint64 {
+func (s *store) getQuarkAmount(account string) uint64 {
 	items := s.findByDestination(account)
 	items = s.filterFinalized(items)
 	return s.sumAmounts(items)
