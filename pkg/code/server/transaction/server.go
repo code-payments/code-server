@@ -36,7 +36,6 @@ type transactionServer struct {
 	airdropperLock sync.Mutex
 	airdropper     *common.TimelockAccounts
 
-	// Not configured, since micropeayments require new implementation and are disabled
 	feeCollector *common.Account
 
 	// todo: distributed locks
@@ -55,6 +54,8 @@ func NewTransactionServer(
 	noncePool *transaction.LocalNoncePool,
 	configProvider ConfigProvider,
 ) (transactionpb.TransactionServer, error) {
+	var err error
+
 	ctx := context.Background()
 
 	conf := configProvider()
@@ -83,6 +84,11 @@ func NewTransactionServer(
 		intentLocks:   sync_util.NewStripedLock(stripedLockParallelization),
 		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
+	}
+
+	s.feeCollector, err = common.NewAccountFromPublicKeyString(s.conf.feeCollectorTokenPublicKey.Get(ctx))
+	if err != nil {
+		return nil, err
 	}
 
 	airdropper := s.conf.airdropperOwnerPublicKey.Get(ctx)
