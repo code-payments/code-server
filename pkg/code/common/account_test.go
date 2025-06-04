@@ -189,6 +189,21 @@ func TestGetVmDepositAccounts(t *testing.T) {
 	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 
+func TestIsOnCurve(t *testing.T) {
+	for _, tc := range []struct {
+		expected  bool
+		publicKey string
+	}{
+		{true, "codeHy87wGD5oMRLG75qKqsSi1vWE3oxNyYmXo5F9YR"},   // Example owner
+		{false, "Cgx4Ff1mmdqRnUbMQ8SbM23hDEbaNaGuhxUHF4aDN8if"}, // Example ATA
+		{false, "ChpRZqD1KKdbVsFkRGu85rqMa85MHKhWHuGwJXwAiRCN"}, // Example Timelock vault
+	} {
+		account, err := NewAccountFromPublicKeyString(tc.publicKey)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expected, account.IsOnCurve())
+	}
+}
+
 func TestIsAccountManagedByCode_TimelockState(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()

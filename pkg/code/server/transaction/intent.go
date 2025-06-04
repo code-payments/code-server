@@ -803,46 +803,59 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	}
 	log = log.WithField("account", accountToCheck.PublicKey().ToBase58())
 
+	isOnCurve := accountToCheck.IsOnCurve()
+
 	//
-	// Part 1: Is this a timelock vault? If so, only allow primary accounts.
+	// Part 1: Is this a Timelock vault? If so, only allow primary accounts.
 	//
 
-	accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, accountToCheck.PublicKey().ToBase58())
-	switch err {
-	case nil:
-		return &transactionpb.CanWithdrawToAccountResponse{
-			IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY,
-			AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-		}, nil
-	case account.ErrAccountInfoNotFound:
-		// Nothing to do
-	default:
-		log.WithError(err).Warn("failure checking account info db")
-		return nil, status.Error(codes.Internal, "")
+	if !isOnCurve {
+		accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, accountToCheck.PublicKey().ToBase58())
+		switch err {
+		case nil:
+			return &transactionpb.CanWithdrawToAccountResponse{
+				IsValidPaymentDestination: accountInfoRecord.AccountType == commonpb.AccountType_PRIMARY,
+				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
+			}, nil
+		case account.ErrAccountInfoNotFound:
+			// Nothing to do
+		default:
+			log.WithError(err).Warn("failure checking account info db")
+			return nil, status.Error(codes.Internal, "")
+		}
 	}
 
 	//
 	// Part 2: Is this an opened core mint token account? If so, allow it.
 	//
 
-	_, err = s.data.GetBlockchainTokenAccountInfo(ctx, accountToCheck.PublicKey().ToBase58(), solana.CommitmentFinalized)
-	switch err {
-	case nil:
-		return &transactionpb.CanWithdrawToAccountResponse{
-			IsValidPaymentDestination: true,
-			AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
-		}, nil
-	case token.ErrAccountNotFound, solana.ErrNoAccountInfo, token.ErrInvalidTokenAccount:
-		// Nothing to do
-	default:
-		log.WithError(err).Warn("failure checking against blockchain as a token account")
-		return nil, status.Error(codes.Internal, "")
+	if !isOnCurve {
+		_, err = s.data.GetBlockchainTokenAccountInfo(ctx, accountToCheck.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		switch err {
+		case nil:
+			return &transactionpb.CanWithdrawToAccountResponse{
+				IsValidPaymentDestination: true,
+				AccountType:               transactionpb.CanWithdrawToAccountResponse_TokenAccount,
+			}, nil
+		case token.ErrAccountNotFound, solana.ErrNoAccountInfo, token.ErrInvalidTokenAccount:
+			// Nothing to do
+		default:
+			log.WithError(err).Warn("failure checking against blockchain as a token account")
+			return nil, status.Error(codes.Internal, "")
+		}
 	}
 
 	//
 	// Part 3: Is this an owner account with an opened Core Mint ATA? If so, allow it.
 	//         If not, indicate to the client to pay a fee for a create-on-send withdrawal.
 	//
+
+	if !isOnCurve {
+		return &transactionpb.CanWithdrawToAccountResponse{
+			IsValidPaymentDestination: false,
+			AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
+		}, nil
+	}
 
 	ata, err := accountToCheck.ToAssociatedTokenAccount(common.CoreMintAccount)
 	if err != nil {

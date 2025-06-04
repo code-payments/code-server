@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"filippo.io/edwards25519"
 	"github.com/pkg/errors"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
@@ -325,6 +326,10 @@ func (a *Account) IsManagedByCode(ctx context.Context, data code_data.Provider) 
 	return IsManagedByCode(ctx, timelockRecord), nil
 }
 
+func (a *Account) IsOnCurve() bool {
+	return isOnCurve(a.publicKey.ToBytes())
+}
+
 func (a *Account) Validate() error {
 	if a == nil {
 		return errors.New("account is nil")
@@ -454,4 +459,14 @@ func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, 
 		// a core mint token acocunt.
 		return false, "", err
 	}
+}
+
+func isOnCurve(pubKey ed25519.PublicKey) bool {
+	if len(pubKey) != ed25519.PublicKeySize {
+		return false
+	}
+
+	// Try to parse the public key as a point
+	_, err := new(edwards25519.Point).SetBytes(pubKey)
+	return err == nil
 }
