@@ -348,7 +348,7 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			return nil, err
 		}
 
-		_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+		_, destinationMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
 		if err != nil {
 			return nil, err
 		}
@@ -364,15 +364,22 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			nonceIndex,
 			sourceMemory,
 			sourceIndex,
-			destinationeMemory,
+			destinationMemory,
 			destinationIndex,
 
 			*actionRecord.Quantity,
 		)
 	} else {
-		isCreateOnSend, err := h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
-		if err != nil {
-			return &solana.Transaction{}, err
+		isFeePayment := actionRecord.FeeType != nil
+
+		var isCreateOnSend bool
+		// The Fee payment can be an external transfer, but we know the account
+		// already exists and doesn't need an idempotent create instruction
+		if !isFeePayment {
+			isCreateOnSend, err = h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+			if err != nil {
+				return &solana.Transaction{}, err
+			}
 		}
 
 		var destinationOwnerAccount *common.Account
@@ -540,7 +547,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			return nil, err
 		}
 
-		_, destinationeMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
+		_, destinationMemory, destinationIndex, err := getVirtualTimelockAccountStateInMemory(ctx, h.vmIndexerClient, common.CodeVmAccount, destinationAuthority)
 		if err != nil {
 			return nil, err
 		}
@@ -556,7 +563,7 @@ func (h *NoPrivacyWithdrawFulfillmentHandler) MakeOnDemandTransaction(ctx contex
 			nonceIndex,
 			sourceMemory,
 			sourceIndex,
-			destinationeMemory,
+			destinationMemory,
 			destinationIndex,
 		)
 	} else {
