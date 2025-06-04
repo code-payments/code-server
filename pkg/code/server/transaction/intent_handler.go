@@ -1233,7 +1233,7 @@ func validateFeePayments(
 	}
 
 	if !foundUsdExchangeRecord {
-		return newActionValidationErrorf(feePayment.Action, "code fee payment amount must be $%.2f USD", expectedUsdValue)
+		return newActionValidationErrorf(feePayment.Action, "%s fee payment amount must be $%.2f USD", expectedFeeType.String(), expectedUsdValue)
 	}
 
 	return nil
