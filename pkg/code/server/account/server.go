@@ -335,17 +335,16 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 		switch err {
 		case nil:
 			if autoReturnActionRecord.State != action.StateUnknown {
-				claimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
+				claimState = accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED
 			}
 		case action.ErrActionNotFound:
 		default:
 			return nil, err
 		}
 
-		// Unclaimed gift cards that are close to the auto-return window are
-		// marked as expired in a consistent manner as SubmitIntent to avoid
-		// race conditions with the auto-return.
-		if claimState == accountpb.TokenAccountInfo_CLAIM_STATE_NOT_CLAIMED && time.Since(records.General.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
+		// Gift cards that are close to the auto-return window are marked as expired in
+		// a consistent manner as SubmitIntent to avoid race conditions with the auto-return.
+		if time.Since(records.General.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
 			claimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
 		}
 
