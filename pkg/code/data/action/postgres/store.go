@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
@@ -155,4 +156,8 @@ func (s *store) GetGiftCardAutoReturnAction(ctx context.Context, giftCardVault s
 		return nil, err
 	}
 	return fromModel(model), nil
+}
+
+func (s *store) CountFeeActions(ctx context.Context, intent string, feeType transactionpb.FeePaymentAction_FeeType) (uint64, error) {
+	return dbCountFeeActions(ctx, s.db, intent, feeType)
 }

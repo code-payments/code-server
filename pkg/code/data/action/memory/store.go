@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -108,6 +110,22 @@ func (s *store) filterByActionType(items []*action.Record, want action.Type) []*
 			continue
 		}
 	}
+	return res
+}
+
+func (s *store) filterByFeeType(items []*action.Record, want transactionpb.FeePaymentAction_FeeType) []*action.Record {
+	var res []*action.Record
+
+	for _, item := range items {
+		if item.FeeType == nil {
+			continue
+		}
+
+		if *item.FeeType == want {
+			res = append(res, item)
+		}
+	}
+
 	return res
 }
 
@@ -293,6 +311,17 @@ func (s *store) GetGiftCardAutoReturnAction(ctx context.Context, giftCardVault s
 
 	cloned := items[0].Clone()
 	return &cloned, nil
+}
+
+// CountFeeActions implements action.store.CountFeeActions
+func (s *store) CountFeeActions(ctx context.Context, intent string, feeType transactionpb.FeePaymentAction_FeeType) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := s.findByIntent(intent)
+	items = s.filterByFeeType(items, feeType)
+	items = s.filterByState(items, false, action.StateRevoked)
+	return uint64(len(items)), nil
 }
 
 func (s *store) getNetBalance(account string) int64 {

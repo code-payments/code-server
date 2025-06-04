@@ -29,7 +29,6 @@ type TokenAccountSimulation struct {
 	IsAutoReturned bool
 }
 
-// todo: Make it easier to extract accounts from a TransferSimulation (see some fee payment validation logic)
 type TransferSimulation struct {
 	Action       *transactionpb.Action
 	IsPrivate    bool
@@ -153,9 +152,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 						},
 					},
 				},
-				// todo: Doesn't specify destination, but that's not required yet,
-				//       and makes other validation more complex since it's based
-				//       on the simulation.
+				// todo: Doesn't specify destination, but that's not required yet
 			)
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			source, err := common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Source)

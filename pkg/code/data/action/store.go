@@ -3,6 +3,8 @@ package action
 import (
 	"context"
 	"errors"
+
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 )
 
 var (
@@ -29,7 +31,7 @@ type Store interface {
 	// todo: Support paging for accounts that might have many actions when a use case emerges
 	GetAllByAddress(ctx context.Context, address string) ([]*Record, error)
 
-	// GetNetBalance gets the net balance of Kin in quarks after appying actions
+	// GetNetBalance gets the net balance of core mint quarks after appying actions
 	// that operate on balances.
 	GetNetBalance(ctx context.Context, account string) (int64, error)
 
@@ -47,4 +49,7 @@ type Store interface {
 	// as a source. This DB cannot validate the account type, so that must be done
 	// prior to making this call elsewhere.
 	GetGiftCardAutoReturnAction(ctx context.Context, giftCardVault string) (*Record, error)
+
+	// CountFeeActions counts the number of fee actions of the specified type for an intent
+	CountFeeActions(ctx context.Context, intent string, feeType transactionpb.FeePaymentAction_FeeType) (uint64, error)
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -24,6 +26,7 @@ func RunTests(t *testing.T, s action.Store, teardown func()) {
 		testGetNetBalance,
 		testGetGiftCardClaimedAction,
 		testGetGiftCardAutoReturnAction,
+		testCountCountFeeActions,
 	} {
 		tf(t, s)
 		teardown()
@@ -46,6 +49,8 @@ func testRoundTrip(t *testing.T, s action.Store) {
 			Source:      "source",
 			Destination: pointer.String("destination"),
 			Quantity:    nil,
+
+			FeeType: (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32((int32)(transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL))),
 
 			State: action.StateConfirmed,
 		}
@@ -94,12 +99,13 @@ func testBatchPut(t *testing.T, s action.Store) {
 		for i := 0; i < 1000; i++ {
 			actionRecord := &action.Record{
 				Intent:      fmt.Sprintf("intent%d", i),
-				IntentType:  intent.SendPrivatePayment,
+				IntentType:  intent.SendPublicPayment,
 				ActionId:    uint32(i),
-				ActionType:  action.PrivateTransfer,
+				ActionType:  action.NoPrivacyTransfer,
 				Source:      fmt.Sprintf("source%d", i),
 				Destination: pointer.String(fmt.Sprintf("destination%d", i)),
 				Quantity:    pointer.Uint64(uint64(i + 1)),
+				FeeType:     (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32((int32)(transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL))),
 				CreatedAt:   time.Now().Add(time.Duration(i) * time.Second),
 			}
 			cloned := actionRecord.Clone()
@@ -371,6 +377,44 @@ func testGetGiftCardAutoReturnAction(t *testing.T, s action.Store) {
 	})
 }
 
+func testCountCountFeeActions(t *testing.T, s action.Store) {
+	t.Run("testCountCountFeeActions", func(t *testing.T) {
+		ctx := context.Background()
+
+		feeType := transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL
+		records := []*action.Record{
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 0, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), FeeType: &feeType, State: action.StateUnknown},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 1, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), FeeType: &feeType, State: action.StatePending},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 2, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), FeeType: &feeType, State: action.StateFailed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 3, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), FeeType: &feeType, State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 4, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
+			{Intent: "i1", IntentType: intent.SendPublicPayment, ActionId: 5, ActionType: action.NoPrivacyTransfer, Source: "a1", Destination: pointer.String("destination"), State: action.StateConfirmed},
+
+			{Intent: "i2", IntentType: intent.SendPublicPayment, ActionId: 1, ActionType: action.NoPrivacyTransfer, Source: "a2", Destination: pointer.String("destination"), FeeType: &feeType, State: action.StateRevoked},
+			{Intent: "i2", IntentType: intent.SendPublicPayment, ActionId: 0, ActionType: action.NoPrivacyTransfer, Source: "a2", Destination: pointer.String("destination"), FeeType: &feeType, State: action.StatePending},
+			{Intent: "i2", IntentType: intent.SendPublicPayment, ActionId: 2, ActionType: action.NoPrivacyTransfer, Source: "a2", Destination: pointer.String("destination"), State: action.StatePending},
+		}
+
+		require.NoError(t, s.PutAll(ctx, records...))
+
+		count, err := s.CountFeeActions(ctx, "i1", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+		require.NoError(t, err)
+		assert.EqualValues(t, 4, count)
+
+		count, err = s.CountFeeActions(ctx, "i2", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, count)
+
+		count, err = s.CountFeeActions(ctx, "i3", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, count)
+
+		count, err = s.CountFeeActions(ctx, "i1", transactionpb.FeePaymentAction_UNKNOWN)
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, count)
+	})
+}
+
 func assertEquivalentRecords(t *testing.T, obj1, obj2 *action.Record) {
 	assert.Equal(t, obj1.Intent, obj2.Intent)
 	assert.Equal(t, obj1.IntentType, obj2.IntentType)
@@ -381,6 +425,8 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *action.Record) {
 	assert.Equal(t, obj1.Source, obj2.Source)
 	assert.EqualValues(t, obj1.Destination, obj2.Destination)
 	assert.EqualValues(t, obj1.Quantity, obj2.Quantity)
+
+	assert.EqualValues(t, obj1.FeeType, obj2.FeeType)
 
 	assert.Equal(t, obj1.State, obj2.State)
 }

@@ -30,7 +30,7 @@ func TestComputeAllExchangeRates_HappyPath(t *testing.T) {
 }
 
 func TestComputeAllExchangeRates_UsdRateMissing(t *testing.T) {
-	kinRates := map[string]float64{
+	coreMintRates := map[string]float64{
 		"cad": 1.0,
 	}
 
@@ -41,6 +41,6 @@ func TestComputeAllExchangeRates_UsdRateMissing(t *testing.T) {
 		"aud": 0.66,
 	}
 
-	_, err := computeAllExchangeRates(kinRates, usdRates)
+	_, err := computeAllExchangeRates(coreMintRates, usdRates)
 	assert.Error(t, err)
 }

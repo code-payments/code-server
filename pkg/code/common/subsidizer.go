@@ -30,18 +30,15 @@ const (
 )
 
 // todo: doesn't consider external deposits
+// todo: need a better system given fees are dynamic, we'll consider the worst case for each fulfillment type to be safe
 var (
-	// This doesn't account for recovery of rent, which implies some fulfillments
-	// actually have negative fees. We often need to think about "in flight" costs
-	// and SOL balances for our subsidizer, so we exclude rent recovery which
-	// ensures our estimates are always on the conservative side of things.
 	lamportsByFulfillment = map[fulfillment.Type]uint64{
-		fulfillment.InitializeLockedTimelockAccount: 5000, // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.NoPrivacyTransferWithAuthority:  5000, // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.NoPrivacyWithdraw:               5000, // 0.000005 SOL (5000 lamports per signature)
-		fulfillment.CloseEmptyTimelockAccount:       5000, // 0.000005 SOL (5000 lamports per signature)
+		fulfillment.InitializeLockedTimelockAccount: 5050,
+		fulfillment.NoPrivacyTransferWithAuthority:  203928 + 5125,
+		fulfillment.NoPrivacyWithdraw:               5100,
+		fulfillment.CloseEmptyTimelockAccount:       5100,
 	}
-	lamportsPerCreateNonceAccount uint64 = 1450000 // 0.00145 SOL
+	lamportsPerCreateNonceAccount uint64 = 1450000
 )
 
 var (
