@@ -233,7 +233,7 @@ func dbGetNetBalance(ctx context.Context, db *sqlx.DB, account string) (int64, e
 		(SELECT COALESCE(SUM(quantity), 0) FROM ` + tableName + ` WHERE destination = $1 AND state != $2) -
 		(SELECT COALESCE(SUM(quantity), 0) FROM ` + tableName + ` WHERE source = $1 AND state != $2);`
 
-	err := pgutil.ExecuteInTx(ctx, db, sql.LevelRepeatableRead, func(tx *sqlx.Tx) error {
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		return tx.GetContext(
 			ctx,
 			&res,
@@ -275,7 +275,7 @@ func dbGetNetBalanceBatch(ctx context.Context, db *sqlx.DB, accounts ...string) 
 		(SELECT source AS account, -COALESCE(SUM(quantity), 0) AS net_balance FROM `+tableName+` WHERE source IN (%s) AND state != $1 GROUP BY source);`,
 		accountFilter, accountFilter,
 	)
-	err := pgutil.ExecuteInTx(ctx, db, sql.LevelRepeatableRead, func(tx *sqlx.Tx) error {
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(
 			ctx,
 			&rows,
