@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -102,15 +103,44 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	}
 	log = log.WithField("owner_account", owner.PublicKey().ToBase58())
 
-	signature := req.Signature
+	ownerSignature := req.Signature
 	req.Signature = nil
-	if err := s.auth.Authenticate(ctx, owner, req, signature); err != nil {
+
+	var requestingOwner *common.Account
+	var requestingOwnerSignature *commonpb.Signature
+	if req.RequestingOwner != nil {
+		requestingOwner, err = common.NewAccountFromProto(req.RequestingOwner)
+		if err != nil {
+			log.WithError(err).Warn("invalid requesting owner account")
+			return nil, status.Error(codes.Internal, "")
+		}
+		log = log.WithField("requesting_owner_account", requestingOwner.PublicKey().ToBase58())
+
+		requestingOwnerSignature = req.RequestingOwnerSignature
+		req.RequestingOwnerSignature = nil
+	}
+
+	if err := s.auth.Authenticate(ctx, owner, req, ownerSignature); err != nil {
 		return nil, err
+	}
+	if requestingOwner != nil {
+		if err := s.auth.Authenticate(ctx, requestingOwner, req, requestingOwnerSignature); err != nil {
+			return nil, err
+		}
 	}
 
 	cachedResp, ok := giftCardCacheByOwner.Retrieve(owner.PublicKey().ToBase58())
 	if ok {
-		return cachedResp.(*accountpb.GetTokenAccountInfosResponse), nil
+		cachedResp := cachedResp.(*accountpb.GetTokenAccountInfosResponse)
+
+		s.updateCachedResponse(cachedResp)
+
+		resp, err := s.addRequestingOwnerMetadata(ctx, cachedResp, requestingOwner)
+		if err != nil {
+			log.WithError(err).Warn("failure adding requesting owner metadata")
+			return nil, status.Error(codes.Internal, "")
+		}
+		return resp, nil
 	}
 
 	// Fetch all account records
@@ -175,6 +205,11 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 		}
 	}
 
+	resp, err = s.addRequestingOwnerMetadata(ctx, resp, requestingOwner)
+	if err != nil {
+		log.WithError(err).Warn("failure adding requesting owner metadata")
+		return nil, status.Error(codes.Internal, "")
+	}
 	return resp, nil
 }
 
@@ -396,4 +431,47 @@ func (s *server) getOriginalGiftCardExchangeData(ctx context.Context, records *c
 		NativeAmount: intentRecord.SendPublicPaymentMetadata.NativeAmount,
 		Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
 	}, nil
+}
+
+func (s *server) addRequestingOwnerMetadata(ctx context.Context, resp *accountpb.GetTokenAccountInfosResponse, requestingOwner *common.Account) (*accountpb.GetTokenAccountInfosResponse, error) {
+	if requestingOwner == nil {
+		return resp, nil
+	}
+
+	cloned := proto.Clone(resp).(*accountpb.GetTokenAccountInfosResponse)
+
+	for _, ai := range cloned.TokenAccountInfos {
+		switch ai.AccountType {
+		case commonpb.AccountType_REMOTE_SEND_GIFT_CARD:
+			giftCardVaultAccount, err := common.NewAccountFromProto(ai.Address)
+			if err != nil {
+				return nil, err
+			}
+
+			intentRecord, err := s.data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
+			if err != nil {
+				return nil, err
+			}
+
+			if intentRecord.InitiatorOwnerAccount == requestingOwner.PublicKey().ToBase58() {
+				ai.IsGiftCardIssuer = true
+			}
+		}
+	}
+
+	return cloned, nil
+}
+
+func (s *server) updateCachedResponse(resp *accountpb.GetTokenAccountInfosResponse) {
+	for _, ai := range resp.TokenAccountInfos {
+		switch ai.AccountType {
+		case commonpb.AccountType_REMOTE_SEND_GIFT_CARD:
+			// Transition any gift card records to expired if we elapsed the expiry window
+			if time.Since(ai.CreatedAt.AsTime()) >= async_account.GiftCardExpiry {
+				ai.ClaimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
+				ai.BalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE
+				ai.Balance = 0
+			}
+		}
+	}
 }

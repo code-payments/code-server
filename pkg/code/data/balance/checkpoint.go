@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// Note: Only supports external balances
-type Record struct {
+type ExternalCheckpointRecord struct {
 	Id uint64
 
 	TokenAccount   string
@@ -16,7 +15,7 @@ type Record struct {
 	LastUpdatedAt time.Time
 }
 
-func (r *Record) Validate() error {
+func (r *ExternalCheckpointRecord) Validate() error {
 	if len(r.TokenAccount) == 0 {
 		return errors.New("token account is required")
 	}
@@ -24,8 +23,8 @@ func (r *Record) Validate() error {
 	return nil
 }
 
-func (r *Record) Clone() Record {
-	return Record{
+func (r *ExternalCheckpointRecord) Clone() ExternalCheckpointRecord {
+	return ExternalCheckpointRecord{
 		Id: r.Id,
 
 		TokenAccount:   r.TokenAccount,
@@ -36,7 +35,7 @@ func (r *Record) Clone() Record {
 	}
 }
 
-func (r *Record) CopyTo(dst *Record) {
+func (r *ExternalCheckpointRecord) CopyTo(dst *ExternalCheckpointRecord) {
 	dst.Id = r.Id
 
 	dst.TokenAccount = r.TokenAccount

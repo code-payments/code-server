@@ -121,7 +121,7 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 	var cachedQuarks uint64
 	var cachedSlot uint64
 	var cachedUpdateTs time.Time
-	checkpointRecord, err := data.GetBalanceCheckpoint(ctx, tokenAccount.PublicKey().ToBase58())
+	checkpointRecord, err := data.GetExternalBalanceCheckpoint(ctx, tokenAccount.PublicKey().ToBase58())
 	if err == nil {
 		cachedQuarks = checkpointRecord.Quarks
 		cachedSlot = checkpointRecord.SlotCheckpoint
@@ -157,12 +157,12 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 
 	// Observed a balance that's more recent. Best-effort update the checkpoint.
 	if cachedSlot == 0 || (slot > cachedSlot && quarks != cachedQuarks) {
-		newCheckpointRecord := &balance.Record{
+		newCheckpointRecord := &balance.ExternalCheckpointRecord{
 			TokenAccount:   tokenAccount.PublicKey().ToBase58(),
 			Quarks:         quarks,
 			SlotCheckpoint: slot,
 		}
-		data.SaveBalanceCheckpoint(ctx, newCheckpointRecord)
+		data.SaveExternalBalanceCheckpoint(ctx, newCheckpointRecord)
 	}
 
 	return quarks, BlockchainSource, nil

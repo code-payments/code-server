@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	tableName = "codewallet__core_balancecheckpoint"
+	externalCheckpointTableName = "codewallet__core_externalbalancecheckpoint"
 )
 
-type model struct {
+type externalCheckpointModel struct {
 	Id sql.NullInt64 `db:"id"`
 
 	TokenAccount   string `db:"token_account"`
@@ -25,12 +25,12 @@ type model struct {
 	LastUpdatedAt time.Time `db:"last_updated_at"`
 }
 
-func toModel(obj *balance.Record) (*model, error) {
+func toExternalCheckpointModel(obj *balance.ExternalCheckpointRecord) (*externalCheckpointModel, error) {
 	if err := obj.Validate(); err != nil {
 		return nil, err
 	}
 
-	return &model{
+	return &externalCheckpointModel{
 		TokenAccount:   obj.TokenAccount,
 		Quarks:         obj.Quarks,
 		SlotCheckpoint: obj.SlotCheckpoint,
@@ -38,8 +38,8 @@ func toModel(obj *balance.Record) (*model, error) {
 	}, nil
 }
 
-func fromModel(obj *model) *balance.Record {
-	return &balance.Record{
+func fromExternalCheckpoingModel(obj *externalCheckpointModel) *balance.ExternalCheckpointRecord {
+	return &balance.ExternalCheckpointRecord{
 		Id:             uint64(obj.Id.Int64),
 		TokenAccount:   obj.TokenAccount,
 		Quarks:         obj.Quarks,
@@ -48,16 +48,16 @@ func fromModel(obj *model) *balance.Record {
 	}
 }
 
-func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
+func (m *externalCheckpointModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
-		query := `INSERT INTO ` + tableName + `
+		query := `INSERT INTO ` + externalCheckpointTableName + `
 			(token_account, quarks, slot_checkpoint, last_updated_at)
 			VALUES ($1, $2, $3, $4)
 
 			ON CONFLICT (token_account)
 			DO UPDATE
 				SET quarks = $2, slot_checkpoint = $3, last_updated_at = $4
-				WHERE ` + tableName + `.token_account = $1 AND ` + tableName + `.slot_checkpoint < $3
+				WHERE ` + externalCheckpointTableName + `.token_account = $1 AND ` + externalCheckpointTableName + `.slot_checkpoint < $3
 
 			RETURNING
 				id, token_account, quarks, slot_checkpoint, last_updated_at`
@@ -77,12 +77,12 @@ func (m *model) dbSave(ctx context.Context, db *sqlx.DB) error {
 	})
 }
 
-func dbGetCheckpoint(ctx context.Context, db *sqlx.DB, account string) (*model, error) {
-	res := &model{}
+func dbGetExternalCheckpoint(ctx context.Context, db *sqlx.DB, account string) (*externalCheckpointModel, error) {
+	res := &externalCheckpointModel{}
 
 	query := `SELECT
 		id, token_account, quarks, slot_checkpoint, last_updated_at
-		FROM ` + tableName + `
+		FROM ` + externalCheckpointTableName + `
 		WHERE token_account = $1
 		LIMIT 1`
 

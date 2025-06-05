@@ -68,6 +68,10 @@ var defaultMarshalStrategies = []marshalStrategy{
 }
 
 func (v *RPCSignatureVerifier) isSignatureVerifiedProtoMessage(owner *common.Account, message proto.Message, signature *commonpb.Signature) (bool, error) {
+	if signature == nil {
+		return false, nil
+	}
+
 	for _, marshalStrategy := range defaultMarshalStrategies {
 		messageBytes, err := marshalStrategy(message)
 		if err != nil {
