@@ -25,6 +25,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
@@ -850,7 +851,18 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	//         If not, indicate to the client to pay a fee for a create-on-send withdrawal.
 	//
 
-	if !isOnCurve {
+	var isVmDepositPda bool
+	_, err = s.data.GetTimelockByDepositPda(ctx, accountToCheck.PublicKey().ToBase58())
+	switch err {
+	case nil:
+		isVmDepositPda = true
+	case timelock.ErrTimelockNotFound:
+	default:
+		log.WithError(err).Warn("failure checking timelock db as a deposit pda account")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	if !isOnCurve && !isVmDepositPda {
 		return &transactionpb.CanWithdrawToAccountResponse{
 			IsValidPaymentDestination: false,
 			AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
