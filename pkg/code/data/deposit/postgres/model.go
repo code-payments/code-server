@@ -116,7 +116,7 @@ func dbGetQuarkAmount(ctx context.Context, db *sqlx.DB, account string) (uint64,
 		WHERE destination = $1 AND confirmation_state = $2
 	`
 
-	err := pgutil.ExecuteInTx(ctx, db, sql.LevelRepeatableRead, func(tx *sqlx.Tx) error {
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		return db.GetContext(ctx, &res, query, account, transaction.ConfirmationFinalized)
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ func dbGetQuarkAmountBatch(ctx context.Context, db *sqlx.DB, accounts ...string)
 		GROUP BY destination
 	`, accountFilter)
 
-	err := pgutil.ExecuteInTx(ctx, db, sql.LevelRepeatableRead, func(tx *sqlx.Tx) error {
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &rows, query, transaction.ConfirmationFinalized)
 	})
 	if err != nil {
@@ -175,7 +175,7 @@ func dbGetUsdAmount(ctx context.Context, db *sqlx.DB, account string) (float64, 
 		WHERE destination = $1 AND confirmation_state = $2
 	`
 
-	err := pgutil.ExecuteInTx(ctx, db, sql.LevelRepeatableRead, func(tx *sqlx.Tx) error {
+	err := pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		return db.GetContext(ctx, &res, query, account, transaction.ConfirmationFinalized)
 	})
 	if err != nil {
