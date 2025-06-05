@@ -9,9 +9,9 @@ import (
 )
 
 type store struct {
-	mu      sync.Mutex
-	records []*balance.Record
-	last    uint64
+	mu                        sync.Mutex
+	externalCheckpointRecords []*balance.ExternalCheckpointRecord
+	last                      uint64
 }
 
 // New returns a new in memory balance.Store
@@ -19,8 +19,8 @@ func New() balance.Store {
 	return &store{}
 }
 
-// SaveCheckpoint implements balance.Store.SaveCheckpoint
-func (s *store) SaveCheckpoint(_ context.Context, data *balance.Record) error {
+// SaveExternalCheckpoint implements balance.Store.SaveExternalCheckpoint
+func (s *store) SaveExternalCheckpoint(_ context.Context, data *balance.ExternalCheckpointRecord) error {
 	if err := data.Validate(); err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (s *store) SaveCheckpoint(_ context.Context, data *balance.Record) error {
 	defer s.mu.Unlock()
 
 	s.last++
-	if item := s.find(data); item != nil {
+	if item := s.findExternalCheckpoint(data); item != nil {
 		if data.SlotCheckpoint <= item.SlotCheckpoint {
 			return balance.ErrStaleCheckpoint
 		}
@@ -44,26 +44,26 @@ func (s *store) SaveCheckpoint(_ context.Context, data *balance.Record) error {
 		}
 		data.LastUpdatedAt = time.Now()
 		c := data.Clone()
-		s.records = append(s.records, &c)
+		s.externalCheckpointRecords = append(s.externalCheckpointRecords, &c)
 	}
 
 	return nil
 }
 
-// GetCheckpoint implements balance.Store.GetCheckpoint
-func (s *store) GetCheckpoint(_ context.Context, account string) (*balance.Record, error) {
+// GetExternalCheckpoint implements balance.Store.GetExternalCheckpoint
+func (s *store) GetExternalCheckpoint(_ context.Context, account string) (*balance.ExternalCheckpointRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if item := s.findByTokenAccount(account); item != nil {
+	if item := s.findExternalCheckpointByTokenAccount(account); item != nil {
 		cloned := item.Clone()
 		return &cloned, nil
 	}
 	return nil, balance.ErrCheckpointNotFound
 }
 
-func (s *store) find(data *balance.Record) *balance.Record {
-	for _, item := range s.records {
+func (s *store) findExternalCheckpoint(data *balance.ExternalCheckpointRecord) *balance.ExternalCheckpointRecord {
+	for _, item := range s.externalCheckpointRecords {
 		if item.Id == data.Id {
 			return item
 		}
@@ -74,8 +74,8 @@ func (s *store) find(data *balance.Record) *balance.Record {
 	return nil
 }
 
-func (s *store) findByTokenAccount(account string) *balance.Record {
-	for _, item := range s.records {
+func (s *store) findExternalCheckpointByTokenAccount(account string) *balance.ExternalCheckpointRecord {
+	for _, item := range s.externalCheckpointRecords {
 		if account == item.TokenAccount {
 			return item
 		}
@@ -87,6 +87,6 @@ func (s *store) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.records = nil
+	s.externalCheckpointRecords = nil
 	s.last = 0
 }

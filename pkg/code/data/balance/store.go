@@ -12,11 +12,12 @@ var (
 )
 
 type Store interface {
-	// SaveCheckpoint saves a balance at a checkpoint. ErrStaleCheckpoint is returned
-	// if the checkpoint is outdated
-	SaveCheckpoint(ctx context.Context, record *Record) error
+	// SaveExternalCheckpoint saves an external balance at a checkpoint.
+	// ErrStaleCheckpoint is returned if the checkpoint is outdated
+	SaveExternalCheckpoint(ctx context.Context, record *ExternalCheckpointRecord) error
 
-	// GetCheckpoint gets a balance checkpoint for a given account. ErrCheckpointNotFound
-	// is returend if no DB record exists.
-	GetCheckpoint(ctx context.Context, account string) (*Record, error)
+	// GetExternalCheckpoint gets an exeternal balance checkpoint for a
+	// given account. ErrCheckpointNotFound is returend if no DB record
+	// exists.
+	GetExternalCheckpoint(ctx context.Context, account string) (*ExternalCheckpointRecord, error)
 }

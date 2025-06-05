@@ -119,8 +119,8 @@ type DatabaseData interface {
 
 	// Balance
 	// --------------------------------------------------------------------------------
-	SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error
-	GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error)
+	SaveExternalBalanceCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error
+	GetExternalBalanceCheckpoint(ctx context.Context, account string) (*balance.ExternalCheckpointRecord, error)
 
 	// Currency
 	// --------------------------------------------------------------------------------
@@ -429,11 +429,11 @@ func (dp *DatabaseProvider) HasFeeAction(ctx context.Context, intent string, fee
 
 // Balance
 // --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) SaveBalanceCheckpoint(ctx context.Context, record *balance.Record) error {
-	return dp.balance.SaveCheckpoint(ctx, record)
+func (dp *DatabaseProvider) SaveExternalBalanceCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error {
+	return dp.balance.SaveExternalCheckpoint(ctx, record)
 }
-func (dp *DatabaseProvider) GetBalanceCheckpoint(ctx context.Context, account string) (*balance.Record, error) {
-	return dp.balance.GetCheckpoint(ctx, account)
+func (dp *DatabaseProvider) GetExternalBalanceCheckpoint(ctx context.Context, account string) (*balance.ExternalCheckpointRecord, error) {
+	return dp.balance.GetExternalCheckpoint(ctx, account)
 }
 
 // Currencies

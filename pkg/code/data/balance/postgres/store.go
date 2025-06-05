@@ -20,9 +20,9 @@ func New(db *sql.DB) balance.Store {
 	}
 }
 
-// SaveCheckpoint implements balance.Store.SaveCheckpoint
-func (s *store) SaveCheckpoint(ctx context.Context, record *balance.Record) error {
-	model, err := toModel(record)
+// SaveExternalCheckpoint implements balance.Store.SaveExternalCheckpoint
+func (s *store) SaveExternalCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error {
+	model, err := toExternalCheckpointModel(record)
 	if err != nil {
 		return err
 	}
@@ -31,17 +31,17 @@ func (s *store) SaveCheckpoint(ctx context.Context, record *balance.Record) erro
 		return err
 	}
 
-	res := fromModel(model)
+	res := fromExternalCheckpoingModel(model)
 	res.CopyTo(record)
 
 	return nil
 }
 
-// GetCheckpoint implements balance.Store.GetCheckpoint
-func (s *store) GetCheckpoint(ctx context.Context, account string) (*balance.Record, error) {
-	model, err := dbGetCheckpoint(ctx, s.db, account)
+// GetExternalCheckpoint implements balance.Store.GetExternalCheckpoint
+func (s *store) GetExternalCheckpoint(ctx context.Context, account string) (*balance.ExternalCheckpointRecord, error) {
+	model, err := dbGetExternalCheckpoint(ctx, s.db, account)
 	if err != nil {
 		return nil, err
 	}
-	return fromModel(model), nil
+	return fromExternalCheckpoingModel(model), nil
 }

@@ -24,7 +24,7 @@ var (
 const (
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableCreate = `
-	CREATE TABLE codewallet__core_balancecheckpoint (
+	CREATE TABLE codewallet__core_balanceexternalcheckpoint (
 		id SERIAL NOT NULL PRIMARY KEY,
 
 		token_account TEXT NOT NULL,
@@ -33,13 +33,13 @@ const (
 
 		last_updated_at TIMESTAMP WITH TIME ZONE,
 
-		CONSTRAINT codewallet__core_balancecheckpoint__uniq__token_account UNIQUE (token_account)
+		CONSTRAINT codewallet__core_balanceexternalcheckpoint__uniq__token_account UNIQUE (token_account)
 	);
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
-		DROP TABLE codewallet__core_balancecheckpoint;
+		DROP TABLE codewallet__core_balanceexternalcheckpoint;
 	`
 )
 
