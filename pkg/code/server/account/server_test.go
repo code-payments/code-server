@@ -363,26 +363,16 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			expectedClaimState:       accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED,
 		},
 	} {
-		ownerAccount := testutil.NewRandomAccount(t)
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
-		require.NoError(t, err)
+		giftCardIssuerOwnerAccount := testutil.NewRandomAccount(t)
+		giftCardOwnerAccount := testutil.NewRandomAccount(t)
 
-		req := &accountpb.GetTokenAccountInfosRequest{
-			Owner: ownerAccount.ToProto(),
-		}
-		reqBytes, err := proto.Marshal(req)
-		require.NoError(t, err)
-		req.Signature = &commonpb.Signature{
-			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-		}
-
-		accountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+		accountRecords := setupAccountRecords(t, env, giftCardOwnerAccount, giftCardOwnerAccount, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 
 		giftCardIssuedIntentRecord := &intent.Record{
 			IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			IntentType: intent.SendPublicPayment,
 
-			InitiatorOwnerAccount: testutil.NewRandomAccount(t).PrivateKey().ToBase58(),
+			InitiatorOwnerAccount: giftCardIssuerOwnerAccount.PublicKey().ToBase58(),
 
 			SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 				DestinationTokenAccount: accountRecords.General.TokenAccount,
@@ -444,43 +434,73 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		accountRecords.Timelock.Block += 1
 		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
 
-		resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
-		require.NoError(t, err)
-		assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-		assert.Len(t, resp.TokenAccountInfos, 1)
+		for _, requestingOwnerAccount := range []*common.Account{
+			nil,
+			testutil.NewRandomAccount(t),
+			giftCardIssuerOwnerAccount,
+		} {
+			timelockAccounts, err := giftCardOwnerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+			require.NoError(t, err)
 
-		accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
-		require.True(t, ok)
+			req := &accountpb.GetTokenAccountInfosRequest{
+				Owner: giftCardOwnerAccount.ToProto(),
+			}
+			if requestingOwnerAccount != nil {
+				req.RequestingOwner = requestingOwnerAccount.ToProto()
+			}
+			reqBytes, err := proto.Marshal(req)
+			require.NoError(t, err)
+			sig1 := &commonpb.Signature{
+				Value: ed25519.Sign(giftCardOwnerAccount.PrivateKey().ToBytes(), reqBytes),
+			}
+			if requestingOwnerAccount != nil {
+				sig2 := &commonpb.Signature{
+					Value: ed25519.Sign(requestingOwnerAccount.PrivateKey().ToBytes(), reqBytes),
+				}
+				req.RequestingOwnerSignature = sig2
+			}
+			req.Signature = sig1
 
-		assert.Equal(t, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, accountInfo.AccountType)
-		assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
-		assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Authority.Value)
-		assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
-		assert.Equal(t, common.CoreMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
-		assert.EqualValues(t, 0, accountInfo.Index)
+			resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
+			require.NoError(t, err)
+			assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
+			assert.Len(t, resp.TokenAccountInfos, 1)
 
-		assert.Equal(t, tc.expectedBalanceSource, accountInfo.BalanceSource)
-		if tc.simulateClaimInCode || tc.simulateAutoReturnInCode || tc.expectedClaimState == accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED || tc.expectedClaimState == accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED {
-			assert.EqualValues(t, 0, accountInfo.Balance)
-		} else if tc.expectedBalanceSource == accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE {
-			assert.EqualValues(t, tc.balance, accountInfo.Balance)
-		} else {
-			assert.EqualValues(t, 0, accountInfo.Balance)
+			accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
+			require.True(t, ok)
+
+			assert.Equal(t, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, accountInfo.AccountType)
+			assert.Equal(t, giftCardOwnerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
+			assert.Equal(t, giftCardOwnerAccount.PublicKey().ToBytes(), accountInfo.Authority.Value)
+			assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
+			assert.Equal(t, common.CoreMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
+			assert.EqualValues(t, 0, accountInfo.Index)
+
+			assert.Equal(t, tc.expectedBalanceSource, accountInfo.BalanceSource)
+			if tc.simulateClaimInCode || tc.simulateAutoReturnInCode || tc.expectedClaimState == accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED || tc.expectedClaimState == accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED {
+				assert.EqualValues(t, 0, accountInfo.Balance)
+			} else if tc.expectedBalanceSource == accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE {
+				assert.EqualValues(t, tc.balance, accountInfo.Balance)
+			} else {
+				assert.EqualValues(t, 0, accountInfo.Balance)
+			}
+
+			assert.Equal(t, tc.expectedManagementState, accountInfo.ManagementState)
+			assert.Equal(t, tc.expectedBlockchainState, accountInfo.BlockchainState)
+			assert.Equal(t, tc.expectedClaimState, accountInfo.ClaimState)
+
+			require.NotNil(t, accountInfo.OriginalExchangeData)
+			assert.EqualValues(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency, accountInfo.OriginalExchangeData.Currency)
+			assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate, accountInfo.OriginalExchangeData.ExchangeRate)
+			assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.NativeAmount, accountInfo.OriginalExchangeData.NativeAmount)
+			assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
+
+			assert.Equal(t, requestingOwnerAccount != nil && requestingOwnerAccount == giftCardIssuerOwnerAccount, accountInfo.IsGiftCardIssuer)
+
+			accountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, giftCardOwnerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+			require.NoError(t, err)
+			assert.False(t, accountInfoRecord.RequiresDepositSync)
 		}
-
-		assert.Equal(t, tc.expectedManagementState, accountInfo.ManagementState)
-		assert.Equal(t, tc.expectedBlockchainState, accountInfo.BlockchainState)
-		assert.Equal(t, tc.expectedClaimState, accountInfo.ClaimState)
-
-		require.NotNil(t, accountInfo.OriginalExchangeData)
-		assert.EqualValues(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency, accountInfo.OriginalExchangeData.Currency)
-		assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate, accountInfo.OriginalExchangeData.ExchangeRate)
-		assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.NativeAmount, accountInfo.OriginalExchangeData.NativeAmount)
-		assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
-
-		accountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
-		require.NoError(t, err)
-		assert.False(t, accountInfoRecord.RequiresDepositSync)
 	}
 }
 
@@ -618,7 +638,7 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	defer cleanup()
 
 	ownerAccount := testutil.NewRandomAccount(t)
-	// swapAuthorityAccount := testutil.NewRandomAccount(t)
+	requestingOwnerAccount := testutil.NewRandomAccount(t)
 	maliciousAccount := testutil.NewRandomAccount(t)
 
 	isCodeAccountReq := &accountpb.IsCodeAccountRequest{
@@ -641,6 +661,37 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	getTokenAccountInfosReq.Signature = &commonpb.Signature{
 		Value: ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes),
 	}
+
+	_, err = env.client.GetTokenAccountInfos(env.ctx, getTokenAccountInfosReq)
+	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
+	getTokenAccountInfosReq = &accountpb.GetTokenAccountInfosRequest{
+		Owner:           ownerAccount.ToProto(),
+		RequestingOwner: requestingOwnerAccount.ToProto(),
+	}
+	reqBytes, err = proto.Marshal(getTokenAccountInfosReq)
+	require.NoError(t, err)
+	getTokenAccountInfosReq.Signature = &commonpb.Signature{
+		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+
+	_, err = env.client.GetTokenAccountInfos(env.ctx, getTokenAccountInfosReq)
+	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
+	getTokenAccountInfosReq = &accountpb.GetTokenAccountInfosRequest{
+		Owner:           ownerAccount.ToProto(),
+		RequestingOwner: requestingOwnerAccount.ToProto(),
+	}
+	reqBytes, err = proto.Marshal(getTokenAccountInfosReq)
+	require.NoError(t, err)
+	sig1 := &commonpb.Signature{
+		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+	sig2 := &commonpb.Signature{
+		Value: ed25519.Sign(maliciousAccount.PrivateKey().ToBytes(), reqBytes),
+	}
+	getTokenAccountInfosReq.Signature = sig1
+	getTokenAccountInfosReq.RequestingOwnerSignature = sig2
 
 	_, err = env.client.GetTokenAccountInfos(env.ctx, getTokenAccountInfosReq)
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
@@ -721,19 +772,4 @@ func setupCachedBalance(t *testing.T, env testEnv, accountRecords *common.Accoun
 		Slot:              12345,
 	}
 	require.NoError(t, env.data.SaveExternalDeposit(env.ctx, depositRecord))
-}
-
-func setupOpenAccountsIntent(t *testing.T, env testEnv, ownerAccount *common.Account) {
-	intentRecord := &intent.Record{
-		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-		IntentType: intent.OpenAccounts,
-
-		InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
-
-		OpenAccountsMetadata: &intent.OpenAccountsMetadata{},
-
-		State: intent.StatePending,
-	}
-
-	require.NoError(t, env.data.SaveIntent(env.ctx, intentRecord))
 }

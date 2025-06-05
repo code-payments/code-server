@@ -54,6 +54,9 @@ func TestAuthenticate(t *testing.T) {
 		err = env.verifier.Authenticate(env.ctx, ownerAccount, msg, signatureProto)
 		require.NoError(t, err)
 
+		err = env.verifier.Authenticate(env.ctx, ownerAccount, msg, nil)
+		testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
+
 		signature, err = maliciousAccount.Sign(msgBytes)
 		require.NoError(t, err)
 		signatureProto = &commonpb.Signature{
