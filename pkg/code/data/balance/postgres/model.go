@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	externalCheckpointTableName = "codewallet__core_balanceexternalcheckpoint"
+	externalCheckpointTableName = "codewallet__core_externalbalancecheckpoint"
 )
 
 type externalCheckpointModel struct {

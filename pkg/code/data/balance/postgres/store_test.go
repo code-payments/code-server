@@ -24,7 +24,7 @@ var (
 const (
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableCreate = `
-	CREATE TABLE codewallet__core_balanceexternalcheckpoint (
+	CREATE TABLE codewallet__core_externalbalancecheckpoint (
 		id SERIAL NOT NULL PRIMARY KEY,
 
 		token_account TEXT NOT NULL,
@@ -39,7 +39,7 @@ const (
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
-		DROP TABLE codewallet__core_balanceexternalcheckpoint;
+		DROP TABLE codewallet__core_externalbalancecheckpoint;
 	`
 )
 
