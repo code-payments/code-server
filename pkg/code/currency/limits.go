@@ -55,7 +55,7 @@ var (
 		"egp":  {PerTransaction: 2_500.00, Daily: 17_500.00},
 		"ern":  {PerTransaction: 2_500.00, Daily: 15_000.00},
 		"etb":  {PerTransaction: 12_500.00, Daily: 50_000.00},
-		"eur":  {PerTransaction: 250.00, Daily: 999.99},
+		"eur":  {PerTransaction: 250.00, Daily: 1_000.00},
 		"fjd":  {PerTransaction: 500.00, Daily: 2_000.00},
 		"fkp":  {PerTransaction: 250.00, Daily: 800.00},
 		"gbp":  {PerTransaction: 250.00, Daily: 800.00},
