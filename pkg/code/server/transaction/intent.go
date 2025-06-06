@@ -215,15 +215,10 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		CreatedAt:             time.Now(),
 	}
 
-	// Distributed locking. This is a partial view, since additional locking
-	// requirements may not be known until populating intent metadata.
-	intentLock := s.intentLocks.Get([]byte(intentId))
 	initiatorOwnerLock := s.ownerLocks.Get(initiatorOwnerAccount.PublicKey().ToBytes())
-	intentLock.Lock()
 	initiatorOwnerLock.Lock()
 	defer func() {
 		initiatorOwnerLock.Unlock()
-		intentLock.Unlock()
 	}()
 
 	existingIntentRecord, err := s.data.GetIntent(ctx, intentId)
@@ -956,7 +951,7 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 		}, nil
 	}
 
-	if time.Since(accountInfoRecord.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
+	if time.Since(accountInfoRecord.CreatedAt) >= async_account.GiftCardExpiry {
 		return &transactionpb.VoidGiftCardResponse{
 			Result: transactionpb.VoidGiftCardResponse_OK,
 		}, nil

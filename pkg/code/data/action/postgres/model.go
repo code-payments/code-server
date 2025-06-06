@@ -32,6 +32,7 @@ type model struct {
 	Quantity    sql.NullInt64  `db:"quantity"`
 	FeeType     sql.NullInt32  `db:"fee_type"`
 	State       uint           `db:"state"`
+	Version     int64          `db:"version"`
 	CreatedAt   time.Time      `db:"created_at"`
 }
 
@@ -68,6 +69,7 @@ func toModel(obj *action.Record) (*model, error) {
 		Quantity:    quantity,
 		FeeType:     feeType,
 		State:       uint(obj.State),
+		Version:     int64(obj.Version),
 		CreatedAt:   obj.CreatedAt,
 	}, nil
 }
@@ -84,6 +86,7 @@ func fromModel(obj *model) *action.Record {
 		Quantity:    pointer.Uint64IfValid(obj.Quantity.Valid, uint64(obj.Quantity.Int64)),
 		FeeType:     (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32IfValid(obj.FeeType.Valid, obj.FeeType.Int32)),
 		State:       action.State(obj.State),
+		Version:     uint64(obj.Version),
 		CreatedAt:   obj.CreatedAt,
 	}
 }
@@ -94,18 +97,19 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 		params := []interface{}{
 			m.Intent,
 			m.ActionId,
+			m.Version,
 			m.State,
 		}
 
 		if m.IntentType == uint(intent.SendPublicPayment) && m.ActionType == uint(action.NoPrivacyWithdraw) {
-			quantityUpdateStmt = ", quantity = $4"
+			quantityUpdateStmt = ", quantity = $5"
 			params = append(params, m.Quantity)
 		}
 
 		query := fmt.Sprintf(`UPDATE `+tableName+`
-			SET state = $3%s
-			WHERE intent = $1 AND action_id = $2
-			RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at
+			SET state = $4%s, version = version + 1
+			WHERE intent = $1 AND action_id = $2 AND version = $3
+			RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at
 		`, quantityUpdateStmt)
 
 		err := tx.QueryRowxContext(
@@ -114,7 +118,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 			params...,
 		).StructScan(m)
 		if err != nil {
-			return pgutil.CheckNoRows(err, action.ErrActionNotFound)
+			return pgutil.CheckNoRows(err, action.ErrStaleVersion)
 		}
 
 		return nil
@@ -124,7 +128,7 @@ func (m *model) dbUpdate(ctx context.Context, db *sqlx.DB) error {
 func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, error) {
 	var res []*model
 
-	query := `INSERT INTO ` + tableName + ` (intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at) VALUES `
+	query := `INSERT INTO ` + tableName + ` (intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at) VALUES `
 
 	var parameters []interface{}
 	for i, model := range models {
@@ -134,8 +138,8 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, 
 
 		baseIndex := len(parameters)
 		query += fmt.Sprintf(
-			`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
-			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7, baseIndex+8, baseIndex+9, baseIndex+10,
+			`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d + 1, $%d)`,
+			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7, baseIndex+8, baseIndex+9, baseIndex+10, baseIndex+11,
 		)
 
 		if i != len(models)-1 {
@@ -153,11 +157,12 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, 
 			model.Quantity,
 			model.FeeType,
 			model.State,
+			model.Version,
 			model.CreatedAt,
 		)
 	}
 
-	query += ` RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at`
+	query += ` RETURNING id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at`
 
 	err := tx.SelectContext(
 		ctx,
@@ -175,7 +180,7 @@ func dbPutAllInTx(ctx context.Context, tx *sqlx.Tx, models []*model) ([]*model, 
 func dbGetById(ctx context.Context, db *sqlx.DB, intent string, actionId uint32) (*model, error) {
 	res := &model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at
 		FROM ` + tableName + `
 		WHERE intent = $1 AND action_id = $2
 		LIMIT 1`
@@ -190,7 +195,7 @@ func dbGetById(ctx context.Context, db *sqlx.DB, intent string, actionId uint32)
 func dbGetAllByIntent(ctx context.Context, db *sqlx.DB, intent string) ([]*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at
 		FROM ` + tableName + `
 		WHERE intent = $1
 		ORDER BY action_id ASC`
@@ -210,7 +215,7 @@ func dbGetAllByIntent(ctx context.Context, db *sqlx.DB, intent string) ([]*model
 func dbGetAllByAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at
 		FROM ` + tableName + `
 		WHERE source = $1 OR destination = $1`
 
@@ -300,7 +305,7 @@ func dbGetNetBalanceBatch(ctx context.Context, db *sqlx.DB, accounts ...string) 
 func dbGetGiftCardClaimedAction(ctx context.Context, db *sqlx.DB, giftCardVault string) (*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at
 		FROM ` + tableName + `
 		WHERE source = $1 AND action_type = $2 AND intent_type = $3 AND state != $4
 		LIMIT 2`
@@ -330,7 +335,7 @@ func dbGetGiftCardClaimedAction(ctx context.Context, db *sqlx.DB, giftCardVault 
 func dbGetGiftCardAutoReturnAction(ctx context.Context, db *sqlx.DB, giftCardVault string) (*model, error) {
 	res := []*model{}
 
-	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, created_at
+	query := `SELECT id, intent, intent_type, action_id, action_type, source, destination, quantity, fee_type, state, version, created_at
 		FROM ` + tableName + `
 		WHERE source = $1 AND action_type = $2 AND intent_type = $3 AND state != $4
 		LIMIT 2`

@@ -116,8 +116,8 @@ func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Prov
 		return nil
 	}
 
-	// Note: different than Save, since we don't have distributed locks
-	return data.MarkFulfillmentAsActivelyScheduled(ctx, fulfillmentRecord.Id)
+	fulfillmentRecord.DisableActiveScheduling = false
+	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }
 
 func (p *service) sendToBlockchain(ctx context.Context, record *fulfillment.Record) error {

@@ -379,7 +379,7 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 
 		// Gift cards that are close to the auto-return window are marked as expired in
 		// a consistent manner as SubmitIntent to avoid race conditions with the auto-return.
-		if time.Since(records.General.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
+		if time.Since(records.General.CreatedAt) >= async_account.GiftCardExpiry {
 			claimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
 		}
 

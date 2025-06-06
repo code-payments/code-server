@@ -35,7 +35,7 @@ const (
 			nonce TEXT NULL,
 			blockhash TEXT NULL,
 
-			virtual_signature TEXT NULL,
+			virtual_signature TEXT NULL UNIQUE,
 			virtual_nonce TEXT NULL,
 			virtual_blockhash TEXT NULL,
 
@@ -49,6 +49,8 @@ const (
 			disable_active_scheduling BOOL NOT NULL,
 
 			state INTEGER NOT NULL,
+
+			version INTEGER NOT NULL,
 
 			batch_insertion_id INTEGER NOT NULL,
 

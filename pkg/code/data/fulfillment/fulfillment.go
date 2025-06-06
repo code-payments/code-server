@@ -10,12 +10,6 @@ import (
 	"github.com/code-payments/code-server/pkg/pointer"
 )
 
-var (
-	ErrFulfillmentNotFound = errors.New("no records could be found")
-	ErrFulfillmentExists   = errors.New("fulfillment exists")
-	ErrInvalidFulfillment  = errors.New("invalid fulfillment")
-)
-
 type Type uint8
 
 const (
@@ -89,6 +83,8 @@ type Record struct {
 
 	State State
 
+	Version uint64
+
 	CreatedAt time.Time
 }
 
@@ -154,6 +150,7 @@ func (r *Record) Clone() Record {
 		FulfillmentOrderingIndex: r.FulfillmentOrderingIndex,
 		DisableActiveScheduling:  r.DisableActiveScheduling,
 		State:                    r.State,
+		Version:                  r.Version,
 		CreatedAt:                r.CreatedAt,
 	}
 }
@@ -179,6 +176,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.FulfillmentOrderingIndex = r.FulfillmentOrderingIndex
 	dst.DisableActiveScheduling = r.DisableActiveScheduling
 	dst.State = r.State
+	dst.Version = r.Version
 	dst.CreatedAt = r.CreatedAt
 }
 

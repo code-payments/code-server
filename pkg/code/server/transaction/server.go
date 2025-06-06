@@ -38,8 +38,6 @@ type transactionServer struct {
 
 	feeCollector *common.Account
 
-	// todo: distributed locks
-	intentLocks   *sync_util.StripedLock
 	ownerLocks    *sync_util.StripedLock
 	giftCardLocks *sync_util.StripedLock
 
@@ -81,7 +79,6 @@ func NewTransactionServer(
 
 		noncePool: noncePool,
 
-		intentLocks:   sync_util.NewStripedLock(stripedLockParallelization),
 		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
 		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
 	}

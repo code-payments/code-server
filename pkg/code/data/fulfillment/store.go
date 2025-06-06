@@ -3,7 +3,15 @@ package fulfillment
 import (
 	"context"
 
+	"github.com/pkg/errors"
+
 	"github.com/code-payments/code-server/pkg/database/query"
+)
+
+var (
+	ErrFulfillmentNotFound = errors.New("no fulfillment could be found")
+	ErrFulfillmentExists   = errors.New("fulfillment exists")
+	ErrStaleVersion        = errors.New("fulfillment version is stale")
 )
 
 type Store interface {
@@ -50,7 +58,6 @@ type Store interface {
 	// Update updates an existing fulfillment record
 	//
 	// Note 1: Updating pre-sorting metadata is allowed but limited to certain fulfillment types
-	// Note 2: Updating DisableActiveScheduling is done in MarkAsActivelyScheduled, due to no distributed locks existing
 	Update(ctx context.Context, record *Record) error
 
 	// GetById find the fulfillment recofd for a given ID
@@ -61,9 +68,6 @@ type Store interface {
 
 	// GetByVirtualSignature finds the fulfillment record for a given virtual signature.
 	GetByVirtualSignature(ctx context.Context, signature string) (*Record, error)
-
-	// MarkAsActivelyScheduled marks a fulfillment as actively scheduled
-	MarkAsActivelyScheduled(ctx context.Context, id uint64) error
 
 	// GetAllByState returns all fulfillment records for a given state.
 	//

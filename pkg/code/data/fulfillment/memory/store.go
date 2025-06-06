@@ -478,6 +478,8 @@ func (s *store) PutAll(ctx context.Context, records ...*fulfillment.Record) erro
 			data.CreatedAt = time.Now()
 		}
 
+		data.Version++
+
 		c := data.Clone()
 		s.records = append(s.records, &c)
 	}
@@ -501,8 +503,14 @@ func (s *store) Update(ctx context.Context, data *fulfillment.Record) error {
 
 	item := s.findById(data.Id)
 	if item == nil {
-		return fulfillment.ErrFulfillmentNotFound
+		return fulfillment.ErrStaleVersion
 	}
+
+	if data.Version != item.Version {
+		return fulfillment.ErrStaleVersion
+	}
+
+	data.Version++
 
 	item.Data = data.Data
 
@@ -514,27 +522,17 @@ func (s *store) Update(ctx context.Context, data *fulfillment.Record) error {
 	item.VirtualNonce = pointer.StringCopy(data.VirtualNonce)
 	item.VirtualBlockhash = pointer.StringCopy(data.VirtualBlockhash)
 
+	item.DisableActiveScheduling = data.DisableActiveScheduling
+
 	item.State = data.State
+
+	item.Version = data.Version
 
 	if item.IntentType == intent.SendPublicPayment && item.FulfillmentType == fulfillment.NoPrivacyWithdraw {
 		item.IntentOrderingIndex = data.IntentOrderingIndex
 		item.ActionOrderingIndex = data.ActionOrderingIndex
 		item.FulfillmentOrderingIndex = data.FulfillmentOrderingIndex
 	}
-
-	return nil
-}
-
-func (s *store) MarkAsActivelyScheduled(ctx context.Context, id uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item := s.findById(id)
-	if item == nil {
-		return fulfillment.ErrFulfillmentNotFound
-	}
-
-	item.DisableActiveScheduling = false
 
 	return nil
 }

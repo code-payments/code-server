@@ -23,11 +23,6 @@ const (
 	EnvironmentInstanceSolanaTestnet = "testnet"
 )
 
-var (
-	ErrStaleVersion  = errors.New("nonce version is stale")
-	ErrNonceNotFound = errors.New("no records could be found")
-)
-
 type State uint8
 
 const (

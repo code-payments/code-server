@@ -20,7 +20,8 @@ import (
 func RunTests(t *testing.T, s nonce.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s nonce.Store){
 		testRoundTrip,
-		testUpdate,
+		testUpdateHappyPath,
+		testUpdateStaleRecord,
 		testGetAllByState,
 		testGetCount,
 		testBatchClaimAvailableByPurpose,
@@ -65,8 +66,8 @@ func testRoundTrip(t *testing.T, s nonce.Store) {
 	})
 }
 
-func testUpdate(t *testing.T, s nonce.Store) {
-	t.Run("testUpdate", func(t *testing.T) {
+func testUpdateHappyPath(t *testing.T, s nonce.Store) {
+	t.Run("testUpdateHappyPath", func(t *testing.T) {
 		ctx := context.Background()
 
 		expected := nonce.Record{
@@ -107,6 +108,51 @@ func testUpdate(t *testing.T, s nonce.Store) {
 		assertEquivalentRecords(t, &cloned, actual)
 		assert.EqualValues(t, 1, actual.Id)
 		assert.EqualValues(t, 2, actual.Version)
+	})
+}
+
+func testUpdateStaleRecord(t *testing.T, s nonce.Store) {
+	t.Run("testUpdateStaleRecord", func(t *testing.T) {
+		ctx := context.Background()
+
+		expected := nonce.Record{
+			Address:             "test_address",
+			Authority:           "test_authority",
+			Blockhash:           "test_blockhash",
+			Environment:         nonce.EnvironmentSolana,
+			EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
+			Purpose:             nonce.PurposeInternalServerProcess,
+		}
+		cloned := expected.Clone()
+		err := s.Save(ctx, &expected)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
+
+		actual, err := s.Get(ctx, "test_address")
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
+
+		stale := actual.Clone()
+		stale.State = nonce.StateClaimed
+		stale.Blockhash = "test_blockhash2"
+		stale.Signature = "test_signature"
+		stale.ClaimNodeID = pointer.String("test_claim_node_id")
+		stale.ClaimExpiresAt = pointer.Time(time.Now().Add(time.Hour))
+		stale.Version -= 1
+
+		err = s.Save(ctx, &stale)
+		assert.Equal(t, nonce.ErrStaleVersion, err)
+		assert.EqualValues(t, 1, stale.Id)
+		assert.EqualValues(t, 0, stale.Version)
+
+		actual, err = s.Get(ctx, "test_address")
+		require.NoError(t, err)
+		assertEquivalentRecords(t, &cloned, actual)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 	})
 }
 

@@ -126,11 +126,6 @@ func (s *store) Update(ctx context.Context, record *fulfillment.Record) error {
 	return nil
 }
 
-// MarkAsActivelyScheduled implements fulfillment.Store.MarkAsActivelyScheduled
-func (s *store) MarkAsActivelyScheduled(ctx context.Context, id uint64) error {
-	return dbMarkAsActivelyScheduled(ctx, s.db, id)
-}
-
 // GetById implements fulfillment.Store.GetById
 func (s *store) GetById(ctx context.Context, id uint64) (*fulfillment.Record, error) {
 	obj, err := dbGetById(ctx, s.db, id)
