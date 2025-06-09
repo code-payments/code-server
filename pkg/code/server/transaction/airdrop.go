@@ -216,9 +216,13 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		return nil, err
 	}
 
+	var additionalQuarks uint64
 	var otherRateRecord *currency.ExchangeRateRecord
 	switch currencyCode {
 	case currency_lib.USD:
+		if !common.IsCoreMintUsdStableCoin() {
+			additionalQuarks = 1
+		}
 		otherRateRecord = usdRateRecord
 	case common.CoreMintSymbol:
 		otherRateRecord = &currency.ExchangeRateRecord{
@@ -227,6 +231,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			Symbol: string(common.CoreMintSymbol),
 		}
 	default:
+		additionalQuarks = 1
 		otherRateRecord, err = s.data.GetExchangeRate(ctx, currencyCode, exchangeRateTime)
 		if err != nil {
 			log.WithError(err).Warn("failure getting other rate")
@@ -235,7 +240,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	}
 
 	coreMintAmount := nativeAmount / otherRateRecord.Rate
-	quarkAmount := uint64(coreMintAmount * float64(common.CoreMintQuarksPerUnit))
+	quarkAmount := uint64(coreMintAmount*float64(common.CoreMintQuarksPerUnit)) + additionalQuarks
 
 	usdValue := usdRateRecord.Rate * coreMintAmount
 	if usdValue > s.conf.maxAirdropUsdValue.Get(ctx) {
