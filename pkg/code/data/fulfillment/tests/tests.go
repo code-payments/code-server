@@ -21,7 +21,8 @@ func RunTests(t *testing.T, s fulfillment.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s fulfillment.Store){
 		testRoundTrip,
 		testBatchPut,
-		testUpdate,
+		testUpdateHappyPath,
+		testUpdateStaleVersion,
 		testGetAllByState,
 		testGetAllByIntent,
 		testGetAllByAction,
@@ -75,15 +76,18 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 		err = s.PutAll(ctx, &expected)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err = s.GetBySignature(ctx, "test_signature")
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 		assertEquivalentRecords(t, actual, &cloned)
 
 		actual, err = s.GetByVirtualSignature(ctx, "test_virtual_signature")
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 		assertEquivalentRecords(t, actual, &cloned)
 
 		actual, err = s.GetById(ctx, 2)
@@ -125,10 +129,12 @@ func testRoundTrip(t *testing.T, s fulfillment.Store) {
 		err = s.PutAll(ctx, &expected)
 		require.NoError(t, err)
 		assert.True(t, expected.Id >= 2)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err = s.GetById(ctx, expected.Id)
 		require.NoError(t, err)
 		assert.EqualValues(t, expected.Id, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 		assertEquivalentRecords(t, actual, &cloned)
 
 		assert.Equal(t, fulfillment.ErrFulfillmentExists, s.PutAll(ctx, &expected))
@@ -174,13 +180,18 @@ func testBatchPut(t *testing.T, s fulfillment.Store) {
 
 		for i, fulfillmentRecord := range inserted {
 			assert.EqualValues(t, i+1, fulfillmentRecord.Id)
+			assert.EqualValues(t, 1, fulfillmentRecord.Version)
 
 			actual, err := s.GetById(ctx, fulfillmentRecord.Id)
 			require.NoError(t, err)
+			assert.EqualValues(t, i+1, actual.Id)
+			assert.EqualValues(t, 1, actual.Version)
 			assertEquivalentRecords(t, expected[i], actual)
 
 			actual, err = s.GetBySignature(ctx, *fulfillmentRecord.Signature)
 			require.NoError(t, err)
+			assert.EqualValues(t, i+1, actual.Id)
+			assert.EqualValues(t, 1, actual.Version)
 			assertEquivalentRecords(t, expected[i], actual)
 		}
 
@@ -222,11 +233,9 @@ func testBatchPut(t *testing.T, s fulfillment.Store) {
 	})
 }
 
-func testUpdate(t *testing.T, s fulfillment.Store) {
-	t.Run("testUpdate", func(t *testing.T) {
+func testUpdateHappyPath(t *testing.T, s fulfillment.Store) {
+	t.Run("testUpdateHappyPath", func(t *testing.T) {
 		ctx := context.Background()
-
-		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, s.MarkAsActivelyScheduled(ctx, 1))
 
 		expected := fulfillment.Record{
 			Intent:                   "test_intent",
@@ -253,21 +262,20 @@ func testUpdate(t *testing.T, s fulfillment.Store) {
 		err := s.PutAll(ctx, &expected)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
-
-		require.NoError(t, s.MarkAsActivelyScheduled(ctx, 1))
-		actual, err := s.GetById(ctx, 1)
-		require.NoError(t, err)
-		assert.False(t, actual.DisableActiveScheduling)
-		expected.DisableActiveScheduling = false
+		assert.EqualValues(t, 1, expected.Version)
 
 		expected.State = fulfillment.StatePending
+		expected.DisableActiveScheduling = false
 		cloned := expected.Clone()
 		err = s.Update(ctx, &expected)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 2, expected.Version)
 
-		actual, err = s.GetById(ctx, 1)
+		actual, err := s.GetById(ctx, 1)
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 2, actual.Version)
 		assertEquivalentRecords(t, actual, &cloned)
 
 		expected.Signature = pointer.String("test_signature")
@@ -278,32 +286,86 @@ func testUpdate(t *testing.T, s fulfillment.Store) {
 		err = s.Update(ctx, &expected)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 3, expected.Version)
 
 		actual, err = s.GetBySignature(ctx, "test_signature")
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 3, actual.Version)
 		assertEquivalentRecords(t, actual, &cloned)
 
 		expected.IntentOrderingIndex = math.MaxInt64
 		expected.ActionOrderingIndex = math.MaxInt32
 		expected.FulfillmentOrderingIndex = math.MaxInt32 - 1
-
-		actual, err = s.GetBySignature(ctx, "test_signature")
-		require.NoError(t, err)
-		assertEquivalentRecords(t, actual, &cloned)
-
 		expected.Data = nil
 		expected.State = fulfillment.StateConfirmed
 		cloned = expected.Clone()
 		err = s.Update(ctx, &expected)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 4, expected.Version)
 
 		actual, err = s.GetBySignature(ctx, "test_signature")
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 4, actual.Version)
 		assertEquivalentRecords(t, actual, &cloned)
 
 		expected.Id = 100
-		assert.Equal(t, fulfillment.ErrFulfillmentNotFound, s.Update(ctx, &expected))
+		assert.Equal(t, fulfillment.ErrStaleVersion, s.Update(ctx, &expected))
+	})
+}
+
+func testUpdateStaleVersion(t *testing.T, s fulfillment.Store) {
+	t.Run("testUpdateStaleVersion", func(t *testing.T) {
+		ctx := context.Background()
+
+		expected := fulfillment.Record{
+			Intent:                   "test_intent",
+			IntentType:               intent.SendPublicPayment,
+			ActionId:                 4,
+			ActionType:               action.NoPrivacyWithdraw,
+			FulfillmentType:          fulfillment.NoPrivacyWithdraw,
+			Data:                     nil,
+			Signature:                nil,
+			Nonce:                    nil,
+			Blockhash:                nil,
+			Source:                   "test_source",
+			Destination:              pointer.String("test_destination"),
+			IntentOrderingIndex:      1,
+			ActionOrderingIndex:      2,
+			FulfillmentOrderingIndex: 3,
+			DisableActiveScheduling:  true,
+			State:                    fulfillment.StateUnknown,
+			CreatedAt:                time.Now(),
+		}
+		cloned := expected.Clone()
+
+		err := s.PutAll(ctx, &expected)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
+
+		actual, err := s.GetById(ctx, 1)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
+		assertEquivalentRecords(t, actual, &cloned)
+
+		stale := expected.Clone()
+		stale.State = fulfillment.StatePending
+		stale.DisableActiveScheduling = false
+		stale.Version -= 1
+
+		assert.Equal(t, fulfillment.ErrStaleVersion, s.Update(ctx, &stale))
+		assert.EqualValues(t, 1, stale.Id)
+		assert.EqualValues(t, 0, stale.Version)
+
+		actual, err = s.GetById(ctx, 1)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
+		assertEquivalentRecords(t, actual, &cloned)
 	})
 }
 

@@ -179,6 +179,7 @@ func (s *store) PutAll(ctx context.Context, records ...*action.Record) error {
 		if record.CreatedAt.IsZero() {
 			record.CreatedAt = time.Now()
 		}
+		record.Version++
 
 		cloned := record.Clone()
 		s.records = append(s.records, &cloned)
@@ -193,14 +194,20 @@ func (s *store) Update(ctx context.Context, record *action.Record) error {
 	defer s.mu.Unlock()
 
 	if item := s.find(record); item != nil {
+		if record.Version != item.Version {
+			return action.ErrStaleVersion
+		}
+		record.Version++
+
 		if record.IntentType == intent.SendPublicPayment && record.ActionType == action.NoPrivacyWithdraw {
 			item.Quantity = pointer.Uint64Copy(record.Quantity)
 		}
 		item.State = record.State
+		item.Version = record.Version
 		return nil
 	}
 
-	return action.ErrActionNotFound
+	return action.ErrStaleVersion
 }
 
 // GetById implements action.store.GetById

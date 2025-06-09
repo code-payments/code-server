@@ -3,6 +3,7 @@ package async_geyser
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -274,6 +275,8 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		if err == nil {
 			syncedDepositCache.Insert(cacheKey, true, 1)
 			return nil
+		} else if err != deposit.ErrDepositNotFound {
+			return errors.Wrap(err, "error checking for existing external deposit record")
 		}
 
 		ownerAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
@@ -287,42 +290,49 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		}
 		usdMarketValue := usdExchangeRecord.Rate * float64(deltaQuarksIntoOmnibus) / float64(common.CoreMintQuarksPerUnit)
 
-		// For transaction history
-		intentRecord := &intent.Record{
-			IntentId:   getExternalDepositIntentID(signature, userVirtualTimelockVaultAccount),
-			IntentType: intent.ExternalDeposit,
+		err = data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+			// For transaction history
+			intentRecord := &intent.Record{
+				IntentId:   getExternalDepositIntentID(signature, userVirtualTimelockVaultAccount),
+				IntentType: intent.ExternalDeposit,
 
-			InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
+				InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
 
-			ExternalDepositMetadata: &intent.ExternalDepositMetadata{
-				DestinationTokenAccount: userVirtualTimelockVaultAccount.PublicKey().ToBase58(),
-				Quantity:                uint64(deltaQuarksIntoOmnibus),
-				UsdMarketValue:          usdMarketValue,
-			},
+				ExternalDepositMetadata: &intent.ExternalDepositMetadata{
+					DestinationTokenAccount: userVirtualTimelockVaultAccount.PublicKey().ToBase58(),
+					Quantity:                uint64(deltaQuarksIntoOmnibus),
+					UsdMarketValue:          usdMarketValue,
+				},
 
-			State:     intent.StateConfirmed,
-			CreatedAt: time.Now(),
-		}
-		err = data.SaveIntent(ctx, intentRecord)
+				State:     intent.StateConfirmed,
+				CreatedAt: time.Now(),
+			}
+			err = data.SaveIntent(ctx, intentRecord)
+			if err != nil {
+				return errors.Wrap(err, "error saving intent record")
+			}
+
+			// For tracking in cached balances
+			externalDepositRecord := &deposit.Record{
+				Signature:      signature,
+				Destination:    userVirtualTimelockVaultAccount.PublicKey().ToBase58(),
+				Amount:         uint64(deltaQuarksIntoOmnibus),
+				UsdMarketValue: usdMarketValue,
+
+				Slot:              tokenBalances.Slot,
+				ConfirmationState: transaction.ConfirmationFinalized,
+
+				CreatedAt: time.Now(),
+			}
+			err = data.SaveExternalDeposit(ctx, externalDepositRecord)
+			if err != nil {
+				return errors.Wrap(err, "error saving external deposit record")
+			}
+
+			return nil
+		})
 		if err != nil {
-			return errors.Wrap(err, "error saving intent record")
-		}
-
-		// For tracking in cached balances
-		externalDepositRecord := &deposit.Record{
-			Signature:      signature,
-			Destination:    userVirtualTimelockVaultAccount.PublicKey().ToBase58(),
-			Amount:         uint64(deltaQuarksIntoOmnibus),
-			UsdMarketValue: usdMarketValue,
-
-			Slot:              tokenBalances.Slot,
-			ConfirmationState: transaction.ConfirmationFinalized,
-
-			CreatedAt: time.Now(),
-		}
-		err = data.SaveExternalDeposit(ctx, externalDepositRecord)
-		if err != nil {
-			return errors.Wrap(err, "error saving external deposit record")
+			return err
 		}
 
 		syncedDepositCache.Insert(cacheKey, true, 1)

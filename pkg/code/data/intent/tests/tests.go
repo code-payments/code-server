@@ -18,7 +18,8 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testExternalDepositRoundTrip,
 		testSendPublicPaymentRoundTrip,
 		testReceivePaymentsPubliclyRoundTrip,
-		testUpdate,
+		testUpdateHappyPath,
+		testUpdateStaleRecord,
 		testGetLatestByInitiatorAndType,
 		testGetOriginalGiftCardIssuedIntent,
 		testGetGiftCardClaimedIntent,
@@ -50,6 +51,8 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err = s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
@@ -61,6 +64,7 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 	})
 }
 
@@ -89,6 +93,8 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err = s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
@@ -103,6 +109,7 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 	})
 }
 
@@ -139,6 +146,8 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err = s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
@@ -159,6 +168,7 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 	})
 }
 
@@ -193,6 +203,8 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		cloned := expected.Clone()
 		err = s.Save(ctx, &expected)
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err = s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
@@ -213,11 +225,12 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.State, actual.State)
 		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 	})
 }
 
-func testUpdate(t *testing.T, s intent.Store) {
-	t.Run("testUpdate", func(t *testing.T) {
+func testUpdateHappyPath(t *testing.T, s intent.Store) {
+	t.Run("testUpdateHappyPath", func(t *testing.T) {
 		ctx := context.Background()
 
 		expected := intent.Record{
@@ -231,16 +244,54 @@ func testUpdate(t *testing.T, s intent.Store) {
 		err := s.Save(ctx, &expected)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		expected.State = intent.StatePending
 
 		err = s.Save(ctx, &expected)
 		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 2, expected.Version)
 
 		actual, err := s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
 		assert.Equal(t, intent.StatePending, actual.State)
 		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 2, actual.Version)
+	})
+}
+
+func testUpdateStaleRecord(t *testing.T, s intent.Store) {
+	t.Run("testUpdateStaleRecord", func(t *testing.T) {
+		ctx := context.Background()
+
+		expected := intent.Record{
+			IntentId:              "test_intent_id",
+			IntentType:            intent.OpenAccounts,
+			InitiatorOwnerAccount: "test_owner",
+			OpenAccountsMetadata:  &intent.OpenAccountsMetadata{},
+			State:                 intent.StateUnknown,
+			CreatedAt:             time.Now(),
+		}
+		err := s.Save(ctx, &expected)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
+
+		stale := expected.Clone()
+		expected.State = intent.StatePending
+		stale.Version -= 1
+
+		err = s.Save(ctx, &stale)
+		assert.Equal(t, intent.ErrStaleVersion, err)
+		assert.EqualValues(t, 1, stale.Id)
+		assert.EqualValues(t, 0, stale.Version)
+
+		actual, err := s.Get(ctx, "test_intent_id")
+		require.NoError(t, err)
+		assert.Equal(t, intent.StateUnknown, actual.State)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
 	})
 }
 

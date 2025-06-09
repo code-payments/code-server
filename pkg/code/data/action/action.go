@@ -66,6 +66,8 @@ type Record struct {
 
 	State State
 
+	Version uint64
+
 	CreatedAt time.Time
 }
 
@@ -121,6 +123,8 @@ func (r *Record) Clone() Record {
 
 		State: r.State,
 
+		Version: r.Version,
+
 		CreatedAt: r.CreatedAt,
 	}
 }
@@ -141,6 +145,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.FeeType = (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32Copy((*int32)(r.FeeType)))
 
 	dst.State = r.State
+
+	dst.Version = r.Version
 
 	dst.CreatedAt = r.CreatedAt
 }

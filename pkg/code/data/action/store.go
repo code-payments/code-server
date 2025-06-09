@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	ErrActionNotFound       = errors.New("no action ecord could be found")
-	ErrMultipleActionsFound = errors.New("multiple action records found")
-	ErrActionExists         = errors.New("action record already exists")
+	ErrActionNotFound       = errors.New("no action could be found")
+	ErrMultipleActionsFound = errors.New("multiple actions found")
+	ErrActionExists         = errors.New("action already exists")
+	ErrStaleVersion         = errors.New("action version is stale")
 )
 
 type Store interface {

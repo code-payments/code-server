@@ -2,9 +2,16 @@ package intent
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/code-payments/code-server/pkg/database/query"
+)
+
+var (
+	ErrIntentNotFound       = errors.New("no records could be found")
+	ErrMultilpeIntentsFound = errors.New("multiple records found")
+	ErrStaleVersion         = errors.New("intent version is stale")
 )
 
 type Store interface {

@@ -1315,9 +1315,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 	// Part 6: Are we within the threshold for auto-return back to the issuer?
 	//
 
-	// todo: I think we use the same trick of doing deadline - x minutes to avoid race
-	//       conditions without distributed locks.
-	if time.Since(accountInfoRecord.CreatedAt) > async_account.GiftCardExpiry-15*time.Minute {
+	if time.Since(accountInfoRecord.CreatedAt) >= async_account.GiftCardExpiry-15*time.Minute {
 		return newStaleStateError("gift card is expired")
 	}
 

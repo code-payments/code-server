@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/database/query"
-	"github.com/jmoiron/sqlx"
 )
 
 type store struct {
