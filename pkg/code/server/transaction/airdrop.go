@@ -319,7 +319,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 
 		InitiatorOwnerAccount: s.airdropper.VaultOwner.PublicKey().ToBase58(),
 
-		State: intent.StateUnknown,
+		State: intent.StatePending,
 
 		CreatedAt: time.Now(),
 	}
@@ -390,9 +390,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			return err
 		}
 
-		// Intent is pending only after everything's been saved.
-		intentRecord.State = intent.StatePending
-		return s.data.SaveIntent(ctx, intentRecord)
+		return nil
 	})
 	if err != nil {
 		log.WithError(err).Warn("failure creating airdrop intent")
