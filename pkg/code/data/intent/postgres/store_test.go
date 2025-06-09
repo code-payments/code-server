@@ -26,9 +26,9 @@ const (
 			intent_type INTEGER NOT NULL,
 
 			owner text NOT NULL,
-			source text NULL,
-			destination text NULL,
-			destination_owner text NULL,
+			source TEXT NULL,
+			destination TEXT NULL,
+			destination_owner TEXT NULL,
 
 			quantity bigint NULL CHECK (quantity >= 0),
 
@@ -46,9 +46,11 @@ const (
 
 			extended_metadata BYTEA NULL,
 
-			state integer NOT NULL,
+			state INTEGER NOT NULL,
 
-			created_at timestamp with time zone NOT NULL
+			version INTEGER NOT NULL,
+
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL
 		);
 	`
 

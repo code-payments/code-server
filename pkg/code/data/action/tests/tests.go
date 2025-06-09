@@ -21,6 +21,7 @@ func RunTests(t *testing.T, s action.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s action.Store){
 		testRoundTrip,
 		testBatchPut,
+		testUpdateStaleRecord,
 		testGetAllByIntent,
 		testGetAllByAddress,
 		testGetNetBalance,
@@ -58,19 +59,19 @@ func testRoundTrip(t *testing.T, s action.Store) {
 		_, err := s.GetById(ctx, expected.Intent, expected.ActionId)
 		assert.Equal(t, action.ErrActionNotFound, err)
 
-		assert.Equal(t, action.ErrActionNotFound, s.Update(ctx, expected))
+		assert.Equal(t, action.ErrStaleVersion, s.Update(ctx, expected))
 
 		cloned := expected.Clone()
 		require.NoError(t, s.PutAll(ctx, expected))
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
 
 		actual, err := s.GetById(ctx, expected.Intent, expected.ActionId)
 		require.NoError(t, err)
-
-		assert.True(t, expected.Id > 0)
 		assert.Equal(t, expected.Id, actual.Id)
+		assert.Equal(t, expected.Version, actual.Version)
 		assert.True(t, expected.CreatedAt.After(start))
 		assert.Equal(t, expected.CreatedAt, actual.CreatedAt)
-
 		assertEquivalentRecords(t, &cloned, actual)
 
 		assert.Equal(t, action.ErrActionExists, s.PutAll(ctx, expected))
@@ -78,10 +79,15 @@ func testRoundTrip(t *testing.T, s action.Store) {
 		expected.Quantity = pointer.Uint64(12345)
 		expected.State = action.StateFailed
 		cloned = expected.Clone()
+
 		require.NoError(t, s.Update(ctx, expected))
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 2, expected.Version)
 
 		actual, err = s.GetById(ctx, expected.Intent, expected.ActionId)
 		require.NoError(t, err)
+		assert.Equal(t, expected.Id, actual.Id)
+		assert.Equal(t, expected.Version, actual.Version)
 		assertEquivalentRecords(t, &cloned, actual)
 	})
 }
@@ -116,6 +122,7 @@ func testBatchPut(t *testing.T, s action.Store) {
 
 		for i, actual := range inserted {
 			assert.True(t, actual.Id > 0)
+			assert.EqualValues(t, 1, actual.Version)
 			assertEquivalentRecords(t, expected[i], actual)
 
 			fetched, err := s.GetById(ctx, expected[i].Intent, expected[i].ActionId)
@@ -141,6 +148,7 @@ func testBatchPut(t *testing.T, s action.Store) {
 			fetched, err := s.GetById(ctx, expected[i].Intent, expected[i].ActionId)
 			require.NoError(t, err)
 			assert.Equal(t, actual.Id, fetched.Id)
+			assert.EqualValues(t, 1, actual.Version)
 			assertEquivalentRecords(t, expected[i], fetched)
 		}
 
@@ -159,6 +167,61 @@ func testBatchPut(t *testing.T, s action.Store) {
 
 		_, err := s.GetById(ctx, actionRecord.Intent, actionRecord.ActionId)
 		assert.Equal(t, action.ErrActionNotFound, err)
+	})
+}
+
+func testUpdateStaleRecord(t *testing.T, s action.Store) {
+	t.Run("testUpdateStaleRecord", func(t *testing.T) {
+		ctx := context.Background()
+
+		start := time.Now()
+
+		expected := &action.Record{
+			Intent:     "intent",
+			IntentType: intent.SendPublicPayment,
+
+			ActionId:   1,
+			ActionType: action.NoPrivacyWithdraw,
+
+			Source:      "source",
+			Destination: pointer.String("destination"),
+			Quantity:    nil,
+
+			FeeType: (*transactionpb.FeePaymentAction_FeeType)(pointer.Int32((int32)(transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL))),
+
+			State: action.StateConfirmed,
+		}
+
+		_, err := s.GetById(ctx, expected.Intent, expected.ActionId)
+		assert.Equal(t, action.ErrActionNotFound, err)
+
+		cloned := expected.Clone()
+		require.NoError(t, s.PutAll(ctx, expected))
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
+
+		actual, err := s.GetById(ctx, expected.Intent, expected.ActionId)
+		require.NoError(t, err)
+		assert.Equal(t, expected.Id, actual.Id)
+		assert.Equal(t, expected.Version, actual.Version)
+		assert.True(t, expected.CreatedAt.After(start))
+		assert.Equal(t, expected.CreatedAt, actual.CreatedAt)
+		assertEquivalentRecords(t, &cloned, actual)
+
+		stale := expected.Clone()
+		stale.Quantity = pointer.Uint64(12345)
+		stale.State = action.StateFailed
+		stale.Version -= 1
+
+		assert.Equal(t, action.ErrStaleVersion, s.Update(ctx, &stale))
+		assert.EqualValues(t, 1, stale.Id)
+		assert.EqualValues(t, 0, stale.Version)
+
+		actual, err = s.GetById(ctx, expected.Intent, expected.ActionId)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
+		assertEquivalentRecords(t, &cloned, actual)
 	})
 }
 

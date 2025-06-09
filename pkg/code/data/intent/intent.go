@@ -7,12 +7,6 @@ import (
 	"github.com/code-payments/code-server/pkg/currency"
 )
 
-var (
-	ErrIntentNotFound       = errors.New("no records could be found")
-	ErrInvalidIntent        = errors.New("invalid intent")
-	ErrMultilpeIntentsFound = errors.New("multiple records found")
-)
-
 type State uint8
 
 const (
@@ -57,6 +51,8 @@ type Record struct {
 	ExtendedMetadata []byte
 
 	State State
+
+	Version uint64
 
 	CreatedAt time.Time
 }
@@ -146,6 +142,8 @@ func (r *Record) Clone() Record {
 
 		State: r.State,
 
+		Version: r.Version,
+
 		CreatedAt: r.CreatedAt,
 	}
 }
@@ -166,6 +164,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.ExtendedMetadata = r.ExtendedMetadata
 
 	dst.State = r.State
+
+	dst.Version = r.Version
 
 	dst.CreatedAt = r.CreatedAt
 }

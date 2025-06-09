@@ -170,25 +170,6 @@ func markActionFailed(ctx context.Context, data code_data.Provider, intentId str
 	return data.UpdateAction(ctx, record)
 }
 
-func markActionRevoked(ctx context.Context, data code_data.Provider, intentId string, actionId uint32) error {
-	record, err := data.GetActionById(ctx, intentId, actionId)
-	if err != nil {
-		return err
-	}
-
-	if record.State == action.StateRevoked {
-		return nil
-	}
-
-	err = validateActionState(record, action.StateUnknown)
-	if err != nil {
-		return err
-	}
-
-	record.State = action.StateRevoked
-	return data.UpdateAction(ctx, record)
-}
-
 func getActionHandlers(data code_data.Provider) map[action.Type]ActionHandler {
 	handlersByType := make(map[action.Type]ActionHandler)
 	handlersByType[action.OpenAccount] = NewOpenAccountActionHandler(data)

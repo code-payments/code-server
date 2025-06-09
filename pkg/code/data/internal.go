@@ -176,7 +176,6 @@ type DatabaseData interface {
 	GetNextSchedulableFulfillmentByAddress(ctx context.Context, address string, intentOrderingIndex uint64, actionOrderingIndex, fulfillmentOrderingIndex uint32) (*fulfillment.Record, error)
 	PutAllFulfillments(ctx context.Context, records ...*fulfillment.Record) error
 	UpdateFulfillment(ctx context.Context, record *fulfillment.Record) error
-	MarkFulfillmentAsActivelyScheduled(ctx context.Context, id uint64) error
 
 	// Intents
 	// --------------------------------------------------------------------------------
@@ -617,9 +616,6 @@ func (dp *DatabaseProvider) PutAllFulfillments(ctx context.Context, records ...*
 }
 func (dp *DatabaseProvider) UpdateFulfillment(ctx context.Context, record *fulfillment.Record) error {
 	return dp.fulfillments.Update(ctx, record)
-}
-func (dp *DatabaseProvider) MarkFulfillmentAsActivelyScheduled(ctx context.Context, id uint64) error {
-	return dp.fulfillments.MarkAsActivelyScheduled(ctx, id)
 }
 
 // Intents

@@ -2,9 +2,15 @@ package nonce
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/code-payments/code-server/pkg/database/query"
+)
+
+var (
+	ErrStaleVersion  = errors.New("nonce version is stale")
+	ErrNonceNotFound = errors.New("no nonce could be found")
 )
 
 type Store interface {

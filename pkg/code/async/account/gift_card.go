@@ -351,8 +351,8 @@ func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Prov
 		return errors.New("expected fulfillment in unknown state")
 	}
 
-	// Note: different than Save, since we don't have distributed locks
-	return data.MarkFulfillmentAsActivelyScheduled(ctx, fulfillmentRecord.Id)
+	fulfillmentRecord.DisableActiveScheduling = false
+	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }
 
 // Must be unique, but consistent for idempotency, and ideally fit in a 32

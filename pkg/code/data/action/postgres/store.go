@@ -89,7 +89,15 @@ func (s *store) Update(ctx context.Context, record *action.Record) error {
 		return err
 	}
 
-	return model.dbUpdate(ctx, s.db)
+	err = model.dbUpdate(ctx, s.db)
+	if err != nil {
+		return err
+	}
+
+	updated := fromModel(model)
+	updated.CopyTo(record)
+
+	return nil
 }
 
 // GetById implements action.store.GetById

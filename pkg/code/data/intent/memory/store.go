@@ -266,8 +266,14 @@ func (s *store) Save(ctx context.Context, data *intent.Record) error {
 
 	s.last++
 	if item := s.find(data); item != nil {
-		// Only update state
+		if item.Version != data.Version {
+			return intent.ErrStaleVersion
+		}
+
+		data.Version++
+
 		item.State = data.State
+		item.Version = data.Version
 	} else {
 		if data.Id == 0 {
 			data.Id = s.last
@@ -275,6 +281,8 @@ func (s *store) Save(ctx context.Context, data *intent.Record) error {
 		if data.CreatedAt.IsZero() {
 			data.CreatedAt = time.Now()
 		}
+		data.Version++
+
 		c := data.Clone()
 		s.records = append(s.records, &c)
 	}

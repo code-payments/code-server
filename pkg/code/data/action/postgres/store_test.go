@@ -36,6 +36,8 @@ const (
 
 			state INTEGER NOT NULL,
 
+			version INTEGER NOT NULL,
+
 			created_at timestamp with time zone NOT NULL, 
 
 			CONSTRAINT codewallet__core_action__uniq__intent__and__action_id UNIQUE (intent, action_id)
