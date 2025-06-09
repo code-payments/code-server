@@ -96,10 +96,6 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 		}, nil
 	}
 
-	ownerLock := s.ownerLocks.Get(owner.PublicKey().ToBytes())
-	ownerLock.Lock()
-	defer ownerLock.Unlock()
-
 	intentId := GetAirdropIntentId(AirdropTypeWelcomeBonus, owner.PublicKey().ToBase58())
 	_, err = s.data.GetIntent(ctx, intentId)
 	if err == nil {
@@ -164,6 +160,8 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 }
 
 // Note: this function is idempotent with the given intent ID.
+//
+// todo: This function needs to be more resilient to failures due to balance races
 func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner *common.Account, airdropType AirdropType) (*intent.Record, error) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":       "airdrop",
@@ -257,6 +255,12 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		return existingIntentRecord, nil
 	} else if err != intent.ErrIntentNotFound {
 		log.WithError(err).Warn("failure checking for existing airdrop intent")
+		return nil, err
+	}
+
+	balanceLock, err := balance.GetOptimisticVersionLock(ctx, s.data, s.airdropper.Vault)
+	if err != nil {
+		log.WithError(err).Warn("failure getting balance lock")
 		return nil, err
 	}
 
@@ -386,6 +390,11 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		}
 
 		err = selectedNonce.MarkReservedWithSignature(ctx, *fulfillmentRecord.VirtualSignature)
+		if err != nil {
+			return err
+		}
+
+		err = balanceLock.OnCommit(ctx, s.data)
 		if err != nil {
 			return err
 		}

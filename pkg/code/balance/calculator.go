@@ -55,6 +55,28 @@ type State struct {
 	current int64
 }
 
+// Calculate calculates a token account's balance using a starting point and a set
+// of strategies. Each may be incomplete individually, but in total must form a
+// complete balance calculation.
+func Calculate(ctx context.Context, tokenAccount *common.Account, initialBalance uint64, strategies ...Strategy) (balance uint64, err error) {
+	balanceState := &State{
+		current: int64(initialBalance),
+	}
+
+	for _, strategy := range strategies {
+		balanceState, err = strategy(ctx, tokenAccount, balanceState)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	if balanceState.current < 0 {
+		return 0, ErrNegativeBalance
+	}
+
+	return uint64(balanceState.current), nil
+}
+
 // CalculateFromCache is the default and recommended strategy for reliably estimating
 // a token account's balance using cached values.
 //
@@ -168,28 +190,6 @@ func CalculateFromBlockchain(ctx context.Context, data code_data.Provider, token
 	return quarks, BlockchainSource, nil
 }
 
-// Calculate calculates a token account's balance using a starting point and a set
-// of strategies. Each may be incomplete individually, but in total must form a
-// complete balance calculation.
-func Calculate(ctx context.Context, tokenAccount *common.Account, initialBalance uint64, strategies ...Strategy) (balance uint64, err error) {
-	balanceState := &State{
-		current: int64(initialBalance),
-	}
-
-	for _, strategy := range strategies {
-		balanceState, err = strategy(ctx, tokenAccount, balanceState)
-		if err != nil {
-			return 0, err
-		}
-	}
-
-	if balanceState.current < 0 {
-		return 0, ErrNegativeBalance
-	}
-
-	return uint64(balanceState.current), nil
-}
-
 // NetBalanceFromIntentActions is a balance calculation strategy that incorporates
 // the net balance by applying payment intents to the current balance.
 func NetBalanceFromIntentActions(ctx context.Context, data code_data.Provider) Strategy {
@@ -243,14 +243,39 @@ type BatchState struct {
 	current map[string]int64
 }
 
+// CalculateBatch calculates a set of token accounts' balance using a starting point
+// and a set of strategies. Each may be incomplete individually, but in total must
+// form a complete balance calculation.
+func CalculateBatch(ctx context.Context, tokenAccounts []string, strategies ...BatchStrategy) (balanceByTokenAccount map[string]uint64, err error) {
+	balanceState := &BatchState{
+		current: make(map[string]int64),
+	}
+
+	for _, strategy := range strategies {
+		balanceState, err = strategy(ctx, tokenAccounts, balanceState)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	res := make(map[string]uint64)
+	for tokenAccount, balance := range balanceState.current {
+		if balance < 0 {
+			return nil, ErrNegativeBalance
+		}
+
+		res[tokenAccount] = uint64(balance)
+	}
+
+	return res, nil
+}
+
 // BatchCalculateFromCacheWithAccountRecords is the default and recommended batch strategy
 // or reliably estimating a set of token accounts' balance when common.AccountRecords are
 // available.
 //
 // Note: Use this method when calculating balances for accounts that are managed by
 // Code (ie. Timelock account) and operate within the L2 system.
-//
-// Note: This only supports post-privacy accounts. Use CalculateFromCache instead.
 func BatchCalculateFromCacheWithAccountRecords(ctx context.Context, data code_data.Provider, accountRecordsBatch ...*common.AccountRecords) (map[string]uint64, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "BatchCalculateFromCacheWithAccountRecords")
 	defer tracer.End()
@@ -279,8 +304,6 @@ func BatchCalculateFromCacheWithAccountRecords(ctx context.Context, data code_da
 //
 // Note: Use this method when calculating balances for accounts that are managed by
 // Code (ie. Timelock account) and operate within the L2 system.
-//
-// Note: This only supports post-privacy accounts. Use CalculateFromCache instead.
 func BatchCalculateFromCacheWithTokenAccounts(ctx context.Context, data code_data.Provider, tokenAccounts ...*common.Account) (map[string]uint64, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsPackageName, "BatchCalculateFromCacheWithTokenAccounts")
 	defer tracer.End()
@@ -331,33 +354,6 @@ func defaultBatchCalculationFromCache(ctx context.Context, data code_data.Provid
 		FundingFromExternalDepositsBatch(ctx, data),
 		NetBalanceFromIntentActionsBatch(ctx, data),
 	)
-}
-
-// CalculateBatch calculates a set of token accounts' balance using a starting point
-// and a set of strategies. Each may be incomplete individually, but in total must
-// form a complete balance calculation.
-func CalculateBatch(ctx context.Context, tokenAccounts []string, strategies ...BatchStrategy) (balanceByTokenAccount map[string]uint64, err error) {
-	balanceState := &BatchState{
-		current: make(map[string]int64),
-	}
-
-	for _, strategy := range strategies {
-		balanceState, err = strategy(ctx, tokenAccounts, balanceState)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	res := make(map[string]uint64)
-	for tokenAccount, balance := range balanceState.current {
-		if balance < 0 {
-			return nil, ErrNegativeBalance
-		}
-
-		res[tokenAccount] = uint64(balance)
-	}
-
-	return res, nil
 }
 
 // NetBalanceFromIntentActionsBatch is a balance calculation strategy that incorporates

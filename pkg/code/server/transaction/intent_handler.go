@@ -29,10 +29,6 @@ var accountTypesToOpen = []commonpb.AccountType{
 	commonpb.AccountType_PRIMARY,
 }
 
-type lockableAccounts struct {
-	RemoteSendGiftCardVault *common.Account
-}
-
 // CreateIntentHandler is an interface for handling new intent creations
 type CreateIntentHandler interface {
 	// PopulateMetadata adds intent metadata to the provided intent record
@@ -48,12 +44,9 @@ type CreateIntentHandler interface {
 	// error.
 	IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error)
 
-	// GetAdditionalAccountsToLock gets additional accounts to apply distributed
-	// locking on that are specific to an intent.
-	//
-	// Note: Assumes relevant information is contained in the intent record after
-	// calling PopulateMetadata.
-	GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error)
+	// GetAccountsWithBalancesToLock gets a set of accounts with balances that need
+	// to be locked.
+	GetAccountsWithBalancesToLock(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*common.Account, error)
 
 	// AllowCreation determines whether the new intent creation should be allowed.
 	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error
@@ -99,6 +92,10 @@ func (h *OpenAccountsIntentHandler) PopulateMetadata(ctx context.Context, intent
 	return nil
 }
 
+func (h *OpenAccountsIntentHandler) GetAccountsWithBalancesToLock(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*common.Account, error) {
+	return nil, nil
+}
+
 func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
 	initiatiorOwnerAccount, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
 	if err != nil {
@@ -113,10 +110,6 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 	}
 
 	return false, nil
-}
-
-func (h *OpenAccountsIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	return &lockableAccounts{}, nil
 }
 
 func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
@@ -315,19 +308,15 @@ func (h *SendPublicPaymentIntentHandler) IsNoop(ctx context.Context, intentRecor
 	return false, nil
 }
 
-func (h *SendPublicPaymentIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	if !intentRecord.SendPublicPaymentMetadata.IsRemoteSend {
-		return &lockableAccounts{}, nil
-	}
+func (h *SendPublicPaymentIntentHandler) GetAccountsWithBalancesToLock(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*common.Account, error) {
+	typedMetadata := metadata.GetSendPublicPayment()
 
-	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
+	sourceVault, err := common.NewAccountFromProto(typedMetadata.Source)
 	if err != nil {
 		return nil, err
 	}
 
-	return &lockableAccounts{
-		RemoteSendGiftCardVault: giftCardVaultAccount,
-	}, nil
+	return []*common.Account{sourceVault}, nil
 }
 
 func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
@@ -445,20 +434,9 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	actions []*transactionpb.Action,
 	simResult *LocalSimulationResult,
 ) error {
-	var source *common.Account
-	var err error
-	if metadata.Source != nil {
-		source, err = common.NewAccountFromProto(metadata.Source)
-		if err != nil {
-			return err
-		}
-	} else {
-		// Backwards compat for old clients using metadata without source. It was
-		// always assumed to be from the primary account
-		source, err = common.NewAccountFromPublicKeyString(initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General.TokenAccount)
-		if err != nil {
-			return err
-		}
+	source, err := common.NewAccountFromProto(metadata.Source)
+	if err != nil {
+		return err
 	}
 
 	destination, err := common.NewAccountFromProto(metadata.Destination)
@@ -766,19 +744,12 @@ func (h *ReceivePaymentsPubliclyIntentHandler) IsNoop(ctx context.Context, inten
 	return false, nil
 }
 
-func (h *ReceivePaymentsPubliclyIntentHandler) GetAdditionalAccountsToLock(ctx context.Context, intentRecord *intent.Record) (*lockableAccounts, error) {
-	if !intentRecord.ReceivePaymentsPubliclyMetadata.IsRemoteSend {
-		return &lockableAccounts{}, nil
-	}
-
-	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
+func (h *ReceivePaymentsPubliclyIntentHandler) GetAccountsWithBalancesToLock(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*common.Account, error) {
+	giftCardVault, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
 	if err != nil {
 		return nil, err
 	}
-
-	return &lockableAccounts{
-		RemoteSendGiftCardVault: giftCardVaultAccount,
-	}, nil
+	return []*common.Account{giftCardVault}, nil
 }
 
 func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
@@ -1315,7 +1286,7 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 	// Part 6: Are we within the threshold for auto-return back to the issuer?
 	//
 
-	if time.Since(accountInfoRecord.CreatedAt) >= async_account.GiftCardExpiry-15*time.Minute {
+	if time.Since(accountInfoRecord.CreatedAt) >= async_account.GiftCardExpiry-time.Minute {
 		return newStaleStateError("gift card is expired")
 	}
 
