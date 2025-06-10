@@ -557,9 +557,6 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 			err = validateExternalTokenAccountWithinIntent(ctx, h.data, destination)
 			switch err {
 			case nil:
-				if simResult.HasAnyFeePayments() {
-					return newIntentValidationErrorf("%s fee payment not required when external destination exists", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL.String())
-				}
 			default:
 				if !strings.Contains(strings.ToLower(err.Error()), "doesn't exist on the blockchain") {
 					return err

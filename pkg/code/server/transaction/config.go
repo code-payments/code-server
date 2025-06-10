@@ -24,7 +24,7 @@ const (
 	FeeCollectorTokenPublicKeyConfigEnvName = envConfigPrefix + "FEE_COLLECTOR_TOKEN_PUBLIC_KEY"
 	defaultFeeCollectorPublicKey            = "invalid" // Ensure something valid is set
 
-	CreateOnSendUsdWithdrawalFeeConfigEnvName = envConfigPrefix + "WITHDRAWAL_CREATE_ON_SEND_WITHDRAWAL_USD_FEE"
+	CreateOnSendWithdrawalUsdFeeConfigEnvName = envConfigPrefix + "CREATE_ON_SEND_WITHDRAWAL_USD_FEE"
 	defaultCreateOnSendWithdrawalUsdFee       = 0.50
 
 	EnableAirdropsConfigEnvName = envConfigPrefix + "ENABLE_AIRDROPS"
@@ -66,7 +66,7 @@ func WithEnvConfigs() ConfigProvider {
 			submitIntentTimeout:          env.NewDurationConfig(SubmitIntentTimeoutConfigEnvName, defaultSubmitIntentTimeout),
 			clientReceiveTimeout:         env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
 			feeCollectorTokenPublicKey:   env.NewStringConfig(FeeCollectorTokenPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
-			createOnSendWithdrawalUsdFee: env.NewFloat64Config(CreateOnSendUsdWithdrawalFeeConfigEnvName, defaultCreateOnSendWithdrawalUsdFee),
+			createOnSendWithdrawalUsdFee: env.NewFloat64Config(CreateOnSendWithdrawalUsdFeeConfigEnvName, defaultCreateOnSendWithdrawalUsdFee),
 			enableAirdrops:               env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
 			airdropperOwnerPublicKey:     env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
 			maxAirdropUsdValue:           env.NewFloat64Config(MaxAirdropUsdValueEnvName, defaultMaxAirdropUsdValue),
