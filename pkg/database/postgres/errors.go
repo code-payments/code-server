@@ -9,10 +9,17 @@ import (
 )
 
 func CheckNoRows(inErr, outErr error) error {
-	if inErr == sql.ErrNoRows {
+	if IsNoRows(inErr) {
 		return outErr
 	}
 	return inErr
+}
+
+func IsNoRows(err error) bool {
+	if err == nil {
+		return false
+	}
+	return err == sql.ErrNoRows
 }
 
 func CheckUniqueViolation(inErr, outErr error) error {

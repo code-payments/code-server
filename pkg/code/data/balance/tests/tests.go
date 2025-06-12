@@ -13,11 +13,35 @@ import (
 
 func RunTests(t *testing.T, s balance.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s balance.Store){
+		testCachedBalanceVersionHappyPath,
 		testExternalCheckpointHappyPath,
 	} {
 		tf(t, s)
 		teardown()
 	}
+}
+
+func testCachedBalanceVersionHappyPath(t *testing.T, s balance.Store) {
+	t.Run("testCachedBalanceVersionHappyPath", func(t *testing.T) {
+		ctx := context.Background()
+
+		for i := range 100 {
+			if i > 0 {
+				assert.Equal(t, balance.ErrStaleCachedBalanceVersion, s.AdvanceCachedVersion(ctx, "token_account_1", uint64(i-1)))
+			}
+			assert.Equal(t, balance.ErrStaleCachedBalanceVersion, s.AdvanceCachedVersion(ctx, "token_account_1", uint64(i+1)))
+
+			currentVersion, err := s.GetCachedVersion(ctx, "token_account_1")
+			require.NoError(t, err)
+			assert.EqualValues(t, i, currentVersion)
+
+			require.NoError(t, s.AdvanceCachedVersion(ctx, "token_account_1", currentVersion))
+		}
+
+		currentVersion, err := s.GetCachedVersion(ctx, "token_account_2")
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, currentVersion)
+	})
 }
 
 func testExternalCheckpointHappyPath(t *testing.T, s balance.Store) {

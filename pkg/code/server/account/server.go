@@ -379,7 +379,7 @@ func (s *server) getProtoAccountInfo(ctx context.Context, records *common.Accoun
 
 		// Gift cards that are close to the auto-return window are marked as expired in
 		// a consistent manner as SubmitIntent to avoid race conditions with the auto-return.
-		if time.Since(records.General.CreatedAt) >= async_account.GiftCardExpiry {
+		if time.Since(records.General.CreatedAt) >= async_account.GiftCardExpiry-time.Minute {
 			claimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
 		}
 
@@ -467,7 +467,7 @@ func (s *server) updateCachedResponse(resp *accountpb.GetTokenAccountInfosRespon
 		switch ai.AccountType {
 		case commonpb.AccountType_REMOTE_SEND_GIFT_CARD:
 			// Transition any gift card records to expired if we elapsed the expiry window
-			if time.Since(ai.CreatedAt.AsTime()) >= async_account.GiftCardExpiry {
+			if time.Since(ai.CreatedAt.AsTime()) >= async_account.GiftCardExpiry-time.Minute {
 				ai.ClaimState = accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED
 				ai.BalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE
 				ai.Balance = 0

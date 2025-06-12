@@ -15,6 +15,7 @@ import (
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
+	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -93,6 +94,12 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 		return err
 	}
 
+	balanceLock, err := balance.GetOptimisticVersionLock(ctx, p.data, giftCardVaultAccount)
+	if err != nil {
+		log.WithError(err).Warn("failure getting balance lock")
+		return err
+	}
+
 	_, err = p.data.GetGiftCardClaimedAction(ctx, giftCardVaultAccount.PublicKey().ToBase58())
 	if err == nil {
 		log.Trace("gift card is claimed and will be removed from worker queue")
@@ -124,7 +131,7 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 	// There's no action to claim the gift card and the expiry window has been met.
 	// It's time to initiate the process of auto-returning the funds back to the
 	// issuer.
-	err = InitiateProcessToAutoReturnGiftCard(ctx, p.data, giftCardVaultAccount, false)
+	err = InitiateProcessToAutoReturnGiftCard(ctx, p.data, giftCardVaultAccount, false, balanceLock)
 	if err != nil {
 		log.WithError(err).Warn("failure initiating process to return gift card balance to issuer")
 		return err
@@ -138,7 +145,7 @@ func (p *service) maybeInitiateGiftCardAutoReturn(ctx context.Context, accountIn
 // a good guide for similar actions in the future.
 //
 // todo: This probably belongs somewhere more common
-func InitiateProcessToAutoReturnGiftCard(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account, isVoidedByUser bool) error {
+func InitiateProcessToAutoReturnGiftCard(ctx context.Context, data code_data.Provider, giftCardVaultAccount *common.Account, isVoidedByUser bool, balanceLock *balance.OptimisticVersionLock) error {
 	return data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 		giftCardIssuedIntent, err := data.GetOriginalGiftCardIssuedIntent(ctx, giftCardVaultAccount.PublicKey().ToBase58())
 		if err != nil {
@@ -199,7 +206,12 @@ func InitiateProcessToAutoReturnGiftCard(ctx context.Context, data code_data.Pro
 
 		// This will trigger the fulfillment worker to poll for the fulfillment. This
 		// should be the very last DB update called.
-		return markFulfillmentAsActivelyScheduled(ctx, data, autoReturnFulfillment[0])
+		err = markFulfillmentAsActivelyScheduled(ctx, data, autoReturnFulfillment[0])
+		if err != nil {
+			return err
+		}
+
+		return balanceLock.OnCommit(ctx, data)
 	})
 }
 

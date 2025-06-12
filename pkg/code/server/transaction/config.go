@@ -49,7 +49,6 @@ type conf struct {
 	enableAirdrops               config.Bool
 	airdropperOwnerPublicKey     config.String
 	maxAirdropUsdValue           config.Float64
-	stripedLockParallelization   config.Uint64
 }
 
 // ConfigProvider defines how config values are pulled
@@ -70,7 +69,6 @@ func WithEnvConfigs() ConfigProvider {
 			enableAirdrops:               env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
 			airdropperOwnerPublicKey:     env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
 			maxAirdropUsdValue:           env.NewFloat64Config(MaxAirdropUsdValueEnvName, defaultMaxAirdropUsdValue),
-			stripedLockParallelization:   wrapper.NewUint64Config(memory.NewConfig(8192), 8192),
 		}
 	}
 }
@@ -98,7 +96,6 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 			enableAirdrops:               wrapper.NewBoolConfig(memory.NewConfig(overrides.enableAirdrops), false),
 			airdropperOwnerPublicKey:     wrapper.NewStringConfig(memory.NewConfig(defaultAirdropperOwnerPublicKey), defaultAirdropperOwnerPublicKey),
 			maxAirdropUsdValue:           wrapper.NewFloat64Config(memory.NewConfig(defaultMaxAirdropUsdValue), defaultMaxAirdropUsdValue),
-			stripedLockParallelization:   wrapper.NewUint64Config(memory.NewConfig(4), 4),
 		}
 	}
 }

@@ -6,12 +6,21 @@ import (
 )
 
 var (
-	ErrCheckpointNotFound = errors.New("checkpoint not found")
+	ErrStaleCachedBalanceVersion = errors.New("cached balance version is stale")
 
-	ErrStaleCheckpoint = errors.New("checkpoint is stale")
+	ErrCheckpointNotFound = errors.New("checkpoint not found")
+	ErrStaleCheckpoint    = errors.New("checkpoint is stale")
 )
 
 type Store interface {
+	// GetCachedVersion gets the current cached balance version, which can be used
+	// for optimistic locking cached balances for operations with outgoing transfers.
+	GetCachedVersion(ctx context.Context, account string) (uint64, error)
+
+	// AdvanceCachedVersion advances an account's cached balance version.
+	// ErrStaleCachedBalanceVersion is returned if the currentVersion is out of date.
+	AdvanceCachedVersion(ctx context.Context, account string, currentVersion uint64) error
+
 	// SaveExternalCheckpoint saves an external balance at a checkpoint.
 	// ErrStaleCheckpoint is returned if the checkpoint is outdated
 	SaveExternalCheckpoint(ctx context.Context, record *ExternalCheckpointRecord) error

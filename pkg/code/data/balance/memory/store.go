@@ -9,14 +9,54 @@ import (
 )
 
 type store struct {
-	mu                        sync.Mutex
-	externalCheckpointRecords []*balance.ExternalCheckpointRecord
-	last                      uint64
+	mu                             sync.Mutex
+	cachedBalanceVersionsByAccount map[string]uint64
+	externalCheckpointRecords      []*balance.ExternalCheckpointRecord
+	last                           uint64
 }
 
 // New returns a new in memory balance.Store
 func New() balance.Store {
-	return &store{}
+	return &store{
+		cachedBalanceVersionsByAccount: make(map[string]uint64),
+	}
+}
+
+// GetCachedVersion implements balance.Store.GetCachedVersion
+func (s *store) GetCachedVersion(_ context.Context, account string) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, ok := s.cachedBalanceVersionsByAccount[account]
+	if !ok {
+		return 0, nil
+	}
+	return current, nil
+}
+
+// AdvanceCachedVersion implements balance.Store.AdvanceCachedVersion
+func (s *store) AdvanceCachedVersion(_ context.Context, account string, currentVersion uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	actualVersion, ok := s.cachedBalanceVersionsByAccount[account]
+	if !ok {
+		if currentVersion != 0 {
+			return balance.ErrStaleCachedBalanceVersion
+		}
+
+		s.cachedBalanceVersionsByAccount[account] = 1
+
+		return nil
+	}
+
+	if actualVersion != currentVersion {
+		return balance.ErrStaleCachedBalanceVersion
+	}
+
+	s.cachedBalanceVersionsByAccount[account]++
+
+	return nil
 }
 
 // SaveExternalCheckpoint implements balance.Store.SaveExternalCheckpoint
@@ -87,6 +127,7 @@ func (s *store) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.cachedBalanceVersionsByAccount = make(map[string]uint64)
 	s.externalCheckpointRecords = nil
 	s.last = 0
 }
