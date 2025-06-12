@@ -2,6 +2,7 @@ package transaction_v2
 
 import (
 	"context"
+	"math"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -50,6 +51,10 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 	}
 
 	// Calculate send limits
+	usdLeftForPayments := currency_util.MaxDailyUsdLimit - consumedUsdForPayments
+	if usdLeftForPayments < 0 {
+		usdLeftForPayments = 0
+	}
 	sendLimits := make(map[string]*transactionpb.SendLimit)
 	for currency, sendLimit := range currency_util.SendLimits {
 		otherRate, ok := multiRateRecord.Rates[string(currency)]
@@ -58,27 +63,16 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 			continue
 		}
 
-		// How much have we consumed in the other currency?
-		consumedInOtherCurrency := consumedUsdForPayments * otherRate / usdRate
+		// How much do we have left for payments in the other currency?
+		amountLeftInOtherCurrency := usdLeftForPayments * otherRate / usdRate
 
-		// How much of the daily limit is remaining?
-		remainingDaily := sendLimit.Daily - consumedInOtherCurrency
-
-		// The per-transaction limit applies up until our remaining daily limit is below it.
-		remainingNextTransaction := sendLimit.PerTransaction
-		if remainingDaily < remainingNextTransaction {
-			remainingNextTransaction = remainingDaily
-		}
-
-		// Avoid negative limits, possibly caused by fluctuating exchange rates
-		if remainingNextTransaction < 0 {
-			remainingNextTransaction = 0
-		}
+		// Limit to the localized max per-transaction amount
+		remainingNextTransaction := math.Min(sendLimit.PerTransaction, amountLeftInOtherCurrency)
 
 		sendLimits[string(currency)] = &transactionpb.SendLimit{
 			NextTransaction:   float32(remainingNextTransaction),
 			MaxPerTransaction: float32(sendLimit.PerTransaction),
-			MaxPerDay:         float32(sendLimit.Daily),
+			MaxPerDay:         float32(currency_util.MaxDailyUsdLimit * otherRate / usdRate),
 		}
 	}
 

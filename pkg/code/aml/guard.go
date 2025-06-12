@@ -19,7 +19,7 @@ var (
 	// so we can do better rounding on limits per currency.
 	//
 	// todo: configurable
-	maxDailyUsdLimit = 1.2 * currency_util.SendLimits[currency_lib.USD].Daily
+	maxDailyUsdLimit = 1.2 * currency_util.MaxDailyUsdLimit
 )
 
 // Guard gates money movement by applying rules on operations of interest to
