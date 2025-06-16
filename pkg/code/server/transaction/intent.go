@@ -754,6 +754,18 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 		}
 
 	case intent.SendPublicPayment:
+		sourceAccountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(ctx, intentRecord.InitiatorOwnerAccount)
+		if err != nil {
+			log.WithError(err).Warn("failure getting source account info record")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		sourceAccount, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.TokenAccount)
+		if err != nil {
+			log.WithError(err).Warn("invalid source account")
+			return nil, status.Error(codes.Internal, "")
+		}
+
 		destinationAccount, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationTokenAccount)
 		if err != nil {
 			log.WithError(err).Warn("invalid destination account")
@@ -763,6 +775,7 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 		metadata = &transactionpb.Metadata{
 			Type: &transactionpb.Metadata_SendPublicPayment{
 				SendPublicPayment: &transactionpb.SendPublicPaymentMetadata{
+					Source:      sourceAccount.ToProto(),
 					Destination: destinationAccount.ToProto(),
 					ExchangeData: &transactionpb.ExchangeData{
 						Currency:     strings.ToLower(string(intentRecord.SendPublicPaymentMetadata.ExchangeCurrency)),
