@@ -20,6 +20,16 @@ func New(db *sql.DB) balance.Store {
 	}
 }
 
+// GetCachedVersion implements balance.Store.GetCachedVersion
+func (s *store) GetCachedVersion(ctx context.Context, account string) (uint64, error) {
+	return dbGetCachedVersion(ctx, s.db, account)
+}
+
+// AdvanceCachedVersion implements balance.Store.AdvanceCachedVersion
+func (s *store) AdvanceCachedVersion(ctx context.Context, account string, currentVersion uint64) error {
+	return dbAdvanceCachedVersion(ctx, s.db, account, currentVersion)
+}
+
 // SaveExternalCheckpoint implements balance.Store.SaveExternalCheckpoint
 func (s *store) SaveExternalCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error {
 	model, err := toExternalCheckpointModel(record)

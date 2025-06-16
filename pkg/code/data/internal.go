@@ -119,6 +119,8 @@ type DatabaseData interface {
 
 	// Balance
 	// --------------------------------------------------------------------------------
+	GetCachedBalanceVersion(ctx context.Context, account string) (uint64, error)
+	AdvanceCachedBalanceVersion(ctx context.Context, account string, currentVersion uint64) error
 	SaveExternalBalanceCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error
 	GetExternalBalanceCheckpoint(ctx context.Context, account string) (*balance.ExternalCheckpointRecord, error)
 
@@ -428,6 +430,12 @@ func (dp *DatabaseProvider) HasFeeAction(ctx context.Context, intent string, fee
 
 // Balance
 // --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) GetCachedBalanceVersion(ctx context.Context, account string) (uint64, error) {
+	return dp.balance.GetCachedVersion(ctx, account)
+}
+func (dp *DatabaseProvider) AdvanceCachedBalanceVersion(ctx context.Context, account string, currentVersion uint64) error {
+	return dp.balance.AdvanceCachedVersion(ctx, account, currentVersion)
+}
 func (dp *DatabaseProvider) SaveExternalBalanceCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error {
 	return dp.balance.SaveExternalCheckpoint(ctx, record)
 }
