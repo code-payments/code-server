@@ -15,7 +15,6 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/transaction"
-	sync_util "github.com/code-payments/code-server/pkg/sync"
 )
 
 type transactionServer struct {
@@ -33,13 +32,13 @@ type transactionServer struct {
 
 	noncePool *transaction.LocalNoncePool
 
+	localAccountLocksMu sync.Mutex
+	localAccountLocks   map[string]*sync.Mutex
+
 	airdropperLock sync.Mutex
 	airdropper     *common.TimelockAccounts
 
 	feeCollector *common.Account
-
-	ownerLocks    *sync_util.StripedLock
-	giftCardLocks *sync_util.StripedLock
 
 	transactionpb.UnimplementedTransactionServer
 }
@@ -57,8 +56,6 @@ func NewTransactionServer(
 	ctx := context.Background()
 
 	conf := configProvider()
-
-	stripedLockParallelization := uint(conf.stripedLockParallelization.Get(ctx))
 
 	if err := noncePool.Validate(nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction); err != nil {
 		return nil, err
@@ -79,8 +76,7 @@ func NewTransactionServer(
 
 		noncePool: noncePool,
 
-		ownerLocks:    sync_util.NewStripedLock(stripedLockParallelization),
-		giftCardLocks: sync_util.NewStripedLock(stripedLockParallelization),
+		localAccountLocks: make(map[string]*sync.Mutex),
 	}
 
 	s.feeCollector, err = common.NewAccountFromPublicKeyString(s.conf.feeCollectorTokenPublicKey.Get(ctx))

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mr-tron/base58/base58"
@@ -20,6 +21,7 @@ import (
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	async_account "github.com/code-payments/code-server/pkg/code/async/account"
+	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
@@ -215,12 +217,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		CreatedAt:             time.Now(),
 	}
 
-	initiatorOwnerLock := s.ownerLocks.Get(initiatorOwnerAccount.PublicKey().ToBytes())
-	initiatorOwnerLock.Lock()
-	defer func() {
-		initiatorOwnerLock.Unlock()
-	}()
-
 	existingIntentRecord, err := s.data.GetIntent(ctx, intentId)
 	if err != intent.ErrIntentNotFound && err != nil {
 		log.WithError(err).Warn("failure checking for existing intent record")
@@ -240,6 +236,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return handleSubmitIntentError(streamer, err)
 	}
 
+	// Check whether the intent is a no-op
 	isNoop, err := intentHandler.IsNoop(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
 	if err != nil {
 		log.WithError(err).Warn("failure checking if intent is a no-op")
@@ -251,18 +248,33 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return nil
 	}
 
-	// Distributed locking on additional accounts possibly not known until
-	// populating intent metadata. Importantly, this must be done prior to
-	// doing validation checks in AllowCreation.
-	additionalAccountsToLock, err := intentHandler.GetAdditionalAccountsToLock(ctx, intentRecord)
+	// Lock any acccounts with outgoing transfers of funds:
+	//  1. Optimistic version lock at the DB layer to guarantee balance consistency
+	//  2. Local in memory lock to avoid over consumption of local resources (eg.
+	//     nonces) when we're likely to encounter a race resulting in DB txn rollback
+	//     (eg. mass attempt to claim gift card).
+	accountBalancesToLock, err := intentHandler.GetAccountsWithBalancesToLock(ctx, intentRecord, submitActionsReq.Metadata)
 	if err != nil {
+		log.WithError(err).Warn("failure getting accounts with balances to lock")
 		return handleSubmitIntentError(streamer, err)
 	}
+	localAccountLocks := make([]*sync.Mutex, len(accountBalancesToLock))
+	globalBalanceLocks := make([]*balance.OptimisticVersionLock, len(accountBalancesToLock))
+	for i, account := range accountBalancesToLock {
+		log := log.WithField("account", account.PublicKey().ToBase58())
 
-	if additionalAccountsToLock.RemoteSendGiftCardVault != nil {
-		giftCardLock := s.giftCardLocks.Get(additionalAccountsToLock.RemoteSendGiftCardVault.PublicKey().ToBytes())
-		giftCardLock.Lock()
-		defer giftCardLock.Unlock()
+		localAccountLocks[i] = s.getLocalAccountLock(account)
+
+		globalBalanceLock, err := balance.GetOptimisticVersionLock(ctx, s.data, account)
+		if err != nil {
+			log.WithError(err).Warn("failure getting balance lock")
+			return handleSubmitIntentError(streamer, err)
+		}
+		globalBalanceLocks[i] = globalBalanceLock
+	}
+	for _, localAccountLock := range localAccountLocks {
+		localAccountLock.Lock()
+		defer localAccountLock.Unlock()
 	}
 
 	// Validate the new intent with intent-specific logic
@@ -599,9 +611,21 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return err
 		}
 
+		for _, balanceLock := range globalBalanceLocks {
+			err = balanceLock.OnCommit(ctx, s.data)
+			if err != nil {
+				log.WithError(err).Warn("failure commiting balance update")
+				return err
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "stale") || strings.Contains(err.Error(), "exist") {
+			log.WithError(err).Info("race condition detected")
+			return handleSubmitIntentError(streamer, newStaleStateErrorf("race detected: %s", err.Error()))
+		}
 		return handleSubmitIntentError(streamer, err)
 	}
 
@@ -957,9 +981,15 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 		}, nil
 	}
 
-	giftCardLock := s.giftCardLocks.Get(giftCardVault.PublicKey().ToBytes())
-	giftCardLock.Lock()
-	defer giftCardLock.Unlock()
+	globalBalanceLock, err := balance.GetOptimisticVersionLock(ctx, s.data, giftCardVault)
+	if err != nil {
+		log.WithError(err).Warn("failure getting balance lock")
+		return nil, status.Error(codes.Internal, "")
+	}
+
+	localAccountLock := s.getLocalAccountLock(giftCardVault)
+	localAccountLock.Lock()
+	defer localAccountLock.Unlock()
 
 	claimedActionRecord, err := s.data.GetGiftCardClaimedAction(ctx, giftCardVault.PublicKey().ToBase58())
 	if err == nil {
@@ -982,7 +1012,7 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	err = async_account.InitiateProcessToAutoReturnGiftCard(ctx, s.data, giftCardVault, true)
+	err = async_account.InitiateProcessToAutoReturnGiftCard(ctx, s.data, giftCardVault, true, globalBalanceLock)
 	if err != nil {
 		log.WithError(err).Warn("failure scheduling auto-return action")
 		return nil, status.Error(codes.Internal, "")
@@ -995,4 +1025,15 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 	return &transactionpb.VoidGiftCardResponse{
 		Result: transactionpb.VoidGiftCardResponse_OK,
 	}, nil
+}
+
+func (s *transactionServer) getLocalAccountLock(account *common.Account) *sync.Mutex {
+	s.localAccountLocksMu.Lock()
+	lock, ok := s.localAccountLocks[account.PublicKey().ToBase58()]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.localAccountLocks[account.PublicKey().ToBase58()] = lock
+	}
+	s.localAccountLocksMu.Unlock()
+	return lock
 }
