@@ -30,7 +30,7 @@ import (
 
 const (
 	giftCardAutoReturnIntentPrefix = "auto-return-gc-"
-	GiftCardExpiry                 = 24 * time.Hour
+	GiftCardExpiry                 = 7 * 24 * time.Hour
 )
 
 func (p *service) giftCardAutoReturnWorker(serviceCtx context.Context, interval time.Duration) error {
