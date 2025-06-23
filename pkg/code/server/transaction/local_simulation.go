@@ -71,9 +71,9 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				//
 				// todo: We don't support reopening accounts yet
 				if timelockRecord.IsClosed() {
-					return nil, newActionWithStaleStateError(action, "account is already closed and won't be reused")
+					return nil, NewActionWithStaleStateError(action, "account is already closed and won't be reused")
 				}
-				return nil, newActionWithStaleStateError(action, "account is already opened")
+				return nil, NewActionWithStaleStateError(action, "account is already opened")
 			} else if err != nil && err != timelock.ErrTimelockNotFound {
 				return nil, err
 			}
@@ -174,7 +174,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 			amount := typedAction.NoPrivacyWithdraw.Amount
 
 			if source.PublicKey().ToBase58() == destination.PublicKey().ToBase58() {
-				return nil, newActionValidationError(action, "source and destination accounts must be different")
+				return nil, NewActionValidationError(action, "source and destination accounts must be different")
 			}
 
 			simulations = append(
@@ -215,7 +215,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 			return nil, err
 		}
 		if timelockAccounts.Vault.PublicKey().ToBase58() != derivedTimelockVault.PublicKey().ToBase58() {
-			return nil, newActionValidationErrorf(action, "token must be %s", timelockAccounts.Vault.PublicKey().ToBase58())
+			return nil, NewActionValidationErrorf(action, "token must be %s", timelockAccounts.Vault.PublicKey().ToBase58())
 		}
 
 		// Combine the simulated action to all previously simulated actions with
@@ -224,7 +224,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 			for _, txn := range simulation.Transfers {
 				// Attempt to transfer 0 quarks
 				if txn.DeltaQuarks == 0 {
-					return nil, newActionValidationError(action, "transaction with 0 quarks")
+					return nil, NewActionValidationError(action, "transaction with 0 quarks")
 				}
 			}
 
@@ -232,27 +232,27 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 			if ok {
 				// Attempt to open an already closed account, which isn't supported
 				if combined.Closed && simulation.Opened {
-					return nil, newActionValidationError(action, "account cannot be reopened")
+					return nil, NewActionValidationError(action, "account cannot be reopened")
 				}
 
 				// Attempt to open an already opened account
 				if combined.Opened && simulation.Opened {
-					return nil, newActionValidationError(action, "account is already opened in another action")
+					return nil, NewActionValidationError(action, "account is already opened in another action")
 				}
 
 				// Funds transferred to an account before it was opened
 				if len(combined.Transfers) > 0 && simulation.Opened {
-					return nil, newActionValidationError(action, "opened an account after transferring funds to it")
+					return nil, NewActionValidationError(action, "opened an account after transferring funds to it")
 				}
 
 				// Attempt to close an already closed account
 				if combined.Closed && simulation.Closed {
-					return nil, newActionValidationError(action, "account is already closed in another action")
+					return nil, NewActionValidationError(action, "account is already closed in another action")
 				}
 
 				// Attempt to send/receive funds to a closed account
 				if combined.Closed && len(simulation.Transfers) > 0 {
-					return nil, newActionValidationError(action, "account is closed and cannot send/receive funds")
+					return nil, NewActionValidationError(action, "account is closed and cannot send/receive funds")
 				}
 
 				combined.Transfers = append(combined.Transfers, simulation.Transfers...)
@@ -327,7 +327,7 @@ func (s TokenAccountSimulation) EnforceBalances(ctx context.Context, data code_d
 	for _, transfer := range s.Transfers {
 		newBalance = newBalance + transfer.DeltaQuarks
 		if newBalance < 0 {
-			return newActionValidationError(transfer.Action, "insufficient balance to perform action")
+			return NewActionValidationError(transfer.Action, "insufficient balance to perform action")
 		}
 
 		// If it's withdrawn out of this account, remove any remaining balance.
@@ -339,7 +339,7 @@ func (s TokenAccountSimulation) EnforceBalances(ctx context.Context, data code_d
 	}
 
 	if s.Closed && newBalance != 0 {
-		return newActionValidationError(s.CloseAction, "attempt to close an account with a non-zero balance")
+		return NewActionValidationError(s.CloseAction, "attempt to close an account with a non-zero balance")
 	}
 
 	return nil

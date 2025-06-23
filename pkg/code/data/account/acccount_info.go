@@ -24,6 +24,7 @@ var AllAccountTypes = []commonpb.AccountType{
 	commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 	commonpb.AccountType_RELATIONSHIP,
 	commonpb.AccountType_SWAP,
+	commonpb.AccountType_POOL,
 }
 
 type Record struct {
@@ -179,6 +180,10 @@ func (r *Record) Validate() error {
 
 		if r.OwnerAccount == r.AuthorityAccount {
 			return errors.New("owner cannot be authority for swap account")
+		}
+	case commonpb.AccountType_POOL:
+		if r.OwnerAccount == r.AuthorityAccount {
+			return errors.New("owner cannot be authority pool account")
 		}
 	default:
 		return errors.Errorf("unhandled account type: %s", r.AccountType.String())

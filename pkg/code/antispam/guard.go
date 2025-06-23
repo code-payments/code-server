@@ -3,6 +3,8 @@ package antispam
 import (
 	"context"
 
+	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
@@ -15,11 +17,11 @@ func NewGuard(integration Integration) *Guard {
 	return &Guard{integration: integration}
 }
 
-func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account) (bool, error) {
+func (g *Guard) AllowOpenAccounts(ctx context.Context, owner *common.Account, accountSet transactionpb.OpenAccountsMetadata_AccountSet) (bool, error) {
 	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowOpenAccounts")
 	defer tracer.End()
 
-	allow, reason, err := g.integration.AllowOpenAccounts(ctx, owner)
+	allow, reason, err := g.integration.AllowOpenAccounts(ctx, owner, accountSet)
 	if err != nil {
 		return false, err
 	}
@@ -67,6 +69,20 @@ func (g *Guard) AllowReceivePayments(ctx context.Context, owner *common.Account,
 	}
 	if !allow {
 		recordDenialEvent(ctx, actionReceivePayments, reason)
+	}
+	return allow, nil
+}
+
+func (g *Guard) AllowDistribution(ctx context.Context, owner *common.Account, isPublic bool) (bool, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowDistribution")
+	defer tracer.End()
+
+	allow, reason, err := g.integration.AllowDistribution(ctx, owner, isPublic)
+	if err != nil {
+		return false, err
+	}
+	if !allow {
+		recordDenialEvent(ctx, actionDistribution, reason)
 	}
 	return allow, nil
 }

@@ -25,7 +25,8 @@ type transactionServer struct {
 
 	auth *auth_util.RPCSignatureVerifier
 
-	airdropIntegration AirdropIntegration
+	submitIntentIntegration SubmitIntentIntegration
+	airdropIntegration      AirdropIntegration
 
 	antispamGuard *antispam.Guard
 	amlGuard      *aml.Guard
@@ -45,6 +46,7 @@ type transactionServer struct {
 
 func NewTransactionServer(
 	data code_data.Provider,
+	submitIntentIntegration SubmitIntentIntegration,
 	airdropIntegration AirdropIntegration,
 	antispamGuard *antispam.Guard,
 	amlGuard *aml.Guard,
@@ -69,7 +71,8 @@ func NewTransactionServer(
 
 		auth: auth_util.NewRPCSignatureVerifier(data),
 
-		airdropIntegration: airdropIntegration,
+		submitIntentIntegration: submitIntentIntegration,
+		airdropIntegration:      airdropIntegration,
 
 		antispamGuard: antispamGuard,
 		amlGuard:      amlGuard,

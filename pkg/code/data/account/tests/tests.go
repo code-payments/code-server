@@ -271,6 +271,7 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 		for i, accountType := range []commonpb.AccountType{
 			commonpb.AccountType_TEMPORARY_INCOMING,
 			commonpb.AccountType_TEMPORARY_OUTGOING,
+			commonpb.AccountType_POOL,
 		} {
 			for j := 0; j < 5; j++ {
 				record := &account.Record{
@@ -295,7 +296,7 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 
 		actualByType, err := s.GetLatestByOwnerAddress(ctx, "owner")
 		require.NoError(t, err)
-		require.Len(t, actualByType, 2)
+		require.Len(t, actualByType, 3)
 
 		for i, accountType := range []commonpb.AccountType{
 			commonpb.AccountType_TEMPORARY_INCOMING,
@@ -305,6 +306,13 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 			require.True(t, ok)
 			require.Len(t, actual, 1)
 			assert.Equal(t, fmt.Sprintf("token%d4", i), actual[0].TokenAccount)
+		}
+
+		allActual, ok := actualByType[commonpb.AccountType_POOL]
+		require.True(t, ok)
+		require.Len(t, allActual, 5)
+		for i, actual := range allActual {
+			assert.Equal(t, fmt.Sprintf("token2%d", i), actual.TokenAccount)
 		}
 	})
 }

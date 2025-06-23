@@ -110,22 +110,6 @@ func (s *store) findBySource(source string) []*intent.Record {
 	return res
 }
 
-func (s *store) findByInitiatorAndType(intentType intent.Type, owner string) []*intent.Record {
-	res := make([]*intent.Record, 0)
-	for _, item := range s.records {
-		if item.IntentType != intentType {
-			continue
-		}
-
-		if item.InitiatorOwnerAccount != owner {
-			continue
-		}
-
-		res = append(res, item)
-	}
-	return res
-}
-
 func (s *store) findByOwnerSinceTimestamp(owner string, since time.Time) []*intent.Record {
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
@@ -316,25 +300,6 @@ func (s *store) GetAllByOwner(ctx context.Context, owner string, cursor query.Cu
 	}
 
 	return nil, intent.ErrIntentNotFound
-}
-
-func (s *store) GetLatestByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findByInitiatorAndType(intentType, owner)
-	if len(items) == 0 {
-		return nil, intent.ErrIntentNotFound
-	}
-
-	latest := items[0]
-	for _, item := range items {
-		if item.CreatedAt.After(latest.CreatedAt) {
-			latest = item
-		}
-	}
-
-	return latest, nil
 }
 
 func (s *store) GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {

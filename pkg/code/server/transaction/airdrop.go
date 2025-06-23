@@ -399,7 +399,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			return err
 		}
 
-		err = balanceLock.OnCommit(ctx, s.data)
+		err = balanceLock.OnNewBalanceVersion(ctx, s.data)
 		if err != nil {
 			return err
 		}

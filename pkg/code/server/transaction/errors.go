@@ -23,9 +23,9 @@ const (
 var (
 	ErrTimedOutReceivingRequest = errors.New("timed out receiving request")
 
-	ErrTooManyPayments          = newIntentDeniedError("too many payments")
-	ErrTransactionLimitExceeded = newIntentDeniedError("dollar value exceeds limit")
-	ErrNotManagedByCode         = newIntentDeniedError("at least one account is no longer managed by code")
+	ErrTooManyPayments          = NewIntentDeniedError("too many payments")
+	ErrTransactionLimitExceeded = NewIntentDeniedError("dollar value exceeds limit")
+	ErrNotManagedByCode         = NewIntentDeniedError("at least one account is no longer managed by code")
 
 	ErrInvalidSignature  = errors.New("invalid signature provided")
 	ErrMissingSignature  = errors.New("at least one signature is missing")
@@ -38,22 +38,22 @@ type IntentValidationError struct {
 	message string
 }
 
-func newIntentValidationError(message string) IntentValidationError {
+func NewIntentValidationError(message string) IntentValidationError {
 	return IntentValidationError{
 		message: message,
 	}
 }
 
-func newIntentValidationErrorf(format string, args ...any) IntentValidationError {
-	return newIntentValidationError(fmt.Sprintf(format, args...))
+func NewIntentValidationErrorf(format string, args ...any) IntentValidationError {
+	return NewIntentValidationError(fmt.Sprintf(format, args...))
 }
 
-func newActionValidationError(action *transactionpb.Action, message string) IntentValidationError {
-	return newIntentValidationError(fmt.Sprintf("actions[%d]: %s", action.Id, message))
+func NewActionValidationError(action *transactionpb.Action, message string) IntentValidationError {
+	return NewIntentValidationError(fmt.Sprintf("actions[%d]: %s", action.Id, message))
 }
 
-func newActionValidationErrorf(action *transactionpb.Action, message string, args ...any) IntentValidationError {
-	return newActionValidationError(action, fmt.Sprintf(message, args...))
+func NewActionValidationErrorf(action *transactionpb.Action, message string, args ...any) IntentValidationError {
+	return NewActionValidationError(action, fmt.Sprintf(message, args...))
 }
 
 func (e IntentValidationError) Error() string {
@@ -64,7 +64,7 @@ type IntentDeniedError struct {
 	message string
 }
 
-func newIntentDeniedError(message string) IntentDeniedError {
+func NewIntentDeniedError(message string) IntentDeniedError {
 	return IntentDeniedError{
 		message: message,
 	}
@@ -78,18 +78,18 @@ type StaleStateError struct {
 	message string
 }
 
-func newStaleStateError(message string) StaleStateError {
+func NewStaleStateError(message string) StaleStateError {
 	return StaleStateError{
 		message: message,
 	}
 }
 
-func newStaleStateErrorf(format string, args ...any) StaleStateError {
-	return newStaleStateError(fmt.Sprintf(format, args...))
+func NewStaleStateErrorf(format string, args ...any) StaleStateError {
+	return NewStaleStateError(fmt.Sprintf(format, args...))
 }
 
-func newActionWithStaleStateError(action *transactionpb.Action, message string) StaleStateError {
-	return newStaleStateError(fmt.Sprintf("actions[%d]: %s", action.Id, message))
+func NewActionWithStaleStateError(action *transactionpb.Action, message string) StaleStateError {
+	return NewStaleStateError(fmt.Sprintf("actions[%d]: %s", action.Id, message))
 }
 
 func (e StaleStateError) Error() string {

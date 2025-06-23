@@ -14,6 +14,7 @@ import (
 func RunTests(t *testing.T, s balance.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s balance.Store){
 		testCachedBalanceVersionHappyPath,
+		testClosedAccountHappyPath,
 		testExternalCheckpointHappyPath,
 	} {
 		tf(t, s)
@@ -26,21 +27,36 @@ func testCachedBalanceVersionHappyPath(t *testing.T, s balance.Store) {
 		ctx := context.Background()
 
 		for i := range 100 {
+			for j := 0; j < 10; j++ {
+				currentVersion, err := s.GetCachedVersion(ctx, "token_account_1")
+				require.NoError(t, err)
+				assert.EqualValues(t, i, currentVersion)
+			}
+
 			if i > 0 {
 				assert.Equal(t, balance.ErrStaleCachedBalanceVersion, s.AdvanceCachedVersion(ctx, "token_account_1", uint64(i-1)))
 			}
 			assert.Equal(t, balance.ErrStaleCachedBalanceVersion, s.AdvanceCachedVersion(ctx, "token_account_1", uint64(i+1)))
 
-			currentVersion, err := s.GetCachedVersion(ctx, "token_account_1")
-			require.NoError(t, err)
-			assert.EqualValues(t, i, currentVersion)
-
-			require.NoError(t, s.AdvanceCachedVersion(ctx, "token_account_1", currentVersion))
+			require.NoError(t, s.AdvanceCachedVersion(ctx, "token_account_1", uint64(i)))
 		}
 
 		currentVersion, err := s.GetCachedVersion(ctx, "token_account_2")
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, currentVersion)
+	})
+}
+
+func testClosedAccountHappyPath(t *testing.T, s balance.Store) {
+	t.Run("testClosedAccountHappyPath", func(t *testing.T) {
+		ctx := context.Background()
+
+		require.NoError(t, s.CheckNotClosed(ctx, "token_account_1"))
+
+		require.NoError(t, s.MarkAsClosed(ctx, "token_account_1"))
+
+		assert.Equal(t, balance.ErrAccountClosed, s.CheckNotClosed(ctx, "token_account_1"))
+		require.NoError(t, s.CheckNotClosed(ctx, "token_account_2s"))
 	})
 }
 
