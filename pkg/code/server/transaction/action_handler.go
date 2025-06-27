@@ -166,7 +166,6 @@ func (h *OpenAccountActionHandler) GetFulfillmentMetadata(
 			source:                   h.timelockAccounts.Vault,
 			destination:              nil,
 			fulfillmentOrderingIndex: 0,
-			disableActiveScheduling:  h.accountType != commonpb.AccountType_PRIMARY, // Non-primary accounts are created on demand after first usage
 		}, nil
 	default:
 		return nil, errors.New("invalid virtual ixn index")
