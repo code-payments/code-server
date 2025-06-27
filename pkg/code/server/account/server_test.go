@@ -152,13 +152,19 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	bucketDerivedOwner := testutil.NewRandomAccount(t)
 	tempIncomingDerivedOwner := testutil.NewRandomAccount(t)
 	swapDerivedOwner := testutil.NewRandomAccount(t)
+	poolDerivedOwner1 := testutil.NewRandomAccount(t)
+	poolDerivedOwner2 := testutil.NewRandomAccount(t)
 
 	primaryAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
 	bucketAccountRecords := setupAccountRecords(t, env, ownerAccount, bucketDerivedOwner, 0, commonpb.AccountType_BUCKET_100_KIN)
 	setupAccountRecords(t, env, ownerAccount, swapDerivedOwner, 0, commonpb.AccountType_SWAP)
 	setupAccountRecords(t, env, ownerAccount, tempIncomingDerivedOwner, 2, commonpb.AccountType_TEMPORARY_INCOMING)
+	pool1AccountRecords := setupAccountRecords(t, env, ownerAccount, poolDerivedOwner1, 0, commonpb.AccountType_POOL)
+	pool2AccountRecords := setupAccountRecords(t, env, ownerAccount, poolDerivedOwner2, 1, commonpb.AccountType_POOL)
 	setupCachedBalance(t, env, bucketAccountRecords, common.ToCoreMintQuarks(100))
 	setupCachedBalance(t, env, primaryAccountRecords, common.ToCoreMintQuarks(42))
+	setupCachedBalance(t, env, pool1AccountRecords, common.ToCoreMintQuarks(88))
+	setupCachedBalance(t, env, pool2AccountRecords, common.ToCoreMintQuarks(123))
 
 	otherOwnerAccount := testutil.NewRandomAccount(t)
 	setupAccountRecords(t, env, otherOwnerAccount, otherOwnerAccount, 0, commonpb.AccountType_PRIMARY)
@@ -168,7 +174,8 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 4)
+	assert.Len(t, resp.TokenAccountInfos, 6)
+	assert.EqualValues(t, 2, resp.NextPoolIndex)
 
 	for _, authority := range []*common.Account{
 		ownerAccount,
@@ -210,6 +217,14 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Equal(t, commonpb.AccountType_SWAP, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, 0, accountInfo.Balance)
+		case poolDerivedOwner1.PublicKey().ToBase58():
+			assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
+			assert.EqualValues(t, 0, accountInfo.Index)
+			assert.EqualValues(t, common.ToCoreMintQuarks(88), accountInfo.Balance)
+		case poolDerivedOwner2.PublicKey().ToBase58():
+			assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
+			assert.EqualValues(t, 1, accountInfo.Index)
+			assert.EqualValues(t, common.ToCoreMintQuarks(123), accountInfo.Balance)
 		default:
 			require.Fail(t, "unexpected authority")
 		}
@@ -465,6 +480,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
 			assert.Len(t, resp.TokenAccountInfos, 1)
+			assert.EqualValues(t, 0, resp.NextPoolIndex)
 
 			accountInfo, ok := resp.TokenAccountInfos[timelockAccounts.Vault.PublicKey().ToBase58()]
 			require.True(t, ok)

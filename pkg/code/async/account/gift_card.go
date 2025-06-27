@@ -211,7 +211,7 @@ func InitiateProcessToAutoReturnGiftCard(ctx context.Context, data code_data.Pro
 			return err
 		}
 
-		return balanceLock.OnCommit(ctx, data)
+		return balanceLock.OnNewBalanceVersion(ctx, data)
 	})
 }
 

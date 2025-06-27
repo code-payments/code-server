@@ -97,6 +97,10 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 		m.NativeAmount = obj.ReceivePaymentsPubliclyMetadata.OriginalNativeAmount
 
 		m.UsdMarketValue = obj.ReceivePaymentsPubliclyMetadata.UsdMarketValue
+	case intent.PublicDistribution:
+		m.Source = obj.PublicDistributionMetadata.Source
+		m.Quantity = obj.PublicDistributionMetadata.Quantity
+		m.UsdMarketValue = obj.PublicDistributionMetadata.UsdMarketValue
 	default:
 		return nil, errors.New("unsupported intent type")
 	}
@@ -152,6 +156,12 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 			OriginalExchangeRate:     obj.ExchangeRate,
 			OriginalNativeAmount:     obj.NativeAmount,
 
+			UsdMarketValue: obj.UsdMarketValue,
+		}
+	case intent.PublicDistribution:
+		record.PublicDistributionMetadata = &intent.PublicDistributionMetadata{
+			Source:         obj.Source,
+			Quantity:       obj.Quantity,
 			UsdMarketValue: obj.UsdMarketValue,
 		}
 	}
@@ -238,22 +248,6 @@ func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cu
 		return nil, intent.ErrIntentNotFound
 	}
 
-	return res, nil
-}
-
-func dbGetLatestByInitiatorAndType(ctx context.Context, db *sqlx.DB, intentType intent.Type, owner string) (*intentModel, error) {
-	res := &intentModel{}
-
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
-		FROM ` + intentTableName + `
-		WHERE owner = $1 AND intent_type = $2
-		ORDER BY created_at DESC
-		LIMIT 1`
-
-	err := db.GetContext(ctx, res, query, owner, intentType)
-	if err != nil {
-		return nil, pgutil.CheckNoRows(err, intent.ErrIntentNotFound)
-	}
 	return res, nil
 }
 

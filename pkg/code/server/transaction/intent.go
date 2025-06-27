@@ -37,6 +37,24 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
+type SubmitIntentIntegration interface {
+	// AllowCreation determines whether the new intent creation should be allowed
+	// with app-specific validation rules
+	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error
+}
+
+type defaultSubmitIntentIntegration struct {
+}
+
+// NewDefaultSubmitIntentIntegration retuns a SubmitIntentIntegration that allows everything
+func NewDefaultSubmitIntentIntegration() SubmitIntentIntegration {
+	return &defaultSubmitIntentIntegration{}
+}
+
+func (i *defaultSubmitIntentIntegration) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
+	return nil
+}
+
 func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_SubmitIntentServer) error {
 	// Bound the total RPC. Keeping the timeout higher to see where we land because
 	// there's a lot of stuff happening in this method.
@@ -92,11 +110,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 	// Figure out what kind of intent we're operating on and initialize the intent handler
 	var intentHandler CreateIntentHandler
-	var intentHasNewOwner bool // todo: intent handler should specify this
 	switch submitActionsReq.Metadata.Type.(type) {
 	case *transactionpb.Metadata_OpenAccounts:
 		log = log.WithField("intent_type", "open_accounts")
-		intentHasNewOwner = true
 		intentHandler = NewOpenAccountsIntentHandler(s.conf, s.data, s.antispamGuard)
 	case *transactionpb.Metadata_SendPublicPayment:
 		log = log.WithField("intent_type", "send_public_payment")
@@ -104,6 +120,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	case *transactionpb.Metadata_ReceivePaymentsPublicly:
 		log = log.WithField("intent_type", "receive_payments_publicly")
 		intentHandler = NewReceivePaymentsPubliclyIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
+	case *transactionpb.Metadata_PublicDistribution:
+		log = log.WithField("intent_type", "public_distribution")
+		intentHandler = NewPublicDistributionIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 	default:
 		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}
@@ -116,6 +135,12 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return handleSubmitIntentError(streamer, err)
 	}
 	log = log.WithField("submit_actions_owner_account", submitActionsOwnerAccount.PublicKey().ToBase58())
+
+	createsNewUserOwner, err := intentHandler.CreatesNewUser(ctx, submitActionsReq.Metadata)
+	if err != nil {
+		log.WithError(err).Warn("failure checking if intent creates a new user")
+		return handleSubmitIntentError(streamer, err)
+	}
 
 	var initiatorOwnerAccount *common.Account
 	submitActionsOwnerMetadata, err := common.GetOwnerMetadata(ctx, s.data, submitActionsOwnerAccount)
@@ -141,7 +166,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 							log.WithError(err).Warn("failure getting user initiator owner account")
 							return handleSubmitIntentError(streamer, err)
 						} else if err == account.ErrAccountInfoNotFound || accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-							return newActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account")
+							return NewActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account")
 						}
 
 						initiatorOwnerAccount, err = common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
@@ -150,19 +175,19 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 							return handleSubmitIntentError(streamer, err)
 						}
 					default:
-						return newActionValidationError(submitActionsReq.Actions[0], "expected a no privacy withdraw action")
+						return NewActionValidationError(submitActionsReq.Actions[0], "expected a no privacy withdraw action")
 					}
 				}
 			default:
-				return newIntentValidationError("expected a receive payments publicly intent")
+				return NewIntentValidationError("expected a receive payments publicly intent")
 			}
 		default:
 			log.Warnf("unhandled owner account type %s", submitActionsOwnerMetadata.Type)
 			return handleSubmitIntentError(streamer, errors.New("unhandled owner account type"))
 		}
 	} else if err == common.ErrOwnerNotFound {
-		if !intentHasNewOwner {
-			return handleSubmitIntentError(streamer, newIntentDeniedError("unexpected owner account"))
+		if !createsNewUserOwner {
+			return handleSubmitIntentError(streamer, NewIntentDeniedError("unexpected owner account"))
 		}
 		initiatorOwnerAccount = submitActionsOwnerAccount
 	} else if err != nil {
@@ -192,12 +217,12 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			case commonpb.AccountType_REMOTE_SEND_GIFT_CARD:
 				// Remote gift cards are random accounts not owned by a user account's 12 words
 				if !bytes.Equal(typedAction.OpenAccount.Owner.Value, typedAction.OpenAccount.Authority.Value) {
-					return handleSubmitIntentError(streamer, newActionValidationErrorf(action, "owner must be %s", authorityAccount.PublicKey().ToBase58()))
+					return handleSubmitIntentError(streamer, NewActionValidationErrorf(action, "owner must be %s", authorityAccount.PublicKey().ToBase58()))
 				}
 			default:
 				// Everything else is owned by a user account's 12 words
 				if !bytes.Equal(typedAction.OpenAccount.Owner.Value, initiatorOwnerAccount.PublicKey().ToBytes()) {
-					return handleSubmitIntentError(streamer, newActionValidationErrorf(action, "owner must be %s", initiatorOwnerAccount.PublicKey().ToBase58()))
+					return handleSubmitIntentError(streamer, NewActionValidationErrorf(action, "owner must be %s", initiatorOwnerAccount.PublicKey().ToBase58()))
 				}
 			}
 
@@ -226,7 +251,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	// We're operating on a new intent, so validate we don't have an existing DB record
 	if existingIntentRecord != nil {
 		log.Warn("client is attempting to resubmit an intent or reuse an intent id")
-		return handleSubmitIntentError(streamer, newStaleStateError("intent already exists"))
+		return handleSubmitIntentError(streamer, NewStaleStateError("intent already exists"))
 	}
 
 	// Populate metadata into the new DB record
@@ -248,29 +273,24 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return nil
 	}
 
-	// Lock any acccounts with outgoing transfers of funds:
-	//  1. Optimistic version lock at the DB layer to guarantee balance consistency
+	// Lock any acccounts with fund movement that is not resistent to race conditions
+	//  1. Global DB layer lock to guarantee balance consistency in a mult-server environment
 	//  2. Local in memory lock to avoid over consumption of local resources (eg.
 	//     nonces) when we're likely to encounter a race resulting in DB txn rollback
 	//     (eg. mass attempt to claim gift card).
-	accountBalancesToLock, err := intentHandler.GetAccountsWithBalancesToLock(ctx, intentRecord, submitActionsReq.Metadata)
+	globalBalanceLocks, err := intentHandler.GetBalanceLocks(ctx, intentRecord, submitActionsReq.Metadata)
 	if err != nil {
 		log.WithError(err).Warn("failure getting accounts with balances to lock")
 		return handleSubmitIntentError(streamer, err)
 	}
-	localAccountLocks := make([]*sync.Mutex, len(accountBalancesToLock))
-	globalBalanceLocks := make([]*balance.OptimisticVersionLock, len(accountBalancesToLock))
-	for i, account := range accountBalancesToLock {
-		log := log.WithField("account", account.PublicKey().ToBase58())
-
-		localAccountLocks[i] = s.getLocalAccountLock(account)
-
-		globalBalanceLock, err := balance.GetOptimisticVersionLock(ctx, s.data, account)
-		if err != nil {
-			log.WithError(err).Warn("failure getting balance lock")
-			return handleSubmitIntentError(streamer, err)
+	localAccountLocks := make([]*sync.Mutex, 0)
+	locallyLockedAccounts := make(map[string]any)
+	for _, globalBalanceLock := range globalBalanceLocks {
+		_, ok := locallyLockedAccounts[globalBalanceLock.Account.PublicKey().ToBase58()]
+		if !ok {
+			localAccountLocks = append(localAccountLocks, s.getLocalAccountLock(globalBalanceLock.Account))
 		}
-		globalBalanceLocks[i] = globalBalanceLock
+		locallyLockedAccounts[globalBalanceLock.Account.PublicKey().ToBase58()] = true
 	}
 	for _, localAccountLock := range localAccountLocks {
 		localAccountLock.Lock()
@@ -289,6 +309,22 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			log.WithError(err).Warn("detected a client with stale state")
 		default:
 			log.WithError(err).Warn("failure checking if new intent was allowed")
+		}
+		return handleSubmitIntentError(streamer, err)
+	}
+
+	// Validate the new intent with app-specific logic
+	err = s.submitIntentIntegration.AllowCreation(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
+	if err != nil {
+		switch err.(type) {
+		case IntentValidationError:
+			log.WithError(err).Warn("new intent failed integration validation")
+		case IntentDeniedError:
+			log.WithError(err).Warn("new intent was denied by integration")
+		case StaleStateError:
+			log.WithError(err).Warn("integration detected a client with stale state")
+		default:
+			log.WithError(err).Warn("failure checking if new intent was allowed by integration")
 		}
 		return handleSubmitIntentError(streamer, err)
 	}
@@ -611,8 +647,8 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return err
 		}
 
-		for _, balanceLock := range globalBalanceLocks {
-			err = balanceLock.OnCommit(ctx, s.data)
+		for _, globalBalanceLock := range globalBalanceLocks {
+			err = globalBalanceLock.CommitFn(ctx, s.data)
 			if err != nil {
 				log.WithError(err).Warn("failure commiting balance update")
 				return err
@@ -624,7 +660,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	if err != nil {
 		if strings.Contains(err.Error(), "stale") || strings.Contains(err.Error(), "exist") {
 			log.WithError(err).Info("race condition detected")
-			return handleSubmitIntentError(streamer, newStaleStateErrorf("race detected: %s", err.Error()))
+			return handleSubmitIntentError(streamer, NewStaleStateErrorf("race detected: %s", err.Error()))
 		}
 		return handleSubmitIntentError(streamer, err)
 	}

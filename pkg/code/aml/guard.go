@@ -63,6 +63,9 @@ func (g *Guard) AllowMoneyMovement(ctx context.Context, intentRecord *intent.Rec
 	case intent.ReceivePaymentsPublicly:
 		// Public receives are always allowed
 		return true, nil
+	case intent.PublicDistribution:
+		// Public distributions are always allowed
+		return true, nil
 	default:
 		err := errors.New("intent record must be a send or receive payment")
 		tracer.OnError(err)

@@ -18,9 +18,9 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testExternalDepositRoundTrip,
 		testSendPublicPaymentRoundTrip,
 		testReceivePaymentsPubliclyRoundTrip,
+		testPublicDistributionRoundTrip,
 		testUpdateHappyPath,
 		testUpdateStaleRecord,
-		testGetLatestByInitiatorAndType,
 		testGetOriginalGiftCardIssuedIntent,
 		testGetGiftCardClaimedIntent,
 		testGetTransactedAmountForAntiMoneyLaundering,
@@ -229,6 +229,51 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 	})
 }
 
+func testPublicDistributionRoundTrip(t *testing.T, s intent.Store) {
+	t.Run("testPublicDistributionRoundTrip", func(t *testing.T) {
+		ctx := context.Background()
+
+		actual, err := s.Get(ctx, "test_intent_id")
+		require.Error(t, err)
+		assert.Equal(t, intent.ErrIntentNotFound, err)
+		assert.Nil(t, actual)
+
+		expected := intent.Record{
+			IntentId:              "test_intent_id",
+			IntentType:            intent.PublicDistribution,
+			InitiatorOwnerAccount: "test_owner",
+			PublicDistributionMetadata: &intent.PublicDistributionMetadata{
+				Source:         "test_source",
+				Quantity:       12345,
+				UsdMarketValue: 999.99,
+			},
+			ExtendedMetadata: []byte("extended_metadata"),
+			State:            intent.StateUnknown,
+			CreatedAt:        time.Now(),
+		}
+		cloned := expected.Clone()
+		err = s.Save(ctx, &expected)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, expected.Id)
+		assert.EqualValues(t, 1, expected.Version)
+
+		actual, err = s.Get(ctx, "test_intent_id")
+		require.NoError(t, err)
+		assert.Equal(t, cloned.IntentId, actual.IntentId)
+		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
+		require.NotNil(t, actual.PublicDistributionMetadata)
+		assert.Equal(t, cloned.PublicDistributionMetadata.Source, actual.PublicDistributionMetadata.Source)
+		assert.Equal(t, cloned.PublicDistributionMetadata.Quantity, actual.PublicDistributionMetadata.Quantity)
+		assert.Equal(t, cloned.PublicDistributionMetadata.UsdMarketValue, actual.PublicDistributionMetadata.UsdMarketValue)
+		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
+		assert.Equal(t, cloned.State, actual.State)
+		assert.Equal(t, cloned.CreatedAt.Unix(), actual.CreatedAt.Unix())
+		assert.EqualValues(t, 1, actual.Id)
+		assert.EqualValues(t, 1, actual.Version)
+	})
+}
+
 func testUpdateHappyPath(t *testing.T, s intent.Store) {
 	t.Run("testUpdateHappyPath", func(t *testing.T) {
 		ctx := context.Background()
@@ -293,33 +338,6 @@ func testUpdateStaleRecord(t *testing.T, s intent.Store) {
 		assert.EqualValues(t, 1, actual.Id)
 		assert.EqualValues(t, 1, actual.Version)
 	})
-}
-
-func testGetLatestByInitiatorAndType(t *testing.T, s intent.Store) {
-	ctx := context.Background()
-
-	t.Run("testGetLatestByInitiatorAndType", func(t *testing.T) {
-		records := []intent.Record{
-			{IntentId: "t1", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StatePending},
-			{IntentId: "t2", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateFailed},
-			{IntentId: "t3", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateUnknown},
-			{IntentId: "t4", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateUnknown},
-			{IntentId: "t5", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o2", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateUnknown},
-			{IntentId: "t6", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o2", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateFailed},
-		}
-		for i, record := range records {
-			record.CreatedAt = time.Now().Add(time.Duration(i) * time.Second)
-			require.NoError(t, s.Save(ctx, &record))
-		}
-
-		_, err := s.GetLatestByInitiatorAndType(ctx, intent.SendPublicPayment, "o1")
-		assert.Equal(t, intent.ErrIntentNotFound, err)
-
-		actual, err := s.GetLatestByInitiatorAndType(ctx, intent.OpenAccounts, "o1")
-		require.NoError(t, err)
-		assert.Equal(t, "t4", actual.IntentId)
-	})
-
 }
 
 func testGetOriginalGiftCardIssuedIntent(t *testing.T, s intent.Store) {

@@ -33,6 +33,15 @@ const (
 		CONSTRAINT codewallet__core_cachedbalanceversion__unique__token_account UNIQUE (token_account)
 	);
 
+	CREATE TABLE codewallet__core_opencloselocks (
+		id SERIAL NOT NULL PRIMARY KEY,
+
+		token_account TEXT NOT NULL,
+		is_open BOOL NOT NULL,
+
+		CONSTRAINT codewallet__core_opencloselocks__unique__token_account UNIQUE (token_account)
+	);
+
 	CREATE TABLE codewallet__core_externalbalancecheckpoint (
 		id SERIAL NOT NULL PRIMARY KEY,
 
@@ -49,6 +58,7 @@ const (
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
 		DROP TABLE codewallet__core_cachedbalanceversion;
+		DROP TABLE codewallet__core_opencloselocks;
 		DROP TABLE codewallet__core_externalbalancecheckpoint;
 	`
 )

@@ -210,27 +210,47 @@ func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) (
 }
 
 func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
-	var res []*model
+	var res1 []*model
 
-	query := `SELECT DISTINCT ON (account_type, relationship_to) id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
-		WHERE owner_account = $1
+	query1 := `SELECT DISTINCT ON (account_type, relationship_to) id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
+		WHERE owner_account = $1 AND account_type NOT IN ($2)
 		ORDER BY account_type, relationship_to, index DESC
 	`
 
 	err := db.SelectContext(
 		ctx,
-		&res,
-		query,
+		&res1,
+		query1,
 		address,
+		commonpb.AccountType_POOL,
 	)
-	if err != nil {
-		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
+	if err != nil && !pgutil.IsNoRows(err) {
+		return nil, err
 	}
 
+	var res2 []*model
+
+	query2 := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
+		WHERE owner_account = $1 AND account_type IN ($2)
+		ORDER BY index ASC
+	`
+	err = db.SelectContext(
+		ctx,
+		&res2,
+		query2,
+		address,
+		commonpb.AccountType_POOL,
+	)
+	if err != nil && !pgutil.IsNoRows(err) {
+		return nil, err
+	}
+
+	var res []*model
+	res = append(res, res1...)
+	res = append(res, res2...)
 	if len(res) == 0 {
 		return nil, account.ErrAccountInfoNotFound
 	}
-
 	return res, nil
 }
 

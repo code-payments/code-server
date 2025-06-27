@@ -121,6 +121,8 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	GetCachedBalanceVersion(ctx context.Context, account string) (uint64, error)
 	AdvanceCachedBalanceVersion(ctx context.Context, account string, currentVersion uint64) error
+	CheckNotClosedForBalanceUpdate(ctx context.Context, account string) error
+	MarkAsClosedForBalanceUpdate(ctx context.Context, account string) error
 	SaveExternalBalanceCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error
 	GetExternalBalanceCheckpoint(ctx context.Context, account string) (*balance.ExternalCheckpointRecord, error)
 
@@ -185,7 +187,6 @@ type DatabaseData interface {
 	GetIntent(ctx context.Context, intentID string) (*intent.Record, error)
 	GetIntentBySignature(ctx context.Context, signature string) (*intent.Record, error)
 	GetAllIntentsByOwner(ctx context.Context, owner string, opts ...query.Option) ([]*intent.Record, error)
-	GetLatestIntentByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error)
 	GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
 	GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
 	GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
@@ -436,6 +437,12 @@ func (dp *DatabaseProvider) GetCachedBalanceVersion(ctx context.Context, account
 func (dp *DatabaseProvider) AdvanceCachedBalanceVersion(ctx context.Context, account string, currentVersion uint64) error {
 	return dp.balance.AdvanceCachedVersion(ctx, account, currentVersion)
 }
+func (dp *DatabaseProvider) CheckNotClosedForBalanceUpdate(ctx context.Context, account string) error {
+	return dp.balance.CheckNotClosed(ctx, account)
+}
+func (dp *DatabaseProvider) MarkAsClosedForBalanceUpdate(ctx context.Context, account string) error {
+	return dp.balance.MarkAsClosed(ctx, account)
+}
 func (dp *DatabaseProvider) SaveExternalBalanceCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error {
 	return dp.balance.SaveExternalCheckpoint(ctx, record)
 }
@@ -648,9 +655,6 @@ func (dp *DatabaseProvider) GetAllIntentsByOwner(ctx context.Context, owner stri
 	}
 
 	return dp.intents.GetAllByOwner(ctx, owner, req.Cursor, req.Limit, req.SortBy)
-}
-func (dp *DatabaseProvider) GetLatestIntentByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error) {
-	return dp.intents.GetLatestByInitiatorAndType(ctx, intentType, owner)
 }
 func (dp *DatabaseProvider) GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {
 	return dp.intents.GetOriginalGiftCardIssuedIntent(ctx, giftCardVault)
