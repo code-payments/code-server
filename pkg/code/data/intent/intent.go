@@ -33,6 +33,7 @@ const (
 	ReceivePaymentsPublicly
 	EstablishRelationship // Deprecated privacy flow
 	Login                 // Deprecated login flow
+	PublicDistribution
 )
 
 type Record struct {
@@ -47,6 +48,7 @@ type Record struct {
 	ExternalDepositMetadata         *ExternalDepositMetadata
 	SendPublicPaymentMetadata       *SendPublicPaymentMetadata
 	ReceivePaymentsPubliclyMetadata *ReceivePaymentsPubliclyMetadata
+	PublicDistributionMetadata      *PublicDistributionMetadata
 
 	ExtendedMetadata []byte
 
@@ -58,7 +60,7 @@ type Record struct {
 }
 
 type OpenAccountsMetadata struct {
-	// Nothing yet
+	// todo: What should be stored here given different flows?
 }
 
 type ExternalDepositMetadata struct {
@@ -96,6 +98,12 @@ type ReceivePaymentsPubliclyMetadata struct {
 	UsdMarketValue float64
 }
 
+type PublicDistributionMetadata struct {
+	Source         string
+	Quantity       uint64
+	UsdMarketValue float64
+}
+
 func (r *Record) IsCompleted() bool {
 	return r.State == StateConfirmed
 }
@@ -125,6 +133,12 @@ func (r *Record) Clone() Record {
 		receivePaymentsPubliclyMetadata = &cloned
 	}
 
+	var publicDistributionMetadata *PublicDistributionMetadata
+	if r.PublicDistributionMetadata != nil {
+		cloned := r.PublicDistributionMetadata.Clone()
+		publicDistributionMetadata = &cloned
+	}
+
 	return Record{
 		Id: r.Id,
 
@@ -137,6 +151,7 @@ func (r *Record) Clone() Record {
 		ExternalDepositMetadata:         externalDepositMetadata,
 		SendPublicPaymentMetadata:       sendPublicPaymentMetadata,
 		ReceivePaymentsPubliclyMetadata: receivePaymentsPubliclyMetadata,
+		PublicDistributionMetadata:      publicDistributionMetadata,
 
 		ExtendedMetadata: r.ExtendedMetadata,
 
@@ -160,6 +175,7 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.ExternalDepositMetadata = r.ExternalDepositMetadata
 	dst.SendPublicPaymentMetadata = r.SendPublicPaymentMetadata
 	dst.ReceivePaymentsPubliclyMetadata = r.ReceivePaymentsPubliclyMetadata
+	dst.PublicDistributionMetadata = r.PublicDistributionMetadata
 
 	dst.ExtendedMetadata = r.ExtendedMetadata
 
@@ -222,6 +238,17 @@ func (r *Record) Validate() error {
 		}
 
 		err := r.ReceivePaymentsPubliclyMetadata.Validate()
+		if err != nil {
+			return err
+		}
+	}
+
+	if r.IntentType == PublicDistribution {
+		if r.PublicDistributionMetadata == nil {
+			return errors.New("public distribution metadata must be present")
+		}
+
+		err := r.PublicDistributionMetadata.Validate()
 		if err != nil {
 			return err
 		}
@@ -388,6 +415,32 @@ func (m *ReceivePaymentsPubliclyMetadata) Validate() error {
 	return nil
 }
 
+func (m *PublicDistributionMetadata) Clone() PublicDistributionMetadata {
+	return PublicDistributionMetadata{
+		Source:         m.Source,
+		Quantity:       m.Quantity,
+		UsdMarketValue: m.UsdMarketValue,
+	}
+}
+
+func (m *PublicDistributionMetadata) CopyTo(dst *PublicDistributionMetadata) {
+	dst.Source = m.Source
+	dst.Quantity = m.Quantity
+	dst.UsdMarketValue = m.UsdMarketValue
+}
+
+func (m *PublicDistributionMetadata) Validate() error {
+	if len(m.Source) == 0 {
+		return errors.New("source is required")
+	}
+
+	if m.Quantity == 0 {
+		return errors.New("quantity is required")
+	}
+
+	return nil
+}
+
 func (s State) IsTerminal() bool {
 	switch s {
 	case StateConfirmed:
@@ -439,6 +492,8 @@ func (t Type) String() string {
 		return "establish_relationship"
 	case Login:
 		return "login"
+	case PublicDistribution:
+		return "public_distribution"
 	}
 
 	return "unknown"

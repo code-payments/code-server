@@ -30,6 +30,16 @@ func (s *store) AdvanceCachedVersion(ctx context.Context, account string, curren
 	return dbAdvanceCachedVersion(ctx, s.db, account, currentVersion)
 }
 
+// CheckNotClosed implements balance.Store.CheckNotClosed
+func (s *store) CheckNotClosed(ctx context.Context, account string) error {
+	return dbCheckNotClosed(ctx, s.db, account)
+}
+
+// MarkAsClosed implements balance.Store.MarkAsClosed
+func (s *store) MarkAsClosed(ctx context.Context, account string) error {
+	return dbMarkAsClosed(ctx, s.db, account)
+}
+
 // SaveExternalCheckpoint implements balance.Store.SaveExternalCheckpoint
 func (s *store) SaveExternalCheckpoint(ctx context.Context, record *balance.ExternalCheckpointRecord) error {
 	model, err := toExternalCheckpointModel(record)

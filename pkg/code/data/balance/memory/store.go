@@ -11,6 +11,7 @@ import (
 type store struct {
 	mu                             sync.Mutex
 	cachedBalanceVersionsByAccount map[string]uint64
+	closedAccounts                 map[string]any
 	externalCheckpointRecords      []*balance.ExternalCheckpointRecord
 	last                           uint64
 }
@@ -19,6 +20,7 @@ type store struct {
 func New() balance.Store {
 	return &store{
 		cachedBalanceVersionsByAccount: make(map[string]uint64),
+		closedAccounts:                 make(map[string]any),
 	}
 }
 
@@ -55,6 +57,28 @@ func (s *store) AdvanceCachedVersion(_ context.Context, account string, currentV
 	}
 
 	s.cachedBalanceVersionsByAccount[account]++
+
+	return nil
+}
+
+// CheckNotClosed implements balance.Store.CheckNotClosed
+func (s *store) CheckNotClosed(ctx context.Context, account string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.closedAccounts[account]; ok {
+		return balance.ErrAccountClosed
+	}
+
+	return nil
+}
+
+// MarkAsClosed implements balance.Store.MarkAsClosed
+func (s *store) MarkAsClosed(ctx context.Context, account string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.closedAccounts[account] = true
 
 	return nil
 }
@@ -128,6 +152,7 @@ func (s *store) reset() {
 	defer s.mu.Unlock()
 
 	s.cachedBalanceVersionsByAccount = make(map[string]uint64)
+	s.closedAccounts = make(map[string]any)
 	s.externalCheckpointRecords = nil
 	s.last = 0
 }

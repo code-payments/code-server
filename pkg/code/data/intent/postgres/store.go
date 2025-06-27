@@ -68,18 +68,6 @@ func (s *store) GetAllByOwner(ctx context.Context, owner string, cursor query.Cu
 	return intents, nil
 }
 
-// GetLatestByInitiatorAndType gets the latest record by intent type and initiating owner
-//
-// Returns ErrNotFound if no records are found.
-func (s *store) GetLatestByInitiatorAndType(ctx context.Context, intentType intent.Type, owner string) (*intent.Record, error) {
-	model, err := dbGetLatestByInitiatorAndType(ctx, s.db, intentType, owner)
-	if err != nil {
-		return nil, err
-	}
-
-	return fromIntentModel(model), nil
-}
-
 // GetOriginalGiftCardIssuedIntent gets the original intent where a gift card
 // was issued by its vault address.
 func (s *store) GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error) {

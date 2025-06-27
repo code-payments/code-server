@@ -14,6 +14,7 @@ const (
 	actionOpenAccounts    = "OpenAccounts"
 	actionSendPayment     = "SendPayment"
 	actionReceivePayments = "ReceivePayments"
+	actionDistribution    = "Distribution"
 
 	actionWelcomeBonus = "WelcomeBonus"
 )

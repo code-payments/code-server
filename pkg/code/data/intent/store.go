@@ -28,11 +28,6 @@ type Store interface {
 	// Returns ErrNotFound if no records are found.
 	GetAllByOwner(ctx context.Context, owner string, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*Record, error)
 
-	// GetLatestByInitiatorAndType gets the latest record by initiating owner and intent type
-	//
-	// Returns ErrNotFound if no records are found.
-	GetLatestByInitiatorAndType(ctx context.Context, intentType Type, owner string) (*Record, error)
-
 	// GetOriginalGiftCardIssuedIntent gets the original intent where a gift card
 	// was issued by its vault address.
 	GetOriginalGiftCardIssuedIntent(ctx context.Context, giftCardVault string) (*Record, error)

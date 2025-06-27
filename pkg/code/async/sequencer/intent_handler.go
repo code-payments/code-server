@@ -125,6 +125,37 @@ func (h *ReceivePaymentsPubliclyIntentHandler) OnActionUpdated(ctx context.Conte
 	return nil
 }
 
+type PublicDistributionIntentHandler struct {
+	data code_data.Provider
+}
+
+func NewPublicDistributionIntentHandler(data code_data.Provider) IntentHandler {
+	return &PublicDistributionIntentHandler{
+		data: data,
+	}
+}
+
+func (h *PublicDistributionIntentHandler) OnActionUpdated(ctx context.Context, intentId string) error {
+	actionRecords, err := h.data.GetAllActionsByIntent(ctx, intentId)
+	if err != nil {
+		return err
+	}
+
+	for _, actionRecord := range actionRecords {
+		// Intent is failed if at least one transfer or withdraw action fails
+		if actionRecord.State == action.StateFailed {
+			return markIntentFailed(ctx, h.data, intentId)
+		}
+
+		if actionRecord.State != action.StateConfirmed {
+			return nil
+		}
+	}
+
+	// Intent is confirmed when all transfer and withdraw actions are confirmed
+	return markIntentConfirmed(ctx, h.data, intentId)
+}
+
 func validateIntentState(record *intent.Record, states ...intent.State) error {
 	for _, validState := range states {
 		if record.State == validState {
@@ -176,5 +207,6 @@ func getIntentHandlers(data code_data.Provider) map[intent.Type]IntentHandler {
 	handlersByType[intent.OpenAccounts] = NewOpenAccountsIntentHandler(data)
 	handlersByType[intent.SendPublicPayment] = NewSendPublicPaymentIntentHandler(data)
 	handlersByType[intent.ReceivePaymentsPublicly] = NewReceivePaymentsPubliclyIntentHandler(data)
+	handlersByType[intent.PublicDistribution] = NewPublicDistributionIntentHandler(data)
 	return handlersByType
 }

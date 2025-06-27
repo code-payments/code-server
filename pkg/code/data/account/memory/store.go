@@ -275,6 +275,10 @@ func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[
 
 	items := s.findByOwnerAddress(address)
 	for _, accountType := range account.AllAccountTypes {
+		if accountType == commonpb.AccountType_POOL {
+			continue
+		}
+
 		items := s.filterByType(items, accountType)
 		if len(items) == 0 {
 			continue
@@ -290,6 +294,11 @@ func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[
 
 			res[accountType] = append(res[accountType], &cloned)
 		}
+	}
+
+	items = s.filterByType(items, commonpb.AccountType_POOL)
+	if len(items) > 0 {
+		res[commonpb.AccountType_POOL] = cloneRecords(items)
 	}
 
 	if len(res) == 0 {
