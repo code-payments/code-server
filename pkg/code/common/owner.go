@@ -145,6 +145,17 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 				}
 			}
 
+			// Filter out account records for accounts that have completed their
+			// full lifecycle
+			//
+			// todo: This needs tests
+			switch generalRecord.AccountType {
+			case commonpb.AccountType_POOL:
+				if timelockRecord.IsClosed() {
+					continue
+				}
+			}
+
 			res[generalRecord.AccountType] = append(res[generalRecord.AccountType], &AccountRecords{
 				General:  generalRecord,
 				Timelock: timelockRecord,
