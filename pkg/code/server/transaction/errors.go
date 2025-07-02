@@ -23,9 +23,10 @@ const (
 var (
 	ErrTimedOutReceivingRequest = errors.New("timed out receiving request")
 
-	ErrTooManyPayments          = NewIntentDeniedError("too many payments")
-	ErrTransactionLimitExceeded = NewIntentDeniedError("dollar value exceeds limit")
-	ErrNotManagedByCode         = NewIntentDeniedError("at least one account is no longer managed by code")
+	ErrTooManyPayments             = NewIntentDeniedError("too many payments")
+	ErrTransactionLimitExceeded    = NewIntentDeniedError("dollar value exceeds limit")
+	ErrSourceNotManagedByCode      = NewIntentDeniedError("at least one source account is no longer managed by code")
+	ErrDestinationNotManagedByCode = NewIntentDeniedError("a destination account is no longer managed by code")
 
 	ErrInvalidSignature  = errors.New("invalid signature provided")
 	ErrMissingSignature  = errors.New("at least one signature is missing")

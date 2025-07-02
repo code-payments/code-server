@@ -596,8 +596,19 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		}
 
 		// Code->Code public ayments can only be made to primary or pool accounts
+		// that are open and managed by Code
 		switch h.cachedDestinationAccountInfoRecord.AccountType {
 		case commonpb.AccountType_PRIMARY, commonpb.AccountType_POOL:
+			timelockRecord, err := h.data.GetTimelockByVault(ctx, destination.PublicKey().ToBase58())
+			if err != nil {
+				return err
+			}
+			if !common.IsManagedByCode(ctx, timelockRecord) {
+				if timelockRecord.IsClosed() {
+					return NewStaleStateError("destination account has been closed")
+				}
+				return ErrDestinationNotManagedByCode
+			}
 		default:
 			return NewIntentValidationError("destination account must be a PRIMARY or POOL account")
 		}
@@ -1381,7 +1392,7 @@ func validateAllUserAccountsManagedByCode(ctx context.Context, initiatorAccounts
 	// Try to unlock *ANY* latest account, and you're done
 	for _, accountRecords := range initiatorAccounts {
 		if !accountRecords.IsManagedByCode(ctx) {
-			return ErrNotManagedByCode
+			return ErrSourceNotManagedByCode
 		}
 	}
 
@@ -1683,15 +1694,14 @@ func validateClaimedGiftCard(ctx context.Context, data code_data.Provider, giftC
 		return err
 	}
 
-	isManagedByCode := common.IsManagedByCode(ctx, timelockRecord)
-	if !isManagedByCode {
+	if !common.IsManagedByCode(ctx, timelockRecord) {
 		if timelockRecord.IsClosed() {
 			// Better error messaging, since we know we'll never reopen the account
 			// and the balance is guaranteed to be claimed (not necessarily through
 			// Code server though).
 			return NewStaleStateError("gift card balance has already been claimed")
 		}
-		return ErrNotManagedByCode
+		return ErrSourceNotManagedByCode
 	}
 
 	//
@@ -1732,7 +1742,23 @@ func validateDistributedPool(ctx context.Context, data code_data.Provider, poolV
 	}
 
 	//
-	// Part 2: Is the full amount being distributed?
+	// Part 2: Is the pool account managed by Code?
+	//
+
+	timelockRecord, err := data.GetTimelockByVault(ctx, poolVaultAccount.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
+
+	if !common.IsManagedByCode(ctx, timelockRecord) {
+		if timelockRecord.IsClosed() {
+			return NewStaleStateError("pool balance has already been distributed")
+		}
+		return ErrSourceNotManagedByCode
+	}
+
+	//
+	// Part 3: Is the full amount being distributed?
 	//
 
 	poolBalance, err := balance.CalculateFromCache(ctx, data, poolVaultAccount)
@@ -1742,23 +1768,6 @@ func validateDistributedPool(ctx context.Context, data code_data.Provider, poolV
 		return NewStaleStateError("pool balance has already been distributed")
 	} else if distributedAmount != poolBalance {
 		return NewIntentValidationErrorf("must distribute entire pool balance of %d quarks", poolBalance)
-	}
-
-	//
-	// Part 3: Is the pool account managed by Code?
-	//
-
-	timelockRecord, err := data.GetTimelockByVault(ctx, poolVaultAccount.PublicKey().ToBase58())
-	if err != nil {
-		return err
-	}
-
-	isManagedByCode := common.IsManagedByCode(ctx, timelockRecord)
-	if !isManagedByCode {
-		if timelockRecord.IsClosed() {
-			return NewStaleStateError("pool balance has already been distributed")
-		}
-		return ErrNotManagedByCode
 	}
 
 	return nil
