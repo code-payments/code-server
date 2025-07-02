@@ -68,11 +68,11 @@ type CreateActionHandler interface {
 		bh solana.Blockhash,
 	) (*newFulfillmentMetadata, error)
 
-	// OnSaveToDB is a callback when the action is being saved to the DB
+	// OnCommitToDB is a callback when the action is being committeds to the DB
 	// within the scope of a DB transaction. Additional supporting DB records
 	// (ie. not the action or fulfillment records) relevant to the action should
 	// be saved here.
-	OnSaveToDB(ctx context.Context) error
+	OnCommitToDB(ctx context.Context) error
 }
 
 type OpenAccountActionHandler struct {
@@ -172,7 +172,7 @@ func (h *OpenAccountActionHandler) GetFulfillmentMetadata(
 	}
 }
 
-func (h *OpenAccountActionHandler) OnSaveToDB(ctx context.Context) error {
+func (h *OpenAccountActionHandler) OnCommitToDB(ctx context.Context) error {
 	err := h.data.SaveTimelock(ctx, h.unsavedTimelockRecord)
 	if err != nil {
 		return err
@@ -301,7 +301,7 @@ func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 	}
 }
 
-func (h *NoPrivacyTransferActionHandler) OnSaveToDB(ctx context.Context) error {
+func (h *NoPrivacyTransferActionHandler) OnCommitToDB(ctx context.Context) error {
 	return nil
 }
 
@@ -416,6 +416,6 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 	}
 }
 
-func (h *NoPrivacyWithdrawActionHandler) OnSaveToDB(ctx context.Context) error {
+func (h *NoPrivacyWithdrawActionHandler) OnCommitToDB(ctx context.Context) error {
 	return nil
 }

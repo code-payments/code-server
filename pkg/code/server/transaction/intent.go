@@ -598,13 +598,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return err
 		}
 
-		// Save additional state related to the intent
-		err = intentHandler.OnSaveToDB(ctx, intentRecord)
-		if err != nil {
-			log.WithError(err).Warn("failure executing intent db save callback")
-			return err
-		}
-
 		// Save all actions
 		err = s.data.PutAllActions(ctx, actionRecords...)
 		if err != nil {
@@ -614,7 +607,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		// Save additional state related to each action
 		for _, actionHandler := range actionHandlers {
-			err = actionHandler.OnSaveToDB(ctx)
+			err = actionHandler.OnCommitToDB(ctx)
 			if err != nil {
 				log.WithError(err).Warn("failure executing action db save callback handler")
 				return err
@@ -672,13 +665,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	//
 
 	log.Debug("intent submitted")
-
-	// Post-processing when an intent has been committed to the DB.
-
-	err = intentHandler.OnCommittedToDB(ctx, intentRecord)
-	if err != nil {
-		log.WithError(err).Warn("failure executing intent committed callback handler handler")
-	}
 
 	// Fire off some success metrics
 	recordUserIntentCreatedEvent(ctx, intentRecord)

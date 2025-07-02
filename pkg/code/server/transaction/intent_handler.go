@@ -59,20 +59,6 @@ type CreateIntentHandler interface {
 
 	// AllowCreation determines whether the new intent creation should be allowed.
 	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error
-
-	// OnSaveToDB is a callback when the intent is being saved to the DB
-	// within the scope of a DB transaction. Additional supporting DB records
-	// (ie. not the intent record) relevant to the intent should be saved here.
-	OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error
-
-	// OnCommittedToDB is a callback when the intent has been committed to the
-	// DB. Any instant side-effects should called here, and can be done async
-	// in a new goroutine to not affect SubmitIntent latency.
-	//
-	// Note: Any errors generated here have no effect on rolling back the intent.
-	//       This is all best-effort up to this point. Use a worker for things
-	//       requiring retries!
-	OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error
 }
 
 type OpenAccountsIntentHandler struct {
@@ -291,14 +277,6 @@ func (h *OpenAccountsIntentHandler) validateActions(
 		}
 	}
 
-	return nil
-}
-
-func (h *OpenAccountsIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
-func (h *OpenAccountsIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
 	return nil
 }
 
@@ -791,14 +769,6 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	return nil
 }
 
-func (h *SendPublicPaymentIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
-func (h *SendPublicPaymentIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
 type ReceivePaymentsPubliclyIntentHandler struct {
 	conf          *conf
 	data          code_data.Provider
@@ -1082,14 +1052,6 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	//
 
 	return validateMoneyMovementActionUserAccounts(intent.ReceivePaymentsPublicly, initiatorAccountsByVault, actions)
-}
-
-func (h *ReceivePaymentsPubliclyIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
-func (h *ReceivePaymentsPubliclyIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
 }
 
 type PublicDistributionIntentHandler struct {
@@ -1377,14 +1339,6 @@ func (h *PublicDistributionIntentHandler) validateActions(
 		return NewActionValidationError(closedAccounts[0].CloseAction, "action cannot be an auto-return")
 	}
 
-	return nil
-}
-
-func (h *PublicDistributionIntentHandler) OnSaveToDB(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
-func (h *PublicDistributionIntentHandler) OnCommittedToDB(ctx context.Context, intentRecord *intent.Record) error {
 	return nil
 }
 
