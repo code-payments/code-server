@@ -393,6 +393,10 @@ func equivalentModels(obj1, obj2 *model) bool {
 		return false
 	}
 
+	if obj1.MintAccount != obj2.MintAccount {
+		return false
+	}
+
 	if obj1.Index != obj2.Index {
 		return false
 	}

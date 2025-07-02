@@ -285,7 +285,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 	if len(tokenAccountsToFetchBalance) > 0 {
 		prefetchedBalances, err = balance.BatchCalculateFromCacheWithTokenAccounts(ctx, data, tokenAccountsToFetchBalance...)
 		if err == balance.ErrNotManagedByCode {
-			return nil, ErrNotManagedByCode
+			return nil, ErrSourceNotManagedByCode
 		} else if err != nil {
 			return nil, err
 		}
