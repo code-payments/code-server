@@ -21,6 +21,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
@@ -160,26 +161,16 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	nextPoolIndex := len(recordsByType[commonpb.AccountType_POOL])
-
-	// Filter out account records for accounts that have completed their full
-	// lifecycle
-	//
-	// todo: This needs tests
-	for accountType, batchRecords := range recordsByType {
-		switch accountType {
-		case commonpb.AccountType_POOL:
-		default:
-			continue
-		}
-
-		var filtered []*common.AccountRecords
-		for _, records := range batchRecords {
-			if records.IsTimelock() && !records.Timelock.IsClosed() {
-				filtered = append(filtered, records)
-			}
-		}
-		recordsByType[accountType] = filtered
+	var nextPoolIndex uint64
+	latestPoolAccountInfoRecord, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_POOL)
+	switch err {
+	case nil:
+		nextPoolIndex = latestPoolAccountInfoRecord.Index + 1
+	case account.ErrAccountInfoNotFound:
+		nextPoolIndex = 0
+	default:
+		log.WithError(err).Warn("failure getting latest pool account record")
+		return nil, status.Error(codes.Internal, "")
 	}
 
 	// Trigger a deposit sync with the blockchain for the primary account, if it exists

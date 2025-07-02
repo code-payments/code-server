@@ -258,7 +258,7 @@ func (h *OpenAccountsIntentHandler) validateActions(
 			return NewActionValidationErrorf(openAction, "account type must be %s", expectedAccountToOpen.Type)
 		}
 
-		if openAction.GetOpenAccount().Index != 0 {
+		if openAction.GetOpenAccount().Index != expectedAccountToOpen.Index {
 			return NewActionValidationErrorf(openAction, "index must be %d", expectedAccountToOpen.Index)
 		}
 
@@ -1142,7 +1142,7 @@ func (h *PublicDistributionIntentHandler) IsNoop(ctx context.Context, intentReco
 }
 
 func (h *PublicDistributionIntentHandler) GetBalanceLocks(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*intentBalanceLock, error) {
-	poolVault, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
+	poolVault, err := common.NewAccountFromPublicKeyString(intentRecord.PublicDistributionMetadata.Source)
 	if err != nil {
 		return nil, err
 	}

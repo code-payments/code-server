@@ -85,6 +85,10 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 		return false, errors.New("invalid fulfillment type")
 	}
 
+	// todo: Fix unlock state detection for Timelock accounts that won't be
+	//       initialized immediately
+	return true, nil
+
 	accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, fulfillmentRecord.Source)
 	if err != nil {
 		return false, err
