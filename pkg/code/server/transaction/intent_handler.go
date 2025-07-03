@@ -108,6 +108,7 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 	}
 
 	var authorityToCheck *common.Account
+	var expectedAccountType commonpb.AccountType
 	var err error
 	switch typedMetadata.AccountSet {
 	case transactionpb.OpenAccountsMetadata_USER:
@@ -115,22 +116,24 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 		if err != nil {
 			return false, err
 		}
+		expectedAccountType = commonpb.AccountType_PRIMARY
 	case transactionpb.OpenAccountsMetadata_POOL:
 		authorityToCheck, err = common.NewAccountFromProto(actions[0].GetOpenAccount().Authority)
 		if err != nil {
 			return false, err
 		}
+		expectedAccountType = commonpb.AccountType_POOL
 	default:
 		return false, NewIntentValidationErrorf("unsupported account set: %s", typedMetadata.AccountSet)
 	}
 
-	_, err = h.data.GetAccountInfoByAuthorityAddress(ctx, authorityToCheck.PublicKey().ToBase58())
+	accountInfoRecord, err := h.data.GetAccountInfoByAuthorityAddress(ctx, authorityToCheck.PublicKey().ToBase58())
 	if err == account.ErrAccountInfoNotFound {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	return true, nil
+	return accountInfoRecord.AccountType == expectedAccountType, nil
 }
 
 func (h *OpenAccountsIntentHandler) GetBalanceLocks(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*intentBalanceLock, error) {
