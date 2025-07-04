@@ -36,13 +36,13 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 		log.Debug("worker stopped")
 	}()
 
-	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
+	start := time.Now()
 	cursor := query.EmptyCursor
-	oldestRecordTs := time.Now()
+	delay := 0 * time.Second // Initially no delay, so we can run right after a deploy
 	for {
 		select {
 		case <-time.After(delay):
-			start := time.Now()
+			batchStart := time.Now()
 
 			func() {
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
@@ -59,14 +59,14 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 				)
 				if err == timelock.ErrTimelockNotFound {
 					p.metricStatusLock.Lock()
-					copiedTs := oldestRecordTs
-					if p.oldestTimelockRecord == nil || p.oldestTimelockRecord.After(copiedTs) {
-						p.oldestTimelockRecord = &copiedTs
+					duration := time.Since(start)
+					if p.backupTimelockStateWorkerDuration == nil || *p.backupTimelockStateWorkerDuration < duration {
+						p.backupTimelockStateWorkerDuration = &duration
 					}
 					p.metricStatusLock.Unlock()
 
+					start = time.Now()
 					cursor = query.EmptyCursor
-					oldestRecordTs = time.Now()
 					return
 				} else if err != nil {
 					log.WithError(err).Warn("failed to get timelock records")
@@ -76,10 +76,6 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 				var wg sync.WaitGroup
 				for _, timelockRecord := range timelockRecords {
 					wg.Add(1)
-
-					if timelockRecord.LastUpdatedAt.Before(oldestRecordTs) {
-						oldestRecordTs = timelockRecord.LastUpdatedAt
-					}
 
 					go func(timelockRecord *timelock.Record) {
 						defer wg.Done()
@@ -98,7 +94,7 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 				cursor = query.ToCursor(timelockRecords[len(timelockRecords)-1].Id)
 			}()
 
-			delay = interval - time.Since(start)
+			delay = interval - time.Since(batchStart)
 		case <-serviceCtx.Done():
 			return serviceCtx.Err()
 		}

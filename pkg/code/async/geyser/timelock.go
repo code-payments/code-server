@@ -27,9 +27,13 @@ func updateTimelockAccountRecord(ctx context.Context, data code_data.Provider, t
 		unlockAt := uint64(unlockState.UnlockAt)
 		timelockRecord.UnlockAt = &unlockAt
 	}
+
+	if timelockRecord.VaultState == timelock_token.StateUnknown {
+		return nil
+	}
+
 	timelockRecord.Block = slot
 	timelockRecord.LastUpdatedAt = time.Now()
-
 	return data.SaveTimelock(ctx, timelockRecord)
 }
 
