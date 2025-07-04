@@ -21,7 +21,7 @@ import (
 // the case? Real time updates. Backup workers likely won't be able to guarantee
 // real time (or near real time) updates at scale.
 
-func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval time.Duration) error {
+func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state timelock_token.TimelockState, interval time.Duration) error {
 	log := p.log.WithField("method", "backupTimelockStateWorker")
 	log.Debug("worker started")
 
@@ -52,7 +52,7 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, interval
 
 				timelockRecords, err := p.data.GetAllTimelocksByState(
 					tracedCtx,
-					timelock_token.StateLocked,
+					state,
 					query.WithDirection(query.Ascending),
 					query.WithCursor(cursor),
 					query.WithLimit(256),

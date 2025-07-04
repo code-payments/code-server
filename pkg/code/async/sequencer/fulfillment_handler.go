@@ -85,10 +85,6 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 		return false, errors.New("invalid fulfillment type")
 	}
 
-	// todo: Fix unlock state detection for Timelock accounts that won't be
-	//       initialized immediately
-	return true, nil
-
 	accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, fulfillmentRecord.Source)
 	if err != nil {
 		return false, err
@@ -101,7 +97,9 @@ func (h *InitializeLockedTimelockAccountFulfillmentHandler) CanSubmitToBlockchai
 
 	// Every other account type needs to be used in a transfer of funds to be opened
 	nextScheduledFulfillment, err := h.data.GetNextSchedulableFulfillmentByAddress(ctx, fulfillmentRecord.Source, fulfillmentRecord.IntentOrderingIndex, fulfillmentRecord.ActionId, fulfillmentRecord.FulfillmentOrderingIndex)
-	if err != nil {
+	if err == fulfillment.ErrFulfillmentNotFound {
+		return false, nil
+	} else if err != nil {
 		return false, err
 	}
 

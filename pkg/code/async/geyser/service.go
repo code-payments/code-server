@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	geyserpb "github.com/code-payments/code-server/pkg/code/async/geyser/api/gen"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/async"
@@ -63,7 +64,13 @@ func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integ
 func (p *service) Start(ctx context.Context, _ time.Duration) error {
 	// Start backup workers to catch missed events
 	go func() {
-		err := p.backupTimelockStateWorker(ctx, p.conf.backupTimelockWorkerInterval.Get(ctx))
+		err := p.backupTimelockStateWorker(ctx, timelock_token.StateLocked, p.conf.backupTimelockWorkerInterval.Get(ctx))
+		if err != nil && err != context.Canceled {
+			p.log.WithError(err).Warn("timelock backup worker terminated unexpectedly")
+		}
+	}()
+	go func() {
+		err := p.backupTimelockStateWorker(ctx, timelock_token.StateUnknown, p.conf.backupTimelockWorkerInterval.Get(ctx))
 		if err != nil && err != context.Canceled {
 			p.log.WithError(err).Warn("timelock backup worker terminated unexpectedly")
 		}
