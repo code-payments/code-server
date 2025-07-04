@@ -13,12 +13,6 @@ import (
 )
 
 func updateTimelockAccountRecord(ctx context.Context, data code_data.Provider, timelockRecord *timelock.Record) error {
-	// Wait for Timelock account initialization before monitoring state
-	// to avoid conflicting with the sequencer
-	if timelockRecord.VaultState == timelock_token.StateUnknown || timelockRecord.Block == 0 {
-		return nil
-	}
-
 	unlockState, slot, err := getTimelockUnlockState(ctx, data, timelockRecord)
 	if err != nil {
 		return err
