@@ -23,7 +23,7 @@ func markTimelockLocked(ctx context.Context, data code_data.Provider, vault stri
 	case timelock_token_v1.StateLocked, timelock_token_v1.StateWaitingForTimeout, timelock_token_v1.StateUnlocked:
 		return nil
 	}
-	if record.Block <= slot {
+	if record.Block >= slot {
 		return nil
 	}
 
