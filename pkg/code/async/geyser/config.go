@@ -23,10 +23,10 @@ const (
 	defaultProgramUpdateQueueSize       = 1_000_000
 
 	BackupTimelockWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_TIMELOCK_WORKER_INTERVAL"
-	defaultBackupTimelockWorkerInterval       = 1 * time.Minute
+	defaultBackupTimelockWorkerInterval       = time.Second
 
 	BackupExternalDepositWorkerIntervalConfigEnvName = envConfigPrefix + "BACKUP_EXTERNAL_DEPOSIT_WORKER_INTERVAL"
-	defaultBackupExternalDepositWorkerInterval       = 15 * time.Second
+	defaultBackupExternalDepositWorkerInterval       = time.Second
 )
 
 type conf struct {
