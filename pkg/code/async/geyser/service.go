@@ -69,12 +69,12 @@ func (p *service) Start(ctx context.Context, _ time.Duration) error {
 			p.log.WithError(err).Warn("timelock backup worker terminated unexpectedly")
 		}
 	}()
-	go func() {
+	/*go func() {
 		err := p.backupTimelockStateWorker(ctx, timelock_token.StateUnknown, p.conf.backupTimelockWorkerInterval.Get(ctx))
 		if err != nil && err != context.Canceled {
 			p.log.WithError(err).Warn("timelock backup worker terminated unexpectedly")
 		}
-	}()
+	}()*/
 
 	go func() {
 		err := p.backupExternalDepositWorker(ctx, p.conf.backupExternalDepositWorkerInterval.Get(ctx))
