@@ -60,7 +60,9 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 				if err == timelock.ErrTimelockNotFound {
 					p.metricStatusLock.Lock()
 					copiedTs := oldestRecordTs
-					p.oldestTimelockRecord = &copiedTs
+					if p.oldestTimelockRecord == nil || p.oldestTimelockRecord.After(copiedTs) {
+						p.oldestTimelockRecord = &copiedTs
+					}
 					p.metricStatusLock.Unlock()
 
 					cursor = query.EmptyCursor
