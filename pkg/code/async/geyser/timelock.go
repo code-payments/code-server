@@ -26,9 +26,7 @@ func updateTimelockAccountRecord(ctx context.Context, data code_data.Provider, t
 
 		unlockAt := uint64(unlockState.UnlockAt)
 		timelockRecord.UnlockAt = &unlockAt
-	}
-
-	if timelockRecord.VaultState == timelock_token.StateUnknown {
+	} else {
 		return nil
 	}
 
