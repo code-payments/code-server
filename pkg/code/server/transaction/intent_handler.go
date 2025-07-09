@@ -1062,6 +1062,8 @@ type PublicDistributionIntentHandler struct {
 	data          code_data.Provider
 	antispamGuard *antispam.Guard
 	amlGuard      *aml.Guard
+
+	cachedDestinationAccountInfoRecordByTokenAddress map[string]*account.Record
 }
 
 func NewPublicDistributionIntentHandler(
@@ -1104,6 +1106,26 @@ func (h *PublicDistributionIntentHandler) PopulateMetadata(ctx context.Context, 
 		Source:         source.PublicKey().ToBase58(),
 		Quantity:       totalQuarks,
 		UsdMarketValue: usdExchangeRecord.Rate * float64(totalQuarks) / float64(common.CoreMintQuarksPerUnit),
+	}
+	for _, distribution := range typedProtoMetadata.Distributions {
+		destination, err := common.NewAccountFromProto(distribution.Destination)
+		if err != nil {
+			return err
+		}
+
+		destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
+		if err == account.ErrAccountInfoNotFound {
+			return NewIntentValidationErrorf("destination account %s is not a code account", destination.PublicKey().ToBase58())
+		} else if err != nil {
+			return err
+		}
+		h.cachedDestinationAccountInfoRecordByTokenAddress[destination.PublicKey().ToBase58()] = destinationAccountInfoRecord
+
+		intentRecord.PublicDistributionMetadata.Distributions = append(intentRecord.PublicDistributionMetadata.Distributions, &intent.Distribution{
+			DestinationOwnerAccount: destinationAccountInfoRecord.OwnerAccount,
+			DestinationTokenAccount: destination.PublicKey().ToBase58(),
+			Quantity:                distribution.Quarks,
+		})
 	}
 
 	return nil
@@ -1257,16 +1279,9 @@ func (h *PublicDistributionIntentHandler) validateActions(
 		}
 		destinationSet[destination.PublicKey().ToBase58()] = true
 
-		destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
-		switch err {
-		case nil:
-			if destinationAccountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-				return NewIntentValidationErrorf("destination account %s must be a primary account", destination.PublicKey().ToBase58())
-			}
-		case account.ErrAccountInfoNotFound:
-			return NewIntentValidationErrorf("destination account %s is not a code account", destination.PublicKey().ToBase58())
-		default:
-			return err
+		destinationAccountInfoRecord := h.cachedDestinationAccountInfoRecordByTokenAddress[destination.PublicKey().ToBase58()]
+		if destinationAccountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
+			return NewIntentValidationErrorf("destination account %s must be a primary account", destination.PublicKey().ToBase58())
 		}
 
 		totalQuarksDistributed += distribution.Quarks

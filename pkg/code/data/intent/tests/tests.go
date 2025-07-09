@@ -10,6 +10,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 func RunTests(t *testing.T, s intent.Store, teardown func()) {
@@ -24,6 +25,7 @@ func RunTests(t *testing.T, s intent.Store, teardown func()) {
 		testGetOriginalGiftCardIssuedIntent,
 		testGetGiftCardClaimedIntent,
 		testGetTransactedAmountForAntiMoneyLaundering,
+		testGetByOwner,
 	} {
 		tf(t, s)
 		teardown()
@@ -243,7 +245,19 @@ func testPublicDistributionRoundTrip(t *testing.T, s intent.Store) {
 			IntentType:            intent.PublicDistribution,
 			InitiatorOwnerAccount: "test_owner",
 			PublicDistributionMetadata: &intent.PublicDistributionMetadata{
-				Source:         "test_source",
+				Source: "test_source",
+				Distributions: []*intent.Distribution{
+					{
+						DestinationOwnerAccount: "test_owner_2",
+						DestinationTokenAccount: "test_destination_2",
+						Quantity:                12300,
+					},
+					{
+						DestinationOwnerAccount: "test_owner_3",
+						DestinationTokenAccount: "test_destination_3",
+						Quantity:                45,
+					},
+				},
 				Quantity:       12345,
 				UsdMarketValue: 999.99,
 			},
@@ -256,6 +270,12 @@ func testPublicDistributionRoundTrip(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
 		assert.EqualValues(t, 1, expected.Version)
+		require.Len(t, expected.PublicDistributionMetadata.Distributions, 2)
+		for i, expectedDistribution := range cloned.PublicDistributionMetadata.Distributions {
+			assert.Equal(t, expectedDistribution.DestinationOwnerAccount, expected.PublicDistributionMetadata.Distributions[i].DestinationOwnerAccount)
+			assert.Equal(t, expectedDistribution.DestinationTokenAccount, expected.PublicDistributionMetadata.Distributions[i].DestinationTokenAccount)
+			assert.Equal(t, expectedDistribution.Quantity, expected.PublicDistributionMetadata.Distributions[i].Quantity)
+		}
 
 		actual, err = s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
@@ -264,6 +284,12 @@ func testPublicDistributionRoundTrip(t *testing.T, s intent.Store) {
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.PublicDistributionMetadata)
 		assert.Equal(t, cloned.PublicDistributionMetadata.Source, actual.PublicDistributionMetadata.Source)
+		require.Len(t, actual.PublicDistributionMetadata.Distributions, len(cloned.PublicDistributionMetadata.Distributions))
+		for i, expectedDistribution := range cloned.PublicDistributionMetadata.Distributions {
+			assert.Equal(t, expectedDistribution.DestinationOwnerAccount, actual.PublicDistributionMetadata.Distributions[i].DestinationOwnerAccount)
+			assert.Equal(t, expectedDistribution.DestinationTokenAccount, actual.PublicDistributionMetadata.Distributions[i].DestinationTokenAccount)
+			assert.Equal(t, expectedDistribution.Quantity, actual.PublicDistributionMetadata.Distributions[i].Quantity)
+		}
 		assert.Equal(t, cloned.PublicDistributionMetadata.Quantity, actual.PublicDistributionMetadata.Quantity)
 		assert.Equal(t, cloned.PublicDistributionMetadata.UsdMarketValue, actual.PublicDistributionMetadata.UsdMarketValue)
 		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
@@ -280,11 +306,27 @@ func testUpdateHappyPath(t *testing.T, s intent.Store) {
 
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
-			IntentType:            intent.OpenAccounts,
+			IntentType:            intent.PublicDistribution,
 			InitiatorOwnerAccount: "test_owner",
-			OpenAccountsMetadata:  &intent.OpenAccountsMetadata{},
-			State:                 intent.StateUnknown,
-			CreatedAt:             time.Now(),
+			PublicDistributionMetadata: &intent.PublicDistributionMetadata{
+				Source: "test_source",
+				Distributions: []*intent.Distribution{
+					{
+						DestinationOwnerAccount: "test_owner_2",
+						DestinationTokenAccount: "test_destination_2",
+						Quantity:                12300,
+					},
+					{
+						DestinationOwnerAccount: "test_owner_3",
+						DestinationTokenAccount: "test_destination_3",
+						Quantity:                45,
+					},
+				},
+				Quantity:       12345,
+				UsdMarketValue: 999.99,
+			},
+			State:     intent.StateUnknown,
+			CreatedAt: time.Now(),
 		}
 		err := s.Save(ctx, &expected)
 		require.NoError(t, err)
@@ -297,12 +339,14 @@ func testUpdateHappyPath(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, expected.Id)
 		assert.EqualValues(t, 2, expected.Version)
+		require.Len(t, expected.PublicDistributionMetadata.Distributions, 2)
 
 		actual, err := s.Get(ctx, "test_intent_id")
 		require.NoError(t, err)
 		assert.Equal(t, intent.StatePending, actual.State)
 		assert.EqualValues(t, 1, actual.Id)
 		assert.EqualValues(t, 2, actual.Version)
+		require.Len(t, actual.PublicDistributionMetadata.Distributions, 2)
 	})
 }
 
@@ -344,7 +388,7 @@ func testGetOriginalGiftCardIssuedIntent(t *testing.T, s intent.Store) {
 	t.Run("testGetOriginalGiftCardIssuedIntent", func(t *testing.T) {
 		ctx := context.Background()
 
-		records := []intent.Record{
+		records := []*intent.Record{
 			{IntentId: "i1", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a1", DestinationOwnerAccount: "o1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
 			{IntentId: "i2", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
@@ -359,7 +403,7 @@ func testGetOriginalGiftCardIssuedIntent(t *testing.T, s intent.Store) {
 		}
 
 		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
+			require.NoError(t, s.Save(ctx, record))
 		}
 
 		_, err := s.GetOriginalGiftCardIssuedIntent(ctx, "unknown")
@@ -385,7 +429,7 @@ func testGetGiftCardClaimedIntent(t *testing.T, s intent.Store) {
 	t.Run("testGetGiftCardClaimedIntent", func(t *testing.T) {
 		ctx := context.Background()
 
-		records := []intent.Record{
+		records := []*intent.Record{
 			{IntentId: "i1", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a1", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
 			{IntentId: "i2", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
@@ -399,7 +443,7 @@ func testGetGiftCardClaimedIntent(t *testing.T, s intent.Store) {
 		}
 
 		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
+			require.NoError(t, s.Save(ctx, record))
 		}
 
 		_, err := s.GetGiftCardClaimedIntent(ctx, "unknown")
@@ -431,7 +475,7 @@ func testGetTransactedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store)
 		assert.EqualValues(t, 0, quarks)
 		assert.EqualValues(t, 0, usdMarketValue)
 
-		records := []intent.Record{
+		records := []*intent.Record{
 			{IntentId: "t1", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2, UsdMarketValue: 2}, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
 			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20, UsdMarketValue: 20}, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
 			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o3", DestinationTokenAccount: "a3", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 200, UsdMarketValue: 200}, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
@@ -443,7 +487,7 @@ func testGetTransactedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store)
 		}
 
 		for _, record := range records {
-			require.NoError(t, s.Save(ctx, &record))
+			require.NoError(t, s.Save(ctx, record))
 		}
 
 		// Capture all intents for the owner
@@ -463,5 +507,91 @@ func testGetTransactedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, quarks)
 		assert.EqualValues(t, 0, usdMarketValue)
+	})
+}
+
+func testGetByOwner(t *testing.T, s intent.Store) {
+	t.Run("testGetByOwner", func(t *testing.T) {
+		ctx := context.Background()
+
+		_, err := s.GetAllByOwner(ctx, "o1", query.EmptyCursor, 100, query.Ascending)
+		assert.Equal(t, intent.ErrIntentNotFound, err)
+
+		records := []*intent.Record{
+			{IntentId: "t1", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 10, NativeAmount: 10, UsdMarketValue: 10}, State: intent.StatePending, CreatedAt: time.Now()},
+			{IntentId: "t4", IntentType: intent.PublicDistribution, InitiatorOwnerAccount: "o1", PublicDistributionMetadata: &intent.PublicDistributionMetadata{Source: "p1", Distributions: []*intent.Distribution{{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 5}, {DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 5}}, UsdMarketValue: 10, Quantity: 10}, State: intent.StatePending, CreatedAt: time.Now()},
+			{IntentId: "t5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 100, NativeAmount: 100, UsdMarketValue: 100}, State: intent.StateFailed, CreatedAt: time.Now()},
+			{IntentId: "t6", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 1000, NativeAmount: 1000, UsdMarketValue: 1000}, State: intent.StateUnknown, CreatedAt: time.Now()},
+			{IntentId: "t7", IntentType: intent.PublicDistribution, InitiatorOwnerAccount: "o1", PublicDistributionMetadata: &intent.PublicDistributionMetadata{Source: "p2", Distributions: []*intent.Distribution{{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10}}, UsdMarketValue: 10, Quantity: 10}, State: intent.StatePending, CreatedAt: time.Now()},
+		}
+		for _, record := range records {
+			require.NoError(t, s.Save(ctx, record))
+		}
+
+		expected := records
+		actual, err := s.GetAllByOwner(ctx, "o1", query.EmptyCursor, 100, query.Ascending)
+		require.NoError(t, err)
+		require.Len(t, actual, 7)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[i].IntentId)
+		}
+
+		expected = records[2:]
+		actual, err = s.GetAllByOwner(ctx, "o2", query.EmptyCursor, 100, query.Ascending)
+		require.NoError(t, err)
+		require.Len(t, actual, 5)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[i].IntentId)
+		}
+
+		expected = records[:5]
+		actual, err = s.GetAllByOwner(ctx, "o1", query.EmptyCursor, 5, query.Ascending)
+		require.NoError(t, err)
+		require.Len(t, actual, 5)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[i].IntentId)
+		}
+
+		expected = records[2:]
+		actual, err = s.GetAllByOwner(ctx, "o1", query.ToCursor(records[1].Id), 100, query.Ascending)
+		require.NoError(t, err)
+		require.Len(t, actual, 5)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[i].IntentId)
+		}
+
+		expected = records[3:]
+		actual, err = s.GetAllByOwner(ctx, "o1", query.ToCursor(records[2].Id), 100, query.Ascending)
+		require.NoError(t, err)
+		require.Len(t, actual, 4)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[i].IntentId)
+		}
+
+		expected = records[5:]
+		actual, err = s.GetAllByOwner(ctx, "o2", query.ToCursor(records[4].Id), 100, query.Ascending)
+		require.NoError(t, err)
+		require.Len(t, actual, 2)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[i].IntentId)
+		}
+
+		expected = records
+		actual, err = s.GetAllByOwner(ctx, "o1", query.EmptyCursor, 100, query.Descending)
+		require.NoError(t, err)
+		require.Len(t, actual, 7)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[len(actual)-i-1].IntentId)
+		}
+
+		expected = records[:5]
+		actual, err = s.GetAllByOwner(ctx, "o1", query.ToCursor(records[5].Id), 100, query.Descending)
+		require.NoError(t, err)
+		require.Len(t, actual, 5)
+		for i, record := range expected {
+			assert.Equal(t, record.IntentId, actual[len(actual)-i-1].IntentId)
+		}
 	})
 }

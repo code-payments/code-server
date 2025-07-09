@@ -73,13 +73,21 @@ func (s *store) findByOwner(owner string) []*intent.Record {
 
 		if item.SendPublicPaymentMetadata != nil && item.SendPublicPaymentMetadata.DestinationOwnerAccount == owner {
 			res = append(res, item)
-			continue
+		}
+
+		if item.PublicDistributionMetadata != nil {
+			for _, distribution := range item.PublicDistributionMetadata.Distributions {
+				if distribution.DestinationOwnerAccount == owner {
+					res = append(res, item)
+				}
+			}
 		}
 	}
 
 	return res
 }
 
+// todo: doesn't support PublicDistribution, but it's not required
 func (s *store) findByDestination(destination string) []*intent.Record {
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
@@ -97,6 +105,7 @@ func (s *store) findByDestination(destination string) []*intent.Record {
 	return res
 }
 
+// todo: doesn't support PublicDistribution, but it's not required
 func (s *store) findBySource(source string) []*intent.Record {
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
@@ -110,7 +119,8 @@ func (s *store) findBySource(source string) []*intent.Record {
 	return res
 }
 
-func (s *store) findByOwnerSinceTimestamp(owner string, since time.Time) []*intent.Record {
+// todo: doesn't support PublicDistribution, but it's not required
+func (s *store) findByInitiatorOwnerSinceTimestamp(owner string, since time.Time) []*intent.Record {
 	res := make([]*intent.Record, 0)
 	for _, item := range s.records {
 		if item.CreatedAt.Before(since) {
@@ -348,7 +358,7 @@ func (s *store) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, o
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	items := s.findByOwnerSinceTimestamp(owner, since)
+	items := s.findByInitiatorOwnerSinceTimestamp(owner, since)
 	items = s.filterByType(items, intent.SendPublicPayment)
 	items = s.filterByState(items, false, intent.StateRevoked)
 	items = s.filterByWithdrawalFlag(items, false)

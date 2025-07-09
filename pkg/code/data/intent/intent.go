@@ -100,8 +100,15 @@ type ReceivePaymentsPubliclyMetadata struct {
 
 type PublicDistributionMetadata struct {
 	Source         string
+	Distributions  []*Distribution
 	Quantity       uint64
 	UsdMarketValue float64
+}
+
+type Distribution struct {
+	DestinationOwnerAccount string
+	DestinationTokenAccount string
+	Quantity                uint64
 }
 
 func (r *Record) IsCompleted() bool {
@@ -416,15 +423,29 @@ func (m *ReceivePaymentsPubliclyMetadata) Validate() error {
 }
 
 func (m *PublicDistributionMetadata) Clone() PublicDistributionMetadata {
+	clonedDistributions := make([]*Distribution, len(m.Distributions))
+	for i, distribution := range m.Distributions {
+		cloned := distribution.Clone()
+		clonedDistributions[i] = &cloned
+	}
+
 	return PublicDistributionMetadata{
 		Source:         m.Source,
+		Distributions:  clonedDistributions,
 		Quantity:       m.Quantity,
 		UsdMarketValue: m.UsdMarketValue,
 	}
 }
 
 func (m *PublicDistributionMetadata) CopyTo(dst *PublicDistributionMetadata) {
+	clonedDistributions := make([]*Distribution, len(m.Distributions))
+	for i, distribution := range m.Distributions {
+		cloned := distribution.Clone()
+		clonedDistributions[i] = &cloned
+	}
+
 	dst.Source = m.Source
+	dst.Distributions = clonedDistributions
 	dst.Quantity = m.Quantity
 	dst.UsdMarketValue = m.UsdMarketValue
 }
@@ -432,6 +453,45 @@ func (m *PublicDistributionMetadata) CopyTo(dst *PublicDistributionMetadata) {
 func (m *PublicDistributionMetadata) Validate() error {
 	if len(m.Source) == 0 {
 		return errors.New("source is required")
+	}
+
+	if len(m.Distributions) == 0 {
+		return errors.New("distributions are required")
+	}
+	for _, distribution := range m.Distributions {
+		if err := distribution.Validate(); err != nil {
+			return err
+		}
+	}
+
+	if m.Quantity == 0 {
+		return errors.New("quantity is required")
+	}
+
+	return nil
+}
+
+func (m *Distribution) Clone() Distribution {
+	return Distribution{
+		DestinationOwnerAccount: m.DestinationOwnerAccount,
+		DestinationTokenAccount: m.DestinationTokenAccount,
+		Quantity:                m.Quantity,
+	}
+}
+
+func (m *Distribution) CopyTo(dst *Distribution) {
+	dst.DestinationOwnerAccount = m.DestinationOwnerAccount
+	dst.DestinationTokenAccount = m.DestinationTokenAccount
+	dst.Quantity = m.Quantity
+}
+
+func (m *Distribution) Validate() error {
+	if len(m.DestinationOwnerAccount) == 0 {
+		return errors.New("destination owner account is required")
+	}
+
+	if len(m.DestinationTokenAccount) == 0 {
+		return errors.New("destination token account is required")
 	}
 
 	if m.Quantity == 0 {

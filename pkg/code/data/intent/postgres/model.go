@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,8 +19,8 @@ import (
 )
 
 const (
-	// todo: table should be renamed to just "intent"
-	intentTableName = "codewallet__core_paymentintent"
+	intentTableName   = "codewallet__core_paymentintent" // todo: table should be renamed to just "intent"
+	accountsTableName = "codewallet__core_intentaccountmetadata"
 )
 
 type intentModel struct {
@@ -44,6 +46,8 @@ type intentModel struct {
 	State                   uint          `db:"state"`
 	Version                 int64         `db:"version"`
 	CreatedAt               time.Time     `db:"created_at"`
+
+	Accounts []*intentAccountModel
 }
 
 func toIntentModel(obj *intent.Record) (*intentModel, error) {
@@ -101,6 +105,10 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 		m.Source = obj.PublicDistributionMetadata.Source
 		m.Quantity = obj.PublicDistributionMetadata.Quantity
 		m.UsdMarketValue = obj.PublicDistributionMetadata.UsdMarketValue
+
+		for _, distribution := range obj.PublicDistributionMetadata.Distributions {
+			m.Accounts = append(m.Accounts, fromDistribution(m.Id.Int64, distribution))
+		}
 	default:
 		return nil, errors.New("unsupported intent type")
 	}
@@ -164,12 +172,18 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 			Quantity:       obj.Quantity,
 			UsdMarketValue: obj.UsdMarketValue,
 		}
+
+		for _, account := range obj.Accounts {
+			record.PublicDistributionMetadata.Distributions = append(record.PublicDistributionMetadata.Distributions, toDistribution(account))
+		}
 	}
 
 	return record
 }
 
 func (m *intentModel) dbSave(ctx context.Context, db *sqlx.DB) error {
+	canInsertAccounts := m.Id.Int64 == 0 && len(m.Accounts) > 0
+
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + intentTableName + `
 			(intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at)
@@ -208,12 +222,125 @@ func (m *intentModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 			m.Version,
 			m.CreatedAt,
 		).StructScan(m)
+		if err != nil {
+			return pgutil.CheckNoRows(err, intent.ErrStaleVersion)
+		}
 
-		return pgutil.CheckNoRows(err, intent.ErrStaleVersion)
+		if canInsertAccounts {
+			for _, account := range m.Accounts {
+				account.PagingId = m.Id.Int64
+			}
+
+			_, err = dbBatchPutAccounts(ctx, tx, m.Accounts)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }
 
-func dbGetIntent(ctx context.Context, db *sqlx.DB, intentID string) (*intentModel, error) {
+type intentAccountModel struct {
+	Id sql.NullInt64 `db:"id"`
+
+	PagingId int64 `db:"paging_id"`
+
+	Source      sql.NullString `db:"source"`
+	SourceOwner sql.NullString `db:"source_owner"`
+
+	Destination      sql.NullString `db:"destination"`
+	DestinationOwner sql.NullString `db:"destination_owner"`
+
+	Quantity uint64 `db:"quantity"`
+}
+
+func fromDistribution(pagingID int64, obj *intent.Distribution) *intentAccountModel {
+	return &intentAccountModel{
+		PagingId: pagingID,
+
+		Destination: sql.NullString{
+			Valid:  true,
+			String: obj.DestinationTokenAccount,
+		},
+		DestinationOwner: sql.NullString{
+			Valid:  true,
+			String: obj.DestinationOwnerAccount,
+		},
+
+		Quantity: obj.Quantity,
+	}
+}
+
+func toDistribution(obj *intentAccountModel) *intent.Distribution {
+	return &intent.Distribution{
+		DestinationOwnerAccount: obj.DestinationOwner.String,
+		DestinationTokenAccount: obj.Destination.String,
+		Quantity:                obj.Quantity,
+	}
+}
+
+func dbBatchPutAccounts(ctx context.Context, tx *sqlx.Tx, models []*intentAccountModel) ([]*intentAccountModel, error) {
+	var res []*intentAccountModel
+
+	query := `INSERT INTO ` + accountsTableName + `
+			(paging_id, source, source_owner, destination, destination_owner, quantity)
+			VALUES `
+	var parameters []any
+
+	for i, m := range models {
+		baseIndex := len(parameters)
+		query += fmt.Sprintf(
+			`($%d, $%d, $%d, $%d, $%d, $%d)`,
+			baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6,
+		)
+		if i != len(models)-1 {
+			query += ","
+		}
+
+		parameters = append(
+			parameters,
+			m.PagingId,
+			m.Source,
+			m.SourceOwner,
+			m.Destination,
+			m.DestinationOwner,
+			m.Quantity,
+		)
+	}
+	query += ` RETURNING id, paging_id, source, source_owner, destination, destination_owner, quantity`
+
+	err := tx.SelectContext(
+		ctx,
+		&res,
+		query,
+		parameters...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func dbGetAccounts(ctx context.Context, db *sqlx.DB, intentType intent.Type, pagingID int64) ([]*intentAccountModel, error) {
+	var res []*intentAccountModel
+	if intentType != intent.PublicDistribution {
+		return res, nil
+	}
+
+	query := `SELECT id, paging_id, source, source_owner, destination, destination_owner, quantity
+		FROM ` + accountsTableName + `
+		WHERE paging_id = $1
+		ORDER BY id ASC`
+
+	err := db.SelectContext(ctx, &res, query, pagingID)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func dbGetIntentByIntentID(ctx context.Context, db *sqlx.DB, intentID string) (*intentModel, error) {
 	res := &intentModel{}
 
 	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
@@ -225,29 +352,103 @@ func dbGetIntent(ctx context.Context, db *sqlx.DB, intentID string) (*intentMode
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, intent.ErrIntentNotFound)
 	}
+
+	res.Accounts, err = dbGetAccounts(ctx, db, intent.Type(res.IntentType), res.Id.Int64)
+	if err != nil {
+		return nil, err
+	}
 	return res, nil
 }
 
-func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*intentModel, error) {
-	res := []*intentModel{}
+func dbGetIntentByID(ctx context.Context, db *sqlx.DB, id int64) (*intentModel, error) {
+	res := &intentModel{}
 
 	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
 		FROM ` + intentTableName + `
-		WHERE (owner = $1 OR destination_owner = $1)
-	`
+		WHERE id = $1
+		LIMIT 1`
 
-	opts := []any{owner}
-	query, opts = q.PaginateQuery(query, opts, cursor, limit, direction)
-
-	err := db.SelectContext(ctx, &res, query, opts...)
+	err := db.GetContext(ctx, res, query, id)
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, intent.ErrIntentNotFound)
 	}
 
-	if len(res) == 0 {
+	res.Accounts, err = dbGetAccounts(ctx, db, intent.Type(res.IntentType), res.Id.Int64)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// todo: lots of opportunities for optimizations
+func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cursor, limit uint64, direction q.Ordering) ([]*intentModel, error) {
+	models := []*intentModel{}
+
+	opts := []any{owner}
+	query1 := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
+		FROM ` + intentTableName + `
+		WHERE (owner = $1 OR destination_owner = $1)
+	`
+	query1, opts = q.PaginateQuery(query1, opts, cursor, limit, direction)
+	err := db.SelectContext(ctx, &models, query1, opts...)
+	if err != nil && !pgutil.IsNoRows(err) {
+		return nil, err
+	}
+
+	otherIntentRecordIds := []int64{}
+	opts = []any{owner}
+	query2 := `SELECT paging_id
+		FROM ` + accountsTableName + `
+		WHERE (source_owner = $1 OR destination_owner = $1)`
+	query2, opts = q.PaginateQueryOnField(query2, opts, cursor, limit, direction, "paging_id")
+	err = db.SelectContext(ctx, &otherIntentRecordIds, query2, opts...)
+	if err != nil && !pgutil.IsNoRows(err) {
+		return nil, err
+	}
+
+	if len(models) == 0 && len(otherIntentRecordIds) == 0 {
 		return nil, intent.ErrIntentNotFound
 	}
 
+	var intentRecordIds []int64
+	modelsByID := make(map[int64]*intentModel)
+	for _, model := range models {
+		modelsByID[model.Id.Int64] = model
+		intentRecordIds = append(intentRecordIds, model.Id.Int64)
+	}
+	for _, id := range otherIntentRecordIds {
+		if _, ok := modelsByID[id]; !ok {
+			modelsByID[id] = nil
+			intentRecordIds = append(intentRecordIds, id)
+		}
+	}
+
+	sort.Slice(intentRecordIds, func(i, j int) bool {
+		if direction == q.Ascending {
+			return intentRecordIds[i] < intentRecordIds[j]
+		}
+		return intentRecordIds[j] < intentRecordIds[i]
+	})
+	if len(intentRecordIds) > int(limit) {
+		intentRecordIds = intentRecordIds[:limit]
+	}
+
+	res := make([]*intentModel, len(intentRecordIds))
+	for i, id := range intentRecordIds {
+		res[i] = modelsByID[id]
+		if res[i] == nil {
+			res[i], err = dbGetIntentByID(ctx, db, id)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			res[i].Accounts, err = dbGetAccounts(ctx, db, intent.Type(res[i].IntentType), res[i].Id.Int64)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	return res, nil
 }
 
