@@ -257,7 +257,16 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	// Populate metadata into the new DB record
 	err = intentHandler.PopulateMetadata(ctx, intentRecord, submitActionsReq.Metadata)
 	if err != nil {
-		log.WithError(err).Warn("failure populating intent metadata")
+		switch err.(type) {
+		case IntentValidationError:
+			log.WithError(err).Warn("new intent failed validation")
+		case IntentDeniedError:
+			log.WithError(err).Warn("new intent was denied")
+		case StaleStateError:
+			log.WithError(err).Warn("detected a client with stale state")
+		default:
+			log.WithError(err).Warn("failure populating intent metadata")
+		}
 		return handleSubmitIntentError(streamer, err)
 	}
 
@@ -303,10 +312,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		switch err.(type) {
 		case IntentValidationError:
 			log.WithError(err).Warn("new intent failed validation")
-		case IntentDeniedError:
-			log.WithError(err).Warn("new intent was denied")
-		case StaleStateError:
-			log.WithError(err).Warn("detected a client with stale state")
 		default:
 			log.WithError(err).Warn("failure checking if new intent was allowed")
 		}

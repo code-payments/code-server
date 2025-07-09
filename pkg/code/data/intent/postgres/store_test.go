@@ -30,7 +30,7 @@ const (
 			destination TEXT NULL,
 			destination_owner TEXT NULL,
 
-			quantity bigint NULL CHECK (quantity >= 0),
+			quantity BIGINT NULL CHECK (quantity >= 0),
 
 			exchange_currency varchar(3) NULL,
 			exchange_rate numeric(18, 9) NULL,
@@ -52,11 +52,29 @@ const (
 
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL
 		);
+
+		CREATE TABLE codewallet__core_intentaccountmetadata(
+			id SERIAL NOT NULL PRIMARY KEY,
+
+			paging_id BIGINT NOT NULL CHECK (paging_id > 0),
+
+			source TEXT NULL,
+			source_owner TEXT NULL,
+
+			destination TEXT NULL,
+			destination_owner TEXT NULL,
+
+			quantity BIGINT NULL CHECK (quantity >= 0),
+
+			CONSTRAINT codewallet__core_intentaccountmetadata__uniq__paging_id__and__source UNIQUE (paging_id, source),
+			CONSTRAINT codewallet__core_intentaccountmetadata__uniq__paging_id__and__destination UNIQUE (paging_id, destination)
+		)
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
 		DROP TABLE codewallet__core_paymentintent;
+		DROP TABLE codewallet__core_intentaccountmetadata;
 	`
 )
 

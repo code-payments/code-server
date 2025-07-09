@@ -43,11 +43,10 @@ func (s *store) Save(ctx context.Context, record *intent.Record) error {
 //
 // Returns ErrNotFound if no record is found.
 func (s *store) Get(ctx context.Context, intentID string) (*intent.Record, error) {
-	obj, err := dbGetIntent(ctx, s.db, intentID)
+	obj, err := dbGetIntentByIntentID(ctx, s.db, intentID)
 	if err != nil {
 		return nil, err
 	}
-
 	return fromIntentModel(obj), nil
 }
 
