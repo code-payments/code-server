@@ -1077,6 +1077,8 @@ func NewPublicDistributionIntentHandler(
 		data:          data,
 		antispamGuard: antispamGuard,
 		amlGuard:      amlGuard,
+
+		cachedDestinationAccountInfoRecordByTokenAddress: make(map[string]*account.Record),
 	}
 }
 
