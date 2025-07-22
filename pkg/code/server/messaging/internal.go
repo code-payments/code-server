@@ -127,8 +127,15 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 	}
 
 	rendezvousRecord, err := s.data.GetRendezvous(ctx, streamKey)
-	if err == nil {
+	switch err {
+	case nil:
 		log := log.WithField("receiver_address", rendezvousRecord.Address)
+
+		// Expired rendezvous record that likely wasn't cleaned up. Avoid forwarding,
+		// since we expect a broken state.
+		if time.Since(rendezvousRecord.ExpiresAt) >= 0 {
+			return nil
+		}
 
 		// We got lucky and the receiver's stream is on the same RPC server as
 		// where the message is created. No forwarding between servers is required.
@@ -147,12 +154,6 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 				}
 			}
 
-			return nil
-		}
-
-		// Expired rendezvous record that likely wasn't cleaned up. Avoid forwarding,
-		// since we expect a broken state.
-		if time.Since(rendezvousRecord.ExpiresAt) >= 0 {
 			return nil
 		}
 
@@ -188,7 +189,11 @@ func (s *server) internallyForwardMessage(ctx context.Context, req *messagingpb.
 			log.WithField("result", resp.Result).Warn("non-OK result sending redirected request")
 			return err
 		}
-	} else if err != rendezvous.ErrNotFound {
+
+	case rendezvous.ErrNotFound:
+		log.Debug("dropping message without rendezvous record")
+
+	default:
 		log.WithError(err).Warn("failure getting rendezvous record")
 		return err
 	}
