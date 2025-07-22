@@ -50,24 +50,6 @@ var (
 	cachedAirdropStatus = cache.NewCache(10_000)
 )
 
-type AirdropIntegration interface {
-	// GetWelcomeBonusAmount returns the amount that should be paid for the
-	// welcome bonus. Return 0 amount if the airdrop should not be sent.
-	GetWelcomeBonusAmount(ctx context.Context, owner *common.Account) (float64, currency_lib.Code, error)
-}
-
-type defaultAirdropIntegration struct{}
-
-// NewDefaultAirdropIntegration retuns an AirdropIntegration that sends $1 USD
-// to everyone
-func NewDefaultAirdropIntegration() AirdropIntegration {
-	return &defaultAirdropIntegration{}
-}
-
-func (i *defaultAirdropIntegration) GetWelcomeBonusAmount(ctx context.Context, owner *common.Account) (float64, currency_lib.Code, error) {
-	return 1.0, currency_lib.USD, nil
-}
-
 func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.AirdropRequest) (*transactionpb.AirdropResponse, error) {
 	log := s.log.WithFields(logrus.Fields{
 		"method":       "Airdrop",

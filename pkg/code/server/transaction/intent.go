@@ -37,32 +37,6 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
-type SubmitIntentIntegration interface {
-	// AllowCreation determines whether the new intent creation should be allowed
-	// with app-specific validation rules
-	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error
-
-	// OnSuccess is a best-effort callback when an intent has been successfully
-	// submitted
-	OnSuccess(ctx context.Context, intentRecord *intent.Record) error
-}
-
-type defaultSubmitIntentIntegration struct {
-}
-
-// NewDefaultSubmitIntentIntegration retuns a SubmitIntentIntegration that allows everything
-func NewDefaultSubmitIntentIntegration() SubmitIntentIntegration {
-	return &defaultSubmitIntentIntegration{}
-}
-
-func (i *defaultSubmitIntentIntegration) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
-	return nil
-}
-
-func (i *defaultSubmitIntentIntegration) OnSuccess(ctx context.Context, intentRecord *intent.Record) error {
-	return nil
-}
-
 func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_SubmitIntentServer) error {
 	// Bound the total RPC. Keeping the timeout higher to see where we land because
 	// there's a lot of stuff happening in this method.
