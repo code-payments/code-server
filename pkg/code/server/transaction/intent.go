@@ -41,6 +41,10 @@ type SubmitIntentIntegration interface {
 	// AllowCreation determines whether the new intent creation should be allowed
 	// with app-specific validation rules
 	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error
+
+	// OnSuccess is a best-effort callback when an intent has been successfully
+	// submitted
+	OnSuccess(ctx context.Context, intentRecord *intent.Record) error
 }
 
 type defaultSubmitIntentIntegration struct {
@@ -52,6 +56,10 @@ func NewDefaultSubmitIntentIntegration() SubmitIntentIntegration {
 }
 
 func (i *defaultSubmitIntentIntegration) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
+	return nil
+}
+
+func (i *defaultSubmitIntentIntegration) OnSuccess(ctx context.Context, intentRecord *intent.Record) error {
 	return nil
 }
 
@@ -662,6 +670,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		}
 		return handleSubmitIntentError(streamer, err)
 	}
+
+	go func() {
+		err := s.submitIntentIntegration.OnSuccess(context.Background(), intentRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure calling integration success callback")
+		}
+	}()
 
 	//
 	// Intent is submitted, and anything beyond this point is best-effort.
