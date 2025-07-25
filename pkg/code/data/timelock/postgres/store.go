@@ -59,16 +59,6 @@ func (s *store) GetByVault(ctx context.Context, vault string) (*timelock.Record,
 	return fromModel(model), nil
 }
 
-// GetByDepositPda implements timelock.Store.GetByDepositPda
-func (s *store) GetByDepositPda(ctx context.Context, depositPda string) (*timelock.Record, error) {
-	model, err := dbGetByDepositPda(ctx, s.db, depositPda)
-	if err != nil {
-		return nil, err
-	}
-
-	return fromModel(model), nil
-}
-
 // GetByVaultBatch implements timelock.Store.GetByVaultBatch
 func (s *store) GetByVaultBatch(ctx context.Context, vaults ...string) (map[string]*timelock.Record, error) {
 	models, err := dbGetByVaultBatch(ctx, s.db, vaults...)
@@ -81,6 +71,16 @@ func (s *store) GetByVaultBatch(ctx context.Context, vaults ...string) (map[stri
 		timelocksByVault[model.VaultAddress] = fromModel(model)
 	}
 	return timelocksByVault, nil
+}
+
+// GetByDepositPda implements timelock.Store.GetByDepositPda
+func (s *store) GetByDepositPda(ctx context.Context, depositPda string) (*timelock.Record, error) {
+	model, err := dbGetByDepositPda(ctx, s.db, depositPda)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromModel(model), nil
 }
 
 // GetOldestByState implements timelock.Store.GetAllByState

@@ -1109,23 +1109,29 @@ func (h *PublicDistributionIntentHandler) PopulateMetadata(ctx context.Context, 
 		Quantity:       totalQuarks,
 		UsdMarketValue: usdExchangeRecord.Rate * float64(totalQuarks) / float64(common.CoreMintQuarksPerUnit),
 	}
-	for _, distribution := range typedProtoMetadata.Distributions {
+
+	destinationTokenAddresses := make([]string, len(typedProtoMetadata.Distributions))
+	for i, distribution := range typedProtoMetadata.Distributions {
 		destination, err := common.NewAccountFromProto(distribution.Destination)
 		if err != nil {
 			return err
 		}
+		destinationTokenAddresses[i] = destination.PublicKey().ToBase58()
+	}
 
-		destinationAccountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
-		if err == account.ErrAccountInfoNotFound {
-			return NewIntentValidationErrorf("destination account %s is not a code account", destination.PublicKey().ToBase58())
-		} else if err != nil {
-			return err
-		}
-		h.cachedDestinationAccountInfoRecordByTokenAddress[destination.PublicKey().ToBase58()] = destinationAccountInfoRecord
+	h.cachedDestinationAccountInfoRecordByTokenAddress, err = h.data.GetAccountInfoByTokenAddressBatch(ctx, destinationTokenAddresses...)
+	if err == account.ErrAccountInfoNotFound {
+		return NewIntentValidationError("at least one destination account is not a code account")
+	} else if err != nil {
+		return err
+	}
+
+	for i, distribution := range typedProtoMetadata.Distributions {
+		destinationAccountInfoRecord := h.cachedDestinationAccountInfoRecordByTokenAddress[destinationTokenAddresses[i]]
 
 		intentRecord.PublicDistributionMetadata.Distributions = append(intentRecord.PublicDistributionMetadata.Distributions, &intent.Distribution{
 			DestinationOwnerAccount: destinationAccountInfoRecord.OwnerAccount,
-			DestinationTokenAccount: destination.PublicKey().ToBase58(),
+			DestinationTokenAccount: destinationAccountInfoRecord.TokenAccount,
 			Quantity:                distribution.Quarks,
 		})
 	}

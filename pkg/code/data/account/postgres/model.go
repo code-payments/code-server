@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -186,6 +188,30 @@ func dbGetByTokenAddress(ctx context.Context, db *sqlx.DB, address string) (*mod
 
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
+	}
+	return res, nil
+}
+
+func dbGetByTokenAddressBatch(ctx context.Context, db *sqlx.DB, addresses ...string) ([]*model, error) {
+	res := []*model{}
+
+	individualFilters := make([]string, len(addresses))
+	for i, address := range addresses {
+		individualFilters[i] = fmt.Sprintf("'%s'", address)
+	}
+
+	query := fmt.Sprintf(
+		`SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, relationship_to, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM `+tableName+`
+		WHERE token_account IN (%s)`,
+		strings.Join(individualFilters, ", "),
+	)
+
+	err := db.SelectContext(ctx, &res, query)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
+	}
+	if len(res) != len(addresses) {
+		return nil, account.ErrAccountInfoNotFound
 	}
 	return res, nil
 }

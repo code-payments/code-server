@@ -67,6 +67,20 @@ func (s *store) GetByTokenAddress(ctx context.Context, address string) (*account
 	return fromModel(model), nil
 }
 
+// GetByTokenAddressBatch implements timelock.Store.GetByTokenAddressBatch
+func (s *store) GetByTokenAddressBatch(ctx context.Context, addresses ...string) (map[string]*account.Record, error) {
+	models, err := dbGetByTokenAddressBatch(ctx, s.db, addresses...)
+	if err != nil {
+		return nil, err
+	}
+
+	recorsdByAddress := make(map[string]*account.Record, len(models))
+	for _, model := range models {
+		recorsdByAddress[model.TokenAccount] = fromModel(model)
+	}
+	return recorsdByAddress, nil
+}
+
 // GetByAuthorityAddress implements account.Store.GetByAuthorityAddress
 func (s *store) GetByAuthorityAddress(ctx context.Context, address string) (*account.Record, error) {
 	model, err := dbGetByAuthorityAddress(ctx, s.db, address)

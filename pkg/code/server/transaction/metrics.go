@@ -6,8 +6,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
 
@@ -16,8 +14,6 @@ const (
 	submitIntentLatencyBreakdownEventName = "SubmitIntentLatencyBreakdown"
 
 	airdropEventName = "Airdrop"
-
-	buyModulePurchaseInitiatedEventName = "BuyModulePurchaseInitiated"
 )
 
 func recordUserIntentCreatedEvent(ctx context.Context, intentRecord *intent.Record) {
@@ -41,13 +37,5 @@ func recordAirdropEvent(ctx context.Context, owner *common.Account, airdropType 
 	metrics.RecordEvent(ctx, airdropEventName, map[string]interface{}{
 		"owner":        owner.PublicKey().ToBase58(),
 		"airdrop_type": airdropType.String(),
-	})
-}
-
-func recordBuyModulePurchaseInitiatedEvent(ctx context.Context, currency currency_lib.Code, amount float64, deviceType client.DeviceType) {
-	metrics.RecordEvent(ctx, buyModulePurchaseInitiatedEventName, map[string]interface{}{
-		"currency": string(currency),
-		"amount":   amount,
-		"platform": deviceType.String(),
 	})
 }

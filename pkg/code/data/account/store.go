@@ -25,6 +25,10 @@ type Store interface {
 	// GetByTokenAddress finds the record for a given token account address
 	GetByTokenAddress(ctx context.Context, address string) (*Record, error)
 
+	// GetByTokenAddressBatch is like GetByTokenAddress, but for multiple accounts.
+	// If any one account is missing, ErrAccountInfoNotFound is returned.
+	GetByTokenAddressBatch(ctx context.Context, addresses ...string) (map[string]*Record, error)
+
 	// GetByAuthorityAddress finds the record for a given authority account address
 	GetByAuthorityAddress(ctx context.Context, address string) (*Record, error)
 

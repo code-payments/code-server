@@ -94,6 +94,7 @@ type DatabaseData interface {
 	CreateAccountInfo(ctx context.Context, record *account.Record) error
 	UpdateAccountInfo(ctx context.Context, record *account.Record) error
 	GetAccountInfoByTokenAddress(ctx context.Context, address string) (*account.Record, error)
+	GetAccountInfoByTokenAddressBatch(ctx context.Context, addresses ...string) (map[string]*account.Record, error)
 	GetAccountInfoByAuthorityAddress(ctx context.Context, address string) (*account.Record, error)
 	GetLatestAccountInfosByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*account.Record, error)
 	GetLatestAccountInfoByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error)
@@ -363,6 +364,9 @@ func (dp *DatabaseProvider) UpdateAccountInfo(ctx context.Context, record *accou
 }
 func (dp *DatabaseProvider) GetAccountInfoByTokenAddress(ctx context.Context, address string) (*account.Record, error) {
 	return dp.accounts.GetByTokenAddress(ctx, address)
+}
+func (dp *DatabaseProvider) GetAccountInfoByTokenAddressBatch(ctx context.Context, addresses ...string) (map[string]*account.Record, error) {
+	return dp.accounts.GetByTokenAddressBatch(ctx, addresses...)
 }
 func (dp *DatabaseProvider) GetAccountInfoByAuthorityAddress(ctx context.Context, address string) (*account.Record, error) {
 	return dp.accounts.GetByAuthorityAddress(ctx, address)
