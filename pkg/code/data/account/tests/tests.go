@@ -21,6 +21,7 @@ func RunTests(t *testing.T, s account.Store, teardown func()) {
 		testPutMultipleRecords,
 		testPutErrors,
 		testGetLatestByOwner,
+		testBatchedMethods,
 		testRemoteSendEdgeCases,
 		testRelationshipAccountEdgeCases,
 		testSwapAccountEdgeCases,
@@ -314,6 +315,49 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 		for i, actual := range allActual {
 			assert.Equal(t, fmt.Sprintf("token2%d", i), actual.TokenAccount)
 		}
+	})
+}
+
+func testBatchedMethods(t *testing.T, s account.Store) {
+	t.Run("testBatchedMethods", func(t *testing.T) {
+		ctx := context.Background()
+
+		var records []*account.Record
+		for i := 0; i < 100; i++ {
+			record := &account.Record{
+				OwnerAccount:     fmt.Sprintf("owner%d", i),
+				AuthorityAccount: fmt.Sprintf("authority%d", i),
+				TokenAccount:     fmt.Sprintf("token%d", i),
+				MintAccount:      fmt.Sprintf("mint%d", i),
+				AccountType:      commonpb.AccountType_POOL,
+				Index:            uint64(i),
+			}
+
+			require.NoError(t, s.Put(ctx, record))
+
+			records = append(records, record)
+		}
+
+		actual, err := s.GetByTokenAddressBatch(ctx, "token0", "token1")
+		require.NoError(t, err)
+		require.Len(t, actual, 2)
+		assertEquivalentRecords(t, records[0], actual[records[0].TokenAccount])
+		assertEquivalentRecords(t, records[1], actual[records[1].TokenAccount])
+
+		actual, err = s.GetByTokenAddressBatch(ctx, "token0", "token1", "token2", "token3", "token4")
+		require.NoError(t, err)
+		require.Len(t, actual, 5)
+		assertEquivalentRecords(t, records[0], actual[records[0].TokenAccount])
+		assertEquivalentRecords(t, records[1], actual[records[1].TokenAccount])
+		assertEquivalentRecords(t, records[2], actual[records[2].TokenAccount])
+		assertEquivalentRecords(t, records[3], actual[records[3].TokenAccount])
+		assertEquivalentRecords(t, records[4], actual[records[4].TokenAccount])
+
+		_, err = s.GetByTokenAddressBatch(ctx, "not-found")
+		assert.Equal(t, account.ErrAccountInfoNotFound, err)
+
+		_, err = s.GetByTokenAddressBatch(ctx, "token0", "not-found")
+		assert.Equal(t, account.ErrAccountInfoNotFound, err)
 	})
 }
 

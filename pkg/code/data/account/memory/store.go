@@ -252,6 +252,24 @@ func (s *store) GetByTokenAddress(_ context.Context, address string) (*account.R
 	return &cloned, nil
 }
 
+// GetByTokenAddressBatch implements account.Store.GetByTokenAddressBatch
+func (s *store) GetByTokenAddressBatch(_ context.Context, addresses ...string) (map[string]*account.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res := make(map[string]*account.Record)
+	for _, address := range addresses {
+		item := s.findByTokenAddress(address)
+		if item == nil {
+			return nil, account.ErrAccountInfoNotFound
+		}
+
+		cloned := item.Clone()
+		res[address] = &cloned
+	}
+	return res, nil
+}
+
 // GetByAuthorityAddress implements account.Store.GetByAuthorityAddress
 func (s *store) GetByAuthorityAddress(_ context.Context, address string) (*account.Record, error) {
 	s.mu.Lock()

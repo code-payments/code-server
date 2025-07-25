@@ -17,12 +17,12 @@ type Store interface {
 	// GetByVault gets a timelock account's state by the vault address it's locking
 	GetByVault(ctx context.Context, vault string) (*Record, error)
 
-	// GetByDepositPda gets a timelock account's state by the deposit PDA address
-	GetByDepositPda(ctx context.Context, depositPda string) (*Record, error)
-
 	// GetByVaultBatch is like GetByVault, but for multiple accounts. If any one account
 	// is missing, ErrTimelockNotFound is returned.
 	GetByVaultBatch(ctx context.Context, vaults ...string) (map[string]*Record, error)
+
+	// GetByDepositPda gets a timelock account's state by the deposit PDA address
+	GetByDepositPda(ctx context.Context, depositPda string) (*Record, error)
 
 	// GetAllByState gets all timelock accounts in the provided state
 	GetAllByState(ctx context.Context, state timelock_token.TimelockState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*Record, error)

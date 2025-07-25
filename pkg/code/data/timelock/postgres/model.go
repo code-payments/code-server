@@ -174,22 +174,6 @@ func dbGetByVault(ctx context.Context, db *sqlx.DB, vault string) (*model, error
 	return res, nil
 }
 
-func dbGetByDepositPda(ctx context.Context, db *sqlx.DB, depositPda string) (*model, error) {
-	res := &model{}
-
-	query := `SELECT
-		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
-		FROM ` + tableName + `
-		WHERE deposit_pda_address = $1
-		LIMIT 1`
-
-	err := db.GetContext(ctx, res, query, depositPda)
-	if err != nil {
-		return nil, pgutil.CheckNoRows(err, timelock.ErrTimelockNotFound)
-	}
-	return res, nil
-}
-
 func dbGetByVaultBatch(ctx context.Context, db *sqlx.DB, vaults ...string) ([]*model, error) {
 	res := []*model{}
 
@@ -211,6 +195,22 @@ func dbGetByVaultBatch(ctx context.Context, db *sqlx.DB, vaults ...string) ([]*m
 	}
 	if len(res) != len(vaults) {
 		return nil, timelock.ErrTimelockNotFound
+	}
+	return res, nil
+}
+
+func dbGetByDepositPda(ctx context.Context, db *sqlx.DB, depositPda string) (*model, error) {
+	res := &model{}
+
+	query := `SELECT
+		id, address, bump, vault_address, vault_bump, vault_owner, vault_state, deposit_pda_address, deposit_pda_bump, unlock_at, block, last_updated_at
+		FROM ` + tableName + `
+		WHERE deposit_pda_address = $1
+		LIMIT 1`
+
+	err := db.GetContext(ctx, res, query, depositPda)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, timelock.ErrTimelockNotFound)
 	}
 	return res, nil
 }
