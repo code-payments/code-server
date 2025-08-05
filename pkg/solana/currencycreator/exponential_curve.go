@@ -7,12 +7,54 @@ import (
 
 // Note: Generated with Grok 4 based on curve.rs, and not 100% accurate with on-chain program
 
-const defaultPrec = 192
+const defaultExponentialCurvePrec = 128
 
 type ExponentialCurve struct {
 	a *big.Float
 	b *big.Float
 	c *big.Float
+}
+
+func (curve *ExponentialCurve) SpotPriceAtSupply(currentSupply *big.Float) *big.Float {
+	cTimesS := new(big.Float).Mul(curve.c, currentSupply)
+	exp := expBig(cTimesS)
+	return new(big.Float).Mul(new(big.Float).Mul(curve.a, curve.b), exp)
+}
+
+func (curve *ExponentialCurve) TokensToValue(currentSupply, tokens *big.Float) *big.Float {
+	newSupply := new(big.Float).Add(currentSupply, tokens)
+	cs := new(big.Float).Mul(curve.c, currentSupply)
+	ns := new(big.Float).Mul(curve.c, newSupply)
+	expCS := expBig(cs)
+	expNS := expBig(ns)
+	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
+	diff := new(big.Float).Sub(expNS, expCS)
+	return new(big.Float).Mul(abOverC, diff)
+}
+
+func (curve *ExponentialCurve) ValueToTokens(currentSupply, value *big.Float) *big.Float {
+	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
+	expCS := expBig(new(big.Float).Mul(curve.c, currentSupply))
+	term := new(big.Float).Add(new(big.Float).Quo(value, abOverC), expCS)
+	lnTerm := logBig(term)
+	result := new(big.Float).Quo(lnTerm, curve.c)
+	return new(big.Float).Sub(result, currentSupply)
+}
+
+func DefaultExponentialCurve() *ExponentialCurve {
+	scale, ok := new(big.Float).SetPrec(defaultExponentialCurvePrec).SetString(defaultCurveScaleString)
+	if !ok {
+		panic("Invalid scale string")
+	}
+
+	aInt, _ := new(big.Int).SetString(defaultCurveAString, 10)
+	bInt, _ := new(big.Int).SetString(defaultCurveBString, 10)
+
+	a := new(big.Float).Quo(new(big.Float).SetPrec(defaultExponentialCurvePrec).SetInt(aInt), scale)
+	b := new(big.Float).Quo(new(big.Float).SetPrec(defaultExponentialCurvePrec).SetInt(bInt), scale)
+	c := new(big.Float).Copy(b)
+
+	return &ExponentialCurve{a: a, b: b, c: c}
 }
 
 func expBig(x *big.Float) *big.Float {
@@ -47,53 +89,4 @@ func logBig(y *big.Float) *big.Float {
 		z = z.Sub(z, big.NewFloat(1))
 	}
 	return z
-}
-
-func (curve *ExponentialCurve) SpotPriceAtSupply(currentSupply *big.Float) *big.Float {
-	cTimesS := new(big.Float).Mul(curve.c, currentSupply)
-	exp := expBig(cTimesS)
-	return new(big.Float).Mul(new(big.Float).Mul(curve.a, curve.b), exp)
-}
-
-func (curve *ExponentialCurve) TokensToValue(currentSupply, tokens *big.Float) *big.Float {
-	newSupply := new(big.Float).Add(currentSupply, tokens)
-	cs := new(big.Float).Mul(curve.c, currentSupply)
-	ns := new(big.Float).Mul(curve.c, newSupply)
-	expCS := expBig(cs)
-	expNS := expBig(ns)
-	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
-	diff := new(big.Float).Sub(expNS, expCS)
-	return new(big.Float).Mul(abOverC, diff)
-}
-
-func (curve *ExponentialCurve) ValueToTokens(currentSupply, value *big.Float) *big.Float {
-	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
-	expCS := expBig(new(big.Float).Mul(curve.c, currentSupply))
-	term := new(big.Float).Add(new(big.Float).Quo(value, abOverC), expCS)
-	lnTerm := logBig(term)
-	result := new(big.Float).Quo(lnTerm, curve.c)
-	return new(big.Float).Sub(result, currentSupply)
-}
-
-func DefaultExponentialCurve() ExponentialCurve {
-	scale, ok := new(big.Float).SetPrec(defaultPrec).SetString("1000000000000000000") // 10^18
-	if !ok {
-		panic("Invalid scale string")
-	}
-
-	aInt, ok := new(big.Int).SetString("11400230149967394933471", 10)
-	if !ok {
-		panic("Invalid CURVE_A string")
-	}
-
-	bInt, ok := new(big.Int).SetString("877175273521", 10)
-	if !ok {
-		panic("Invalid CURVE_B string")
-	}
-
-	a := new(big.Float).Quo(new(big.Float).SetInt(aInt).SetPrec(defaultPrec), scale)
-	b := new(big.Float).Quo(new(big.Float).SetInt(bInt).SetPrec(defaultPrec), scale)
-	c := new(big.Float).Copy(b)
-
-	return ExponentialCurve{a: a, b: b, c: c}
 }
