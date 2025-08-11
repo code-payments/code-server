@@ -10,6 +10,14 @@ import (
 )
 
 const (
+	DefaultBuyCap  = 0 // unlimited base tokens
+	DefaultSaleCap = 0 // unlimited target tokens
+
+	DefaultBuyFeeBps  = 0   // 0% fee
+	DefaultSellFeeBps = 100 // 1% fee
+)
+
+const (
 	LiquidityPoolAccountSize = (8 + //discriminator
 		32 + // authority
 		32 + // currency

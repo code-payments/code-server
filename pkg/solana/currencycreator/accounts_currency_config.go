@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultMintMaxSupply = 21_000_000_000_000
+	DefaultMintMaxSupply = 21_000_000_000_000 // 21mm tokens with 6 decimals
 	DefaultMintDecimals  = 6
 )
 

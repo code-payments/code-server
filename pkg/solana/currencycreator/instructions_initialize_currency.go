@@ -68,7 +68,7 @@ func NewInitializeCurrencyInstruction(
 			},
 			{
 				PublicKey:  accounts.Creator,
-				IsWritable: true,
+				IsWritable: false,
 				IsSigner:   false,
 			},
 			{
