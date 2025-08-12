@@ -11,8 +11,3 @@ const (
 	AccountTypeUnlockState
 	AccountTypeWithdrawReceipt
 )
-
-func putAccountType(dst []byte, v AccountType, offset *int) {
-	dst[*offset] = uint8(v)
-	*offset += 1
-}

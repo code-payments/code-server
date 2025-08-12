@@ -1,4 +1,4 @@
-package cvm
+package currencycreator
 
 import (
 	"crypto/ed25519"
@@ -43,35 +43,6 @@ func getUint8(src []byte, dst *uint8, offset *int) {
 	*offset += 1
 }
 
-func putUint8Array(dst []byte, array []uint8, offset *int) {
-	binary.LittleEndian.PutUint32(dst[*offset:], uint32(len(array)))
-	*offset += 4
-
-	for _, v := range array {
-		dst[*offset] = v
-		*offset += 1
-	}
-}
-
-func putUint16(dst []byte, v uint16, offset *int) {
-	binary.LittleEndian.PutUint16(dst[*offset:], v)
-	*offset += 2
-}
-func getUint16(src []byte, dst *uint16, offset *int) {
-	*dst = binary.LittleEndian.Uint16(src[*offset:])
-	*offset += 2
-}
-
-func putUint16Array(dst []byte, array []uint16, offset *int) {
-	binary.LittleEndian.PutUint32(dst[*offset:], uint32(len(array)))
-	*offset += 4
-
-	for _, v := range array {
-		binary.LittleEndian.PutUint16(dst[*offset:], v)
-		*offset += 2
-	}
-}
-
 func putUint32(dst []byte, v uint32, offset *int) {
 	binary.LittleEndian.PutUint32(dst[*offset:], v)
 	*offset += 4
@@ -110,4 +81,19 @@ func mustBase58Decode(value string) []byte {
 		panic(err)
 	}
 	return decoded
+}
+
+func littleToBigEndian(b []byte) []byte {
+	res := make([]byte, len(b))
+	for i := range b {
+		res[i] = b[len(b)-1-i]
+	}
+	return res
+}
+func bigToLittleEndian(b []byte) []byte {
+	res := make([]byte, len(b))
+	for i := range b {
+		res[i] = b[len(b)-1-i]
+	}
+	return res
 }

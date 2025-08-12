@@ -2,7 +2,6 @@ package cvm
 
 import (
 	"crypto/ed25519"
-	"encoding/binary"
 
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -87,73 +86,10 @@ func GetStorageAccountAddress(args *GetMemoryAccountAddressArgs) (ed25519.Public
 	)
 }
 
-type GetRelayAccountAddressArgs struct {
-	Name string
-	Vm   ed25519.PublicKey
-}
-
-func GetRelayAccountAddress(args *GetRelayAccountAddressArgs) (ed25519.PublicKey, uint8, error) {
-	return solana.FindProgramAddressAndBump(
-		PROGRAM_ID,
-		CodeVmPrefix,
-		VmRelayPrefix,
-		[]byte(toFixedString(args.Name, MaxRelayAccountNameSize)),
-		args.Vm,
-	)
-}
-
 type GetRelayProofAddressArgs struct {
 	Relay      ed25519.PublicKey
 	MerkleRoot Hash
 	Commitment Hash
-}
-
-func GetRelayProofAddress(args *GetRelayProofAddressArgs) (ed25519.PublicKey, uint8, error) {
-	return solana.FindProgramAddressAndBump(
-		PROGRAM_ID,
-		CodeVmPrefix,
-		VmRelayProofPrefix,
-		args.Relay,
-		args.MerkleRoot[:],
-		args.Commitment[:],
-	)
-}
-
-type GetRelayCommitmentAddressArgs struct {
-	Relay       ed25519.PublicKey
-	MerkleRoot  Hash
-	Transcript  Hash
-	Destination ed25519.PublicKey
-	Amount      uint64
-}
-
-func GetRelayCommitmentAddress(args *GetRelayCommitmentAddressArgs) (ed25519.PublicKey, uint8, error) {
-	amountBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(amountBytes, args.Amount)
-
-	return solana.FindProgramAddressAndBump(
-		PROGRAM_ID,
-		CodeVmPrefix,
-		VmRelayCommitmentPrefix,
-		args.Relay,
-		args.MerkleRoot[:],
-		args.Transcript[:],
-		args.Destination,
-		amountBytes,
-	)
-}
-
-type GetRelayDestinationAddressArgs struct {
-	RelayOrProof ed25519.PublicKey
-}
-
-func GetRelayDestinationAddress(args *GetRelayDestinationAddressArgs) (ed25519.PublicKey, uint8, error) {
-	return solana.FindProgramAddressAndBump(
-		SPLITTER_PROGRAM_ID,
-		CodeVmPrefix,
-		VmRelayVaultPrefix,
-		args.RelayOrProof,
-	)
 }
 
 type GetVirtualTimelockAccountAddressArgs struct {
