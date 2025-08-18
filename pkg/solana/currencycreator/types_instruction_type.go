@@ -7,6 +7,7 @@ const (
 
 	InstructionTypeInitializeCurrency
 	InstructionTypeInitializePool
+	InstructionTypeInitializeMetadata
 
 	InstructionTypeBuyTokens
 	InstructionTypeSellTokens

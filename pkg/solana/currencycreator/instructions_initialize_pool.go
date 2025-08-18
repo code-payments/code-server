@@ -7,27 +7,17 @@ import (
 )
 
 const (
-	InitializePoolInstructionArgsSize = (8 + // supply
-		RawExponentialCurveSize + // curve
-		8 + // purchase_cap
-		8 + // sale_cap
-		4 + // buy_fee
-		4 + // sell_fee
-		8 + // go_live_wait_time
+	InitializePoolInstructionArgsSize = (2 + // buy_fee
+		2 + // sell_fee
 		1 + // bump
 		1 + // vault_target_bump
 		1 + // vault_base_bump
-		5) // padding
+		1) // padding
 )
 
 type InitializePoolInstructionArgs struct {
-	Supply          uint64
-	Curve           RawExponentialCurve
-	PurchaseCap     uint64
-	SaleCap         uint64
-	BuyFee          uint32
-	SellFee         uint32
-	GoLiveWaitTime  uint64
+	BuyFee          uint16
+	SellFee         uint16
 	Bump            uint8
 	VaultTargetBump uint8
 	VaultBaseBump   uint8
@@ -55,13 +45,8 @@ func NewInitializePoolInstruction(
 	data := make([]byte, 1+InitializePoolInstructionArgsSize)
 
 	putInstructionType(data, InstructionTypeInitializePool, &offset)
-	putUint64(data, args.Supply, &offset)
-	putRawExponentialCurve(data, args.Curve, &offset)
-	putUint64(data, args.PurchaseCap, &offset)
-	putUint64(data, args.SaleCap, &offset)
-	putUint32(data, args.BuyFee, &offset)
-	putUint32(data, args.SellFee, &offset)
-	putUint64(data, args.GoLiveWaitTime, &offset)
+	putUint16(data, args.BuyFee, &offset)
+	putUint16(data, args.SellFee, &offset)
 	putUint8(data, args.Bump, &offset)
 	putUint8(data, args.VaultTargetBump, &offset)
 	putUint8(data, args.VaultBaseBump, &offset)

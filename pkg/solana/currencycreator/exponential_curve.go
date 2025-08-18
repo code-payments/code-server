@@ -7,7 +7,15 @@ import (
 
 // Note: Generated with Grok 4 based on curve.rs, and not 100% accurate with on-chain program
 
-const defaultExponentialCurvePrec = 128
+const (
+	DefaultCurveDecimals = 18
+
+	DefaultCurveAString     = "11400230149967394933471" // 11400.230149967394933471
+	DefaultCurveBString     = "877175273521"            // 0.000000877175273521
+	DefaultCurveScaleString = "1000000000000000000"     // 10^18
+
+	defaultCurvePrec = 128
+)
 
 type ExponentialCurve struct {
 	a *big.Float
@@ -42,16 +50,16 @@ func (curve *ExponentialCurve) ValueToTokens(currentSupply, value *big.Float) *b
 }
 
 func DefaultExponentialCurve() *ExponentialCurve {
-	scale, ok := new(big.Float).SetPrec(defaultExponentialCurvePrec).SetString(defaultCurveScaleString)
+	scale, ok := new(big.Float).SetPrec(defaultCurvePrec).SetString(DefaultCurveScaleString)
 	if !ok {
 		panic("Invalid scale string")
 	}
 
-	aInt, _ := new(big.Int).SetString(defaultCurveAString, 10)
-	bInt, _ := new(big.Int).SetString(defaultCurveBString, 10)
+	aInt, _ := new(big.Int).SetString(DefaultCurveAString, 10)
+	bInt, _ := new(big.Int).SetString(DefaultCurveBString, 10)
 
-	a := new(big.Float).Quo(new(big.Float).SetPrec(defaultExponentialCurvePrec).SetInt(aInt), scale)
-	b := new(big.Float).Quo(new(big.Float).SetPrec(defaultExponentialCurvePrec).SetInt(bInt), scale)
+	a := new(big.Float).Quo(new(big.Float).SetPrec(defaultCurvePrec).SetInt(aInt), scale)
+	b := new(big.Float).Quo(new(big.Float).SetPrec(defaultCurvePrec).SetInt(bInt), scale)
 	c := new(big.Float).Copy(b)
 
 	return &ExponentialCurve{a: a, b: b, c: c}
