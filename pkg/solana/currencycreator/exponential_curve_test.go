@@ -15,7 +15,7 @@ func TestCalculateCurveConstants(t *testing.T) {
 	diff := new(big.Float).Sub(spot0, expectedStart)
 	threshold, _ := new(big.Float).SetString("0.0000000001")
 	if diff.Abs(diff).Cmp(threshold) > 0 {
-		t.Errorf("Spot at 0: got %s, expected 0.01", spot0.Text('f', RawExponentialCurveDecimals))
+		t.Errorf("Spot at 0: got %s, expected 0.01", spot0.Text('f', DefaultCurveDecimals))
 	}
 
 	// Check R'(21000000) with tolerance
@@ -25,7 +25,7 @@ func TestCalculateCurveConstants(t *testing.T) {
 	diff = new(big.Float).Sub(spotEnd, expectedEnd)
 	threshold, _ = new(big.Float).SetString("0.0001")
 	if diff.Abs(diff).Cmp(threshold) > 0 {
-		t.Errorf("Spot at end: got %s, expected 1000000", spotEnd.Text('f', RawExponentialCurveDecimals))
+		t.Errorf("Spot at end: got %s, expected 1000000", spotEnd.Text('f', DefaultCurveDecimals))
 	}
 }
 
@@ -49,8 +49,8 @@ func TestGenerateCurveTable(t *testing.T) {
 		fmt.Printf("| %3d%% | %14s | %32s | %26s |\n",
 			i,
 			supply.Text('f', 0),
-			cost.Text('f', RawExponentialCurveDecimals),
-			spotPrice.Text('f', RawExponentialCurveDecimals))
+			cost.Text('f', DefaultCurveDecimals),
+			spotPrice.Text('f', DefaultCurveDecimals))
 
 		supply = supply.Add(supply, buyAmount)
 	}
