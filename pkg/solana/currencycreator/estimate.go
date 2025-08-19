@@ -37,6 +37,7 @@ func EstimateBuyInUsdc(args *EstimateBuyInUsdcArgs) (uint64, uint64) {
 	scaledTokens := DefaultExponentialCurve().ValueToTokens(scaledCurrentSupply, scaledBuyAmount)
 	unscaledTokens := new(big.Float).Mul(scaledTokens, scale)
 
+	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
 	feePctValue := new(big.Float).SetPrec(defaultCurvePrec).Quo(big.NewFloat(float64(args.BuyFeeBps)), big.NewFloat(10000))
 	scaledFees := new(big.Float).Mul(scaledTokens, feePctValue)
 	unscaledFees := new(big.Float).Mul(scaledFees, scale)
@@ -57,7 +58,7 @@ func EstimateSellInUsdc(args *EstimateSellInUsdcArgs) (uint64, uint64) {
 	unscaledSellAmount := big.NewFloat(float64(args.SellAmountInQuarks)).SetPrec(defaultCurvePrec)
 	scaledSellAmount := new(big.Float).Quo(unscaledSellAmount, scale)
 
-	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
+	scale = big.NewFloat(math.Pow10(int(usdc.Decimals))).SetPrec(defaultCurvePrec)
 	unscaledCurrentValue := big.NewFloat(float64(args.CurrentValueInQuarks)).SetPrec(defaultCurvePrec)
 	scaledCurrentValue := new(big.Float).Quo(unscaledCurrentValue, scale)
 
@@ -65,6 +66,7 @@ func EstimateSellInUsdc(args *EstimateSellInUsdcArgs) (uint64, uint64) {
 	scaledValue := DefaultExponentialCurve().TokensToValueFromCurrentValue(scaledCurrentValue, scaledSellAmount)
 	unscaledValue := new(big.Float).Mul(scaledValue, scale)
 
+	scale = big.NewFloat(math.Pow10(int(usdc.Decimals))).SetPrec(defaultCurvePrec)
 	feePctValue := new(big.Float).SetPrec(defaultCurvePrec).Quo(big.NewFloat(float64(args.SellFeeBps)), big.NewFloat(10000))
 	scaledFees := new(big.Float).Mul(scaledValue, feePctValue)
 	unscaledFees := new(big.Float).Mul(scaledFees, scale)
