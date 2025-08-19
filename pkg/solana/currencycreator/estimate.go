@@ -7,10 +7,6 @@ import (
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
-type EstimateCurrentPriceArgs struct {
-	CurrentSupplyInQuarks uint64
-}
-
 func EstimateCurrentPrice(currentSupplyInQuarks uint64) *big.Float {
 	scale := big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
 	unscaledCurrentSupply := big.NewFloat(float64(currentSupplyInQuarks)).SetPrec(defaultCurvePrec)
