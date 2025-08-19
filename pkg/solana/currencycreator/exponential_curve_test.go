@@ -43,7 +43,7 @@ func TestGenerateCurveTable(t *testing.T) {
 	supply := new(big.Float).Copy(zero)
 
 	for i := 0; i <= 100; i++ {
-		cost := curve.TokensToValue(zero, supply)
+		cost := curve.TokensToValueFromCurrentSupply(zero, supply)
 		spotPrice := curve.SpotPriceAtSupply(supply)
 
 		fmt.Printf("| %3d%% | %14s | %32s | %26s |\n",

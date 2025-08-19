@@ -29,7 +29,7 @@ func (curve *ExponentialCurve) SpotPriceAtSupply(currentSupply *big.Float) *big.
 	return new(big.Float).Mul(new(big.Float).Mul(curve.a, curve.b), exp)
 }
 
-func (curve *ExponentialCurve) TokensToValue(currentSupply, tokens *big.Float) *big.Float {
+func (curve *ExponentialCurve) TokensToValueFromCurrentSupply(currentSupply, tokens *big.Float) *big.Float {
 	newSupply := new(big.Float).Add(currentSupply, tokens)
 	cs := new(big.Float).Mul(curve.c, currentSupply)
 	ns := new(big.Float).Mul(curve.c, newSupply)
@@ -38,6 +38,15 @@ func (curve *ExponentialCurve) TokensToValue(currentSupply, tokens *big.Float) *
 	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
 	diff := new(big.Float).Sub(expNS, expCS)
 	return new(big.Float).Mul(abOverC, diff)
+}
+
+func (curve *ExponentialCurve) TokensToValueFromCurrentValue(currentValue, tokens *big.Float) *big.Float {
+	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
+	cvPlusAbOverC := new(big.Float).Add(currentValue, abOverC)
+	cTimesTokens := new(big.Float).Mul(curve.c, tokens)
+	exp := expBig(new(big.Float).Neg(cTimesTokens))
+	oneMinusExp := new(big.Float).Sub(big.NewFloat(1.0), exp)
+	return new(big.Float).Mul(cvPlusAbOverC, oneMinusExp)
 }
 
 func (curve *ExponentialCurve) ValueToTokens(currentSupply, value *big.Float) *big.Float {

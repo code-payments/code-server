@@ -3,79 +3,73 @@ package currencycreator
 import (
 	"math"
 	"math/big"
+
+	"github.com/code-payments/code-server/pkg/usdc"
 )
 
 type EstimateCurrentPriceArgs struct {
-	Curve                 *ExponentialCurve
 	CurrentSupplyInQuarks uint64
-	MintDecimals          uint8
 }
 
-func EstimateCurrentPrice(args *EstimateCurrentPriceArgs) *big.Float {
-	scale := big.NewFloat(math.Pow10(int(args.MintDecimals))).SetPrec(defaultCurvePrec)
-	unscaledCurrentSupply := big.NewFloat(float64(args.CurrentSupplyInQuarks)).SetPrec(defaultCurvePrec)
+func EstimateCurrentPrice(currentSupplyInQuarks uint64) *big.Float {
+	scale := big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
+	unscaledCurrentSupply := big.NewFloat(float64(currentSupplyInQuarks)).SetPrec(defaultCurvePrec)
 	scaledCurrentSupply := new(big.Float).Quo(unscaledCurrentSupply, scale)
-	return args.Curve.SpotPriceAtSupply(scaledCurrentSupply)
+	return DefaultExponentialCurve().SpotPriceAtSupply(scaledCurrentSupply)
 }
 
-type EstimateBuyArgs struct {
+type EstimateBuyInUsdcArgs struct {
 	BuyAmountInQuarks     uint64
-	Curve                 *ExponentialCurve
 	CurrentSupplyInQuarks uint64
 	BuyFeeBps             uint16
-	TargetMintDecimals    uint8
-	BaseMintDecimals      uint8
 }
 
-func EstimateBuy(args *EstimateBuyArgs) (uint64, uint64) {
-	scale := big.NewFloat(math.Pow10(int(args.BaseMintDecimals))).SetPrec(defaultCurvePrec)
+func EstimateBuyInUsdc(args *EstimateBuyInUsdcArgs) (uint64, uint64) {
+	scale := big.NewFloat(math.Pow10(int(usdc.Decimals))).SetPrec(defaultCurvePrec)
 	unscaledBuyAmount := big.NewFloat(float64(args.BuyAmountInQuarks)).SetPrec(defaultCurvePrec)
 	scaledBuyAmount := new(big.Float).Quo(unscaledBuyAmount, scale)
 
-	scale = big.NewFloat(math.Pow10(int(args.TargetMintDecimals))).SetPrec(defaultCurvePrec)
+	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
 	unscaledCurrentSupply := big.NewFloat(float64(args.CurrentSupplyInQuarks)).SetPrec(defaultCurvePrec)
 	scaledCurrentSupply := new(big.Float).Quo(unscaledCurrentSupply, scale)
 
-	scale = big.NewFloat(math.Pow10(int(args.TargetMintDecimals))).SetPrec(defaultCurvePrec)
-	scaledTotalValue := args.Curve.ValueToTokens(scaledCurrentSupply, scaledBuyAmount)
-	unscaledTotalValue := new(big.Float).Mul(scaledTotalValue, scale)
+	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
+	scaledTokens := DefaultExponentialCurve().ValueToTokens(scaledCurrentSupply, scaledBuyAmount)
+	unscaledTokens := new(big.Float).Mul(scaledTokens, scale)
 
 	feePctValue := new(big.Float).SetPrec(defaultCurvePrec).Quo(big.NewFloat(float64(args.BuyFeeBps)), big.NewFloat(10000))
-	scaledFees := new(big.Float).Mul(scaledTotalValue, feePctValue)
+	scaledFees := new(big.Float).Mul(scaledTokens, feePctValue)
 	unscaledFees := new(big.Float).Mul(scaledFees, scale)
 
-	total, _ := unscaledTotalValue.Int64()
+	tokens, _ := unscaledTokens.Int64()
 	fees, _ := unscaledFees.Int64()
-	return uint64(total - fees), uint64(fees)
+	return uint64(tokens - fees), uint64(fees)
 }
 
-type EstimateSaleArgs struct {
-	SellAmountInQuarks    uint64
-	Curve                 *ExponentialCurve
-	CurrentSupplyInQuarks uint64
-	SellFeeBps            uint16
-	TargetMintDecimals    uint8
-	BaseMintDecimals      uint8
+type EstimateSellInUsdcArgs struct {
+	SellAmountInQuarks   uint64
+	CurrentValueInQuarks uint64
+	SellFeeBps           uint16
 }
 
-func EstimateSale(args *EstimateSaleArgs) (uint64, uint64) {
-	scale := big.NewFloat(math.Pow10(int(args.TargetMintDecimals))).SetPrec(defaultCurvePrec)
+func EstimateSellInUsdc(args *EstimateSellInUsdcArgs) (uint64, uint64) {
+	scale := big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
 	unscaledSellAmount := big.NewFloat(float64(args.SellAmountInQuarks)).SetPrec(defaultCurvePrec)
 	scaledSellAmount := new(big.Float).Quo(unscaledSellAmount, scale)
 
-	scale = big.NewFloat(math.Pow10(int(args.TargetMintDecimals))).SetPrec(defaultCurvePrec)
-	unscaledCurrentSupply := big.NewFloat(float64(args.CurrentSupplyInQuarks)).SetPrec(defaultCurvePrec)
-	scaledCurrentSupply := new(big.Float).Quo(unscaledCurrentSupply, scale)
+	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
+	unscaledCurrentValue := big.NewFloat(float64(args.CurrentValueInQuarks)).SetPrec(defaultCurvePrec)
+	scaledCurrentValue := new(big.Float).Quo(unscaledCurrentValue, scale)
 
-	scale = big.NewFloat(math.Pow10(int(args.BaseMintDecimals))).SetPrec(defaultCurvePrec)
-	scaledTotalValue := args.Curve.TokensToValue(scaledCurrentSupply, scaledSellAmount)
-	unscaledTotalValue := new(big.Float).Mul(scaledTotalValue, scale)
+	scale = big.NewFloat(math.Pow10(int(usdc.Decimals))).SetPrec(defaultCurvePrec)
+	scaledValue := DefaultExponentialCurve().TokensToValueFromCurrentValue(scaledCurrentValue, scaledSellAmount)
+	unscaledValue := new(big.Float).Mul(scaledValue, scale)
 
 	feePctValue := new(big.Float).SetPrec(defaultCurvePrec).Quo(big.NewFloat(float64(args.SellFeeBps)), big.NewFloat(10000))
-	scaledFees := new(big.Float).Mul(scaledTotalValue, feePctValue)
+	scaledFees := new(big.Float).Mul(scaledValue, feePctValue)
 	unscaledFees := new(big.Float).Mul(scaledFees, scale)
 
-	total, _ := unscaledTotalValue.Int64()
+	value, _ := unscaledValue.Int64()
 	fees, _ := unscaledFees.Int64()
-	return uint64(total - fees), uint64(fees)
+	return uint64(value - fees), uint64(fees)
 }
