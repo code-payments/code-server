@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	DefaultMintMaxSupply = 21_000_000_000_000 // 21mm tokens with 6 decimals
-	DefaultMintDecimals  = 6
+	DefaultMintMaxTokenSupply = 21_000_000 // 21mm tokens
+	DefaultMintQuarksPerUnit  = 10_000_000_000
+	DefaultMintMaxQuarkSupply = DefaultMintMaxTokenSupply * DefaultMintQuarksPerUnit // 21mm tokens with 10 decimals
+	DefaultMintDecimals       = 10
 )
 
 const (

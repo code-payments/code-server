@@ -9,7 +9,7 @@ func TestEstimateCurrentPrice(t *testing.T) {
 	t.Skip()
 
 	fmt.Println(EstimateCurrentPrice(0).Text('f', DefaultCurveDecimals))
-	fmt.Println(EstimateCurrentPrice(DefaultMintMaxSupply).Text('f', DefaultCurveDecimals))
+	fmt.Println(EstimateCurrentPrice(DefaultMintMaxQuarkSupply).Text('f', DefaultCurveDecimals))
 }
 
 func TestEstimateBuyInUsdc(t *testing.T) {
@@ -30,18 +30,18 @@ func TestEstimateBuyInUsdc(t *testing.T) {
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
 }
 
-func TestEstimateSelInUsdc(t *testing.T) {
+func TestEstimateSellInUsdc(t *testing.T) {
 	t.Skip()
 
 	received, fees := EstimateSellInUsdc(&EstimateSellInUsdcArgs{
-		SellAmountInQuarks:   1_234_567_890,
+		SellAmountInQuarks:   12_345_678_900_000,
 		CurrentValueInQuarks: 50_000_000,
 		SellFeeBps:           0,
 	})
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
 
 	received, fees = EstimateSellInUsdc(&EstimateSellInUsdcArgs{
-		SellAmountInQuarks:   1_234_567_890,
+		SellAmountInQuarks:   12_345_678_900_000,
 		CurrentValueInQuarks: 50_000_000,
 		SellFeeBps:           100,
 	})
