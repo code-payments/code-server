@@ -141,7 +141,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 
 		resp.MetadataByAddress[common.CoreMintAccount.PublicKey().ToBase58()] = protoMetadata
 	}
-	return &currencypb.GetMintsResponse{}, nil
+	return resp, nil
 }
 
 func (s *currencyServer) LoadExchangeRatesForTime(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error) {
