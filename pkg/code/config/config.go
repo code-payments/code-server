@@ -14,8 +14,9 @@ const (
 	// Random values. Replace with real mint configuration
 	CoreMintPublicKeyString = "DWYE8SQkpestTvpCxGNTCRjC2E9Kn6TCnu2SxkddrEEU"
 	CoreMintQuarksPerUnit   = uint64(usdc.QuarksPerUsdc)
-	CoreMintSymbol          = currency_lib.USDC
 	CoreMintDecimals        = usdc.Decimals
+	CoreMintName            = "USDC"
+	CoreMintSymbol          = currency_lib.USDC
 
 	// Random value. Replace with real subsidizer public keys
 	SubsidizerPublicKey = "84ydcM4Yp59W6aZP6eSaKiAMaKidNLfb5k318sT2pm14"
