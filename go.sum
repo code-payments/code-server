@@ -82,6 +82,10 @@ github.com/cockroachdb/apd v1.1.0 h1:3LFP3629v+1aKXU5Q37mxmRxX/pIu1nijXydLShEq5I
 github.com/cockroachdb/apd v1.1.0/go.mod h1:8Sl8LxpKi29FqWXR16WEFZRNSz3SoPzUzeMeY4+DwBQ=
 github.com/code-payments/code-protobuf-api v1.19.1-0.20250825171158-5f02a8a5924b h1:dwgr/zhcF7eZsBgRAX+AAjOhBdk9fEs1oO2csc0lI0U=
 github.com/code-payments/code-protobuf-api v1.19.1-0.20250825171158-5f02a8a5924b/go.mod h1:ee6TzKbgMS42ZJgaFEMG3c4R3dGOiffHSu6MrY7WQvs=
+github.com/code-payments/code-protobuf-api v1.19.1-0.20250825175528-dab522122ad6 h1:5OUwxIX95ReOieQGdeihVRiQajpZhmN5dsY6HgseZf8=
+github.com/code-payments/code-protobuf-api v1.19.1-0.20250825175528-dab522122ad6/go.mod h1:ee6TzKbgMS42ZJgaFEMG3c4R3dGOiffHSu6MrY7WQvs=
+github.com/code-payments/code-protobuf-api v1.19.1-0.20250825175844-b5a79ae87f0a h1:oVponiCqodzMIR/9gucEbxG4pCQSFwcUQnydJjPv01U=
+github.com/code-payments/code-protobuf-api v1.19.1-0.20250825175844-b5a79ae87f0a/go.mod h1:ee6TzKbgMS42ZJgaFEMG3c4R3dGOiffHSu6MrY7WQvs=
 github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba h1:Bkp+gmeb6Y2PWXfkSCTMBGWkb2P1BujRDSjWeI+0j5I=
 github.com/code-payments/code-vm-indexer v0.1.11-0.20241028132209-23031e814fba/go.mod h1:jSiifpiBpyBQ8q2R0MGEbkSgWC6sbdRTyDBntmW+j1E=
 github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6 h1:NmTXa/uVnDyp0TY5MKi197+3HWcnYWfnHGyaFthlnGw=

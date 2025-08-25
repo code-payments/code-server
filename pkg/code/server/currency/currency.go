@@ -97,9 +97,13 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 			}
 		case "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj": // todo: load from DB populated by worker
 			authorityAccount, _ := common.NewAccountFromPublicKeyString("jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV")
+			vmAccount, _ := common.NewAccountFromPublicKeyString("Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta")
+			seed, _ := common.NewAccountFromPublicKeyString("H7WNaHtCa5h2k7AwZ8DbdLfM6bU2bi2jmWiUkFqgeBYk")
+			currencyConfigAccount, _ := common.NewAccountFromPublicKeyString("BDfFyqfasvty3cjSbC2qZx2Dmr4vhhVBt9Ban5XsTcEH")
+			liquidityPoolAccount, _ := common.NewAccountFromPublicKeyString("5cH99GSbr9ECP8gd1vLiAAFPHt1VeCNKzzrPFGmAB61c")
 			jeffyVaultAccount, _ := common.NewAccountFromPublicKeyString("BFDanLgELhpCCGTtaa7c8WGxTXcTxgwkf9DMQd4qheSK")
 			coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4")
-			vmAccount, _ := common.NewAccountFromPublicKeyString("Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta")
+			coreMintFeesAccount, _ := common.NewAccountFromPublicKeyString("5EcVYL8jHRKeeQqg6eYVBzc73ecH1PFzzaavoQBKRYy5")
 
 			var tokenAccount token.Account
 			ai, err := s.data.GetBlockchainAccountInfo(ctx, jeffyVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
@@ -129,9 +133,15 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 					LockDurationInDays: 21,
 				},
 				CurrencyCreatorMetadata: &currencypb.CurrencyCreatorMintMetadata{
+					CurrencyConfig:       currencyConfigAccount.ToProto(),
+					LiquidityPool:        liquidityPoolAccount.ToProto(),
+					Seed:                 seed.ToProto(),
+					Authority:            authorityAccount.ToProto(),
+					MintVault:            jeffyVaultAccount.ToProto(),
+					CoreMintVault:        coreMintVaultAccount.ToProto(),
+					CoreMintFees:         coreMintFeesAccount.ToProto(),
 					SupplyFromBonding:    currencycreator.DefaultMintMaxQuarkSupply - jeffyVaultBalance,
 					CoreMintTokensLocked: coreMintVaultBalance,
-					BuyFeeBps:            currencycreator.DefaultBuyFeeBps,
 					SellFeeBps:           currencycreator.DefaultSellFeeBps,
 				},
 			}
@@ -139,7 +149,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 			return &currencypb.GetMintsResponse{Result: currencypb.GetMintsResponse_NOT_FOUND}, nil
 		}
 
-		resp.MetadataByAddress[common.CoreMintAccount.PublicKey().ToBase58()] = protoMetadata
+		resp.MetadataByAddress[mintAccount.PublicKey().ToBase58()] = protoMetadata
 	}
 	return resp, nil
 }
