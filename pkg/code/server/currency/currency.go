@@ -68,7 +68,9 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 	log := s.log.WithField("method", "GetMints")
 	log = client.InjectLoggingMetadata(ctx, log)
 
-	resp := &currencypb.GetMintsResponse{}
+	resp := &currencypb.GetMintsResponse{
+		MetadataByAddress: make(map[string]*currencypb.Mint),
+	}
 
 	for _, protoMintAddress := range req.Addresses {
 		mintAccount, err := common.NewAccountFromProto(protoMintAddress)
