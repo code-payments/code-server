@@ -13,8 +13,9 @@ import (
 const (
 	CoreMintPublicKeyString = usdc.Mint
 	CoreMintQuarksPerUnit   = uint64(usdc.QuarksPerUsdc)
-	CoreMintSymbol          = currency_lib.USDC
 	CoreMintDecimals        = usdc.Decimals
+	CoreMintName            = "USDC"
+	CoreMintSymbol          = currency_lib.USDC
 
 	SubsidizerPublicKey = "cash11ndAmdKFEnG2wrQQ5Zqvr1kN9htxxLyoPLYFUV"
 

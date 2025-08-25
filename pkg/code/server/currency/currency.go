@@ -2,6 +2,7 @@ package currency
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -12,10 +13,14 @@ import (
 
 	currencypb "github.com/code-payments/code-protobuf-api/generated/go/currency/v1"
 
+	"github.com/code-payments/code-server/pkg/code/common"
 	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
+	"github.com/code-payments/code-server/pkg/solana"
+	"github.com/code-payments/code-server/pkg/solana/currencycreator"
+	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
 type currencyServer struct {
@@ -57,6 +62,84 @@ func (s *currencyServer) GetAllRates(ctx context.Context, req *currencypb.GetAll
 		AsOf:  protoTime,
 		Rates: record.Rates,
 	}, nil
+}
+
+func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsRequest) (*currencypb.GetMintsResponse, error) {
+	log := s.log.WithField("method", "GetMints")
+	log = client.InjectLoggingMetadata(ctx, log)
+
+	resp := &currencypb.GetMintsResponse{}
+
+	for _, protoMintAddress := range req.Addresses {
+		mintAccount, err := common.NewAccountFromProto(protoMintAddress)
+		if err != nil {
+			log.WithError(err).Warn("Invalid mint address")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		log = log.WithField("mint", mintAccount.PublicKey().ToBase58())
+
+		var protoMetadata *currencypb.Mint
+		switch mintAccount.PublicKey().ToBase58() {
+		case common.CoreMintAccount.PublicKey().ToBase58():
+			protoMetadata = &currencypb.Mint{
+				Address:  protoMintAddress,
+				Decimals: uint32(common.CoreMintDecimals),
+				Name:     common.CoreMintName,
+				Symbol:   strings.ToUpper(string(common.CoreMintSymbol)),
+				VmMetadata: &currencypb.VmMintMetadata{
+					Vm:                 common.CodeVmAccount.ToProto(),
+					Authority:          common.GetSubsidizer().ToProto(),
+					LockDurationInDays: 21,
+				},
+			}
+		case "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj": // todo: load from DB populated by worker
+			authorityAccount, _ := common.NewAccountFromPublicKeyString("jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV")
+			jeffyVaultAccount, _ := common.NewAccountFromPublicKeyString("BFDanLgELhpCCGTtaa7c8WGxTXcTxgwkf9DMQd4qheSK")
+			coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4")
+			vmAccount, _ := common.NewAccountFromPublicKeyString("Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta")
+
+			var tokenAccount token.Account
+			ai, err := s.data.GetBlockchainAccountInfo(ctx, jeffyVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+			if err != nil {
+				log.Warn("Failure getting Jeffy vault balance")
+				return nil, status.Error(codes.Internal, "")
+			}
+			tokenAccount.Unmarshal(ai.Data)
+			jeffyVaultBalance := tokenAccount.Amount
+
+			ai, err = s.data.GetBlockchainAccountInfo(ctx, coreMintVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+			if err != nil {
+				log.Warn("Failure getting USDC vault balance")
+				return nil, status.Error(codes.Internal, "")
+			}
+			tokenAccount.Unmarshal(ai.Data)
+			coreMintVaultBalance := tokenAccount.Amount
+
+			protoMetadata = &currencypb.Mint{
+				Address:  protoMintAddress,
+				Decimals: currencycreator.DefaultMintDecimals,
+				Name:     "Jeffy",
+				Symbol:   "JFY",
+				VmMetadata: &currencypb.VmMintMetadata{
+					Vm:                 vmAccount.ToProto(),
+					Authority:          authorityAccount.ToProto(),
+					LockDurationInDays: 21,
+				},
+				CurrencyCreatorMetadata: &currencypb.CurrencyCreatorMintMetadata{
+					SupplyFromBonding:    currencycreator.DefaultMintMaxQuarkSupply - jeffyVaultBalance,
+					CoreMintTokensLocked: coreMintVaultBalance,
+					BuyFeeBps:            currencycreator.DefaultBuyFeeBps,
+					SellFeeBps:           currencycreator.DefaultSellFeeBps,
+				},
+			}
+		default:
+			return &currencypb.GetMintsResponse{Result: currencypb.GetMintsResponse_NOT_FOUND}, nil
+		}
+
+		resp.MetadataByAddress[common.CoreMintAccount.PublicKey().ToBase58()] = protoMetadata
+	}
+	return &currencypb.GetMintsResponse{}, nil
 }
 
 func (s *currencyServer) LoadExchangeRatesForTime(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error) {

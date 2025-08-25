@@ -51,7 +51,7 @@ func NewInitializeMetadataInstruction(
 			},
 			{
 				PublicKey:  accounts.Mint,
-				IsWritable: false,
+				IsWritable: true,
 				IsSigner:   false,
 			},
 			{
@@ -61,6 +61,11 @@ func NewInitializeMetadataInstruction(
 			},
 			{
 				PublicKey:  METADATA_PROGRAM_ID,
+				IsWritable: false,
+				IsSigner:   false,
+			},
+			{
+				PublicKey:  SPL_TOKEN_PROGRAM_ID,
 				IsWritable: false,
 				IsSigner:   false,
 			},

@@ -15,8 +15,9 @@ import (
 var (
 	CoreMintAccount, _    = NewAccountFromPublicKeyBytes(config.CoreMintPublicKeyBytes)
 	CoreMintQuarksPerUnit = uint64(config.CoreMintQuarksPerUnit)
-	CoreMintSymbol        = config.CoreMintSymbol
 	CoreMintDecimals      = config.CoreMintDecimals
+	CoreMintName          = config.CoreMintName
+	CoreMintSymbol        = config.CoreMintSymbol
 
 	UsdcMintAccount, _ = NewAccountFromPublicKeyBytes(usdc.TokenMint)
 )
