@@ -18,9 +18,8 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
-	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/currencycreator"
-	"github.com/code-payments/code-server/pkg/solana/token"
+	timelock_token "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 )
 
 type currencyServer struct {
@@ -75,11 +74,11 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 	for _, protoMintAddress := range req.Addresses {
 		mintAccount, err := common.NewAccountFromProto(protoMintAddress)
 		if err != nil {
-			log.WithError(err).Warn("Invalid mint address")
+			log.WithError(err).Warn("invalid mint address")
 			return nil, status.Error(codes.Internal, "")
 		}
 
-		log = log.WithField("mint", mintAccount.PublicKey().ToBase58())
+		log := log.WithField("mint", mintAccount.PublicKey().ToBase58())
 
 		var protoMetadata *currencypb.Mint
 		switch mintAccount.PublicKey().ToBase58() {
@@ -95,7 +94,8 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 					LockDurationInDays: 21,
 				},
 			}
-		case "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj": // todo: load from DB populated by worker
+		case "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
+			// todo: load from DB populated by worker
 			authorityAccount, _ := common.NewAccountFromPublicKeyString("jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV")
 			vmAccount, _ := common.NewAccountFromPublicKeyString("Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta")
 			seed, _ := common.NewAccountFromPublicKeyString("H7WNaHtCa5h2k7AwZ8DbdLfM6bU2bi2jmWiUkFqgeBYk")
@@ -105,22 +105,11 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 			coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4")
 			coreMintFeesAccount, _ := common.NewAccountFromPublicKeyString("5EcVYL8jHRKeeQqg6eYVBzc73ecH1PFzzaavoQBKRYy5")
 
-			var tokenAccount token.Account
-			ai, err := s.data.GetBlockchainAccountInfo(ctx, jeffyVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+			reserveRecord, err := s.data.GetCurrencyReserveAtTime(ctx, mintAccount.PublicKey().ToBase58(), currency_util.GetLatestExchangeRateTime())
 			if err != nil {
-				log.Warn("Failure getting Jeffy vault balance")
+				log.WithError(err).Warn("failed to load currency reserve record")
 				return nil, status.Error(codes.Internal, "")
 			}
-			tokenAccount.Unmarshal(ai.Data)
-			jeffyVaultBalance := tokenAccount.Amount
-
-			ai, err = s.data.GetBlockchainAccountInfo(ctx, coreMintVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
-			if err != nil {
-				log.Warn("Failure getting USDC vault balance")
-				return nil, status.Error(codes.Internal, "")
-			}
-			tokenAccount.Unmarshal(ai.Data)
-			coreMintVaultBalance := tokenAccount.Amount
 
 			protoMetadata = &currencypb.Mint{
 				Address:  protoMintAddress,
@@ -130,19 +119,19 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				VmMetadata: &currencypb.VmMintMetadata{
 					Vm:                 vmAccount.ToProto(),
 					Authority:          authorityAccount.ToProto(),
-					LockDurationInDays: 21,
+					LockDurationInDays: uint32(timelock_token.DefaultNumDaysLocked),
 				},
 				CurrencyCreatorMetadata: &currencypb.CurrencyCreatorMintMetadata{
-					CurrencyConfig:       currencyConfigAccount.ToProto(),
-					LiquidityPool:        liquidityPoolAccount.ToProto(),
-					Seed:                 seed.ToProto(),
-					Authority:            authorityAccount.ToProto(),
-					MintVault:            jeffyVaultAccount.ToProto(),
-					CoreMintVault:        coreMintVaultAccount.ToProto(),
-					CoreMintFees:         coreMintFeesAccount.ToProto(),
-					SupplyFromBonding:    currencycreator.DefaultMintMaxQuarkSupply - jeffyVaultBalance,
-					CoreMintTokensLocked: coreMintVaultBalance,
-					SellFeeBps:           currencycreator.DefaultSellFeeBps,
+					CurrencyConfig:    currencyConfigAccount.ToProto(),
+					LiquidityPool:     liquidityPoolAccount.ToProto(),
+					Seed:              seed.ToProto(),
+					Authority:         authorityAccount.ToProto(),
+					MintVault:         jeffyVaultAccount.ToProto(),
+					CoreMintVault:     coreMintVaultAccount.ToProto(),
+					CoreMintFees:      coreMintFeesAccount.ToProto(),
+					SupplyFromBonding: reserveRecord.SupplyFromBonding,
+					CoreMintLocked:    reserveRecord.CoreMintLocked,
+					SellFeeBps:        currencycreator.DefaultSellFeeBps,
 				},
 			}
 		default:

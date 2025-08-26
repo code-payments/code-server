@@ -22,19 +22,31 @@ const (
 	CREATE TABLE codewallet__core_exchangerate (
 		id serial NOT NULL PRIMARY KEY, 
 
-		for_date varchar(10) NOT NULL, 
-		for_timestamp timestamp with time zone NOT NULL, 
-		currency_code varchar(3) NOT NULL, 
-		currency_rate numeric(18, 9) NOT NULL,
+		for_date VARCHAR(10) NOT NULL, 
+		for_timestamp TIMESTAMP WITH TIME ZONE NOT NULL, 
+		currency_code VARCHAR(3) NOT NULL, 
+		currency_rate NUMERIC(18, 9) NOT NULL,
 
 		CONSTRAINT codewallet__core_exchangerate__uniq__timestamp__and__code UNIQUE (for_timestamp, currency_code),
 		CONSTRAINT codewallet__core_exchangerate__currency_code CHECK (currency_code::text ~ '^[a-z]{3}$')
+	);
+	CREATE TABLE codewallet__core_currencyreserve (
+		id serial NOT NULL PRIMARY KEY, 
+
+		for_date VARCHAR(10) NOT NULL, 
+		for_timestamp TIMESTAMP WITH TIME ZONE NOT NULL, 
+		mint TEXT NOT NULL, 
+		supply_from_bonding BIGINT NOT NULL,
+		core_mint_locked BIGINT NOT NULL,
+
+		CONSTRAINT codewallet__core_currencyreserve__uniq__timestamp__and__mint UNIQUE (for_timestamp, mint)
 	);
 	`
 
 	// Used for testing ONLY, the table and migrations are external to this repository
 	tableDestroy = `
 		DROP TABLE codewallet__core_exchangerate;
+		DROP TABLE codewallet__core_currencyreserve;
 	`
 )
 
