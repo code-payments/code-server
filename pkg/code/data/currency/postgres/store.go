@@ -7,8 +7,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 
 	pg "github.com/code-payments/code-server/pkg/database/postgres"
 )
@@ -23,35 +23,35 @@ func New(db *sql.DB) currency.Store {
 	}
 }
 
-func (s store) Put(ctx context.Context, obj *currency.MultiRateRecord) error {
+func (s *store) PutExchangeRates(ctx context.Context, obj *currency.MultiRateRecord) error {
 	return pg.ExecuteInTx(ctx, s.db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		// Loop through all rates and save individual records (within a transaction)
 		for symbol, item := range obj.Rates {
-			err := toModel(&currency.ExchangeRateRecord{
+			err := toExchangeRateModel(&currency.ExchangeRateRecord{
 				Time:   obj.Time,
 				Rate:   item,
 				Symbol: symbol,
 			}).txSave(ctx, tx)
 
 			if err != nil {
-				return pg.CheckUniqueViolation(err, currency.ErrExists)
+				return err
 			}
 		}
 		return nil
 	})
 }
 
-func (s store) Get(ctx context.Context, symbol string, t time.Time) (*currency.ExchangeRateRecord, error) {
-	obj, err := dbGetBySymbolAndTime(ctx, s.db, symbol, t, query.Descending)
+func (s *store) GetExchangeRate(ctx context.Context, symbol string, t time.Time) (*currency.ExchangeRateRecord, error) {
+	obj, err := dbGetExchangeRateBySymbolAndTime(ctx, s.db, symbol, t, query.Descending)
 	if err != nil {
 		return nil, err
 	}
 
-	return fromModel(obj), nil
+	return fromExchangeRateModel(obj), nil
 }
 
-func (s store) GetAll(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error) {
-	list, err := dbGetAllByTime(ctx, s.db, t, query.Descending)
+func (s *store) GetAllExchangeRates(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error) {
+	list, err := dbGetAllExchangeRatesByTime(ctx, s.db, t, query.Descending)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (s store) GetAll(ctx context.Context, t time.Time) (*currency.MultiRateReco
 	return res, nil
 }
 
-func (s store) GetRange(ctx context.Context, symbol string, interval query.Interval, start time.Time, end time.Time, ordering query.Ordering) ([]*currency.ExchangeRateRecord, error) {
+func (s *store) GetExchangeRatesInRange(ctx context.Context, symbol string, interval query.Interval, start time.Time, end time.Time, ordering query.Ordering) ([]*currency.ExchangeRateRecord, error) {
 	if interval > query.IntervalMonth {
 		return nil, currency.ErrInvalidInterval
 	}
@@ -87,15 +87,28 @@ func (s store) GetRange(ctx context.Context, symbol string, interval query.Inter
 
 	// TODO: check that the range is reasonable
 
-	list, err := dbGetAllForRange(ctx, s.db, symbol, interval, actualStart, actualEnd, ordering)
+	list, err := dbGetAllExchangeRatesForRange(ctx, s.db, symbol, interval, actualStart, actualEnd, ordering)
 	if err != nil {
 		return nil, err
 	}
 
 	res := []*currency.ExchangeRateRecord{}
 	for _, item := range list {
-		res = append(res, fromModel(item))
+		res = append(res, fromExchangeRateModel(item))
 	}
 
 	return res, nil
+}
+
+func (s *store) PutReserveRecord(ctx context.Context, record *currency.ReserveRecord) error {
+	return toReserveModel(record).dbSave(ctx, s.db)
+}
+
+func (s *store) GetReserveAtTime(ctx context.Context, mint string, t time.Time) (*currency.ReserveRecord, error) {
+	obj, err := dbGetReserveByMintAndTime(ctx, s.db, mint, t, query.Descending)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromReserveModel(obj), nil
 }

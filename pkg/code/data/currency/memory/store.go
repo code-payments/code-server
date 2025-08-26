@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	"github.com/code-payments/code-server/pkg/database/query"
 )
 
 const (
@@ -15,65 +15,79 @@ const (
 )
 
 type store struct {
-	currencyStoreMu sync.Mutex
-	currencyStore   []*currency.ExchangeRateRecord
-	lastIndex       uint64
+	mu                    sync.Mutex
+	exchangeRateRecords   []*currency.ExchangeRateRecord
+	lastExchangeRateIndex uint64
+	reserveRecords        []*currency.ReserveRecord
+	lastReserveIndex      uint64
 }
 
-type ByTime []*currency.ExchangeRateRecord
+type RateByTime []*currency.ExchangeRateRecord
 
-func (a ByTime) Len() int      { return len(a) }
-func (a ByTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByTime) Less(i, j int) bool {
+func (a RateByTime) Len() int      { return len(a) }
+func (a RateByTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a RateByTime) Less(i, j int) bool {
+	// DESC order (most recent first)
+	return a[i].Time.Unix() > a[j].Time.Unix()
+}
+
+type ReserveByTime []*currency.ReserveRecord
+
+func (a ReserveByTime) Len() int      { return len(a) }
+func (a ReserveByTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ReserveByTime) Less(i, j int) bool {
 	// DESC order (most recent first)
 	return a[i].Time.Unix() > a[j].Time.Unix()
 }
 
 func New() currency.Store {
 	return &store{
-		currencyStore: make([]*currency.ExchangeRateRecord, 0),
-		lastIndex:     1,
+		exchangeRateRecords:   make([]*currency.ExchangeRateRecord, 0),
+		lastExchangeRateIndex: 1,
 	}
 }
 
 func (s *store) reset() {
-	s.currencyStoreMu.Lock()
-	s.currencyStore = make([]*currency.ExchangeRateRecord, 0)
-	s.currencyStoreMu.Unlock()
+	s.mu.Lock()
+	s.exchangeRateRecords = make([]*currency.ExchangeRateRecord, 0)
+	s.lastExchangeRateIndex = 1
+	s.reserveRecords = make([]*currency.ReserveRecord, 0)
+	s.lastReserveIndex = 1
+	s.mu.Unlock()
 }
 
-func (s *store) Put(ctx context.Context, data *currency.MultiRateRecord) error {
-	s.currencyStoreMu.Lock()
-	defer s.currencyStoreMu.Unlock()
+func (s *store) PutExchangeRates(ctx context.Context, data *currency.MultiRateRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Not ideal but fine for testing the currency store
-	for _, item := range s.currencyStore {
+	for _, item := range s.exchangeRateRecords {
 		if item.Time.Unix() == data.Time.Unix() {
 			return currency.ErrExists
 		}
 	}
 
 	for symbol, item := range data.Rates {
-		s.currencyStore = append(s.currencyStore, &currency.ExchangeRateRecord{
-			Id:     s.lastIndex,
+		s.exchangeRateRecords = append(s.exchangeRateRecords, &currency.ExchangeRateRecord{
+			Id:     s.lastExchangeRateIndex,
 			Rate:   item,
 			Time:   data.Time,
 			Symbol: symbol,
 		})
-		s.lastIndex = s.lastIndex + 1
+		s.lastExchangeRateIndex = s.lastExchangeRateIndex + 1
 	}
 
 	return nil
 }
 
-func (s *store) Get(ctx context.Context, symbol string, t time.Time) (*currency.ExchangeRateRecord, error) {
-	s.currencyStoreMu.Lock()
-	defer s.currencyStoreMu.Unlock()
+func (s *store) GetExchangeRate(ctx context.Context, symbol string, t time.Time) (*currency.ExchangeRateRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Not ideal but fine for testing the currency store
 	var results []*currency.ExchangeRateRecord
-	for _, item := range s.currencyStore {
-		if item.Symbol == symbol && item.Time.Unix() <= t.Unix() {
+	for _, item := range s.exchangeRateRecords {
+		if item.Symbol == symbol && item.Time.Unix() <= t.Unix() && item.Time.Format(dateFormat) == t.Format(dateFormat) {
 			results = append(results, item)
 		}
 	}
@@ -82,24 +96,25 @@ func (s *store) Get(ctx context.Context, symbol string, t time.Time) (*currency.
 		return nil, currency.ErrNotFound
 	}
 
-	sort.Sort(ByTime(results))
+	sort.Sort(RateByTime(results))
 
 	return results[0], nil
 }
 
-func (s *store) GetAll(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error) {
-	s.currencyStoreMu.Lock()
-	defer s.currencyStoreMu.Unlock()
+func (s *store) GetAllExchangeRates(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Not ideal but fine for testing the currency store
-	sort.Sort(ByTime(s.currencyStore))
+	sort.Sort(RateByTime(s.exchangeRateRecords))
 
 	result := currency.MultiRateRecord{
 		Rates: make(map[string]float64),
 	}
-	for _, item := range s.currencyStore {
+	for _, item := range s.exchangeRateRecords {
 		if item.Time.Unix() <= t.Unix() && item.Time.Format(dateFormat) == t.Format(dateFormat) {
 			result.Rates[item.Symbol] = item.Rate
+			result.Time = item.Time
 		}
 	}
 
@@ -110,15 +125,15 @@ func (s *store) GetAll(ctx context.Context, t time.Time) (*currency.MultiRateRec
 	return &result, nil
 }
 
-func (s *store) GetRange(ctx context.Context, symbol string, interval query.Interval, start time.Time, end time.Time, ordering query.Ordering) ([]*currency.ExchangeRateRecord, error) {
-	s.currencyStoreMu.Lock()
-	defer s.currencyStoreMu.Unlock()
+func (s *store) GetExchangeRatesInRange(ctx context.Context, symbol string, interval query.Interval, start time.Time, end time.Time, ordering query.Ordering) ([]*currency.ExchangeRateRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	sort.Sort(ByTime(s.currencyStore))
+	sort.Sort(RateByTime(s.exchangeRateRecords))
 
 	// Not ideal but fine for testing the currency store
 	var all []*currency.ExchangeRateRecord
-	for _, item := range s.currencyStore {
+	for _, item := range s.exchangeRateRecords {
 		if item.Symbol == symbol && item.Time.Unix() >= start.Unix() && item.Time.Unix() <= end.Unix() {
 			all = append(all, item)
 		}
@@ -137,4 +152,48 @@ func (s *store) GetRange(ctx context.Context, symbol string, interval query.Inte
 	}
 
 	return all, nil
+}
+
+func (s *store) PutReserveRecord(ctx context.Context, data *currency.ReserveRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Not ideal but fine for testing the currency store
+	for _, item := range s.reserveRecords {
+		if item.Mint == data.Mint && item.Time.Unix() == data.Time.Unix() {
+			return currency.ErrExists
+		}
+	}
+
+	s.reserveRecords = append(s.reserveRecords, &currency.ReserveRecord{
+		Id:                s.lastReserveIndex,
+		Mint:              data.Mint,
+		SupplyFromBonding: data.SupplyFromBonding,
+		CoreMintLocked:    data.CoreMintLocked,
+		Time:              data.Time,
+	})
+	s.lastReserveIndex = s.lastReserveIndex + 1
+
+	return nil
+}
+
+func (s *store) GetReserveAtTime(ctx context.Context, mint string, t time.Time) (*currency.ReserveRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Not ideal but fine for testing the currency store
+	var results []*currency.ReserveRecord
+	for _, item := range s.reserveRecords {
+		if item.Mint == mint && item.Time.Unix() <= t.Unix() && item.Time.Format(dateFormat) == t.Format(dateFormat) {
+			results = append(results, item)
+		}
+	}
+
+	if len(results) == 0 {
+		return nil, currency.ErrNotFound
+	}
+
+	sort.Sort(ReserveByTime(results))
+
+	return results[0], nil
 }

@@ -7,18 +7,19 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	q "github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
+	q "github.com/code-payments/code-server/pkg/database/query"
 
 	pgutil "github.com/code-payments/code-server/pkg/database/postgres"
 )
 
 const (
-	tableName  = "codewallet__core_exchangerate"
-	dateFormat = "2006-01-02"
+	exchangeRateTableName = "codewallet__core_exchangerate"
+	reserveTableName      = "codewallet__core_currencyreserve"
+	dateFormat            = "2006-01-02"
 )
 
-type model struct {
+type exchangeRateModel struct {
 	Id           sql.NullInt64 `db:"id"`
 	ForDate      string        `db:"for_date"`
 	ForTimestamp time.Time     `db:"for_timestamp"`
@@ -26,8 +27,8 @@ type model struct {
 	CurrencyRate float64       `db:"currency_rate"`
 }
 
-func toModel(obj *currency.ExchangeRateRecord) *model {
-	return &model{
+func toExchangeRateModel(obj *currency.ExchangeRateRecord) *exchangeRateModel {
+	return &exchangeRateModel{
 		Id:           sql.NullInt64{Int64: int64(obj.Id), Valid: obj.Id > 0},
 		ForDate:      obj.Time.UTC().Format(dateFormat),
 		ForTimestamp: obj.Time.UTC(),
@@ -36,7 +37,7 @@ func toModel(obj *currency.ExchangeRateRecord) *model {
 	}
 }
 
-func fromModel(obj *model) *currency.ExchangeRateRecord {
+func fromExchangeRateModel(obj *exchangeRateModel) *currency.ExchangeRateRecord {
 	return &currency.ExchangeRateRecord{
 		Id:     uint64(obj.Id.Int64),
 		Time:   obj.ForTimestamp.UTC(),
@@ -45,20 +46,45 @@ func fromModel(obj *model) *currency.ExchangeRateRecord {
 	}
 }
 
-func makeInsertQuery() string {
-	return `INSERT INTO ` + tableName + ` (for_date, for_timestamp, currency_code, currency_rate)
-		VALUES ($1, $2, $3, $4) RETURNING *;`
+type reserveModel struct {
+	Id                sql.NullInt64 `db:"id"`
+	ForDate           string        `db:"for_date"`
+	ForTimestamp      time.Time     `db:"for_timestamp"`
+	Mint              string        `db:"mint"`
+	SupplyFromBonding uint64        `db:"supply_from_bonding"`
+	CoreMintLocked    uint64        `db:"core_mint_locked"`
 }
 
-func makeSelectQuery(condition string, ordering q.Ordering) string {
-	return `SELECT * FROM ` + tableName + ` WHERE ` + condition + ` ORDER BY for_timestamp ` + q.FromOrderingWithFallback(ordering, "asc")
+func toReserveModel(obj *currency.ReserveRecord) *reserveModel {
+	return &reserveModel{
+		Id:                sql.NullInt64{Int64: int64(obj.Id), Valid: obj.Id > 0},
+		ForDate:           obj.Time.UTC().Format(dateFormat),
+		ForTimestamp:      obj.Time.UTC(),
+		Mint:              obj.Mint,
+		SupplyFromBonding: obj.SupplyFromBonding,
+		CoreMintLocked:    obj.CoreMintLocked,
+	}
 }
 
-func makeGetQuery(condition string, ordering q.Ordering) string {
-	return makeSelectQuery(condition, ordering) + ` LIMIT 1`
+func fromReserveModel(obj *reserveModel) *currency.ReserveRecord {
+	return &currency.ReserveRecord{
+		Id:                uint64(obj.Id.Int64),
+		Time:              obj.ForTimestamp.UTC(),
+		Mint:              obj.Mint,
+		SupplyFromBonding: obj.SupplyFromBonding,
+		CoreMintLocked:    obj.CoreMintLocked,
+	}
 }
 
-func makeRangeQuery(condition string, ordering q.Ordering, interval q.Interval) string {
+func makeSelectQuery(table, condition string, ordering q.Ordering) string {
+	return `SELECT * FROM ` + table + ` WHERE ` + condition + ` ORDER BY for_timestamp ` + q.FromOrderingWithFallback(ordering, "asc")
+}
+
+func makeGetQuery(table, condition string, ordering q.Ordering) string {
+	return makeSelectQuery(table, condition, ordering) + ` LIMIT 1`
+}
+
+func makeRangeQuery(table, condition string, ordering q.Ordering, interval q.Interval) string {
 	var query, bucket string
 
 	if interval == q.IntervalRaw {
@@ -68,7 +94,7 @@ func makeRangeQuery(condition string, ordering q.Ordering, interval q.Interval) 
 		query = `SELECT DISTINCT ON (` + bucket + `) *`
 	}
 
-	query = query + ` FROM ` + tableName + ` WHERE ` + condition
+	query = query + ` FROM ` + table + ` WHERE ` + condition
 
 	if interval == q.IntervalRaw {
 		query = query + ` ORDER BY for_timestamp ` + q.FromOrderingWithFallback(ordering, "asc")
@@ -76,27 +102,42 @@ func makeRangeQuery(condition string, ordering q.Ordering, interval q.Interval) 
 		query = query + ` ORDER BY ` + bucket + `, for_timestamp DESC` // keep only the latest record for each bucket
 	}
 
-	//fmt.Printf("query: %s\n", query)
-
 	return query
 }
 
-func (self *model) txSave(ctx context.Context, tx *sqlx.Tx) error {
+func (m *exchangeRateModel) txSave(ctx context.Context, tx *sqlx.Tx) error {
 	err := tx.QueryRowxContext(ctx,
-		makeInsertQuery(),
-		self.ForDate,
-		self.ForTimestamp,
-		self.CurrencyCode,
-		self.CurrencyRate,
-	).StructScan(self)
+		`INSERT INTO `+exchangeRateTableName+` (for_date, for_timestamp, currency_code, currency_rate)
+		VALUES ($1, $2, $3, $4) RETURNING *;`,
+		m.ForDate,
+		m.ForTimestamp,
+		m.CurrencyCode,
+		m.CurrencyRate,
+	).StructScan(m)
 
 	return pgutil.CheckUniqueViolation(err, currency.ErrExists)
 }
 
-func dbGetBySymbolAndTime(ctx context.Context, db *sqlx.DB, symbol string, t time.Time, ordering q.Ordering) (*model, error) {
-	res := &model{}
+func (m *reserveModel) dbSave(ctx context.Context, db *sqlx.DB) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		err := tx.QueryRowxContext(ctx,
+			`INSERT INTO `+reserveTableName+` (for_date, for_timestamp, mint, supply_from_bonding, core_mint_locked)
+			VALUES ($1, $2, $3, $4, $5) RETURNING *;`,
+			m.ForDate,
+			m.ForTimestamp,
+			m.Mint,
+			m.SupplyFromBonding,
+			m.CoreMintLocked,
+		).StructScan(m)
+
+		return pgutil.CheckUniqueViolation(err, currency.ErrExists)
+	})
+}
+
+func dbGetExchangeRateBySymbolAndTime(ctx context.Context, db *sqlx.DB, symbol string, t time.Time, ordering q.Ordering) (*exchangeRateModel, error) {
+	res := &exchangeRateModel{}
 	err := db.GetContext(ctx, res,
-		makeGetQuery("currency_code = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
+		makeGetQuery(exchangeRateTableName, "currency_code = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
 		symbol,
 		t.UTC().Format(dateFormat),
 		t.UTC(),
@@ -104,13 +145,13 @@ func dbGetBySymbolAndTime(ctx context.Context, db *sqlx.DB, symbol string, t tim
 	return res, pgutil.CheckNoRows(err, currency.ErrNotFound)
 }
 
-func dbGetAllByTime(ctx context.Context, db *sqlx.DB, t time.Time, ordering q.Ordering) ([]*model, error) {
+func dbGetAllExchangeRatesByTime(ctx context.Context, db *sqlx.DB, t time.Time, ordering q.Ordering) ([]*exchangeRateModel, error) {
 	query := `SELECT DISTINCT ON (currency_code) *
-		FROM ` + tableName + `
+		FROM ` + exchangeRateTableName + `
 		WHERE for_date = $1 AND for_timestamp <= $2
 		ORDER BY currency_code, for_timestamp ` + q.FromOrderingWithFallback(ordering, "asc")
 
-	res := []*model{}
+	res := []*exchangeRateModel{}
 	err := db.SelectContext(ctx, &res, query, t.UTC().Format(dateFormat), t.UTC())
 
 	if err != nil {
@@ -126,10 +167,10 @@ func dbGetAllByTime(ctx context.Context, db *sqlx.DB, t time.Time, ordering q.Or
 	return res, nil
 }
 
-func dbGetAllForRange(ctx context.Context, db *sqlx.DB, symbol string, interval q.Interval, start time.Time, end time.Time, ordering q.Ordering) ([]*model, error) {
-	res := []*model{}
+func dbGetAllExchangeRatesForRange(ctx context.Context, db *sqlx.DB, symbol string, interval q.Interval, start time.Time, end time.Time, ordering q.Ordering) ([]*exchangeRateModel, error) {
+	res := []*exchangeRateModel{}
 	err := db.SelectContext(ctx, &res,
-		makeRangeQuery("currency_code = $1 AND for_timestamp >= $2 AND for_timestamp <= $3", ordering, interval),
+		makeRangeQuery(exchangeRateTableName, "currency_code = $1 AND for_timestamp >= $2 AND for_timestamp <= $3", ordering, interval),
 		symbol, start.UTC(), end.UTC(),
 	)
 
@@ -141,4 +182,15 @@ func dbGetAllForRange(ctx context.Context, db *sqlx.DB, symbol string, interval 
 	}
 
 	return res, nil
+}
+
+func dbGetReserveByMintAndTime(ctx context.Context, db *sqlx.DB, mint string, t time.Time, ordering q.Ordering) (*reserveModel, error) {
+	res := &reserveModel{}
+	err := db.GetContext(ctx, res,
+		makeGetQuery(reserveTableName, "mint = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
+		mint,
+		t.UTC().Format(dateFormat),
+		t.UTC(),
+	)
+	return res, pgutil.CheckNoRows(err, currency.ErrNotFound)
 }
