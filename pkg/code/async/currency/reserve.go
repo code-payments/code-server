@@ -91,7 +91,7 @@ func (p *reserveService) UpdateAllCurrencyReserves(ctx context.Context) error {
 	tokenAccount.Unmarshal(ai.Data)
 	coreMintVaultBalance := tokenAccount.Amount
 
-	return p.data.PutCurrencyReserveRecord(ctx, &currency.ReserveRecord{
+	return p.data.PutCurrencyReserve(ctx, &currency.ReserveRecord{
 		Mint:              jeffyMintAccount.PublicKey().ToBase58(),
 		SupplyFromBonding: currencycreator.DefaultMintMaxQuarkSupply - jeffyVaultBalance,
 		CoreMintLocked:    coreMintVaultBalance,

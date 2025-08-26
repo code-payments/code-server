@@ -15,8 +15,10 @@ import (
 
 const (
 	exchangeRateTableName = "codewallet__core_exchangerate"
+	metadataTableName     = "codewallet__core_currencymetadata"
 	reserveTableName      = "codewallet__core_currencyreserve"
-	dateFormat            = "2006-01-02"
+
+	dateFormat = "2006-01-02"
 )
 
 type exchangeRateModel struct {
@@ -46,6 +48,122 @@ func fromExchangeRateModel(obj *exchangeRateModel) *currency.ExchangeRateRecord 
 	}
 }
 
+type metadataModel struct {
+	Id sql.NullInt64 `db:"id"`
+
+	Name   string `db:"name"`
+	Symbol string `db:"symbol"`
+
+	Seed string `db:"seed"`
+
+	Authority string `db:"authority"`
+
+	Mint     string `db:"mint"`
+	MintBump uint8  `db:"mint_bump"`
+	Decimals uint8  `db:"decimals"`
+
+	CurrencyConfig     string `db:"currency_config"`
+	CurrencyConfigBump uint8  `db:"currency_config_bump"`
+
+	LiquidityPool     string `db:"liquidity_pool"`
+	LiquidityPoolBump uint8  `db:"liquidity_pool_bump"`
+
+	VaultMint     string `db:"vault_mint"`
+	VaultMintBump uint8  `db:"vault_mint_bump"`
+
+	VaultCore     string `db:"vault_core"`
+	VaultCoreBump uint8  `db:"vault_core_bump"`
+
+	FeesMint  string `db:"fees_mint"`
+	BuyFeeBps uint16 `db:"buy_fee_bps"`
+
+	FeesCore   string `db:"fees_core"`
+	SellFeeBps uint16 `db:"sell_fee_bps"`
+
+	CreatedBy string    `db:"created_by"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+func toMetadataModel(obj *currency.MetadataRecord) (*metadataModel, error) {
+	if err := obj.Validate(); err != nil {
+		return nil, err
+	}
+
+	return &metadataModel{
+		Id: sql.NullInt64{Int64: int64(obj.Id), Valid: obj.Id > 0},
+
+		Name:   obj.Name,
+		Symbol: obj.Symbol,
+
+		Seed: obj.Seed,
+
+		Authority: obj.Authority,
+
+		Mint:     obj.Mint,
+		MintBump: obj.MintBump,
+		Decimals: obj.Decimals,
+
+		CurrencyConfig:     obj.CurrencyConfig,
+		CurrencyConfigBump: obj.CurrencyConfigBump,
+
+		LiquidityPool:     obj.LiquidityPool,
+		LiquidityPoolBump: obj.LiquidityPoolBump,
+
+		VaultMint:     obj.VaultMint,
+		VaultMintBump: obj.VaultMintBump,
+
+		VaultCore:     obj.VaultCore,
+		VaultCoreBump: obj.VaultCoreBump,
+
+		FeesMint:  obj.FeesMint,
+		BuyFeeBps: obj.BuyFeeBps,
+
+		FeesCore:   obj.FeesCore,
+		SellFeeBps: obj.SellFeeBps,
+
+		CreatedBy: obj.CreatedBy,
+		CreatedAt: obj.CreatedAt,
+	}, nil
+}
+
+func fromMetadataModel(obj *metadataModel) *currency.MetadataRecord {
+	return &currency.MetadataRecord{
+		Id: uint64(obj.Id.Int64),
+
+		Name:   obj.Name,
+		Symbol: obj.Symbol,
+
+		Seed: obj.Seed,
+
+		Authority: obj.Authority,
+
+		Mint:     obj.Mint,
+		MintBump: obj.MintBump,
+		Decimals: obj.Decimals,
+
+		CurrencyConfig:     obj.CurrencyConfig,
+		CurrencyConfigBump: obj.CurrencyConfigBump,
+
+		LiquidityPool:     obj.LiquidityPool,
+		LiquidityPoolBump: obj.LiquidityPoolBump,
+
+		VaultMint:     obj.VaultMint,
+		VaultMintBump: obj.VaultMintBump,
+
+		VaultCore:     obj.VaultCore,
+		VaultCoreBump: obj.VaultCoreBump,
+
+		FeesMint:  obj.FeesMint,
+		BuyFeeBps: obj.BuyFeeBps,
+
+		FeesCore:   obj.FeesCore,
+		SellFeeBps: obj.SellFeeBps,
+
+		CreatedBy: obj.CreatedBy,
+		CreatedAt: obj.CreatedAt,
+	}
+}
+
 type reserveModel struct {
 	Id                sql.NullInt64 `db:"id"`
 	ForDate           string        `db:"for_date"`
@@ -55,7 +173,11 @@ type reserveModel struct {
 	CoreMintLocked    uint64        `db:"core_mint_locked"`
 }
 
-func toReserveModel(obj *currency.ReserveRecord) *reserveModel {
+func toReserveModel(obj *currency.ReserveRecord) (*reserveModel, error) {
+	if err := obj.Validate(); err != nil {
+		return nil, err
+	}
+
 	return &reserveModel{
 		Id:                sql.NullInt64{Int64: int64(obj.Id), Valid: obj.Id > 0},
 		ForDate:           obj.Time.UTC().Format(dateFormat),
@@ -63,7 +185,7 @@ func toReserveModel(obj *currency.ReserveRecord) *reserveModel {
 		Mint:              obj.Mint,
 		SupplyFromBonding: obj.SupplyFromBonding,
 		CoreMintLocked:    obj.CoreMintLocked,
-	}
+	}, nil
 }
 
 func fromReserveModel(obj *reserveModel) *currency.ReserveRecord {
@@ -76,15 +198,15 @@ func fromReserveModel(obj *reserveModel) *currency.ReserveRecord {
 	}
 }
 
-func makeSelectQuery(table, condition string, ordering q.Ordering) string {
+func makeTimeBasedSelectQuery(table, condition string, ordering q.Ordering) string {
 	return `SELECT * FROM ` + table + ` WHERE ` + condition + ` ORDER BY for_timestamp ` + q.FromOrderingWithFallback(ordering, "asc")
 }
 
-func makeGetQuery(table, condition string, ordering q.Ordering) string {
-	return makeSelectQuery(table, condition, ordering) + ` LIMIT 1`
+func makeTimeBasedGetQuery(table, condition string, ordering q.Ordering) string {
+	return makeTimeBasedSelectQuery(table, condition, ordering) + ` LIMIT 1`
 }
 
-func makeRangeQuery(table, condition string, ordering q.Ordering, interval q.Interval) string {
+func makeTimeBasedRangeQuery(table, condition string, ordering q.Ordering, interval q.Interval) string {
 	var query, bucket string
 
 	if interval == q.IntervalRaw {
@@ -107,8 +229,10 @@ func makeRangeQuery(table, condition string, ordering q.Ordering, interval q.Int
 
 func (m *exchangeRateModel) txSave(ctx context.Context, tx *sqlx.Tx) error {
 	err := tx.QueryRowxContext(ctx,
-		`INSERT INTO `+exchangeRateTableName+` (for_date, for_timestamp, currency_code, currency_rate)
-		VALUES ($1, $2, $3, $4) RETURNING *;`,
+		`INSERT INTO `+exchangeRateTableName+`
+		(for_date, for_timestamp, currency_code, currency_rate)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, for_date, for_timestamp, currency_code, currency_rate`,
 		m.ForDate,
 		m.ForTimestamp,
 		m.CurrencyCode,
@@ -118,11 +242,47 @@ func (m *exchangeRateModel) txSave(ctx context.Context, tx *sqlx.Tx) error {
 	return pgutil.CheckUniqueViolation(err, currency.ErrExists)
 }
 
+func (m *metadataModel) dbSave(ctx context.Context, db *sqlx.DB) error {
+	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
+		err := tx.QueryRowxContext(ctx,
+			`INSERT INTO `+metadataTableName+`
+			(name, symbol, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			RETURNING id, name, symbol, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at`,
+			m.Name,
+			m.Symbol,
+			m.Seed,
+			m.Authority,
+			m.Mint,
+			m.MintBump,
+			m.Decimals,
+			m.CurrencyConfig,
+			m.CurrencyConfigBump,
+			m.LiquidityPool,
+			m.LiquidityPoolBump,
+			m.VaultMint,
+			m.VaultMintBump,
+			m.VaultCore,
+			m.VaultCoreBump,
+			m.FeesMint,
+			m.BuyFeeBps,
+			m.FeesCore,
+			m.SellFeeBps,
+			m.CreatedBy,
+			m.CreatedAt,
+		).StructScan(m)
+
+		return pgutil.CheckUniqueViolation(err, currency.ErrExists)
+	})
+}
+
 func (m *reserveModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		err := tx.QueryRowxContext(ctx,
-			`INSERT INTO `+reserveTableName+` (for_date, for_timestamp, mint, supply_from_bonding, core_mint_locked)
-			VALUES ($1, $2, $3, $4, $5) RETURNING *;`,
+			`INSERT INTO `+reserveTableName+`
+			(for_date, for_timestamp, mint, supply_from_bonding, core_mint_locked)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, for_date, for_timestamp, mint, supply_from_bonding, core_mint_locked`,
 			m.ForDate,
 			m.ForTimestamp,
 			m.Mint,
@@ -137,7 +297,7 @@ func (m *reserveModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 func dbGetExchangeRateBySymbolAndTime(ctx context.Context, db *sqlx.DB, symbol string, t time.Time, ordering q.Ordering) (*exchangeRateModel, error) {
 	res := &exchangeRateModel{}
 	err := db.GetContext(ctx, res,
-		makeGetQuery(exchangeRateTableName, "currency_code = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
+		makeTimeBasedGetQuery(exchangeRateTableName, "currency_code = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
 		symbol,
 		t.UTC().Format(dateFormat),
 		t.UTC(),
@@ -170,7 +330,7 @@ func dbGetAllExchangeRatesByTime(ctx context.Context, db *sqlx.DB, t time.Time, 
 func dbGetAllExchangeRatesForRange(ctx context.Context, db *sqlx.DB, symbol string, interval q.Interval, start time.Time, end time.Time, ordering q.Ordering) ([]*exchangeRateModel, error) {
 	res := []*exchangeRateModel{}
 	err := db.SelectContext(ctx, &res,
-		makeRangeQuery(exchangeRateTableName, "currency_code = $1 AND for_timestamp >= $2 AND for_timestamp <= $3", ordering, interval),
+		makeTimeBasedRangeQuery(exchangeRateTableName, "currency_code = $1 AND for_timestamp >= $2 AND for_timestamp <= $3", ordering, interval),
 		symbol, start.UTC(), end.UTC(),
 	)
 
@@ -184,10 +344,21 @@ func dbGetAllExchangeRatesForRange(ctx context.Context, db *sqlx.DB, symbol stri
 	return res, nil
 }
 
+func dbGetMetadataByMint(ctx context.Context, db *sqlx.DB, mint string) (*metadataModel, error) {
+	res := &metadataModel{}
+	err := db.GetContext(ctx, res,
+		`SELECT id, name, symbol, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at
+		FROM `+metadataTableName+`
+		WHERE mint = $1`,
+		mint,
+	)
+	return res, pgutil.CheckNoRows(err, currency.ErrNotFound)
+}
+
 func dbGetReserveByMintAndTime(ctx context.Context, db *sqlx.DB, mint string, t time.Time, ordering q.Ordering) (*reserveModel, error) {
 	res := &reserveModel{}
 	err := db.GetContext(ctx, res,
-		makeGetQuery(reserveTableName, "mint = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
+		makeTimeBasedGetQuery(reserveTableName, "mint = $1 AND for_date = $2 AND for_timestamp <= $3", ordering),
 		mint,
 		t.UTC().Format(dateFormat),
 		t.UTC(),

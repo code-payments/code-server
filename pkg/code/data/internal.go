@@ -132,8 +132,10 @@ type DatabaseData interface {
 	GetExchangeRate(ctx context.Context, code currency_lib.Code, t time.Time) (*currency.ExchangeRateRecord, error)
 	GetAllExchangeRates(ctx context.Context, t time.Time) (*currency.MultiRateRecord, error)
 	GetExchangeRateHistory(ctx context.Context, code currency_lib.Code, opts ...query.Option) ([]*currency.ExchangeRateRecord, error)
-	ImportExchangeRates(ctx context.Context, data *currency.MultiRateRecord) error
-	PutCurrencyReserveRecord(ctx context.Context, record *currency.ReserveRecord) error
+	ImportExchangeRates(ctx context.Context, record *currency.MultiRateRecord) error
+	PutCurrencyMetadata(ctx context.Context, record *currency.MetadataRecord) error
+	GetCurrencyMetadata(ctx context.Context, mint string) (*currency.MetadataRecord, error)
+	PutCurrencyReserve(ctx context.Context, record *currency.ReserveRecord) error
 	GetCurrencyReserveAtTime(ctx context.Context, mint string, t time.Time) (*currency.ReserveRecord, error)
 
 	// CVM RAM
@@ -508,7 +510,13 @@ func (dp *DatabaseProvider) GetExchangeRateHistory(ctx context.Context, code cur
 func (dp *DatabaseProvider) ImportExchangeRates(ctx context.Context, data *currency.MultiRateRecord) error {
 	return dp.currencies.PutExchangeRates(ctx, data)
 }
-func (dp *DatabaseProvider) PutCurrencyReserveRecord(ctx context.Context, record *currency.ReserveRecord) error {
+func (dp *DatabaseProvider) PutCurrencyMetadata(ctx context.Context, record *currency.MetadataRecord) error {
+	return dp.currencies.PutMetadata(ctx, record)
+}
+func (dp *DatabaseProvider) GetCurrencyMetadata(ctx context.Context, mint string) (*currency.MetadataRecord, error) {
+	return dp.currencies.GetMetadata(ctx, mint)
+}
+func (dp *DatabaseProvider) PutCurrencyReserve(ctx context.Context, record *currency.ReserveRecord) error {
 	return dp.currencies.PutReserveRecord(ctx, record)
 }
 func (dp *DatabaseProvider) GetCurrencyReserveAtTime(ctx context.Context, mint string, t time.Time) (*currency.ReserveRecord, error) {
