@@ -42,7 +42,7 @@ func (p *reserveService) Start(serviceCtx context.Context, interval time.Duratio
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				err := p.UpdateAllCurrencyReserves(tracedCtx)
+				err := p.UpdateAllLaunchpadCurrencyReserves(tracedCtx)
 				if err != nil {
 					m.NoticeError(err)
 					p.log.WithError(err).Warn("failed to process current rate data")
@@ -71,7 +71,7 @@ func (p *reserveService) Start(serviceCtx context.Context, interval time.Duratio
 }
 
 // todo: Don't hardcode Jeffy
-func (p *reserveService) UpdateAllCurrencyReserves(ctx context.Context) error {
+func (p *reserveService) UpdateAllLaunchpadCurrencyReserves(ctx context.Context) error {
 	jeffyMintAccount, _ := common.NewAccountFromPublicKeyString("52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj")
 	jeffyVaultAccount, _ := common.NewAccountFromPublicKeyString("BFDanLgELhpCCGTtaa7c8WGxTXcTxgwkf9DMQd4qheSK")
 	coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4")
