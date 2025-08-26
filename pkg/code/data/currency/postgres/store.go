@@ -100,15 +100,50 @@ func (s *store) GetExchangeRatesInRange(ctx context.Context, symbol string, inte
 	return res, nil
 }
 
-func (s *store) PutReserveRecord(ctx context.Context, record *currency.ReserveRecord) error {
-	return toReserveModel(record).dbSave(ctx, s.db)
+func (s *store) PutMetadata(ctx context.Context, record *currency.MetadataRecord) error {
+	model, err := toMetadataModel(record)
+	if err != nil {
+		return err
+	}
+
+	err = model.dbSave(ctx, s.db)
+	if err != nil {
+		return err
+	}
+
+	fromMetadataModel(model).CopyTo(record)
+
+	return nil
 }
 
-func (s *store) GetReserveAtTime(ctx context.Context, mint string, t time.Time) (*currency.ReserveRecord, error) {
-	obj, err := dbGetReserveByMintAndTime(ctx, s.db, mint, t, query.Descending)
+func (s *store) GetMetadata(ctx context.Context, mint string) (*currency.MetadataRecord, error) {
+	model, err := dbGetMetadataByMint(ctx, s.db, mint)
 	if err != nil {
 		return nil, err
 	}
+	return fromMetadataModel(model), nil
+}
 
-	return fromReserveModel(obj), nil
+func (s *store) PutReserveRecord(ctx context.Context, record *currency.ReserveRecord) error {
+	model, err := toReserveModel(record)
+	if err != nil {
+		return err
+	}
+
+	err = model.dbSave(ctx, s.db)
+	if err != nil {
+		return err
+	}
+
+	fromReserveModel(model).CopyTo(record)
+
+	return nil
+}
+
+func (s *store) GetReserveAtTime(ctx context.Context, mint string, t time.Time) (*currency.ReserveRecord, error) {
+	model, err := dbGetReserveByMintAndTime(ctx, s.db, mint, t, query.Descending)
+	if err != nil {
+		return nil, err
+	}
+	return fromReserveModel(model), nil
 }

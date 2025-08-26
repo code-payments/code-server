@@ -18,6 +18,8 @@ type store struct {
 	mu                    sync.Mutex
 	exchangeRateRecords   []*currency.ExchangeRateRecord
 	lastExchangeRateIndex uint64
+	metadataRecords       []*currency.MetadataRecord
+	lastMetadataIndex     uint64
 	reserveRecords        []*currency.ReserveRecord
 	lastReserveIndex      uint64
 }
@@ -51,6 +53,8 @@ func (s *store) reset() {
 	s.mu.Lock()
 	s.exchangeRateRecords = make([]*currency.ExchangeRateRecord, 0)
 	s.lastExchangeRateIndex = 1
+	s.metadataRecords = make([]*currency.MetadataRecord, 0)
+	s.lastMetadataIndex = 1
 	s.reserveRecords = make([]*currency.ReserveRecord, 0)
 	s.lastReserveIndex = 1
 	s.mu.Unlock()
@@ -154,7 +158,46 @@ func (s *store) GetExchangeRatesInRange(ctx context.Context, symbol string, inte
 	return all, nil
 }
 
+func (s *store) PutMetadata(ctx context.Context, data *currency.MetadataRecord) error {
+	if err := data.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Not ideal but fine for testing the currency store
+	for _, item := range s.metadataRecords {
+		if item.Mint == data.Mint {
+			return currency.ErrExists
+		}
+	}
+
+	data.Id = s.lastMetadataIndex
+	s.metadataRecords = append(s.metadataRecords, data.Clone())
+	s.lastMetadataIndex = s.lastMetadataIndex + 1
+
+	return nil
+}
+
+func (s *store) GetMetadata(ctx context.Context, mint string) (*currency.MetadataRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, item := range s.metadataRecords {
+		if item.Mint == mint {
+			return item.Clone(), nil
+		}
+	}
+
+	return nil, currency.ErrNotFound
+}
+
 func (s *store) PutReserveRecord(ctx context.Context, data *currency.ReserveRecord) error {
+	if err := data.Validate(); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -165,13 +208,8 @@ func (s *store) PutReserveRecord(ctx context.Context, data *currency.ReserveReco
 		}
 	}
 
-	s.reserveRecords = append(s.reserveRecords, &currency.ReserveRecord{
-		Id:                s.lastReserveIndex,
-		Mint:              data.Mint,
-		SupplyFromBonding: data.SupplyFromBonding,
-		CoreMintLocked:    data.CoreMintLocked,
-		Time:              data.Time,
-	})
+	data.Id = s.lastReserveIndex
+	s.reserveRecords = append(s.reserveRecords, data.Clone())
 	s.lastReserveIndex = s.lastReserveIndex + 1
 
 	return nil
@@ -195,5 +233,5 @@ func (s *store) GetReserveAtTime(ctx context.Context, mint string, t time.Time) 
 
 	sort.Sort(ReserveByTime(results))
 
-	return results[0], nil
+	return results[0].Clone(), nil
 }

@@ -10,12 +10,14 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 )
 
 func RunTests(t *testing.T, s currency.Store, teardown func()) {
 	for _, tf := range []func(t *testing.T, s currency.Store){
 		testExchangeRateRoundTrip,
 		testGetExchangeRatesInRange,
+		testMetadataRoundTrip,
 		testReserveRoundTrip,
 	} {
 		tf(t, s)
@@ -114,6 +116,53 @@ func testGetExchangeRatesInRange(t *testing.T, s currency.Store) {
 	require.NoError(t, err)
 }
 
+func testMetadataRoundTrip(t *testing.T, s currency.Store) {
+	expected := &currency.MetadataRecord{
+		Name:   "Jeffy",
+		Symbol: "JFY",
+
+		Seed: "H7WNaHtCa5h2k7AwZ8DbdLfM6bU2bi2jmWiUkFqgeBYk",
+
+		Authority: "jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV",
+
+		Mint:     "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj",
+		MintBump: 252,
+		Decimals: currencycreator.DefaultMintDecimals,
+
+		CurrencyConfig:     "BDfFyqfasvty3cjSbC2qZx2Dmr4vhhVBt9Ban5XsTcEH",
+		CurrencyConfigBump: 251,
+
+		LiquidityPool:     "5cH99GSbr9ECP8gd1vLiAAFPHt1VeCNKzzrPFGmAB61c",
+		LiquidityPoolBump: 255,
+
+		VaultMint:     "BFDanLgELhpCCGTtaa7c8WGxTXcTxgwkf9DMQd4qheSK",
+		VaultMintBump: 255,
+
+		VaultCore:     "A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4",
+		VaultCoreBump: 255,
+
+		FeesMint:  "BfWacqZVHQt3VNwPugXAkLrApgCTnjgF6nQb7xEMqeDu",
+		BuyFeeBps: currencycreator.DefaultBuyFeeBps,
+
+		FeesCore:   "5EcVYL8jHRKeeQqg6eYVBzc73ecH1PFzzaavoQBKRYy5",
+		SellFeeBps: currencycreator.DefaultSellFeeBps,
+
+		CreatedBy: "jyyy4RpW3X5ApbW5G6vx9ZVPxhoUKGRLbZ4LxC47LYG",
+		CreatedAt: time.Now(),
+	}
+
+	_, err := s.GetMetadata(context.Background(), expected.Mint)
+	assert.Equal(t, currency.ErrNotFound, err)
+
+	cloned := expected.Clone()
+	require.NoError(t, s.PutMetadata(context.Background(), expected))
+	assert.EqualValues(t, 1, expected.Id)
+
+	actual, err := s.GetMetadata(context.Background(), expected.Mint)
+	require.NoError(t, err)
+	assertEquivalentMetadataRecords(t, cloned, actual)
+}
+
 func testReserveRoundTrip(t *testing.T, s currency.Store) {
 	now := time.Date(2021, 01, 29, 13, 0, 5, 0, time.UTC)
 
@@ -148,4 +197,28 @@ func testReserveRoundTrip(t *testing.T, s currency.Store) {
 	actual, err = s.GetReserveAtTime(context.Background(), "mint", tomorrow)
 	assert.Nil(t, actual)
 	assert.Equal(t, currency.ErrNotFound, err)
+}
+
+func assertEquivalentMetadataRecords(t *testing.T, obj1, obj2 *currency.MetadataRecord) {
+	assert.Equal(t, obj1.Name, obj2.Name)
+	assert.Equal(t, obj1.Symbol, obj2.Symbol)
+	assert.Equal(t, obj1.Seed, obj2.Seed)
+	assert.Equal(t, obj1.Authority, obj2.Authority)
+	assert.Equal(t, obj1.Mint, obj2.Mint)
+	assert.Equal(t, obj1.MintBump, obj2.MintBump)
+	assert.Equal(t, obj1.Decimals, obj2.Decimals)
+	assert.Equal(t, obj1.CurrencyConfig, obj2.CurrencyConfig)
+	assert.Equal(t, obj1.CurrencyConfigBump, obj2.CurrencyConfigBump)
+	assert.Equal(t, obj1.LiquidityPool, obj2.LiquidityPool)
+	assert.Equal(t, obj1.LiquidityPoolBump, obj2.LiquidityPoolBump)
+	assert.Equal(t, obj1.VaultMint, obj2.VaultMint)
+	assert.Equal(t, obj1.VaultMintBump, obj2.VaultMintBump)
+	assert.Equal(t, obj1.VaultCore, obj2.VaultCore)
+	assert.Equal(t, obj1.VaultCoreBump, obj2.VaultCoreBump)
+	assert.Equal(t, obj1.FeesMint, obj2.FeesMint)
+	assert.Equal(t, obj1.BuyFeeBps, obj2.BuyFeeBps)
+	assert.Equal(t, obj1.FeesCore, obj2.FeesCore)
+	assert.Equal(t, obj1.SellFeeBps, obj2.SellFeeBps)
+	assert.Equal(t, obj1.CreatedBy, obj2.CreatedBy)
+	assert.Equal(t, obj1.CreatedAt.Unix(), obj2.CreatedAt.Unix())
 }
