@@ -87,7 +87,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				Decimals: uint32(common.CoreMintDecimals),
 				Name:     common.CoreMintName,
 				Symbol:   strings.ToUpper(string(common.CoreMintSymbol)),
-				VmMetadata: &currencypb.VmMintMetadata{
+				VmMetadata: &currencypb.VmMetadata{
 					Vm:                 common.CodeVmAccount.ToProto(),
 					Authority:          common.GetSubsidizer().ToProto(),
 					LockDurationInDays: 21,
@@ -133,7 +133,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				log.WithError(err).Warn("invalid mint vault account")
 				return nil, status.Error(codes.Internal, "")
 			}
-			coreMintVaulttAccount, err := common.NewAccountFromPublicKeyString(metadataRecord.VaultCore)
+			coreMintVaultAccount, err := common.NewAccountFromPublicKeyString(metadataRecord.VaultCore)
 			if err != nil {
 				log.WithError(err).Warn("invalid core mint vault account")
 				return nil, status.Error(codes.Internal, "")
@@ -153,18 +153,18 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				Decimals: uint32(metadataRecord.Decimals),
 				Name:     metadataRecord.Name,
 				Symbol:   metadataRecord.Symbol,
-				VmMetadata: &currencypb.VmMintMetadata{
+				VmMetadata: &currencypb.VmMetadata{
 					Vm:                 vmAccount.ToProto(),
 					Authority:          vmAuthorityAccount.ToProto(),
 					LockDurationInDays: uint32(timelock_token.DefaultNumDaysLocked),
 				},
-				CurrencyCreatorMetadata: &currencypb.CurrencyCreatorMintMetadata{
+				LaunchpadMetadata: &currencypb.LaunchpadMetadata{
 					CurrencyConfig:    currencyConfigAccount.ToProto(),
 					LiquidityPool:     liquidityPoolAccount.ToProto(),
 					Seed:              seed.ToProto(),
 					Authority:         currencyAuthorityAccount.ToProto(),
 					MintVault:         mintVaultAccount.ToProto(),
-					CoreMintVault:     coreMintVaulttAccount.ToProto(),
+					CoreMintVault:     coreMintVaultAccount.ToProto(),
 					CoreMintFees:      coreMintFeesAccount.ToProto(),
 					SupplyFromBonding: reserveRecord.SupplyFromBonding,
 					CoreMintLocked:    reserveRecord.CoreMintLocked,
