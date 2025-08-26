@@ -29,14 +29,13 @@ func NewExchangeRateService(data code_data.Provider) async.Service {
 }
 
 func (p *exchangeRateService) Start(serviceCtx context.Context, interval time.Duration) error {
-	// TODO: add distributed lock
 	for {
 		_, err := retry.Retry(
 			func() error {
 				p.log.Trace("updating exchange rates")
 
 				nr := serviceCtx.Value(metrics.NewRelicContextKey).(*newrelic.Application)
-				m := nr.StartTransaction("async__currency_service")
+				m := nr.StartTransaction("async__currency_exchange_rate_service")
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)
 

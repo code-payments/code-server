@@ -95,7 +95,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				},
 			}
 		case "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
-			// todo: load from DB populated by worker
+			// todo: Load currency creator mint metadata from DB
 			authorityAccount, _ := common.NewAccountFromPublicKeyString("jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV")
 			vmAccount, _ := common.NewAccountFromPublicKeyString("Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta")
 			seed, _ := common.NewAccountFromPublicKeyString("H7WNaHtCa5h2k7AwZ8DbdLfM6bU2bi2jmWiUkFqgeBYk")
