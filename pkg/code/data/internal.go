@@ -98,7 +98,6 @@ type DatabaseData interface {
 	GetAccountInfoByAuthorityAddress(ctx context.Context, address string) (*account.Record, error)
 	GetLatestAccountInfosByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*account.Record, error)
 	GetLatestAccountInfoByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error)
-	GetRelationshipAccountInfoByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error)
 	GetPrioritizedAccountInfosRequiringDepositSync(ctx context.Context, limit uint64) ([]*account.Record, error)
 	GetPrioritizedAccountInfosRequiringAutoReturnCheck(ctx context.Context, maxAge time.Duration, limit uint64) ([]*account.Record, error)
 	GetAccountInfoCountRequiringDepositSync(ctx context.Context) (uint64, error)
@@ -380,9 +379,6 @@ func (dp *DatabaseProvider) GetLatestAccountInfosByOwnerAddress(ctx context.Cont
 }
 func (dp *DatabaseProvider) GetLatestAccountInfoByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error) {
 	return dp.accounts.GetLatestByOwnerAddressAndType(ctx, address, accountType)
-}
-func (dp *DatabaseProvider) GetRelationshipAccountInfoByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error) {
-	return dp.accounts.GetRelationshipByOwnerAddress(ctx, address, relationshipTo)
 }
 func (dp *DatabaseProvider) GetPrioritizedAccountInfosRequiringDepositSync(ctx context.Context, limit uint64) ([]*account.Record, error) {
 	return dp.accounts.GetPrioritizedRequiringDepositSync(ctx, limit)

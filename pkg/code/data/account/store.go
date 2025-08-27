@@ -43,11 +43,6 @@ type Store interface {
 	// the largest index is returned
 	GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*Record, error)
 
-	// GetRelationshipByOwnerAddress gets a relationship account for a given owner.
-	//
-	// Note: Index is always zero, so there's no concept of a "latest"
-	GetRelationshipByOwnerAddress(ctx context.Context, address, relationshipTo string) (*Record, error)
-
 	// GetPrioritizedRequiringDepositSync gets a set of account info objects where
 	// RequiresDepositSync is true that's prioritized by DepositsLastSyncedAt
 	GetPrioritizedRequiringDepositSync(ctx context.Context, limit uint64) ([]*Record, error)

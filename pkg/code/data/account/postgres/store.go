@@ -114,15 +114,6 @@ func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address stri
 	return fromModel(model), nil
 }
 
-// GetRelationshipByOwnerAddress implements account.Store.GetRelationshipByOwnerAddress
-func (s *store) GetRelationshipByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error) {
-	model, err := dbGetRelationshipByOwnerAddress(ctx, s.db, address, relationshipTo)
-	if err != nil {
-		return nil, err
-	}
-	return fromModel(model), nil
-}
-
 // GetPrioritizedRequiringDepositSync implements account.Store.GetPrioritizedRequiringDepositSync
 func (s *store) GetPrioritizedRequiringDepositSync(ctx context.Context, limit uint64) ([]*account.Record, error) {
 	models, err := dbGetPrioritizedRequiringDepositSync(ctx, s.db, limit)

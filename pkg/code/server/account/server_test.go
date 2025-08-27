@@ -64,7 +64,7 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 	defer cleanup()
 
 	ownerAccount := testutil.NewRandomAccount(t)
-	swapDerivedOwnerAccount := testutil.NewRandomAccount(t)
+	swapAuthorityAccount := testutil.NewRandomAccount(t)
 
 	req := &accountpb.IsCodeAccountRequest{
 		Owner: ownerAccount.ToProto(),
@@ -82,7 +82,7 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 	// Technically an invalid reality, but SubmitIntent guarantees all or no accounts
 	// are opened, which allows IsCodeAccount to do lazy checking.
 	setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
-	setupAccountRecords(t, env, ownerAccount, swapDerivedOwnerAccount, 0, commonpb.AccountType_SWAP)
+	setupAccountRecords(t, env, ownerAccount, swapAuthorityAccount, 0, commonpb.AccountType_SWAP)
 
 	resp, err = env.client.IsCodeAccount(env.ctx, req)
 	require.NoError(t, err)
@@ -90,47 +90,42 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 }
 
 func TestIsCodeAccount_NotManagedByCode(t *testing.T) {
-	for i := 0; i < 4; i++ {
-		for _, unmanagedState := range []timelock_token_v1.TimelockState{
-			timelock_token_v1.StateWaitingForTimeout,
-			timelock_token_v1.StateUnlocked,
-		} {
-			env, cleanup := setup(t)
-			defer cleanup()
+	for _, unmanagedState := range []timelock_token_v1.TimelockState{
+		timelock_token_v1.StateWaitingForTimeout,
+		timelock_token_v1.StateUnlocked,
+	} {
+		env, cleanup := setup(t)
+		defer cleanup()
 
-			ownerAccount := testutil.NewRandomAccount(t)
+		ownerAccount := testutil.NewRandomAccount(t)
 
-			req := &accountpb.IsCodeAccountRequest{
-				Owner: ownerAccount.ToProto(),
-			}
-			reqBytes, err := proto.Marshal(req)
-			require.NoError(t, err)
-			req.Signature = &commonpb.Signature{
-				Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
-			}
-
-			resp, err := env.client.IsCodeAccount(env.ctx, req)
-			require.NoError(t, err)
-			assert.Equal(t, accountpb.IsCodeAccountResponse_NOT_FOUND, resp.Result)
-
-			var allAccountRecords []*common.AccountRecords
-			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY))
-			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_BUCKET_100_KIN))
-			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_TEMPORARY_INCOMING))
-			allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_TEMPORARY_OUTGOING))
-
-			resp, err = env.client.IsCodeAccount(env.ctx, req)
-			require.NoError(t, err)
-			assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
-
-			allAccountRecords[i].Timelock.VaultState = unmanagedState
-			allAccountRecords[i].Timelock.Block += 1
-			require.NoError(t, env.data.SaveTimelock(env.ctx, allAccountRecords[i].Timelock))
-
-			resp, err = env.client.IsCodeAccount(env.ctx, req)
-			require.NoError(t, err)
-			assert.Equal(t, accountpb.IsCodeAccountResponse_UNLOCKED_TIMELOCK_ACCOUNT, resp.Result)
+		req := &accountpb.IsCodeAccountRequest{
+			Owner: ownerAccount.ToProto(),
 		}
+		reqBytes, err := proto.Marshal(req)
+		require.NoError(t, err)
+		req.Signature = &commonpb.Signature{
+			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
+		}
+
+		resp, err := env.client.IsCodeAccount(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, accountpb.IsCodeAccountResponse_NOT_FOUND, resp.Result)
+
+		var allAccountRecords []*common.AccountRecords
+		allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY))
+
+		resp, err = env.client.IsCodeAccount(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, accountpb.IsCodeAccountResponse_OK, resp.Result)
+
+		allAccountRecords[0].Timelock.VaultState = unmanagedState
+		allAccountRecords[0].Timelock.Block += 1
+		require.NoError(t, env.data.SaveTimelock(env.ctx, allAccountRecords[0].Timelock))
+
+		resp, err = env.client.IsCodeAccount(env.ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, accountpb.IsCodeAccountResponse_UNLOCKED_TIMELOCK_ACCOUNT, resp.Result)
 	}
 }
 
@@ -149,42 +144,34 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 		Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
 	}
 
-	bucketDerivedOwner := testutil.NewRandomAccount(t)
-	tempIncomingDerivedOwner := testutil.NewRandomAccount(t)
-	swapDerivedOwner := testutil.NewRandomAccount(t)
-	poolDerivedOwner1 := testutil.NewRandomAccount(t)
-	poolDerivedOwner2 := testutil.NewRandomAccount(t)
+	poolAuthority1 := testutil.NewRandomAccount(t)
+	poolAuthority2 := testutil.NewRandomAccount(t)
+	swapAuthority := testutil.NewRandomAccount(t)
 
 	primaryAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
-	bucketAccountRecords := setupAccountRecords(t, env, ownerAccount, bucketDerivedOwner, 0, commonpb.AccountType_BUCKET_100_KIN)
-	setupAccountRecords(t, env, ownerAccount, swapDerivedOwner, 0, commonpb.AccountType_SWAP)
-	setupAccountRecords(t, env, ownerAccount, tempIncomingDerivedOwner, 2, commonpb.AccountType_TEMPORARY_INCOMING)
-	pool1AccountRecords := setupAccountRecords(t, env, ownerAccount, poolDerivedOwner1, 0, commonpb.AccountType_POOL)
-	pool2AccountRecords := setupAccountRecords(t, env, ownerAccount, poolDerivedOwner2, 1, commonpb.AccountType_POOL)
-	setupCachedBalance(t, env, bucketAccountRecords, common.ToCoreMintQuarks(100))
+	pool1AccountRecords := setupAccountRecords(t, env, ownerAccount, poolAuthority1, 0, commonpb.AccountType_POOL)
+	pool2AccountRecords := setupAccountRecords(t, env, ownerAccount, poolAuthority2, 1, commonpb.AccountType_POOL)
+	setupAccountRecords(t, env, ownerAccount, swapAuthority, 0, commonpb.AccountType_SWAP)
 	setupCachedBalance(t, env, primaryAccountRecords, common.ToCoreMintQuarks(42))
 	setupCachedBalance(t, env, pool1AccountRecords, common.ToCoreMintQuarks(88))
 	setupCachedBalance(t, env, pool2AccountRecords, common.ToCoreMintQuarks(123))
 
 	otherOwnerAccount := testutil.NewRandomAccount(t)
 	setupAccountRecords(t, env, otherOwnerAccount, otherOwnerAccount, 0, commonpb.AccountType_PRIMARY)
-	setupAccountRecords(t, env, otherOwnerAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_BUCKET_100_KIN)
-	setupAccountRecords(t, env, otherOwnerAccount, testutil.NewRandomAccount(t), 2, commonpb.AccountType_TEMPORARY_INCOMING)
-
 	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 6)
+	assert.Len(t, resp.TokenAccountInfos, 4)
 	assert.EqualValues(t, 2, resp.NextPoolIndex)
 
 	for _, authority := range []*common.Account{
 		ownerAccount,
-		bucketDerivedOwner,
-		tempIncomingDerivedOwner,
-		swapDerivedOwner,
+		poolAuthority1,
+		poolAuthority2,
+		swapAuthority,
 	} {
 		var tokenAccount *common.Account
-		if authority.PublicKey().ToBase58() == swapDerivedOwner.PublicKey().ToBase58() {
+		if authority.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
 			tokenAccount, err = authority.ToAssociatedTokenAccount(common.UsdcMintAccount)
 			require.NoError(t, err)
 		} else {
@@ -205,23 +192,15 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 			assert.Equal(t, commonpb.AccountType_PRIMARY, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, common.ToCoreMintQuarks(42), accountInfo.Balance)
-		case bucketDerivedOwner.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_BUCKET_100_KIN, accountInfo.AccountType)
-			assert.EqualValues(t, 0, accountInfo.Index)
-			assert.EqualValues(t, common.ToCoreMintQuarks(100), accountInfo.Balance)
-		case tempIncomingDerivedOwner.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_TEMPORARY_INCOMING, accountInfo.AccountType)
-			assert.EqualValues(t, 2, accountInfo.Index)
-			assert.EqualValues(t, 0, accountInfo.Balance)
-		case swapDerivedOwner.PublicKey().ToBase58():
+		case swapAuthority.PublicKey().ToBase58():
 			assert.Equal(t, commonpb.AccountType_SWAP, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, 0, accountInfo.Balance)
-		case poolDerivedOwner1.PublicKey().ToBase58():
+		case poolAuthority1.PublicKey().ToBase58():
 			assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
 			assert.EqualValues(t, 0, accountInfo.Index)
 			assert.EqualValues(t, common.ToCoreMintQuarks(88), accountInfo.Balance)
-		case poolDerivedOwner2.PublicKey().ToBase58():
+		case poolAuthority2.PublicKey().ToBase58():
 			assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
 			assert.EqualValues(t, 1, accountInfo.Index)
 			assert.EqualValues(t, common.ToCoreMintQuarks(123), accountInfo.Balance)
@@ -722,18 +701,6 @@ func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccou
 		accountRecords.Timelock.VaultState = timelock_token_v1.StateLocked
 		accountRecords.Timelock.Block += 1
 		require.NoError(t, env.data.SaveTimelock(env.ctx, accountRecords.Timelock))
-	}
-
-	if accountType == commonpb.AccountType_TEMPORARY_INCOMING {
-		// Need an initial action to allow rotation checks to pass
-		actionRecord := &action.Record{
-			IntentType: intent.OpenAccounts,
-			Intent:     testutil.NewRandomAccount(t).PublicKey().ToBase58(),
-			ActionType: action.OpenAccount,
-			Source:     accountRecords.General.TokenAccount,
-			State:      action.StatePending,
-		}
-		require.NoError(t, env.data.PutAllActions(env.ctx, actionRecord))
 	}
 
 	return accountRecords

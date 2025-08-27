@@ -163,10 +163,6 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 		}
 	}
 
-	// The record should never exist, but this is precautionary. Pre-privacy timelock
-	// accounts should only be used in a migration.
-	delete(res, commonpb.AccountType_LEGACY_PRIMARY_2022)
-
 	return res, nil
 }
 

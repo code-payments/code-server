@@ -275,11 +275,7 @@ func (s *server) fetchBalances(ctx context.Context, recordsByType map[commonpb.A
 	balanceMetadataByTokenAccount := make(map[string]*balanceMetadata)
 
 	var batchedAccountRecords []*common.AccountRecords
-	for accountType, batchAccountRecords := range recordsByType {
-		if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
-			continue
-		}
-
+	for _, batchAccountRecords := range recordsByType {
 		for _, accountRecords := range batchAccountRecords {
 			if accountRecords.IsManagedByCode(ctx) {
 				batchedAccountRecords = append(batchedAccountRecords, accountRecords)

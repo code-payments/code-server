@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -10,7 +9,6 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type store struct {
@@ -149,25 +147,6 @@ func (s *store) filterByType(items []*account.Record, accountType commonpb.Accou
 	return res
 }
 
-func (s *store) filterByRelationship(items []*account.Record, relationshipTo string) []*account.Record {
-	var res []*account.Record
-	for _, item := range items {
-		if item.RelationshipTo != nil && *item.RelationshipTo == relationshipTo {
-			res = append(res, item)
-		}
-	}
-	return res
-}
-
-func (s *store) groupByRelationship(items []*account.Record) map[string][]*account.Record {
-	res := make(map[string][]*account.Record)
-	for _, item := range items {
-		key := *pointer.StringOrDefault(item.RelationshipTo, "")
-		res[key] = append(res[key], item)
-	}
-	return res
-}
-
 // Put implements account.Store.Put
 func (s *store) Put(_ context.Context, data *account.Record) error {
 	if err := data.Validate(); err != nil {
@@ -186,8 +165,7 @@ func (s *store) Put(_ context.Context, data *account.Record) error {
 	for _, item := range items {
 		if !equivalentRecords(item, data) &&
 			data.AccountType == item.AccountType &&
-			data.Index == item.Index &&
-			*pointer.StringOrDefault(item.RelationshipTo, "") == *pointer.StringOrDefault(data.RelationshipTo, "") {
+			data.Index == item.Index {
 			return account.ErrInvalidAccountInfo
 		}
 	}
@@ -302,16 +280,12 @@ func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[
 			continue
 		}
 
-		grouped := s.groupByRelationship(items)
+		sorted := ByIndex(items)
+		sort.Sort(sorted)
 
-		for _, group := range grouped {
-			sorted := ByIndex(group)
-			sort.Sort(sorted)
+		cloned := sorted[len(sorted)-1].Clone()
 
-			cloned := group[len(group)-1].Clone()
-
-			res[accountType] = append(res[accountType], &cloned)
-		}
+		res[accountType] = append(res[accountType], &cloned)
 	}
 
 	items = s.filterByType(items, commonpb.AccountType_POOL)
@@ -328,10 +302,6 @@ func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[
 
 // GetLatestByOwnerAddressAndType implements account.Store.GetLatestByOwnerAddressAndType
 func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error) {
-	if accountType == commonpb.AccountType_RELATIONSHIP {
-		return nil, errors.New("relationship account not supported")
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -346,25 +316,6 @@ func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address stri
 	sort.Sort(sorted)
 
 	cloned := items[len(items)-1].Clone()
-	return &cloned, nil
-}
-
-// GetRelationshipByOwnerAddress implements account.Store.GetRelationshipByOwnerAddress
-func (s *store) GetRelationshipByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	items := s.findByOwnerAddress(address)
-	items = s.filterByType(items, commonpb.AccountType_RELATIONSHIP)
-	items = s.filterByRelationship(items, relationshipTo)
-
-	if len(items) == 0 {
-		return nil, account.ErrAccountInfoNotFound
-	} else if len(items) > 1 {
-		return nil, errors.New("unexpected number of relationship accounts")
-	}
-
-	cloned := items[0].Clone()
 	return &cloned, nil
 }
 
@@ -471,10 +422,6 @@ func equivalentRecords(obj1, obj2 *account.Record) bool {
 	}
 
 	if obj1.AccountType != obj2.AccountType {
-		return false
-	}
-
-	if *pointer.StringOrDefault(obj1.RelationshipTo, "") != *pointer.StringOrDefault(obj2.RelationshipTo, "") {
 		return false
 	}
 
