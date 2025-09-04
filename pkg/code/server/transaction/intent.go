@@ -770,13 +770,18 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 		}
 
 	case intent.SendPublicPayment:
-		sourceAccountInfoRecord, err := s.data.GetAccountInfoByAuthorityAddress(ctx, intentRecord.InitiatorOwnerAccount)
+		sourceAccountInfoRecordsByMint, err := s.data.GetAccountInfoByAuthorityAddress(ctx, intentRecord.InitiatorOwnerAccount)
 		if err != nil {
 			log.WithError(err).Warn("failure getting source account info record")
 			return nil, status.Error(codes.Internal, "")
 		}
+		coreMintSourceAccountInfoRecord, ok := sourceAccountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+		if !ok {
+			log.WithError(err).Warn("core mint source account info record doesn't exist")
+			return nil, status.Error(codes.Internal, "")
+		}
 
-		sourceAccount, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.TokenAccount)
+		sourceAccount, err := common.NewAccountFromPublicKeyString(coreMintSourceAccountInfoRecord.TokenAccount)
 		if err != nil {
 			log.WithError(err).Warn("invalid source account")
 			return nil, status.Error(codes.Internal, "")

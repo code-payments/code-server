@@ -18,8 +18,6 @@ var (
 	CoreMintDecimals      = config.CoreMintDecimals
 	CoreMintName          = config.CoreMintName
 	CoreMintSymbol        = config.CoreMintSymbol
-
-	UsdcMintAccount, _ = NewAccountFromPublicKeyBytes(usdc.TokenMint)
 )
 
 func FromCoreMintQuarks(quarks uint64) uint64 {

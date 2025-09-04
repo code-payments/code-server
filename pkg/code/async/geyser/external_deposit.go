@@ -258,17 +258,21 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		return nil
 	}
 
-	accountInfoRecord, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
+	accountInfoRecords, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
 	if err != nil {
 		return errors.Wrap(err, "error getting account info record")
 	}
-	userVirtualTimelockVaultAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
+	coreMintAccountInfoRecord, ok := accountInfoRecords[common.CoreMintAccount.PublicKey().ToBase58()]
+	if !ok {
+		return errors.New("core mint account info record doesn't exist")
+	}
+	userVirtualTimelockVaultAccount, err := common.NewAccountFromPublicKeyString(coreMintAccountInfoRecord.TokenAccount)
 	if err != nil {
 		return errors.Wrap(err, "invalid virtual timelock vault account")
 	}
 
 	// Use the account type to determine how we'll process this external deposit
-	switch accountInfoRecord.AccountType {
+	switch coreMintAccountInfoRecord.AccountType {
 	case commonpb.AccountType_PRIMARY:
 		// Check whether we've previously processed this external deposit
 		_, err = data.GetExternalDeposit(ctx, signature, userVirtualTimelockVaultAccount.PublicKey().ToBase58())
@@ -279,7 +283,7 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 			return errors.Wrap(err, "error checking for existing external deposit record")
 		}
 
-		ownerAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
+		ownerAccount, err := common.NewAccountFromPublicKeyString(coreMintAccountInfoRecord.OwnerAccount)
 		if err != nil {
 			return errors.Wrap(err, "invalid owner account")
 		}
@@ -398,15 +402,19 @@ func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances
 }
 
 func markDepositsAsSynced(ctx context.Context, data code_data.Provider, userAuthority *common.Account) error {
-	accountInfoRecord, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
+	accountInfoRecords, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
 	if err != nil {
 		return errors.Wrap(err, "error getting account info record")
 	}
+	coreMintAccountInfoRecord, ok := accountInfoRecords[common.CoreMintAccount.PublicKey().ToBase58()]
+	if !ok {
+		return errors.New("core mint account info record doesn't exist")
+	}
 
-	accountInfoRecord.RequiresDepositSync = false
-	accountInfoRecord.DepositsLastSyncedAt = time.Now()
+	coreMintAccountInfoRecord.RequiresDepositSync = false
+	coreMintAccountInfoRecord.DepositsLastSyncedAt = time.Now()
 
-	err = data.UpdateAccountInfo(ctx, accountInfoRecord)
+	err = data.UpdateAccountInfo(ctx, coreMintAccountInfoRecord)
 	if err != nil {
 		return errors.Wrap(err, "error updating account info record")
 	}

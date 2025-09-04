@@ -153,7 +153,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	})
 
 	// Find the destination account, which will be the user's primary account
-	primaryAccountInfoRecord, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
+	primaryAccountInfoRecordsByMint, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
 	if err == account.ErrAccountInfoNotFound {
 		log.Trace("owner cannot receive airdrop")
 		return nil, ErrInvalidAirdropTarget
@@ -161,7 +161,12 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		log.WithError(err).Warn("failure getting primary account info record")
 		return nil, err
 	}
-	destination, err := common.NewAccountFromPublicKeyString(primaryAccountInfoRecord.TokenAccount)
+	coreMintPrimaryAccountInfoRecord, ok := primaryAccountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+	if !ok {
+		log.Trace("owner cannot receive airdrop")
+		return nil, ErrInvalidAirdropTarget
+	}
+	destination, err := common.NewAccountFromPublicKeyString(coreMintPrimaryAccountInfoRecord.TokenAccount)
 	if err != nil {
 		log.WithError(err).Warn("invalid destination account")
 		return nil, err

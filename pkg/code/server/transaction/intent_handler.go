@@ -127,13 +127,17 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 		return false, NewIntentValidationErrorf("unsupported account set: %s", typedMetadata.AccountSet)
 	}
 
-	accountInfoRecord, err := h.data.GetAccountInfoByAuthorityAddress(ctx, authorityToCheck.PublicKey().ToBase58())
+	accountInfoRecordByMint, err := h.data.GetAccountInfoByAuthorityAddress(ctx, authorityToCheck.PublicKey().ToBase58())
 	if err == account.ErrAccountInfoNotFound {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	return accountInfoRecord.AccountType == expectedAccountType, nil
+	coreMintAccountInfoRecord, ok := accountInfoRecordByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+	if !ok {
+		return false, nil
+	}
+	return coreMintAccountInfoRecord.AccountType == expectedAccountType, nil
 }
 
 func (h *OpenAccountsIntentHandler) GetBalanceLocks(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*intentBalanceLock, error) {
@@ -211,10 +215,14 @@ func (h *OpenAccountsIntentHandler) validateActions(
 		}
 	case transactionpb.OpenAccountsMetadata_POOL:
 		var nextPoolIndex uint64
-		latestPoolAccountInfoRecord, err := h.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, initiatiorOwnerAccount.PublicKey().ToBase58(), commonpb.AccountType_POOL)
+		latestPoolAccountInfoRecordsByMint, err := h.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, initiatiorOwnerAccount.PublicKey().ToBase58(), commonpb.AccountType_POOL)
 		switch err {
 		case nil:
-			nextPoolIndex = latestPoolAccountInfoRecord.Index + 1
+			// Pool account are only supported for the core mint (for now)
+			latestPoolAccountInfoRecord, ok := latestPoolAccountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+			if ok {
+				nextPoolIndex = latestPoolAccountInfoRecord.Index + 1
+			}
 		case account.ErrAccountInfoNotFound:
 			nextPoolIndex = 0
 		default:
@@ -431,9 +439,13 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 		return err
 	}
 
-	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByMintAndType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
+	}
+	initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
+	if !ok {
+		return errors.New("initiator core mint accounts don't exist")
 	}
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
@@ -892,9 +904,13 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 		return err
 	}
 
-	initiatorAccountsByType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
+	initiatorAccountsByMintAndType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
+	}
+	initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
+	if !ok {
+		return errors.New("initiator core mint accounts don't exist")
 	}
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)

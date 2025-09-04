@@ -44,7 +44,7 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, balance)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 0, balanceByAccount[newTokenAccount.PublicKey().ToBase58()])
@@ -87,7 +87,7 @@ func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
 	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
@@ -181,7 +181,7 @@ func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
 	accountRecords4, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner4)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0], accountRecords3[commonpb.AccountType_PRIMARY][0], accountRecords4[commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords2[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords3[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords4[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 4)
 	assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
@@ -244,7 +244,7 @@ func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
 	accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[commonpb.AccountType_PRIMARY][0], accountRecords2[commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords2[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 2)
 	assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
@@ -291,7 +291,7 @@ func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
 	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, ownerAccount)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
@@ -329,7 +329,7 @@ func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	_, err = CalculateFromCache(env.ctx, env.data, tokenAccount)
 	assert.Equal(t, ErrNotManagedByCode, err)
 
-	_, err = BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[commonpb.AccountType_PRIMARY][0])
+	_, err = BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	assert.Equal(t, ErrNotManagedByCode, err)
 
 	_, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, tokenAccount)

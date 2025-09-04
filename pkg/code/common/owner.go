@@ -40,6 +40,8 @@ type OwnerMetadata struct {
 }
 
 // GetOwnerMetadata gets metadata about an owner account
+//
+// todo: assumes the core mint accounts are always opened first
 func GetOwnerMetadata(ctx context.Context, data code_data.Provider, owner *Account) (*OwnerMetadata, error) {
 	mtdt := &OwnerMetadata{
 		Account: owner,
@@ -82,7 +84,7 @@ func GetOwnerMetadata(ctx context.Context, data code_data.Provider, owner *Accou
 //
 // todo: Needs tests here, but most already exist in account service
 func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner *Account) (OwnerManagementState, error) {
-	recordsByType, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
+	recordsByMintAndType, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	if err != nil {
 		return OwnerManagementStateUnknown, err
 	}
@@ -90,15 +92,17 @@ func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner
 	// Has an account ever been opened with the owner? If not, the owner is not a Code account.
 	// SubmitIntent guarantees all accounts are opened, so there's no need to do anything more
 	// than an empty check.
-	if len(recordsByType) == 0 {
+	if len(recordsByMintAndType) == 0 {
 		return OwnerManagementStateNotFound, nil
 	}
 
 	// Are all opened accounts managed by Code? If not, the owner is not a Code account.
-	for _, batchAccountRecords := range recordsByType {
-		for _, accountRecords := range batchAccountRecords {
-			if accountRecords.IsTimelock() && !accountRecords.IsManagedByCode(ctx) {
-				return OwnerManagementStateUnlocked, nil
+	for _, recordsByType := range recordsByMintAndType {
+		for _, recordsList := range recordsByType {
+			for _, records := range recordsList {
+				if records.IsTimelock() && !records.IsManagedByCode(ctx) {
+					return OwnerManagementStateUnlocked, nil
+				}
 			}
 		}
 	}
@@ -108,23 +112,25 @@ func GetOwnerManagementState(ctx context.Context, data code_data.Provider, owner
 
 // GetLatestTokenAccountRecordsForOwner gets DB records for the latest set of
 // token accounts for an owner account.
-func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[commonpb.AccountType][]*AccountRecords, error) {
-	res := make(map[commonpb.AccountType][]*AccountRecords)
+func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[string]map[commonpb.AccountType][]*AccountRecords, error) {
+	res := make(map[string]map[commonpb.AccountType][]*AccountRecords)
 
-	infoRecordsByType, err := data.GetLatestAccountInfosByOwnerAddress(ctx, owner.publicKey.ToBase58())
+	infoRecordsByMintAndType, err := data.GetLatestAccountInfosByOwnerAddress(ctx, owner.publicKey.ToBase58())
 	if err != account.ErrAccountInfoNotFound && err != nil {
 		return nil, err
 	}
 
-	if len(infoRecordsByType) == 0 {
+	if len(infoRecordsByMintAndType) == 0 {
 		return res, nil
 	}
 
 	var timelockAccounts []string
-	for _, infoRecords := range infoRecordsByType {
-		for _, infoRecord := range infoRecords {
-			if infoRecord.IsTimelock() {
-				timelockAccounts = append(timelockAccounts, infoRecord.TokenAccount)
+	for _, infoRecordsByType := range infoRecordsByMintAndType {
+		for _, infoRecords := range infoRecordsByType {
+			for _, infoRecord := range infoRecords {
+				if infoRecord.IsTimelock() {
+					timelockAccounts = append(timelockAccounts, infoRecord.TokenAccount)
+				}
 			}
 		}
 	}
@@ -134,32 +140,38 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 		return nil, err
 	}
 
-	for _, generalRecords := range infoRecordsByType {
-		for _, generalRecord := range generalRecords {
-			var timelockRecord *timelock.Record
-			var ok bool
-			if generalRecord.IsTimelock() {
-				timelockRecord, ok = timelockRecordsByVault[generalRecord.TokenAccount]
-				if !ok {
-					return nil, errors.New("timelock record unexpectedly doesn't exist")
+	for _, infoRecordsByType := range infoRecordsByMintAndType {
+		for _, infoRecords := range infoRecordsByType {
+			for _, infoRecord := range infoRecords {
+				var timelockRecord *timelock.Record
+				var ok bool
+				if infoRecord.IsTimelock() {
+					timelockRecord, ok = timelockRecordsByVault[infoRecord.TokenAccount]
+					if !ok {
+						return nil, errors.New("timelock record unexpectedly doesn't exist")
+					}
 				}
-			}
 
-			// Filter out account records for accounts that have completed their
-			// full lifecycle
-			//
-			// todo: This needs tests
-			switch generalRecord.AccountType {
-			case commonpb.AccountType_POOL:
-				if timelockRecord.IsClosed() {
-					continue
+				// Filter out account records for accounts that have completed their
+				// full lifecycle
+				//
+				// todo: This needs tests
+				switch infoRecord.AccountType {
+				case commonpb.AccountType_POOL:
+					if timelockRecord.IsClosed() {
+						continue
+					}
 				}
-			}
 
-			res[generalRecord.AccountType] = append(res[generalRecord.AccountType], &AccountRecords{
-				General:  generalRecord,
-				Timelock: timelockRecord,
-			})
+				if _, ok := res[infoRecord.MintAccount]; !ok {
+					res[infoRecord.MintAccount] = make(map[commonpb.AccountType][]*AccountRecords)
+				}
+
+				res[infoRecord.MintAccount][infoRecord.AccountType] = append(res[infoRecord.MintAccount][infoRecord.AccountType], &AccountRecords{
+					General:  infoRecord,
+					Timelock: timelockRecord,
+				})
+			}
 		}
 	}
 
@@ -168,18 +180,24 @@ func GetLatestTokenAccountRecordsForOwner(ctx context.Context, data code_data.Pr
 
 // GetLatestCodeTimelockAccountRecordsForOwner is a utility wrapper over GetLatestTokenAccountRecordsForOwner
 // that filters for Code Timelock accounts.
-func GetLatestCodeTimelockAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[commonpb.AccountType][]*AccountRecords, error) {
-	res := make(map[commonpb.AccountType][]*AccountRecords)
+func GetLatestCodeTimelockAccountRecordsForOwner(ctx context.Context, data code_data.Provider, owner *Account) (map[string]map[commonpb.AccountType][]*AccountRecords, error) {
+	res := make(map[string]map[commonpb.AccountType][]*AccountRecords)
 
-	recordsByType, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
+	recordsByMintAndType, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, recordsList := range recordsByType {
-		for _, records := range recordsList {
-			if records.IsTimelock() {
-				res[records.General.AccountType] = append(res[records.General.AccountType], records)
+	for _, recordsByType := range recordsByMintAndType {
+		for _, recordsList := range recordsByType {
+			for _, records := range recordsList {
+				if records.IsTimelock() {
+					if _, ok := res[records.General.MintAccount]; !ok {
+						res[records.General.MintAccount] = make(map[commonpb.AccountType][]*AccountRecords)
+					}
+
+					res[records.General.MintAccount][records.General.AccountType] = append(res[records.General.MintAccount][records.General.AccountType], records)
+				}
 			}
 		}
 	}

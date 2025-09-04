@@ -26,6 +26,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -81,8 +82,8 @@ func TestIsCodeAccount_HappyPath(t *testing.T) {
 
 	// Technically an invalid reality, but SubmitIntent guarantees all or no accounts
 	// are opened, which allows IsCodeAccount to do lazy checking.
-	setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
-	setupAccountRecords(t, env, ownerAccount, swapAuthorityAccount, 0, commonpb.AccountType_SWAP)
+	setupAccountRecords(t, env, ownerAccount, ownerAccount, common.CoreMintAccount, 0, commonpb.AccountType_PRIMARY)
+	setupAccountRecords(t, env, ownerAccount, swapAuthorityAccount, testutil.NewRandomAccount(t), 0, commonpb.AccountType_SWAP)
 
 	resp, err = env.client.IsCodeAccount(env.ctx, req)
 	require.NoError(t, err)
@@ -113,7 +114,7 @@ func TestIsCodeAccount_NotManagedByCode(t *testing.T) {
 		assert.Equal(t, accountpb.IsCodeAccountResponse_NOT_FOUND, resp.Result)
 
 		var allAccountRecords []*common.AccountRecords
-		allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY))
+		allAccountRecords = append(allAccountRecords, setupAccountRecords(t, env, ownerAccount, ownerAccount, common.CoreMintAccount, 0, commonpb.AccountType_PRIMARY))
 
 		resp, err = env.client.IsCodeAccount(env.ctx, req)
 		require.NoError(t, err)
@@ -148,85 +149,101 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	poolAuthority2 := testutil.NewRandomAccount(t)
 	swapAuthority := testutil.NewRandomAccount(t)
 
-	primaryAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
-	pool1AccountRecords := setupAccountRecords(t, env, ownerAccount, poolAuthority1, 0, commonpb.AccountType_POOL)
-	pool2AccountRecords := setupAccountRecords(t, env, ownerAccount, poolAuthority2, 1, commonpb.AccountType_POOL)
-	setupAccountRecords(t, env, ownerAccount, swapAuthority, 0, commonpb.AccountType_SWAP)
-	setupCachedBalance(t, env, primaryAccountRecords, common.ToCoreMintQuarks(42))
-	setupCachedBalance(t, env, pool1AccountRecords, common.ToCoreMintQuarks(88))
-	setupCachedBalance(t, env, pool2AccountRecords, common.ToCoreMintQuarks(123))
+	jeffyMint := testutil.NewRandomAccount(t)
+	swapMint := testutil.NewRandomAccount(t)
 
-	otherOwnerAccount := testutil.NewRandomAccount(t)
-	setupAccountRecords(t, env, otherOwnerAccount, otherOwnerAccount, 0, commonpb.AccountType_PRIMARY)
+	primaryCoreMintAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, common.CoreMintAccount, 0, commonpb.AccountType_PRIMARY)
+	pool1CoreMintAccountRecords := setupAccountRecords(t, env, ownerAccount, poolAuthority1, common.CoreMintAccount, 0, commonpb.AccountType_POOL)
+	pool2CoreMintAccountRecords := setupAccountRecords(t, env, ownerAccount, poolAuthority2, common.CoreMintAccount, 1, commonpb.AccountType_POOL)
+	primaryJeffyMintAccountRecords := setupAccountRecords(t, env, ownerAccount, ownerAccount, jeffyMint, 0, commonpb.AccountType_PRIMARY)
+	setupAccountRecords(t, env, ownerAccount, swapAuthority, swapMint, 0, commonpb.AccountType_SWAP)
+
+	setupCachedBalance(t, env, primaryCoreMintAccountRecords, common.ToCoreMintQuarks(42))
+	setupCachedBalance(t, env, pool1CoreMintAccountRecords, common.ToCoreMintQuarks(88))
+	setupCachedBalance(t, env, pool2CoreMintAccountRecords, common.ToCoreMintQuarks(123))
+	setupCachedBalance(t, env, primaryJeffyMintAccountRecords, currencycreator.ToQuarks(98765))
+
 	resp, err := env.client.GetTokenAccountInfos(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, accountpb.GetTokenAccountInfosResponse_OK, resp.Result)
-	assert.Len(t, resp.TokenAccountInfos, 4)
+	assert.Len(t, resp.TokenAccountInfos, 5)
 	assert.EqualValues(t, 2, resp.NextPoolIndex)
 
-	for _, authority := range []*common.Account{
-		ownerAccount,
-		poolAuthority1,
-		poolAuthority2,
-		swapAuthority,
+	for _, tc := range []struct {
+		authority *common.Account
+		mints     []*common.Account
+	}{
+		{ownerAccount, []*common.Account{common.CoreMintAccount, jeffyMint}},
+		{poolAuthority1, []*common.Account{common.CoreMintAccount}},
+		{poolAuthority2, []*common.Account{common.CoreMintAccount}},
+		{swapAuthority, []*common.Account{swapMint}},
 	} {
-		var tokenAccount *common.Account
-		if authority.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
-			tokenAccount, err = authority.ToAssociatedTokenAccount(common.UsdcMintAccount)
-			require.NoError(t, err)
-		} else {
-			timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
-			require.NoError(t, err)
-			tokenAccount = timelockAccounts.Vault
+		for _, mint := range tc.mints {
+			var tokenAccount *common.Account
+			if tc.authority.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
+				tokenAccount, err = tc.authority.ToAssociatedTokenAccount(mint)
+				require.NoError(t, err)
+			} else {
+				timelockAccounts, err := tc.authority.GetTimelockAccounts(testutil.NewRandomAccount(t), mint)
+				require.NoError(t, err)
+				tokenAccount = timelockAccounts.Vault
+			}
+
+			accountInfo, ok := resp.TokenAccountInfos[tokenAccount.PublicKey().ToBase58()]
+			require.True(t, ok)
+
+			assert.Equal(t, tokenAccount.PublicKey().ToBytes(), accountInfo.Address.Value)
+			assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
+			assert.Equal(t, tc.authority.PublicKey().ToBytes(), accountInfo.Authority.Value)
+			assert.Equal(t, mint.PublicKey().ToBytes(), accountInfo.Mint.Value)
+
+			switch tc.authority.PublicKey().ToBase58() {
+			case ownerAccount.PublicKey().ToBase58():
+				assert.Equal(t, commonpb.AccountType_PRIMARY, accountInfo.AccountType)
+				assert.EqualValues(t, 0, accountInfo.Index)
+				switch mint.PublicKey().ToBase58() {
+				case common.CoreMintAccount.PublicKey().ToBase58():
+					assert.EqualValues(t, common.ToCoreMintQuarks(42), accountInfo.Balance)
+				case jeffyMint.PublicKey().ToBase58():
+					assert.EqualValues(t, currencycreator.ToQuarks(98765), accountInfo.Balance)
+				default:
+					require.Fail(t, "unexpected mint")
+				}
+			case swapAuthority.PublicKey().ToBase58():
+				assert.Equal(t, commonpb.AccountType_SWAP, accountInfo.AccountType)
+				assert.EqualValues(t, 0, accountInfo.Index)
+				assert.EqualValues(t, 0, accountInfo.Balance)
+			case poolAuthority1.PublicKey().ToBase58():
+				assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
+				assert.EqualValues(t, 0, accountInfo.Index)
+				assert.EqualValues(t, common.ToCoreMintQuarks(88), accountInfo.Balance)
+			case poolAuthority2.PublicKey().ToBase58():
+				assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
+				assert.EqualValues(t, 1, accountInfo.Index)
+				assert.EqualValues(t, common.ToCoreMintQuarks(123), accountInfo.Balance)
+			default:
+				require.Fail(t, "unexpected authority")
+			}
+
+			if accountInfo.AccountType == commonpb.AccountType_SWAP {
+				assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN, accountInfo.BalanceSource)
+				assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE, accountInfo.ManagementState)
+				assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_UNKNOWN, accountInfo.BlockchainState)
+			} else {
+				assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
+				assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
+				assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS, accountInfo.BlockchainState)
+			}
+
+			assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
+			assert.Nil(t, accountInfo.OriginalExchangeData)
 		}
-
-		accountInfo, ok := resp.TokenAccountInfos[tokenAccount.PublicKey().ToBase58()]
-		require.True(t, ok)
-
-		assert.Equal(t, tokenAccount.PublicKey().ToBytes(), accountInfo.Address.Value)
-		assert.Equal(t, ownerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
-		assert.Equal(t, authority.PublicKey().ToBytes(), accountInfo.Authority.Value)
-
-		switch authority.PublicKey().ToBase58() {
-		case ownerAccount.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_PRIMARY, accountInfo.AccountType)
-			assert.EqualValues(t, 0, accountInfo.Index)
-			assert.EqualValues(t, common.ToCoreMintQuarks(42), accountInfo.Balance)
-		case swapAuthority.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_SWAP, accountInfo.AccountType)
-			assert.EqualValues(t, 0, accountInfo.Index)
-			assert.EqualValues(t, 0, accountInfo.Balance)
-		case poolAuthority1.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
-			assert.EqualValues(t, 0, accountInfo.Index)
-			assert.EqualValues(t, common.ToCoreMintQuarks(88), accountInfo.Balance)
-		case poolAuthority2.PublicKey().ToBase58():
-			assert.Equal(t, commonpb.AccountType_POOL, accountInfo.AccountType)
-			assert.EqualValues(t, 1, accountInfo.Index)
-			assert.EqualValues(t, common.ToCoreMintQuarks(123), accountInfo.Balance)
-		default:
-			require.Fail(t, "unexpected authority")
-		}
-
-		if accountInfo.AccountType == commonpb.AccountType_SWAP {
-			assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN, accountInfo.BalanceSource)
-			assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_NONE, accountInfo.ManagementState)
-			assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_UNKNOWN, accountInfo.BlockchainState)
-			assert.Equal(t, common.UsdcMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
-		} else {
-			assert.Equal(t, accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE, accountInfo.BalanceSource)
-			assert.Equal(t, accountpb.TokenAccountInfo_MANAGEMENT_STATE_LOCKED, accountInfo.ManagementState)
-			assert.Equal(t, accountpb.TokenAccountInfo_BLOCKCHAIN_STATE_EXISTS, accountInfo.BlockchainState)
-			assert.Equal(t, common.CoreMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
-		}
-
-		assert.Equal(t, accountpb.TokenAccountInfo_CLAIM_STATE_UNKNOWN, accountInfo.ClaimState)
-		assert.Nil(t, accountInfo.OriginalExchangeData)
 	}
 
-	primaryAccountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
+	primaryAccountInfoRecordsByMint, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
 	require.NoError(t, err)
-	assert.True(t, primaryAccountInfoRecord.RequiresDepositSync)
+	assert.True(t, primaryAccountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()].RequiresDepositSync)
+	assert.True(t, primaryAccountInfoRecordsByMint[jeffyMint.PublicKey().ToBase58()].RequiresDepositSync)
 }
 
 func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
@@ -360,7 +377,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		giftCardIssuerOwnerAccount := testutil.NewRandomAccount(t)
 		giftCardOwnerAccount := testutil.NewRandomAccount(t)
 
-		accountRecords := setupAccountRecords(t, env, giftCardOwnerAccount, giftCardOwnerAccount, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+		accountRecords := setupAccountRecords(t, env, giftCardOwnerAccount, giftCardOwnerAccount, common.CoreMintAccount, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 
 		giftCardIssuedIntentRecord := &intent.Record{
 			IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
@@ -433,7 +450,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			testutil.NewRandomAccount(t),
 			giftCardIssuerOwnerAccount,
 		} {
-			timelockAccounts, err := giftCardOwnerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+			timelockAccounts, err := giftCardOwnerAccount.GetTimelockAccounts(testutil.NewRandomAccount(t), common.CoreMintAccount)
 			require.NoError(t, err)
 
 			req := &accountpb.GetTokenAccountInfosRequest{
@@ -492,9 +509,9 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 
 			assert.Equal(t, requestingOwnerAccount != nil && requestingOwnerAccount == giftCardIssuerOwnerAccount, accountInfo.IsGiftCardIssuer)
 
-			accountInfoRecord, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, giftCardOwnerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+			accountInfoRecordsByMint, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, giftCardOwnerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 			require.NoError(t, err)
-			assert.False(t, accountInfoRecord.RequiresDepositSync)
+			assert.False(t, accountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()].RequiresDepositSync)
 		}
 	}
 }
@@ -524,7 +541,7 @@ func TestGetTokenAccountInfos_BlockchainState(t *testing.T) {
 			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
 		}
 
-		accountRecords := getDefaultTestAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
+		accountRecords := getDefaultTestAccountRecords(t, ownerAccount, ownerAccount, common.CoreMintAccount, 0, commonpb.AccountType_PRIMARY)
 		accountRecords.Timelock.VaultState = tc.timelockState
 		accountRecords.Timelock.Block += 1
 		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
@@ -590,7 +607,7 @@ func TestGetTokenAccountInfos_ManagementState(t *testing.T) {
 			Value: ed25519.Sign(ownerAccount.PrivateKey().ToBytes(), reqBytes),
 		}
 
-		accountRecords := getDefaultTestAccountRecords(t, env, ownerAccount, ownerAccount, 0, commonpb.AccountType_PRIMARY)
+		accountRecords := getDefaultTestAccountRecords(t, ownerAccount, ownerAccount, common.CoreMintAccount, 0, commonpb.AccountType_PRIMARY)
 		accountRecords.Timelock.VaultState = tc.timelockState
 		accountRecords.Timelock.Block = tc.block
 		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
@@ -692,8 +709,8 @@ func TestUnauthenticatedRPC(t *testing.T) {
 	testutil.AssertStatusErrorWithCode(t, err, codes.Unauthenticated)
 }
 
-func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
-	accountRecords := getDefaultTestAccountRecords(t, env, ownerAccount, authorityAccount, index, accountType)
+func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount, mintAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
+	accountRecords := getDefaultTestAccountRecords(t, ownerAccount, authorityAccount, mintAccount, index, accountType)
 
 	require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountRecords.General))
 
@@ -706,21 +723,16 @@ func setupAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccou
 	return accountRecords
 }
 
-func getDefaultTestAccountRecords(t *testing.T, env testEnv, ownerAccount, authorityAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
+func getDefaultTestAccountRecords(t *testing.T, ownerAccount, authorityAccount, mintAccount *common.Account, index uint64, accountType commonpb.AccountType) *common.AccountRecords {
 	var tokenAccount *common.Account
-	var mintAccount *common.Account
 	var timelockRecord *timelock.Record
 	var err error
 
 	if accountType == commonpb.AccountType_SWAP {
-		mintAccount = common.UsdcMintAccount
-
 		tokenAccount, err = authorityAccount.ToAssociatedTokenAccount(mintAccount)
 		require.NoError(t, err)
 	} else {
-		mintAccount = common.CoreMintAccount
-
-		timelockAccounts, err := authorityAccount.GetTimelockAccounts(common.CodeVmAccount, mintAccount)
+		timelockAccounts, err := authorityAccount.GetTimelockAccounts(testutil.NewRandomAccount(t), mintAccount)
 		require.NoError(t, err)
 		timelockRecord = timelockAccounts.ToDBRecord()
 

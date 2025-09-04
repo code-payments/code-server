@@ -210,21 +210,24 @@ func dbGetByTokenAddressBatch(ctx context.Context, db *sqlx.DB, addresses ...str
 	return res, nil
 }
 
-func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) (*model, error) {
-	res := &model{}
+func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
+	var res []*model
 
 	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE authority_account = $1
 	`
 
-	err := db.QueryRowxContext(
+	err := db.SelectContext(
 		ctx,
+		&res,
 		query,
 		address,
-	).StructScan(res)
-
+	)
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
+	}
+	if len(res) == 0 {
+		return nil, account.ErrAccountInfoNotFound
 	}
 	return res, nil
 }
@@ -232,9 +235,9 @@ func dbGetByAuthorityAddress(ctx context.Context, db *sqlx.DB, address string) (
 func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string) ([]*model, error) {
 	var res1 []*model
 
-	query1 := `SELECT DISTINCT ON (account_type) id, owner_account, authority_account, token_account, mint_account, account_type, index, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
+	query1 := `SELECT DISTINCT ON (mint_account, account_type) id, owner_account, authority_account, token_account, mint_account, account_type, index, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE owner_account = $1 AND account_type NOT IN ($2)
-		ORDER BY account_type, index DESC
+		ORDER BY mint_account, account_type, index DESC
 	`
 
 	err := db.SelectContext(
@@ -274,24 +277,26 @@ func dbGetLatestByOwnerAddress(ctx context.Context, db *sqlx.DB, address string)
 	return res, nil
 }
 
-func dbGetLatestByOwnerAddressAndType(ctx context.Context, db *sqlx.DB, address string, accountType commonpb.AccountType) (*model, error) {
-	res := &model{}
+func dbGetLatestByOwnerAddressAndType(ctx context.Context, db *sqlx.DB, address string, accountType commonpb.AccountType) ([]*model, error) {
+	var res []*model
 
-	query := `SELECT id, owner_account, authority_account, token_account, mint_account, account_type, index, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
+	query := `SELECT DISTINCT ON (mint_account) id, owner_account, authority_account, token_account, mint_account, account_type, index, requires_deposit_sync, deposits_last_synced_at, requires_auto_return_check, requires_swap_retry, last_swap_retry_at, created_at FROM ` + tableName + `
 		WHERE owner_account = $1 AND account_type = $2
-		ORDER BY index DESC
-		LIMIT 1
+		ORDER BY mint_account, index DESC
 	`
 
-	err := db.QueryRowxContext(
+	err := db.SelectContext(
 		ctx,
+		&res,
 		query,
 		address,
 		accountType,
-	).StructScan(res)
-
+	)
 	if err != nil {
 		return nil, pgutil.CheckNoRows(err, account.ErrAccountInfoNotFound)
+	}
+	if len(res) == 0 {
+		return nil, account.ErrAccountInfoNotFound
 	}
 	return res, nil
 }

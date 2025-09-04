@@ -8,6 +8,10 @@ import (
 	"github.com/mr-tron/base58"
 )
 
+func ToQuarks(amount uint64) uint64 {
+	return amount * DefaultMintQuarksPerUnit
+}
+
 func getDiscriminator(src []byte, dst *[]byte, offset *int) {
 	*dst = make([]byte, 8)
 	copy(*dst, src[*offset:])

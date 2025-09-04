@@ -121,10 +121,10 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmAccount := newRandomTestAccount(t)
 	subsidizerAccount = newRandomTestAccount(t)
 	owner := newRandomTestAccount(t)
 	coreMintAccount := newRandomTestAccount(t)
+	jeffyMintAccount := newRandomTestAccount(t)
 	swapMintAccount := newRandomTestAccount(t)
 
 	actual, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
@@ -142,27 +142,29 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	}{
 		{authority1, commonpb.AccountType_PRIMARY},
 	} {
-		timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(vmAccount, coreMintAccount)
-		require.NoError(t, err)
+		for _, mint := range []*Account{coreMintAccount, jeffyMintAccount} {
+			timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(newRandomTestAccount(t), mint)
+			require.NoError(t, err)
 
-		timelockRecord := timelockAccounts.ToDBRecord()
-		require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
+			timelockRecord := timelockAccounts.ToDBRecord()
+			require.NoError(t, data.SaveTimelock(ctx, timelockRecord))
 
-		accountInfoRecord := &account.Record{
-			OwnerAccount:     owner.PublicKey().ToBase58(),
-			AuthorityAccount: timelockRecord.VaultOwner,
-			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      coreMintAccount.PublicKey().ToBase58(),
-			AccountType:      authorityAndType.accountType,
+			accountInfoRecord := &account.Record{
+				OwnerAccount:     owner.PublicKey().ToBase58(),
+				AuthorityAccount: timelockRecord.VaultOwner,
+				TokenAccount:     timelockRecord.VaultAddress,
+				MintAccount:      mint.PublicKey().ToBase58(),
+				AccountType:      authorityAndType.accountType,
+			}
+			require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
 		}
-		require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
 	}
 
 	for i, authority := range []*Account{
 		authority2,
 		authority3,
 	} {
-		timelockAccounts, err := authority.GetTimelockAccounts(vmAccount, coreMintAccount)
+		timelockAccounts, err := authority.GetTimelockAccounts(newRandomTestAccount(t), coreMintAccount)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -194,23 +196,28 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, actual, 3)
 
-	records, ok := actual[commonpb.AccountType_PRIMARY]
+	coreMintRecords, ok := actual[coreMintAccount.PublicKey().ToBase58()]
+	require.True(t, ok)
+	require.Len(t, coreMintRecords, 2)
+
+	jeffyMintRecords, ok := actual[jeffyMintAccount.PublicKey().ToBase58()]
+	require.True(t, ok)
+	require.Len(t, jeffyMintRecords, 1)
+
+	swapMintRecords, ok := actual[swapMintAccount.PublicKey().ToBase58()]
+	require.True(t, ok)
+	require.Len(t, swapMintRecords, 1)
+
+	records, ok := coreMintRecords[commonpb.AccountType_PRIMARY]
 	require.True(t, ok)
 	require.Len(t, records, 1)
 	assert.Equal(t, records[0].General.AuthorityAccount, authority1.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_PRIMARY)
 	assert.Equal(t, records[0].Timelock.VaultOwner, authority1.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
+	assert.Equal(t, records[0].General.MintAccount, coreMintAccount.PublicKey().ToBase58())
 
-	records, ok = actual[commonpb.AccountType_SWAP]
-	require.True(t, ok)
-	require.Len(t, records, 1)
-	assert.Nil(t, records[0].Timelock)
-	assert.Equal(t, records[0].General.AuthorityAccount, authority4.PublicKey().ToBase58())
-	assert.Equal(t, records[0].General.TokenAccount, swapAta.PublicKey().ToBase58())
-	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_SWAP)
-
-	records, ok = actual[commonpb.AccountType_POOL]
+	records, ok = coreMintRecords[commonpb.AccountType_POOL]
 	require.True(t, ok)
 	require.Len(t, records, 2)
 
@@ -218,11 +225,31 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_POOL)
 	assert.Equal(t, records[0].Timelock.VaultOwner, authority2.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
+	assert.Equal(t, records[0].General.MintAccount, coreMintAccount.PublicKey().ToBase58())
 	assert.EqualValues(t, records[0].General.Index, 0)
 
 	assert.Equal(t, records[1].General.AuthorityAccount, authority3.PublicKey().ToBase58())
 	assert.Equal(t, records[1].General.AccountType, commonpb.AccountType_POOL)
 	assert.Equal(t, records[1].Timelock.VaultOwner, authority3.PublicKey().ToBase58())
 	assert.Equal(t, records[1].General.TokenAccount, records[1].Timelock.VaultAddress)
+	assert.Equal(t, records[1].General.MintAccount, coreMintAccount.PublicKey().ToBase58())
 	assert.EqualValues(t, records[1].General.Index, 1)
+
+	records, ok = jeffyMintRecords[commonpb.AccountType_PRIMARY]
+	require.True(t, ok)
+	require.Len(t, records, 1)
+	assert.Equal(t, records[0].General.AuthorityAccount, authority1.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_PRIMARY)
+	assert.Equal(t, records[0].Timelock.VaultOwner, authority1.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
+	assert.Equal(t, records[0].General.MintAccount, jeffyMintAccount.PublicKey().ToBase58())
+
+	records, ok = swapMintRecords[commonpb.AccountType_SWAP]
+	require.True(t, ok)
+	require.Len(t, records, 1)
+	assert.Nil(t, records[0].Timelock)
+	assert.Equal(t, records[0].General.AuthorityAccount, authority4.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.TokenAccount, swapAta.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_SWAP)
+	assert.Equal(t, records[0].General.MintAccount, swapMintAccount.PublicKey().ToBase58())
 }
