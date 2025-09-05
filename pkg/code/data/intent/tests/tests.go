@@ -44,6 +44,7 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.OpenAccounts,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			OpenAccountsMetadata:  &intent.OpenAccountsMetadata{},
 			ExtendedMetadata:      []byte("extended_metadata"),
@@ -60,6 +61,7 @@ func testOpenAccountsRoundTrip(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.MintAccount, actual.MintAccount)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.OpenAccountsMetadata)
 		assert.Equal(t, cloned.ExtendedMetadata, actual.ExtendedMetadata)
@@ -82,6 +84,7 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.ExternalDeposit,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			ExternalDepositMetadata: &intent.ExternalDepositMetadata{
 				DestinationTokenAccount: "test_destination_token",
@@ -102,6 +105,7 @@ func testExternalDepositRoundTrip(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.MintAccount, actual.MintAccount)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.ExternalDepositMetadata)
 		assert.Equal(t, cloned.ExternalDepositMetadata.DestinationTokenAccount, actual.ExternalDepositMetadata.DestinationTokenAccount)
@@ -127,6 +131,7 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.SendPublicPayment,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 				DestinationOwnerAccount: "test_destination_owner",
@@ -155,6 +160,7 @@ func testSendPublicPaymentRoundTrip(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.MintAccount, actual.MintAccount)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.SendPublicPaymentMetadata)
 		assert.Equal(t, cloned.SendPublicPaymentMetadata.DestinationOwnerAccount, actual.SendPublicPaymentMetadata.DestinationOwnerAccount)
@@ -186,6 +192,7 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.ReceivePaymentsPublicly,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{
 				Source:                   "test_source",
@@ -212,6 +219,7 @@ func testReceivePaymentsPubliclyRoundTrip(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.MintAccount, actual.MintAccount)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.ReceivePaymentsPubliclyMetadata)
 		assert.Equal(t, cloned.ReceivePaymentsPubliclyMetadata.Source, actual.ReceivePaymentsPubliclyMetadata.Source)
@@ -243,6 +251,7 @@ func testPublicDistributionRoundTrip(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.PublicDistribution,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			PublicDistributionMetadata: &intent.PublicDistributionMetadata{
 				Source: "test_source",
@@ -281,6 +290,7 @@ func testPublicDistributionRoundTrip(t *testing.T, s intent.Store) {
 		require.NoError(t, err)
 		assert.Equal(t, cloned.IntentId, actual.IntentId)
 		assert.Equal(t, cloned.IntentType, actual.IntentType)
+		assert.Equal(t, cloned.MintAccount, actual.MintAccount)
 		assert.Equal(t, cloned.InitiatorOwnerAccount, actual.InitiatorOwnerAccount)
 		require.NotNil(t, actual.PublicDistributionMetadata)
 		assert.Equal(t, cloned.PublicDistributionMetadata.Source, actual.PublicDistributionMetadata.Source)
@@ -307,6 +317,7 @@ func testUpdateHappyPath(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.PublicDistribution,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			PublicDistributionMetadata: &intent.PublicDistributionMetadata{
 				Source: "test_source",
@@ -357,6 +368,7 @@ func testUpdateStaleRecord(t *testing.T, s intent.Store) {
 		expected := intent.Record{
 			IntentId:              "test_intent_id",
 			IntentType:            intent.OpenAccounts,
+			MintAccount:           "test_mint",
 			InitiatorOwnerAccount: "test_owner",
 			OpenAccountsMetadata:  &intent.OpenAccountsMetadata{},
 			State:                 intent.StateUnknown,
@@ -389,17 +401,17 @@ func testGetOriginalGiftCardIssuedIntent(t *testing.T, s intent.Store) {
 		ctx := context.Background()
 
 		records := []*intent.Record{
-			{IntentId: "i1", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a1", DestinationOwnerAccount: "o1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i1", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a1", DestinationOwnerAccount: "o1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-			{IntentId: "i2", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-			{IntentId: "i3", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-			{IntentId: "i4", IntentType: intent.ExternalDeposit, ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a2", Quantity: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "o2", State: intent.StateConfirmed},
+			{IntentId: "i2", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i3", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: false, DestinationTokenAccount: "a2", DestinationOwnerAccount: "o2", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i4", IntentType: intent.ExternalDeposit, ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a2", Quantity: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-			{IntentId: "i5", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-			{IntentId: "i6", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i5", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i6", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a3", DestinationOwnerAccount: "o3", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-			{IntentId: "i7", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StatePending},
-			{IntentId: "i8", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateRevoked},
+			{IntentId: "i7", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StatePending},
+			{IntentId: "i8", IntentType: intent.SendPublicPayment, SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{IsRemoteSend: true, DestinationTokenAccount: "a4", DestinationOwnerAccount: "o4", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateRevoked},
 		}
 
 		for _, record := range records {
@@ -430,16 +442,16 @@ func testGetGiftCardClaimedIntent(t *testing.T, s intent.Store) {
 		ctx := context.Background()
 
 		records := []*intent.Record{
-			{IntentId: "i1", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a1", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i1", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a1", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-			{IntentId: "i2", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-			{IntentId: "i3", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i2", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: false, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i3", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a2", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-			{IntentId: "i4", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
-			{IntentId: "i5", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i4", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
+			{IntentId: "i5", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a3", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateConfirmed},
 
-			{IntentId: "i6", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StateRevoked},
-			{IntentId: "i7", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, InitiatorOwnerAccount: "user", State: intent.StatePending},
+			{IntentId: "i6", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StateRevoked},
+			{IntentId: "i7", IntentType: intent.ReceivePaymentsPublicly, ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{IsRemoteSend: true, Source: "a4", Quantity: 1, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 1, OriginalNativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", InitiatorOwnerAccount: "user", State: intent.StatePending},
 		}
 
 		for _, record := range records {
@@ -476,14 +488,14 @@ func testGetTransactedAmountForAntiMoneyLaundering(t *testing.T, s intent.Store)
 		assert.EqualValues(t, 0, usdMarketValue)
 
 		records := []*intent.Record{
-			{IntentId: "t1", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2, UsdMarketValue: 2}, State: intent.StateUnknown, CreatedAt: time.Now().Add(-1 * time.Minute)},
-			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20, UsdMarketValue: 20}, State: intent.StatePending, CreatedAt: time.Now().Add(-2 * time.Minute)},
-			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o3", DestinationTokenAccount: "a3", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 200, UsdMarketValue: 200}, State: intent.StateConfirmed, CreatedAt: time.Now().Add(-3 * time.Minute)},
-			{IntentId: "t4", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o4", DestinationTokenAccount: "a4", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000, UsdMarketValue: 2000}, State: intent.StateFailed, CreatedAt: time.Now().Add(-4 * time.Minute)},
-			{IntentId: "t5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o5", DestinationTokenAccount: "a5", Quantity: 10000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20000, UsdMarketValue: 20000}, State: intent.StateRevoked, CreatedAt: time.Now().Add(-5 * time.Minute)},
-			{IntentId: "t6", IntentType: intent.ReceivePaymentsPublicly, InitiatorOwnerAccount: "o1", ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{Source: "a6", Quantity: 100000, UsdMarketValue: 200000, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 2, OriginalNativeAmount: 200000}, State: intent.StateConfirmed, CreatedAt: time.Now()},
-			{IntentId: "t7", IntentType: intent.ExternalDeposit, InitiatorOwnerAccount: "o1", ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a7", Quantity: 1000000, UsdMarketValue: 20000}, State: intent.StateConfirmed, CreatedAt: time.Now()},
-			{IntentId: "t8", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o8", DestinationTokenAccount: "a8", Quantity: 10000000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000000, UsdMarketValue: 2000000, IsWithdrawal: true}, State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t1", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2, UsdMarketValue: 2}, State: intent.StateUnknown, MintAccount: "mint", CreatedAt: time.Now().Add(-1 * time.Minute)},
+			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20, UsdMarketValue: 20}, State: intent.StatePending, MintAccount: "mint", CreatedAt: time.Now().Add(-2 * time.Minute)},
+			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o3", DestinationTokenAccount: "a3", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 200, UsdMarketValue: 200}, State: intent.StateConfirmed, MintAccount: "mint", CreatedAt: time.Now().Add(-3 * time.Minute)},
+			{IntentId: "t4", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o4", DestinationTokenAccount: "a4", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000, UsdMarketValue: 2000}, State: intent.StateFailed, MintAccount: "mint", CreatedAt: time.Now().Add(-4 * time.Minute)},
+			{IntentId: "t5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o5", DestinationTokenAccount: "a5", Quantity: 10000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 20000, UsdMarketValue: 20000}, State: intent.StateRevoked, MintAccount: "mint", CreatedAt: time.Now().Add(-5 * time.Minute)},
+			{IntentId: "t6", IntentType: intent.ReceivePaymentsPublicly, InitiatorOwnerAccount: "o1", ReceivePaymentsPubliclyMetadata: &intent.ReceivePaymentsPubliclyMetadata{Source: "a6", Quantity: 100000, UsdMarketValue: 200000, OriginalExchangeCurrency: currency.USD, OriginalExchangeRate: 2, OriginalNativeAmount: 200000}, State: intent.StateConfirmed, MintAccount: "mint", CreatedAt: time.Now()},
+			{IntentId: "t7", IntentType: intent.ExternalDeposit, InitiatorOwnerAccount: "o1", ExternalDepositMetadata: &intent.ExternalDepositMetadata{DestinationTokenAccount: "a7", Quantity: 1000000, UsdMarketValue: 20000}, MintAccount: "mint", State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t8", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o8", DestinationTokenAccount: "a8", Quantity: 10000000, ExchangeCurrency: currency.USD, ExchangeRate: 2, NativeAmount: 2000000, UsdMarketValue: 2000000, IsWithdrawal: true}, State: intent.StateConfirmed, MintAccount: "mint", CreatedAt: time.Now()},
 		}
 
 		for _, record := range records {
@@ -518,13 +530,13 @@ func testGetByOwner(t *testing.T, s intent.Store) {
 		assert.Equal(t, intent.ErrIntentNotFound, err)
 
 		records := []*intent.Record{
-			{IntentId: "t1", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, State: intent.StateConfirmed, CreatedAt: time.Now()},
-			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, State: intent.StateConfirmed, CreatedAt: time.Now()},
-			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 10, NativeAmount: 10, UsdMarketValue: 10}, State: intent.StatePending, CreatedAt: time.Now()},
-			{IntentId: "t4", IntentType: intent.PublicDistribution, InitiatorOwnerAccount: "o1", PublicDistributionMetadata: &intent.PublicDistributionMetadata{Source: "p1", Distributions: []*intent.Distribution{{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 5}, {DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 5}}, UsdMarketValue: 10, Quantity: 10}, State: intent.StatePending, CreatedAt: time.Now()},
-			{IntentId: "t5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 100, NativeAmount: 100, UsdMarketValue: 100}, State: intent.StateFailed, CreatedAt: time.Now()},
-			{IntentId: "t6", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 1000, NativeAmount: 1000, UsdMarketValue: 1000}, State: intent.StateUnknown, CreatedAt: time.Now()},
-			{IntentId: "t7", IntentType: intent.PublicDistribution, InitiatorOwnerAccount: "o1", PublicDistributionMetadata: &intent.PublicDistributionMetadata{Source: "p2", Distributions: []*intent.Distribution{{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10}}, UsdMarketValue: 10, Quantity: 10}, State: intent.StatePending, CreatedAt: time.Now()},
+			{IntentId: "t1", IntentType: intent.OpenAccounts, InitiatorOwnerAccount: "o1", OpenAccountsMetadata: &intent.OpenAccountsMetadata{}, MintAccount: "mint", State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t2", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 1, ExchangeCurrency: currency.USD, ExchangeRate: 1, NativeAmount: 1, UsdMarketValue: 1}, MintAccount: "mint", State: intent.StateConfirmed, CreatedAt: time.Now()},
+			{IntentId: "t3", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10, ExchangeCurrency: currency.USD, ExchangeRate: 10, NativeAmount: 10, UsdMarketValue: 10}, MintAccount: "mint", State: intent.StatePending, CreatedAt: time.Now()},
+			{IntentId: "t4", IntentType: intent.PublicDistribution, InitiatorOwnerAccount: "o1", PublicDistributionMetadata: &intent.PublicDistributionMetadata{Source: "p1", Distributions: []*intent.Distribution{{DestinationOwnerAccount: "o1", DestinationTokenAccount: "a1", Quantity: 5}, {DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 5}}, UsdMarketValue: 10, Quantity: 10}, MintAccount: "mint", State: intent.StatePending, CreatedAt: time.Now()},
+			{IntentId: "t5", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 100, ExchangeCurrency: currency.USD, ExchangeRate: 100, NativeAmount: 100, UsdMarketValue: 100}, MintAccount: "mint", State: intent.StateFailed, CreatedAt: time.Now()},
+			{IntentId: "t6", IntentType: intent.SendPublicPayment, InitiatorOwnerAccount: "o1", SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 1000, ExchangeCurrency: currency.USD, ExchangeRate: 1000, NativeAmount: 1000, UsdMarketValue: 1000}, MintAccount: "mint", State: intent.StateUnknown, CreatedAt: time.Now()},
+			{IntentId: "t7", IntentType: intent.PublicDistribution, InitiatorOwnerAccount: "o1", PublicDistributionMetadata: &intent.PublicDistributionMetadata{Source: "p2", Distributions: []*intent.Distribution{{DestinationOwnerAccount: "o2", DestinationTokenAccount: "a2", Quantity: 10}}, UsdMarketValue: 10, Quantity: 10}, MintAccount: "mint", State: intent.StatePending, CreatedAt: time.Now()},
 		}
 		for _, record := range records {
 			require.NoError(t, s.Save(ctx, record))

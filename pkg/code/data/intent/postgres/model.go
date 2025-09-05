@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/code-payments/code-server/pkg/code/config"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/currency"
 
@@ -24,28 +25,29 @@ const (
 )
 
 type intentModel struct {
-	Id                      sql.NullInt64 `db:"id"`
-	IntentId                string        `db:"intent_id"`
-	IntentType              uint          `db:"intent_type"`
-	InitiatorOwner          string        `db:"owner"` // todo: rename the DB field to initiator_owner
-	Source                  string        `db:"source"`
-	DestinationOwnerAccount string        `db:"destination_owner"`
-	DestinationTokenAccount string        `db:"destination"` // todo: rename the DB field to be destination_token
-	Quantity                uint64        `db:"quantity"`
-	ExchangeCurrency        string        `db:"exchange_currency"`
-	ExchangeRate            float64       `db:"exchange_rate"`
-	NativeAmount            float64       `db:"native_amount"`
-	UsdMarketValue          float64       `db:"usd_market_value"`
-	IsWithdrawal            bool          `db:"is_withdraw"`
-	IsDeposit               bool          `db:"is_deposit"`
-	IsRemoteSend            bool          `db:"is_remote_send"`
-	IsReturned              bool          `db:"is_returned"`
-	IsIssuerVoidingGiftCard bool          `db:"is_issuer_voiding_gift_card"`
-	IsMicroPayment          bool          `db:"is_micro_payment"`
-	ExtendedMetadata        []byte        `db:"extended_metadata"`
-	State                   uint          `db:"state"`
-	Version                 int64         `db:"version"`
-	CreatedAt               time.Time     `db:"created_at"`
+	Id                      sql.NullInt64  `db:"id"`
+	IntentId                string         `db:"intent_id"`
+	IntentType              uint           `db:"intent_type"`
+	Mint                    sql.NullString `db:"mint"`
+	InitiatorOwner          string         `db:"owner"` // todo: rename the DB field to initiator_owner
+	Source                  string         `db:"source"`
+	DestinationOwnerAccount string         `db:"destination_owner"`
+	DestinationTokenAccount string         `db:"destination"` // todo: rename the DB field to be destination_token
+	Quantity                uint64         `db:"quantity"`
+	ExchangeCurrency        string         `db:"exchange_currency"`
+	ExchangeRate            float64        `db:"exchange_rate"`
+	NativeAmount            float64        `db:"native_amount"`
+	UsdMarketValue          float64        `db:"usd_market_value"`
+	IsWithdrawal            bool           `db:"is_withdraw"`
+	IsDeposit               bool           `db:"is_deposit"`
+	IsRemoteSend            bool           `db:"is_remote_send"`
+	IsReturned              bool           `db:"is_returned"`
+	IsIssuerVoidingGiftCard bool           `db:"is_issuer_voiding_gift_card"`
+	IsMicroPayment          bool           `db:"is_micro_payment"`
+	ExtendedMetadata        []byte         `db:"extended_metadata"`
+	State                   uint           `db:"state"`
+	Version                 int64          `db:"version"`
+	CreatedAt               time.Time      `db:"created_at"`
 
 	Accounts []*intentAccountModel
 }
@@ -59,10 +61,18 @@ func toIntentModel(obj *intent.Record) (*intentModel, error) {
 		obj.CreatedAt = time.Now().UTC()
 	}
 
+	// For backwards compatibility
+	var mint sql.NullString
+	if obj.MintAccount != config.CoreMintPublicKeyString {
+		mint.Valid = true
+		mint.String = obj.MintAccount
+	}
+
 	m := &intentModel{
 		Id:               sql.NullInt64{Int64: int64(obj.Id), Valid: true},
 		IntentId:         obj.IntentId,
 		IntentType:       uint(obj.IntentType),
+		Mint:             mint,
 		InitiatorOwner:   obj.InitiatorOwnerAccount,
 		ExtendedMetadata: obj.ExtendedMetadata,
 		State:            uint(obj.State),
@@ -128,6 +138,13 @@ func fromIntentModel(obj *intentModel) *intent.Record {
 		CreatedAt:             obj.CreatedAt.UTC(),
 	}
 
+	// For backwards compatibility
+	if obj.Mint.Valid {
+		record.MintAccount = obj.Mint.String
+	} else {
+		record.MintAccount = config.CoreMintPublicKeyString
+	}
+
 	switch record.IntentType {
 	case intent.OpenAccounts:
 		record.OpenAccountsMetadata = &intent.OpenAccountsMetadata{}
@@ -186,22 +203,23 @@ func (m *intentModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		query := `INSERT INTO ` + intentTableName + `
-			(intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20 + 1, $21)
+			(intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21 + 1, $22)
 
 			ON CONFLICT (intent_id)
 			DO UPDATE
-				SET state = $19, version = ` + intentTableName + `.version + 1
-				WHERE ` + intentTableName + `.intent_id = $1 AND ` + intentTableName + `.version = $20
+				SET state = $20, version = ` + intentTableName + `.version + 1
+				WHERE ` + intentTableName + `.intent_id = $1 AND ` + intentTableName + `.version = $21
 
 			RETURNING
-				id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at`
+				id, intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at`
 
 		err := tx.QueryRowxContext(
 			ctx,
 			query,
 			m.IntentId,
 			m.IntentType,
+			m.Mint,
 			m.InitiatorOwner,
 			m.Source,
 			m.DestinationOwnerAccount,
@@ -343,7 +361,7 @@ func dbGetAccounts(ctx context.Context, db *sqlx.DB, intentType intent.Type, pag
 func dbGetIntentByIntentID(ctx context.Context, db *sqlx.DB, intentID string) (*intentModel, error) {
 	res := &intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
+	query := `SELECT id, intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
 		FROM ` + intentTableName + `
 		WHERE intent_id = $1
 		LIMIT 1`
@@ -363,7 +381,7 @@ func dbGetIntentByIntentID(ctx context.Context, db *sqlx.DB, intentID string) (*
 func dbGetIntentByID(ctx context.Context, db *sqlx.DB, id int64) (*intentModel, error) {
 	res := &intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
+	query := `SELECT id, intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
 		FROM ` + intentTableName + `
 		WHERE id = $1
 		LIMIT 1`
@@ -386,7 +404,7 @@ func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cu
 	models := []*intentModel{}
 
 	opts := []any{owner}
-	query1 := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
+	query1 := `SELECT id, intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
 		FROM ` + intentTableName + `
 		WHERE (owner = $1 OR destination_owner = $1)
 	`
@@ -455,7 +473,7 @@ func dbGetAllByOwner(ctx context.Context, db *sqlx.DB, owner string, cursor q.Cu
 func dbGetOriginalGiftCardIssuedIntent(ctx context.Context, db *sqlx.DB, giftCardVault string) (*intentModel, error) {
 	res := []*intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
+	query := `SELECT id, intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
 		FROM ` + intentTableName + `
 		WHERE destination = $1 and intent_type = $2 AND state != $3 AND is_remote_send IS TRUE
 		LIMIT 2
@@ -487,7 +505,7 @@ func dbGetOriginalGiftCardIssuedIntent(ctx context.Context, db *sqlx.DB, giftCar
 func dbGetGiftCardClaimedIntent(ctx context.Context, db *sqlx.DB, giftCardVault string) (*intentModel, error) {
 	res := []*intentModel{}
 
-	query := `SELECT id, intent_id, intent_type, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
+	query := `SELECT id, intent_id, intent_type, mint, owner, source, destination_owner, destination, quantity, exchange_currency, exchange_rate, native_amount, usd_market_value, is_withdraw, is_deposit, is_remote_send, is_returned, is_issuer_voiding_gift_card, is_micro_payment, extended_metadata, state, version, created_at
 		FROM ` + intentTableName + `
 		WHERE source = $1 and intent_type = $2 AND state != $3 AND is_remote_send IS TRUE
 		LIMIT 2

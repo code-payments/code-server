@@ -1,13 +1,11 @@
 package common
 
 import (
-	"fmt"
-	"strconv"
-	"strings"
+	"bytes"
 
-	"github.com/pkg/errors"
-
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	"github.com/code-payments/code-server/pkg/code/config"
+	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 	"github.com/code-payments/code-server/pkg/usdc"
 	"github.com/code-payments/code-server/pkg/usdt"
 )
@@ -18,7 +16,17 @@ var (
 	CoreMintDecimals      = config.CoreMintDecimals
 	CoreMintName          = config.CoreMintName
 	CoreMintSymbol        = config.CoreMintSymbol
+
+	jeffyMintAccount, _ = NewAccountFromPublicKeyString(config.JeffyMintPublicKey)
 )
+
+func GetBackwardsCompatMint(protoMint *commonpb.SolanaAccountId) (*Account, error) {
+	if protoMint == nil {
+		return CoreMintAccount, nil
+	}
+	return NewAccountFromProto(protoMint)
+
+}
 
 func FromCoreMintQuarks(quarks uint64) uint64 {
 	return quarks / CoreMintQuarksPerUnit
@@ -28,36 +36,8 @@ func ToCoreMintQuarks(units uint64) uint64 {
 	return units * CoreMintQuarksPerUnit
 }
 
-// todo: this needs tests
-func StrToQuarks(val string) (int64, error) {
-	parts := strings.Split(val, ".")
-	if len(parts) > 2 {
-		return 0, errors.New("invalid value")
-	}
-
-	if len(parts[0]) > 19-CoreMintDecimals {
-		return 0, errors.New("value cannot be represented")
-	}
-
-	wholeUnits, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	var quarks uint64
-	if len(parts) == 2 {
-		if len(parts[1]) > CoreMintDecimals {
-			return 0, errors.New("value cannot be represented")
-		}
-
-		padded := fmt.Sprintf("%s%s", parts[1], strings.Repeat("0", CoreMintDecimals-len(parts[1])))
-		quarks, err = strconv.ParseUint(padded, 10, 64)
-		if err != nil {
-			return 0, errors.Wrap(err, "invalid decimal component")
-		}
-	}
-
-	return int64(wholeUnits)*int64(CoreMintQuarksPerUnit) + int64(quarks), nil
+func IsCoreMint(mint *Account) bool {
+	return bytes.Equal(mint.PublicKey().ToBytes(), CoreMintAccount.PublicKey().ToBytes())
 }
 
 func IsCoreMintUsdStableCoin() bool {
@@ -67,4 +47,11 @@ func IsCoreMintUsdStableCoin() bool {
 	default:
 		return false
 	}
+}
+
+func GetMintQuarksPerUnit(mint *Account) uint64 {
+	if mint.PublicKey().ToBase58() == CoreMintAccount.PublicKey().ToBase58() {
+		return CoreMintQuarksPerUnit
+	}
+	return currencycreator.DefaultMintQuarksPerUnit
 }

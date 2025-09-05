@@ -23,9 +23,10 @@ import (
 	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
-	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -137,6 +138,7 @@ func (s *transactionServer) Airdrop(ctx context.Context, req *transactionpb.Aird
 			ExchangeRate: intentRecord.SendPublicPaymentMetadata.ExchangeRate,
 			NativeAmount: intentRecord.SendPublicPaymentMetadata.NativeAmount,
 			Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
+			Mint:         common.CoreMintAccount.ToProto(),
 		},
 	}, nil
 }
@@ -193,42 +195,32 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 		"currency":      currencyCode,
 	})
 
-	exchangeRateTime := currency_util.GetLatestExchangeRateTime()
-
-	usdRateRecord, err := s.data.GetExchangeRate(ctx, currency_lib.USD, exchangeRateTime)
-	if err != nil {
-		log.WithError(err).Warn("failure getting usd rate")
-		return nil, err
-	}
-
 	var additionalQuarks uint64
-	var otherRateRecord *currency.ExchangeRateRecord
 	switch currencyCode {
 	case currency_lib.USD:
 		if !common.IsCoreMintUsdStableCoin() {
 			additionalQuarks = 1
 		}
-		otherRateRecord = usdRateRecord
-	case common.CoreMintSymbol:
-		otherRateRecord = &currency.ExchangeRateRecord{
-			Time:   exchangeRateTime,
-			Rate:   1.0,
-			Symbol: string(common.CoreMintSymbol),
-		}
 	default:
 		additionalQuarks = 1
-		otherRateRecord, err = s.data.GetExchangeRate(ctx, currencyCode, exchangeRateTime)
-		if err != nil {
-			log.WithError(err).Warn("failure getting other rate")
-			return nil, err
-		}
 	}
 
-	coreMintAmount := nativeAmount / otherRateRecord.Rate
+	exchangeRateRecord, err := s.data.GetExchangeRate(ctx, currencyCode, currency_util.GetLatestExchangeRateTime())
+	if err != nil {
+		log.WithError(err).Warn("failure getting other rate")
+		return nil, err
+	}
+
+	coreMintAmount := nativeAmount / exchangeRateRecord.Rate
 	quarkAmount := uint64(coreMintAmount*float64(common.CoreMintQuarksPerUnit)) + additionalQuarks
 
-	usdValue := usdRateRecord.Rate * coreMintAmount
-	if usdValue > s.conf.maxAirdropUsdValue.Get(ctx) {
+	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, s.data, common.CoreMintAccount, quarkAmount, currency_util.GetLatestExchangeRateTime())
+	if err != nil {
+		log.WithError(err).Warn("failure calculating usd market value")
+		return nil, err
+	}
+
+	if usdMarketValue > s.conf.maxAirdropUsdValue.Get(ctx) {
 		log.Warn("airdrop exceeds max usd value")
 		return nil, ErrIneligibleForAirdrop
 	}
@@ -278,7 +270,17 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	//       Instead of constructing and validating everything manually, we could
 	//       have a proper client call SubmitIntent in a worker.
 
-	selectedNonce, err := s.noncePool.GetNonce(ctx)
+	noncePool, err := transaction.SelectNoncePool(
+		nonce.EnvironmentCvm,
+		common.CodeVmAccount.PublicKey().ToBase58(),
+		nonce.PurposeClientTransaction,
+		s.noncePools...,
+	)
+	if err != nil {
+		log.WithError(err).Warn("failure selecting nonce pool")
+		return nil, err
+	}
+	selectedNonce, err := noncePool.GetNonce(ctx)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return nil, err
@@ -306,12 +308,14 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 			Quantity:                quarkAmount,
 
 			ExchangeCurrency: currencyCode,
-			ExchangeRate:     otherRateRecord.Rate,
+			ExchangeRate:     exchangeRateRecord.Rate,
 			NativeAmount:     nativeAmount,
-			UsdMarketValue:   usdValue,
+			UsdMarketValue:   usdMarketValue,
 
 			IsWithdrawal: false,
 		},
+
+		MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
 
 		InitiatorOwnerAccount: s.airdropper.VaultOwner.PublicKey().ToBase58(),
 

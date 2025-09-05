@@ -27,6 +27,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
@@ -392,7 +393,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		fulfillmentCount := actionHandler.FulfillmentCount()
 
-		for j := 0; j < fulfillmentCount; j++ {
+		for j := range fulfillmentCount {
 			var newFulfillmentMetadata *newFulfillmentMetadata
 			var actionId uint32
 
@@ -401,8 +402,20 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			var selectedNonce *transaction.Nonce
 			var nonceAccount *common.Account
 			var nonceBlockchash solana.Blockhash
-			if actionHandler.RequiresNonce(j) {
-				selectedNonce, err = s.noncePool.GetNonce(ctx)
+			requiresNonce, vmAccount := actionHandler.RequiresNonce(j)
+			if requiresNonce {
+				noncePool, err := transaction.SelectNoncePool(
+					nonce.EnvironmentCvm,
+					vmAccount.PublicKey().ToBase58(),
+					nonce.PurposeClientTransaction,
+					s.noncePools...,
+				)
+				if err != nil {
+					log.WithError(err).Warn("failure selecting nonce pool")
+					return handleSubmitIntentError(streamer, err)
+				}
+
+				selectedNonce, err = noncePool.GetNonce(ctx)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting available nonce")
 					return handleSubmitIntentError(streamer, err)
@@ -762,20 +775,19 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 
 	var metadata *transactionpb.Metadata
 	switch intentRecord.IntentType {
-	case intent.OpenAccounts:
-		metadata = &transactionpb.Metadata{
-			Type: &transactionpb.Metadata_OpenAccounts{
-				OpenAccounts: &transactionpb.OpenAccountsMetadata{},
-			},
+	case intent.SendPublicPayment:
+		mintAccount, err := common.NewAccountFromPublicKeyString(intentRecord.MintAccount)
+		if err != nil {
+			log.WithError(err).Warn("invalid mint account")
+			return nil, status.Error(codes.Internal, "")
 		}
 
-	case intent.SendPublicPayment:
 		sourceAccountInfoRecordsByMint, err := s.data.GetAccountInfoByAuthorityAddress(ctx, intentRecord.InitiatorOwnerAccount)
 		if err != nil {
 			log.WithError(err).Warn("failure getting source account info record")
 			return nil, status.Error(codes.Internal, "")
 		}
-		coreMintSourceAccountInfoRecord, ok := sourceAccountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+		coreMintSourceAccountInfoRecord, ok := sourceAccountInfoRecordsByMint[mintAccount.PublicKey().ToBase58()]
 		if !ok {
 			log.WithError(err).Warn("core mint source account info record doesn't exist")
 			return nil, status.Error(codes.Internal, "")
@@ -803,15 +815,24 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 						ExchangeRate: intentRecord.SendPublicPaymentMetadata.ExchangeRate,
 						NativeAmount: intentRecord.SendPublicPaymentMetadata.NativeAmount,
 						Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
+						Mint:         mintAccount.ToProto(),
 					},
+					IsRemoteSend: intentRecord.SendPublicPaymentMetadata.IsRemoteSend,
 					IsWithdrawal: intentRecord.SendPublicPaymentMetadata.IsWithdrawal,
+					Mint:         mintAccount.ToProto(),
 				},
 			},
 		}
 	case intent.ReceivePaymentsPublicly:
+		mintAccount, err := common.NewAccountFromPublicKeyString(intentRecord.MintAccount)
+		if err != nil {
+			log.WithError(err).Warn("invalid mint account")
+			return nil, status.Error(codes.Internal, "")
+		}
+
 		sourceAccount, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
 		if err != nil {
-			log.WithError(err).Warn("invalid destination account")
+			log.WithError(err).Warn("invalid source account")
 			return nil, status.Error(codes.Internal, "")
 		}
 
@@ -826,12 +847,14 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 						ExchangeRate: intentRecord.ReceivePaymentsPubliclyMetadata.OriginalExchangeRate,
 						NativeAmount: intentRecord.ReceivePaymentsPubliclyMetadata.OriginalNativeAmount,
 						Quarks:       intentRecord.ReceivePaymentsPubliclyMetadata.Quantity,
+						Mint:         mintAccount.ToProto(),
 					},
+					Mint: mintAccount.ToProto(),
 				},
 			},
 		}
 	default:
-		// This is not a client-initiated intent type. Don't reveal anything.
+		// Don't reveal anything for these intent types
 		return &transactionpb.GetIntentMetadataResponse{
 			Result: transactionpb.GetIntentMetadataResponse_NOT_FOUND,
 		}, nil

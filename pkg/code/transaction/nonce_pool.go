@@ -27,6 +27,7 @@ const (
 )
 
 var (
+	ErrNoncePoolNotFound = errors.New("nonce pool not found")
 	ErrNoAvailableNonces = errors.New("no available nonces")
 	ErrNoncePoolClosed   = errors.New("nonce pool is closed")
 )
@@ -221,6 +222,19 @@ func (n *Nonce) ReleaseIfNotReserved(ctx context.Context) {
 	n.pool.mu.Lock()
 	n.pool.freeList = append(n.pool.freeList, n)
 	n.pool.mu.Unlock()
+}
+
+// SelectNoncePool selects a nonce pool from the provided set that matches the
+// desired environment and pool type.
+//
+// ErrNoncePoolNotFound is returned if no nonce pool matches the desired config.
+func SelectNoncePool(env nonce.Environment, envInstance string, poolType nonce.Purpose, pools ...*LocalNoncePool) (*LocalNoncePool, error) {
+	for _, pool := range pools {
+		if pool.env == env && pool.envInstance == envInstance && pool.poolType == poolType {
+			return pool, nil
+		}
+	}
+	return nil, ErrNoncePoolNotFound
 }
 
 // LocalNoncePool is a pool of nonces that are cached in memory for

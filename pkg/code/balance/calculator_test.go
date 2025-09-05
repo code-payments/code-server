@@ -18,6 +18,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -399,13 +400,14 @@ func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestDat
 			intentRecord := &intent.Record{
 				IntentId:              txn.intentID,
 				IntentType:            intent.SendPrivatePayment,
+				MintAccount:           common.CoreMintAccount.PublicKey().ToBase58(),
 				InitiatorOwnerAccount: "owner",
 				SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 					DestinationOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 					DestinationTokenAccount: txn.destination.PublicKey().ToBase58(),
 					Quantity:                txn.quantity,
 
-					ExchangeCurrency: common.CoreMintSymbol,
+					ExchangeCurrency: currency_lib.USD,
 					ExchangeRate:     1.0,
 					NativeAmount:     1.0,
 					UsdMarketValue:   1.0,

@@ -25,17 +25,18 @@ const (
 			intent_id TEXT NOT NULL UNIQUE,
 			intent_type INTEGER NOT NULL,
 
-			owner text NOT NULL,
+			mint TEXT NULL,
+			owner TEXT NOT NULL,
 			source TEXT NULL,
 			destination TEXT NULL,
 			destination_owner TEXT NULL,
 
 			quantity BIGINT NULL CHECK (quantity >= 0),
 
-			exchange_currency varchar(3) NULL,
-			exchange_rate numeric(18, 9) NULL,
-			native_amount numeric(18, 9) NULL,
-			usd_market_value numeric(18, 9) NULL,
+			exchange_currency VARCHAR(3) NULL,
+			exchange_rate NUMERIC(18, 9) NULL,
+			native_amount NUMERIC(18, 9) NULL,
+			usd_market_value NUMERIC(18, 9) NULL,
 
 			is_withdraw BOOL NOT NULL,
 			is_deposit BOOL NOT NULL,

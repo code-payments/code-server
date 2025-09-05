@@ -211,7 +211,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 	destinationMemory *common.Account,
 	destinationIndex uint16,
 
-	coreMintQuarks uint64,
+	quarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
 	if err != nil {
@@ -219,7 +219,7 @@ func MakeInternalTransferWithAuthorityTransaction(
 	}
 
 	vixn := cvm.NewTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
-		Amount:    coreMintQuarks,
+		Amount:    quarks,
 		Signature: cvm.Signature(virtualSignature),
 	})
 
@@ -264,8 +264,9 @@ func MakeExternalTransferWithAuthorityTransaction(
 	isCreateOnSend bool,
 	externalDestinationOwner *common.Account,
 	externalDestination *common.Account,
+	mint *common.Account,
 
-	coreMintQuarks uint64,
+	quarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory)
 	if err != nil {
@@ -277,7 +278,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
 
 	vixn := cvm.NewExternalTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
-		Amount:    coreMintQuarks,
+		Amount:    quarks,
 		Signature: cvm.Signature(virtualSignature),
 	})
 
@@ -315,7 +316,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 		createIdempotentInstruction, ata, err := token.CreateAssociatedTokenAccountIdempotent(
 			common.GetSubsidizer().PublicKey().ToBytes(),
 			externalDestinationOwner.PublicKey().ToBytes(),
-			common.CoreMintAccount.PublicKey().ToBytes(),
+			mint.PublicKey().ToBytes(),
 		)
 		if err != nil {
 			return solana.Transaction{}, err

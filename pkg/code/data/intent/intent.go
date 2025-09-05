@@ -42,6 +42,8 @@ type Record struct {
 	IntentId   string
 	IntentType Type
 
+	MintAccount string
+
 	InitiatorOwnerAccount string
 
 	OpenAccountsMetadata            *OpenAccountsMetadata
@@ -152,6 +154,8 @@ func (r *Record) Clone() Record {
 		IntentId:   r.IntentId,
 		IntentType: r.IntentType,
 
+		MintAccount: r.MintAccount,
+
 		InitiatorOwnerAccount: r.InitiatorOwnerAccount,
 
 		OpenAccountsMetadata:            openAccountsMetadata,
@@ -175,6 +179,8 @@ func (r *Record) CopyTo(dst *Record) {
 
 	dst.IntentId = r.IntentId
 	dst.IntentType = r.IntentType
+
+	dst.MintAccount = r.MintAccount
 
 	dst.InitiatorOwnerAccount = r.InitiatorOwnerAccount
 
@@ -200,6 +206,10 @@ func (r *Record) Validate() error {
 
 	if r.IntentType == UnknownType {
 		return errors.New("intent type is required")
+	}
+
+	if len(r.MintAccount) == 0 {
+		return errors.New("mint account is required")
 	}
 
 	if len(r.InitiatorOwnerAccount) == 0 {

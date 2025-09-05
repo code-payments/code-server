@@ -3,10 +3,6 @@ package currency
 type Code string
 
 const (
-	USDC Code = "usdc"
-	USDG Code = "usdg"
-	USDT Code = "usdt"
-
 	AED Code = "aed"
 	AFN Code = "afn"
 	ALL Code = "all"

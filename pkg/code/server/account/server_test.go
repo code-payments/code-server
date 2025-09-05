@@ -383,6 +383,8 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			IntentType: intent.SendPublicPayment,
 
+			MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
+
 			InitiatorOwnerAccount: giftCardIssuerOwnerAccount.PublicKey().ToBase58(),
 
 			SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{

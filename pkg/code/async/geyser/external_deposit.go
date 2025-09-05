@@ -17,11 +17,11 @@ import (
 
 	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -288,17 +288,18 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 			return errors.Wrap(err, "invalid owner account")
 		}
 
-		usdExchangeRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, time.Now())
+		usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, data, common.CoreMintAccount, uint64(deltaQuarksIntoOmnibus), time.Now())
 		if err != nil {
-			return errors.Wrap(err, "error getting usd rate")
+			return errors.Wrap(err, "error calculating usd market value")
 		}
-		usdMarketValue := usdExchangeRecord.Rate * float64(deltaQuarksIntoOmnibus) / float64(common.CoreMintQuarksPerUnit)
 
 		err = data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 			// For transaction history
 			intentRecord := &intent.Record{
 				IntentId:   getExternalDepositIntentID(signature, userVirtualTimelockVaultAccount),
 				IntentType: intent.ExternalDeposit,
+
+				MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
 
 				InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
 

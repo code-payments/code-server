@@ -227,7 +227,7 @@ func handleSubmitIntentError(streamer transactionpb.Transaction_SubmitIntentServ
 		return status.Error(codes.DeadlineExceeded, err.Error())
 	case context.Canceled:
 		return status.Error(codes.Canceled, err.Error())
-	case transaction.ErrNoAvailableNonces:
+	case transaction.ErrNoAvailableNonces, transaction.ErrNoncePoolNotFound:
 		return status.Error(codes.Unavailable, "")
 	}
 	return status.Error(codes.Internal, "rpc server failure")
