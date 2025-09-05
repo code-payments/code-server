@@ -39,6 +39,8 @@ type CreateIntentHandler interface {
 	// PopulateMetadata adds intent metadata to the provided intent record
 	// using the client-provided protobuf variant. No other fields in the
 	// intent should be modified.
+	//
+	// Intent-level validation errors may be returned here if caught early.
 	PopulateMetadata(ctx context.Context, intentRecord *intent.Record, protoMetadata *transactionpb.Metadata) error
 
 	// CreatesNewUser returns whether the intent creates a new Code user identified
@@ -81,6 +83,14 @@ func (h *OpenAccountsIntentHandler) PopulateMetadata(ctx context.Context, intent
 		return errors.New("unexpected metadata proto message")
 	}
 
+	mint, err := getBackwardsCompatMint(typedProtoMetadata.Mint)
+	if err != nil {
+		return err
+	}
+	if !common.IsCoreMint(mint) {
+		return NewIntentValidationError("only the core mint is supported")
+	}
+
 	intentRecord.IntentType = intent.OpenAccounts
 	intentRecord.OpenAccountsMetadata = &intent.OpenAccountsMetadata{}
 
@@ -96,6 +106,7 @@ func (h *OpenAccountsIntentHandler) CreatesNewUser(ctx context.Context, metadata
 	return typedMetadata.AccountSet == transactionpb.OpenAccountsMetadata_USER, nil
 }
 
+// todo: Not all multi-mint validation checks are implemented
 func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
 	typedMetadata := metadata.GetOpenAccounts()
 	if typedMetadata == nil {
@@ -144,6 +155,7 @@ func (h *OpenAccountsIntentHandler) GetBalanceLocks(ctx context.Context, intentR
 	return nil, nil
 }
 
+// todo: Not all multi-mint validation checks are implemented
 func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := metadata.GetOpenAccounts()
 	if typedMetadata == nil {
@@ -199,6 +211,15 @@ func (h *OpenAccountsIntentHandler) validateActions(
 	typedMetadata *transactionpb.OpenAccountsMetadata,
 	actions []*transactionpb.Action,
 ) error {
+	intentMint, err := getBackwardsCompatMint(typedMetadata.Mint)
+	if err != nil {
+		return err
+	}
+	err = validateIntentAndActionMintsMatch(intentMint, actions)
+	if err != nil {
+		return err
+	}
+
 	type expectedAccountToOpen struct {
 		Type  commonpb.AccountType
 		Index uint64
@@ -320,6 +341,17 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 		return errors.New("unexpected metadata proto message")
 	}
 
+	mint, err := getBackwardsCompatMint(typedProtoMetadata.Mint)
+	if err != nil {
+		return err
+	}
+	if !common.IsCoreMint(mint) && typedProtoMetadata.IsRemoteSend {
+		return NewIntentValidationError("only the core mint is supported for remote send")
+	}
+	if !common.IsCoreMint(mint) && typedProtoMetadata.IsWithdrawal {
+		return NewIntentValidationError("only the core mint is supported for withdrawals")
+	}
+
 	exchangeData := typedProtoMetadata.ExchangeData
 
 	usdExchangeRecord, err := h.data.GetExchangeRate(ctx, currency_lib.USD, currency_util.GetLatestExchangeRateTime())
@@ -427,7 +459,7 @@ func (h *SendPublicPaymentIntentHandler) GetBalanceLocks(ctx context.Context, in
 	return intentBalanceLocks, nil
 }
 
-// todo: validation against Flipcash through generic interface for bet creation
+// todo: Not all multi-mint validation checks are implemented
 func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := untypedMetadata.GetSendPublicPayment()
 	if typedMetadata == nil {
@@ -438,14 +470,18 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	if err != nil {
 		return err
 	}
+	intentMintAccount, err := getBackwardsCompatMint(typedMetadata.Mint)
+	if err != nil {
+		return err
+	}
 
 	initiatorAccountsByMintAndType, err := common.GetLatestCodeTimelockAccountRecordsForOwner(ctx, h.data, initiatiorOwnerAccount)
 	if err != nil {
 		return err
 	}
-	initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
+	initiatorAccountsByType, ok := initiatorAccountsByMintAndType[intentMintAccount.PublicKey().ToBase58()]
 	if !ok {
-		return errors.New("initiator core mint accounts don't exist")
+		return errors.New("initiator mint accounts don't exist")
 	}
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
@@ -574,7 +610,20 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2: Check the source and destination accounts are valid
+	// Part 2: Validate intent and action mints match
+	//
+
+	intentMint, err := getBackwardsCompatMint(metadata.Mint)
+	if err != nil {
+		return err
+	}
+	err = validateIntentAndActionMintsMatch(intentMint, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 3: Check the source and destination accounts are valid
 	//
 
 	sourceAccountRecords, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
@@ -684,11 +733,11 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 3 Validate actions match intent metadata
+	// Part 4 Validate actions match intent metadata
 	//
 
 	//
-	// Part 3.1: Check destination account is paid exact quark amount from the deposit account
+	// Part 4.1: Check destination account is paid exact quark amount from the deposit account
 	//           minus any fees
 	//
 
@@ -714,7 +763,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 	}
 
 	//
-	// Part 3.2: Check that the user's deposit account was used as the source of funds
+	// Part 4.2: Check that the user's deposit account was used as the source of funds
 	//           as specified in the metadata
 	//
 
@@ -725,14 +774,14 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return NewActionValidationErrorf(sourceSimulation.Transfers[0].Action, "must send %d quarks from source account", metadata.ExchangeData.Quarks)
 	}
 
-	// Part 4: Generic validation of actions that move money
+	// Part 5: Generic validation of actions that move money
 
 	err = validateMoneyMovementActionUserAccounts(intent.SendPublicPayment, initiatorAccountsByVault, actions)
 	if err != nil {
 		return err
 	}
 
-	// Part 5: Validate open and closed accounts
+	// Part 6: Validate open and closed accounts
 
 	if metadata.IsRemoteSend {
 		if len(simResult.GetOpenedAccounts()) != 1 {
@@ -813,6 +862,14 @@ func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Cont
 		return errors.New("unexpected metadata proto message")
 	}
 
+	mint, err := getBackwardsCompatMint(typedProtoMetadata.Mint)
+	if err != nil {
+		return err
+	}
+	if !common.IsCoreMint(mint) {
+		return NewIntentValidationError("only the core mint is supported")
+	}
+
 	giftCardVault, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
 	if err != nil {
 		return err
@@ -880,6 +937,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) GetBalanceLocks(ctx context.Conte
 	}, nil
 }
 
+// todo: Not all multi-mint validation checks are implemented
 func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := untypedMetadata.GetReceivePaymentsPublicly()
 	if typedMetadata == nil {
@@ -1008,7 +1066,20 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	}
 
 	//
-	// Part 1: Validate source and destination accounts are valid to use
+	// Part 1: Validate intent and action mints match
+	//
+
+	intentMint, err := getBackwardsCompatMint(metadata.Mint)
+	if err != nil {
+		return err
+	}
+	err = validateIntentAndActionMintsMatch(intentMint, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Validate source and destination accounts are valid to use
 	//
 
 	// Note: Already validated to be a claimable gift card elsewhere
@@ -1025,11 +1096,11 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2: Validate actions match intent
+	// Part 3: Validate actions match intent
 	//
 
 	//
-	// Part 2.1: Check source account pays exact quark amount to destination in a public withdraw
+	// Part 3.1: Check source account pays exact quark amount to destination in a public withdraw
 	//
 
 	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
@@ -1042,7 +1113,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2.2: Check destination account is paid exact quark amount from source account in a public withdraw
+	// Part 3.2: Check destination account is paid exact quark amount from source account in a public withdraw
 	//
 
 	if destinationSimulation.GetDeltaQuarks(false) != int64(metadata.Quarks) {
@@ -1052,7 +1123,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	}
 
 	//
-	// Part 3: Validate accounts that are opened and closed
+	// Part 4: Validate accounts that are opened and closed
 	//
 
 	if len(simResult.GetOpenedAccounts()) > 0 {
@@ -1067,7 +1138,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	}
 
 	//
-	// Part 4: Generic validation of actions that move money
+	// Part 5: Generic validation of actions that move money
 	//
 
 	return validateMoneyMovementActionUserAccounts(intent.ReceivePaymentsPublicly, initiatorAccountsByVault, actions)
@@ -1102,6 +1173,14 @@ func (h *PublicDistributionIntentHandler) PopulateMetadata(ctx context.Context, 
 	typedProtoMetadata := protoMetadata.GetPublicDistribution()
 	if typedProtoMetadata == nil {
 		return errors.New("unexpected metadata proto message")
+	}
+
+	mint, err := getBackwardsCompatMint(typedProtoMetadata.Mint)
+	if err != nil {
+		return err
+	}
+	if !common.IsCoreMint(mint) {
+		return NewIntentValidationError("only the core mint is supported")
 	}
 
 	source, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
@@ -1188,7 +1267,7 @@ func (h *PublicDistributionIntentHandler) GetBalanceLocks(ctx context.Context, i
 	}, nil
 }
 
-// todo: validation against Flipcash through generic interface for pool resolution
+// todo: Not all multi-mint validation checks are implemented
 func (h *PublicDistributionIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := untypedMetadata.GetPublicDistribution()
 	if typedMetadata == nil {
@@ -1265,11 +1344,10 @@ func (h *PublicDistributionIntentHandler) AllowCreation(ctx context.Context, int
 	// Part 5: Validate actions
 	//
 
-	return h.validateActions(ctx, typedMetadata, actions, simResult)
+	return h.validateActions(typedMetadata, actions, simResult)
 }
 
 func (h *PublicDistributionIntentHandler) validateActions(
-	ctx context.Context,
 	metadata *transactionpb.PublicDistributionMetadata,
 	actions []*transactionpb.Action,
 	simResult *LocalSimulationResult,
@@ -1279,7 +1357,19 @@ func (h *PublicDistributionIntentHandler) validateActions(
 	}
 
 	//
-	// Part 1: Validate source and destination accounts are valid
+	// Part 1: Validate intent and action mints match
+	//
+	intentMint, err := getBackwardsCompatMint(metadata.Mint)
+	if err != nil {
+		return err
+	}
+	err = validateIntentAndActionMintsMatch(intentMint, actions)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 2: Validate source and destination accounts are valid
 	//
 
 	// Note: Already validated to be a pool account elsewhere
@@ -1316,11 +1406,11 @@ func (h *PublicDistributionIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2: Validate actions match intent
+	// Part 3: Validate actions match intent
 	//
 
 	//
-	// Part 2.1: Check source account pays exact quark amount to each destination
+	// Part 3.1: Check source account pays exact quark amount to each destination
 	//
 
 	sourceSimulation, ok := simResult.SimulationsByAccount[source.PublicKey().ToBase58()]
@@ -1343,7 +1433,7 @@ func (h *PublicDistributionIntentHandler) validateActions(
 	}
 
 	//
-	// Part 2.2: Check each destination account is paid exact dstirbution quark amount from source account
+	// Part 3.2: Check each destination account is paid exact dstirbution quark amount from source account
 	//
 
 	for i, destination := range destinations {
@@ -1364,7 +1454,7 @@ func (h *PublicDistributionIntentHandler) validateActions(
 		}
 	}
 
-	// Part 3: Validate open and closed accounts
+	// Part 4: Validate open and closed accounts
 
 	if len(simResult.GetOpenedAccounts()) > 0 {
 		return NewIntentValidationError("cannot open any account")
@@ -1789,6 +1879,33 @@ func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.
 	default:
 		return err
 	}
+}
+
+func validateIntentAndActionMintsMatch(intentMint *common.Account, actions []*transactionpb.Action) error {
+	for _, action := range actions {
+		var actionMint *common.Account
+		var err error
+		switch typed := action.Type.(type) {
+		case *transactionpb.Action_OpenAccount:
+			actionMint, err = getBackwardsCompatMint(typed.OpenAccount.Mint)
+		case *transactionpb.Action_NoPrivacyTransfer:
+			actionMint, err = getBackwardsCompatMint(typed.NoPrivacyTransfer.Mint)
+		case *transactionpb.Action_NoPrivacyWithdraw:
+			actionMint, err = getBackwardsCompatMint(typed.NoPrivacyWithdraw.Mint)
+		case *transactionpb.Action_FeePayment:
+			actionMint, err = getBackwardsCompatMint(typed.FeePayment.Mint)
+		default:
+			return errors.New("unsupported action for mint extraction")
+		}
+
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(intentMint.PublicKey().ToBytes(), actionMint.PublicKey().ToBytes()) {
+			return NewActionValidationErrorf(action, "mint must be %s", intentMint.PublicKey().ToBase58())
+		}
+	}
+	return nil
 }
 
 func getExpectedTimelockVaultFromProtoAccount(authorityProto *commonpb.SolanaAccountId) (*common.Account, error) {

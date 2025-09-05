@@ -26,6 +26,8 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/nonce"
+	"github.com/code-payments/code-server/pkg/code/transaction"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
@@ -278,7 +280,17 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	//       Instead of constructing and validating everything manually, we could
 	//       have a proper client call SubmitIntent in a worker.
 
-	selectedNonce, err := s.noncePool.GetNonce(ctx)
+	noncePool, err := transaction.SelectNoncePool(
+		nonce.EnvironmentCvm,
+		common.CodeVmAccount.PublicKey().ToBase58(),
+		nonce.PurposeClientTransaction,
+		s.noncePools...,
+	)
+	if err != nil {
+		log.WithError(err).Warn("failure selecting nonce pool")
+		return nil, err
+	}
+	selectedNonce, err := noncePool.GetNonce(ctx)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting available nonce")
 		return nil, err

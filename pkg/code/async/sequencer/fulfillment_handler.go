@@ -414,6 +414,7 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			isCreateOnSend,
 			destinationOwnerAccount,
 			destinationTokenAccount,
+			common.CoreMintAccount,
 
 			*actionRecord.Quantity,
 		)

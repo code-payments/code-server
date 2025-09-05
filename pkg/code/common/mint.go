@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,8 @@ var (
 	CoreMintDecimals      = config.CoreMintDecimals
 	CoreMintName          = config.CoreMintName
 	CoreMintSymbol        = config.CoreMintSymbol
+
+	jeffyMintAccount, _ = NewAccountFromPublicKeyString(config.JeffyMintPublicKey)
 )
 
 func FromCoreMintQuarks(quarks uint64) uint64 {
@@ -58,6 +61,10 @@ func StrToQuarks(val string) (int64, error) {
 	}
 
 	return int64(wholeUnits)*int64(CoreMintQuarksPerUnit) + int64(quarks), nil
+}
+
+func IsCoreMint(mint *Account) bool {
+	return bytes.Equal(mint.PublicKey().ToBytes(), CoreMintAccount.PublicKey().ToBytes())
 }
 
 func IsCoreMintUsdStableCoin() bool {
