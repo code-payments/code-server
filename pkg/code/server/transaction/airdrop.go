@@ -412,6 +412,11 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 }
 
 func (s *transactionServer) loadAirdropper(ctx context.Context) error {
+	vmConfig, err := common.GetVmConfigForMint(ctx, s.data, common.CoreMintAccount)
+	if err != nil {
+		return err
+	}
+
 	vaultRecord, err := s.data.GetKey(ctx, s.conf.airdropperOwnerPublicKey.Get(ctx))
 	if err != nil {
 		return err
@@ -422,7 +427,7 @@ func (s *transactionServer) loadAirdropper(ctx context.Context) error {
 		return err
 	}
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return err
 	}

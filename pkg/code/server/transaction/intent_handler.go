@@ -296,7 +296,7 @@ func (h *OpenAccountsIntentHandler) validateActions(
 			}
 		}
 
-		expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccounts(openAction.GetOpenAccount().Authority, openAction.GetFeePayment().Mint)
+		expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccounts(ctx, h.data, openAction.GetOpenAccount().Authority, openAction.GetFeePayment().Mint)
 		if err != nil {
 			return err
 		}
@@ -783,7 +783,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 	// Part 5: Generic validation of actions that move money
 
-	err = validateMoneyMovementActionUserAccounts(intent.SendPublicPayment, initiatorAccountsByVault, actions)
+	err = validateMoneyMovementActionUserAccounts(ctx, h.data, intent.SendPublicPayment, initiatorAccountsByVault, actions)
 	if err != nil {
 		return err
 	}
@@ -1054,6 +1054,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	//
 
 	return h.validateActions(
+		ctx,
 		initiatorAccountsByType,
 		initiatorAccountsByVault,
 		typedMetadata,
@@ -1063,6 +1064,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 }
 
 func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
+	ctx context.Context,
 	initiatorAccountsByType map[commonpb.AccountType][]*common.AccountRecords,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	metadata *transactionpb.ReceivePaymentsPubliclyMetadata,
@@ -1149,7 +1151,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	// Part 5: Generic validation of actions that move money
 	//
 
-	return validateMoneyMovementActionUserAccounts(intent.ReceivePaymentsPublicly, initiatorAccountsByVault, actions)
+	return validateMoneyMovementActionUserAccounts(ctx, h.data, intent.ReceivePaymentsPublicly, initiatorAccountsByVault, actions)
 }
 
 type PublicDistributionIntentHandler struct {
@@ -1499,6 +1501,8 @@ func validateAllUserAccountsManagedByCode(ctx context.Context, initiatorAccounts
 // Other account types (eg. gift cards, external wallets, etc) and intent-specific
 // complex nuances should be handled elsewhere.
 func validateMoneyMovementActionUserAccounts(
+	ctx context.Context,
+	data code_data.Provider,
 	intentType intent.Type,
 	initiatorAccountsByVault map[string]*common.AccountRecords,
 	actions []*transactionpb.Action,
@@ -1588,7 +1592,7 @@ func validateMoneyMovementActionUserAccounts(
 			continue
 		}
 
-		expectedTimelockVault, err := getExpectedTimelockVaultFromProtoAccounts(authority.ToProto(), mint.ToProto())
+		expectedTimelockVault, err := getExpectedTimelockVaultFromProtoAccounts(ctx, data, authority.ToProto(), mint.ToProto())
 		if err != nil {
 			return err
 		} else if !bytes.Equal(expectedTimelockVault.PublicKey().ToBytes(), source.PublicKey().ToBytes()) {
@@ -1637,7 +1641,7 @@ func validateGiftCardAccountOpened(
 		return NewActionValidationError(openAction, "index must be 0")
 	}
 
-	derivedVaultAccount, err := getExpectedTimelockVaultFromProtoAccounts(openAction.GetOpenAccount().Authority, openAction.GetOpenAccount().Mint)
+	derivedVaultAccount, err := getExpectedTimelockVaultFromProtoAccounts(ctx, data, openAction.GetOpenAccount().Authority, openAction.GetOpenAccount().Mint)
 	if err != nil {
 		return err
 	}
@@ -1914,7 +1918,7 @@ func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.
 		return err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mintAccount)
 	if err != nil {
 		return err
 	}
@@ -1924,7 +1928,7 @@ func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.
 		return err
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vmConfig.Vm, mintAccount)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return err
 	}
@@ -1967,13 +1971,13 @@ func validateIntentAndActionMintsMatch(intentMint *common.Account, actions []*tr
 	return nil
 }
 
-func getExpectedTimelockVaultFromProtoAccounts(authorityProto, mintProto *commonpb.SolanaAccountId) (*common.Account, error) {
+func getExpectedTimelockVaultFromProtoAccounts(ctx context.Context, data code_data.Provider, authorityProto, mintProto *commonpb.SolanaAccountId) (*common.Account, error) {
 	mintAccount, err := common.NewAccountFromProto(mintProto)
 	if err != nil {
 		return nil, err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mintAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -1983,7 +1987,7 @@ func getExpectedTimelockVaultFromProtoAccounts(authorityProto, mintProto *common
 		return nil, err
 	}
 
-	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vmConfig.Vm, mintAccount)
+	timelockAccounts, err := authorityAccount.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}

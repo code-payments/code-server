@@ -86,13 +86,13 @@ type OpenAccountActionHandler struct {
 	unsavedTimelockRecord    *timelock.Record
 }
 
-func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transactionpb.OpenAccountAction, protoMetadata *transactionpb.Metadata) (CreateActionHandler, error) {
+func NewOpenAccountActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.OpenAccountAction, protoMetadata *transactionpb.Metadata) (CreateActionHandler, error) {
 	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
 	if err != nil {
 		return nil, err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mint)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transacti
 		return nil, err
 	}
 
-	timelockAccounts, err := authority.GetTimelockAccounts(vmConfig.Vm, mint)
+	timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -200,13 +200,13 @@ type NoPrivacyTransferActionHandler struct {
 	feeType     transactionpb.FeePaymentAction_FeeType // Internally, the mechanics of a fee payment are exactly the same
 }
 
-func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTransferAction) (CreateActionHandler, error) {
+func NewNoPrivacyTransferActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.NoPrivacyTransferAction) (CreateActionHandler, error) {
 	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
 	if err != nil {
 		return nil, err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mint)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTrans
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(vmConfig.Vm, mint)
+	source, err := sourceAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -233,13 +233,13 @@ func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTrans
 	}, nil
 }
 
-func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, feeCollector *common.Account) (CreateActionHandler, error) {
+func NewFeePaymentActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.FeePaymentAction, feeCollector *common.Account) (CreateActionHandler, error) {
 	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
 	if err != nil {
 		return nil, err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mint)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, fee
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(vmConfig.Vm, mint)
+	source, err := sourceAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -348,13 +348,13 @@ type NoPrivacyWithdrawActionHandler struct {
 	isAutoReturn bool
 }
 
-func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
+func NewNoPrivacyWithdrawActionHandler(ctx context.Context, data code_data.Provider, intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
 	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
 	if err != nil {
 		return nil, err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mint)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction 
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(vmConfig.Vm, mint)
+	source, err := sourceAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}

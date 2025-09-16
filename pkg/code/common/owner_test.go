@@ -18,19 +18,19 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmAccount := newRandomTestAccount(t)
-	subsidizerAccount = newRandomTestAccount(t)
+	coreVmConfig := newRandomVmConfig(t)
+
+	swapMintAccount := newRandomTestAccount(t)
+
 	owner := newRandomTestAccount(t)
 	swapAuthority := newRandomTestAccount(t)
-	coreMintAccount := newRandomTestAccount(t)
-	swapMintAccount := newRandomTestAccount(t)
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
 
 	// Later calls intent to OpenAccounts
 
-	timelockAccounts, err := owner.GetTimelockAccounts(vmAccount, coreMintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(coreVmConfig)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -40,7 +40,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
-		MintAccount:      coreMintAccount.PublicKey().ToBase58(),
+		MintAccount:      coreVmConfig.Mint.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_PRIMARY,
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, primaryAccountInfoRecord))
@@ -87,15 +87,14 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmAccount := newRandomTestAccount(t)
-	subsidizerAccount = newRandomTestAccount(t)
+	coreVmConfig := newRandomVmConfig(t)
+
 	owner := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
 
 	_, err := GetOwnerMetadata(ctx, data, owner)
 	assert.Equal(t, ErrOwnerNotFound, err)
 
-	timelockAccounts, err := owner.GetTimelockAccounts(vmAccount, mintAccount)
+	timelockAccounts, err := owner.GetTimelockAccounts(coreVmConfig)
 	require.NoError(t, err)
 
 	timelockRecord := timelockAccounts.ToDBRecord()
@@ -105,7 +104,7 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 		OwnerAccount:     owner.PublicKey().ToBase58(),
 		AuthorityAccount: timelockRecord.VaultOwner,
 		TokenAccount:     timelockRecord.VaultAddress,
-		MintAccount:      mintAccount.PublicKey().ToBase58(),
+		MintAccount:      coreVmConfig.Mint.PublicKey().ToBase58(),
 		AccountType:      commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
 	}
 	require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
@@ -121,11 +120,12 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	subsidizerAccount = newRandomTestAccount(t)
-	owner := newRandomTestAccount(t)
-	coreMintAccount := newRandomTestAccount(t)
-	jeffyMintAccount := newRandomTestAccount(t)
+	coreVmConfig := newRandomVmConfig(t)
+	jeffyVmConfig := newRandomVmConfig(t)
+
 	swapMintAccount := newRandomTestAccount(t)
+
+	owner := newRandomTestAccount(t)
 
 	actual, err := GetLatestTokenAccountRecordsForOwner(ctx, data, owner)
 	require.NoError(t, err)
@@ -142,8 +142,8 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	}{
 		{authority1, commonpb.AccountType_PRIMARY},
 	} {
-		for _, mint := range []*Account{coreMintAccount, jeffyMintAccount} {
-			timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(newRandomTestAccount(t), mint)
+		for _, vmConfig := range []*VmConfig{coreVmConfig, jeffyVmConfig} {
+			timelockAccounts, err := authorityAndType.account.GetTimelockAccounts(vmConfig)
 			require.NoError(t, err)
 
 			timelockRecord := timelockAccounts.ToDBRecord()
@@ -153,7 +153,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 				OwnerAccount:     owner.PublicKey().ToBase58(),
 				AuthorityAccount: timelockRecord.VaultOwner,
 				TokenAccount:     timelockRecord.VaultAddress,
-				MintAccount:      mint.PublicKey().ToBase58(),
+				MintAccount:      vmConfig.Mint.PublicKey().ToBase58(),
 				AccountType:      authorityAndType.accountType,
 			}
 			require.NoError(t, data.CreateAccountInfo(ctx, accountInfoRecord))
@@ -164,7 +164,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 		authority2,
 		authority3,
 	} {
-		timelockAccounts, err := authority.GetTimelockAccounts(newRandomTestAccount(t), coreMintAccount)
+		timelockAccounts, err := authority.GetTimelockAccounts(coreVmConfig)
 		require.NoError(t, err)
 
 		timelockRecord := timelockAccounts.ToDBRecord()
@@ -174,7 +174,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: timelockRecord.VaultOwner,
 			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      coreMintAccount.PublicKey().ToBase58(),
+			MintAccount:      coreVmConfig.Mint.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_POOL,
 			Index:            uint64(i),
 		}
@@ -196,11 +196,11 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, actual, 3)
 
-	coreMintRecords, ok := actual[coreMintAccount.PublicKey().ToBase58()]
+	coreMintRecords, ok := actual[coreVmConfig.Mint.PublicKey().ToBase58()]
 	require.True(t, ok)
 	require.Len(t, coreMintRecords, 2)
 
-	jeffyMintRecords, ok := actual[jeffyMintAccount.PublicKey().ToBase58()]
+	jeffyMintRecords, ok := actual[jeffyVmConfig.Mint.PublicKey().ToBase58()]
 	require.True(t, ok)
 	require.Len(t, jeffyMintRecords, 1)
 
@@ -215,7 +215,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_PRIMARY)
 	assert.Equal(t, records[0].Timelock.VaultOwner, authority1.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
-	assert.Equal(t, records[0].General.MintAccount, coreMintAccount.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.MintAccount, coreVmConfig.Mint.PublicKey().ToBase58())
 
 	records, ok = coreMintRecords[commonpb.AccountType_POOL]
 	require.True(t, ok)
@@ -225,14 +225,14 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_POOL)
 	assert.Equal(t, records[0].Timelock.VaultOwner, authority2.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
-	assert.Equal(t, records[0].General.MintAccount, coreMintAccount.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.MintAccount, coreVmConfig.Mint.PublicKey().ToBase58())
 	assert.EqualValues(t, records[0].General.Index, 0)
 
 	assert.Equal(t, records[1].General.AuthorityAccount, authority3.PublicKey().ToBase58())
 	assert.Equal(t, records[1].General.AccountType, commonpb.AccountType_POOL)
 	assert.Equal(t, records[1].Timelock.VaultOwner, authority3.PublicKey().ToBase58())
 	assert.Equal(t, records[1].General.TokenAccount, records[1].Timelock.VaultAddress)
-	assert.Equal(t, records[1].General.MintAccount, coreMintAccount.PublicKey().ToBase58())
+	assert.Equal(t, records[1].General.MintAccount, coreVmConfig.Mint.PublicKey().ToBase58())
 	assert.EqualValues(t, records[1].General.Index, 1)
 
 	records, ok = jeffyMintRecords[commonpb.AccountType_PRIMARY]
@@ -242,7 +242,7 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	assert.Equal(t, records[0].General.AccountType, commonpb.AccountType_PRIMARY)
 	assert.Equal(t, records[0].Timelock.VaultOwner, authority1.PublicKey().ToBase58())
 	assert.Equal(t, records[0].General.TokenAccount, records[0].Timelock.VaultAddress)
-	assert.Equal(t, records[0].General.MintAccount, jeffyMintAccount.PublicKey().ToBase58())
+	assert.Equal(t, records[0].General.MintAccount, jeffyVmConfig.Mint.PublicKey().ToBase58())
 
 	records, ok = swapMintRecords[commonpb.AccountType_SWAP]
 	require.True(t, ok)

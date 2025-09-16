@@ -344,19 +344,19 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		case *transactionpb.Action_OpenAccount:
 			log = log.WithField("action_type", "open_account")
 			actionType = action.OpenAccount
-			actionHandler, err = NewOpenAccountActionHandler(s.data, typed.OpenAccount, submitActionsReq.Metadata)
+			actionHandler, err = NewOpenAccountActionHandler(ctx, s.data, typed.OpenAccount, submitActionsReq.Metadata)
 		case *transactionpb.Action_NoPrivacyTransfer:
 			log = log.WithField("action_type", "no_privacy_transfer")
 			actionType = action.NoPrivacyTransfer
-			actionHandler, err = NewNoPrivacyTransferActionHandler(typed.NoPrivacyTransfer)
+			actionHandler, err = NewNoPrivacyTransferActionHandler(ctx, s.data, typed.NoPrivacyTransfer)
 		case *transactionpb.Action_FeePayment:
 			log = log.WithField("action_type", "fee_payment")
 			actionType = action.NoPrivacyTransfer
-			actionHandler, err = NewFeePaymentActionHandler(typed.FeePayment, s.feeCollector)
+			actionHandler, err = NewFeePaymentActionHandler(ctx, s.data, typed.FeePayment, s.feeCollector)
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			log = log.WithField("action_type", "no_privacy_withdraw")
 			actionType = action.NoPrivacyWithdraw
-			actionHandler, err = NewNoPrivacyWithdrawActionHandler(intentRecord, typed.NoPrivacyWithdraw)
+			actionHandler, err = NewNoPrivacyWithdrawActionHandler(ctx, s.data, intentRecord, typed.NoPrivacyWithdraw)
 		default:
 			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
 		}
@@ -1050,7 +1050,13 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 
 	claimedActionRecord, err := s.data.GetGiftCardClaimedAction(ctx, giftCardVault.PublicKey().ToBase58())
 	if err == nil {
-		ownerTimelockAccounts, err := owner.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+		vmConfig, err := common.GetVmConfigForMint(ctx, s.data, common.CoreMintAccount)
+		if err != nil {
+			log.WithError(err).Warn("failure getting vm config")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		ownerTimelockAccounts, err := owner.GetTimelockAccounts(vmConfig)
 		if err != nil {
 			log.WithError(err).Warn("failure getting owner timelock accounts")
 			return nil, status.Error(codes.Internal, "")

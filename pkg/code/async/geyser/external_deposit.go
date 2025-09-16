@@ -65,7 +65,12 @@ func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vm
 }
 
 func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority *common.Account) error {
-	vmDepositAccounts, err := userAuthority.GetVmDepositAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+	if err != nil {
+		return err
+	}
+
+	vmDepositAccounts, err := userAuthority.GetVmDepositAccounts(vmConfig)
 	if err != nil {
 		return errors.Wrap(err, "error getting vm deposit ata")
 	}
@@ -84,7 +89,12 @@ func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Prov
 }
 
 func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority *common.Account, balance uint64) error {
-	vmDepositAccounts, err := userAuthority.GetVmDepositAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+	if err != nil {
+		return err
+	}
+
+	vmDepositAccounts, err := userAuthority.GetVmDepositAccounts(vmConfig)
 	if err != nil {
 		return errors.Wrap(err, "error getting vm deposit ata")
 	}
@@ -150,7 +160,12 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 }
 
 func findPotentialExternalDepositsIntoVm(ctx context.Context, data code_data.Provider, userAuthority *common.Account) ([]string, error) {
-	vmDepositAta, err := userAuthority.ToVmDepositAssociatedTokenAccount(common.CodeVmAccount, common.CoreMintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	vmDepositAta, err := userAuthority.ToVmDepositAta(vmConfig)
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting vm deposit ata")
 	}
@@ -204,7 +219,12 @@ func findPotentialExternalDepositsIntoVm(ctx context.Context, data code_data.Pro
 }
 
 func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.Provider, integration Integration, signature string, userAuthority *common.Account) error {
-	vmDepositAta, err := userAuthority.ToVmDepositAssociatedTokenAccount(common.CodeVmAccount, common.CoreMintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+	if err != nil {
+		return err
+	}
+
+	vmDepositAta, err := userAuthority.ToVmDepositAta(vmConfig)
 	if err != nil {
 		return errors.Wrap(err, "error getting vm deposit ata")
 	}

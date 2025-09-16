@@ -26,6 +26,11 @@ func TestTransaction_MakeNoncedTransaction_HappyPath(t *testing.T) {
 	var typedBlockhash solana.Blockhash
 	copy(typedBlockhash[:], untypedBlockhash)
 
+	nonce := &Nonce{
+		Account:   nonceAccount,
+		Blockhash: typedBlockhash,
+	}
+
 	ixns := []solana.Instruction{
 		token.Transfer(
 			testutil.NewRandomAccount(t).PublicKey().ToBytes(),
@@ -46,7 +51,7 @@ func TestTransaction_MakeNoncedTransaction_HappyPath(t *testing.T) {
 		),
 	}
 
-	txn, err := MakeNoncedTransaction(nonceAccount, typedBlockhash, ixns...)
+	txn, err := MakeNoncedTransaction(nonce, ixns...)
 	require.NoError(t, err)
 
 	assert.Equal(t, typedBlockhash, txn.Message.RecentBlockhash)
@@ -75,7 +80,12 @@ func TestTransaction_MakeNoncedTransaction_NoInstructions(t *testing.T) {
 	var typedBlockhash solana.Blockhash
 	copy(typedBlockhash[:], untypedBlockhash)
 
-	_, err = MakeNoncedTransaction(nonceAccount, typedBlockhash)
+	nonce := &Nonce{
+		Account:   nonceAccount,
+		Blockhash: typedBlockhash,
+	}
+
+	_, err = MakeNoncedTransaction(nonce)
 	assert.Error(t, err)
 }
 

@@ -58,10 +58,11 @@ func setup(t *testing.T) *testEnv {
 }
 
 func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *testGiftCard {
-	vm := testutil.NewRandomAccount(t)
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(vm, common.CoreMintAccount)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
+
+	timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{
@@ -82,7 +83,7 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		IntentType: intent.SendPublicPayment,
 
-		MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
+		MintAccount: vmConfig.Mint.PublicKey().ToBase58(),
 
 		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 

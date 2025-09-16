@@ -1,9 +1,11 @@
 package common
 
 import (
+	"context"
 	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/config"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 )
 
 var (
@@ -20,24 +22,37 @@ var (
 )
 
 type VmConfig struct {
+	Authority *Account
 	Vm        *Account
 	Omnibus   *Account
-	Authority *Account
+	Mint      *Account
 }
 
-func GetVmConfigForMint(mint *Account) (*VmConfig, error) {
+func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Account) (*VmConfig, error) {
 	switch mint.PublicKey().ToBase58() {
 	case CoreMintAccount.PublicKey().ToBase58():
 		return &VmConfig{
+			Authority: GetSubsidizer(),
 			Vm:        CodeVmAccount,
 			Omnibus:   CodeVmOmnibusAccount,
-			Authority: GetSubsidizer(),
+			Mint:      CoreMintAccount,
 		}, nil
 	case jeffyMintAccount.PublicKey().ToBase58():
+		vaultRecord, err := data.GetKey(ctx, jeffyAuthority.PublicKey().ToBase58())
+		if err != nil {
+			return nil, err
+		}
+
+		authorityAccount, err := NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
+
 		return &VmConfig{
+			Authority: authorityAccount,
 			Vm:        jeffyVmAccount,
 			Omnibus:   jeffyVmOmnibusAccount,
-			Authority: jeffyAuthority,
+			Mint:      mint,
 		}, nil
 	default:
 		return nil, errors.New("unsupported mint")

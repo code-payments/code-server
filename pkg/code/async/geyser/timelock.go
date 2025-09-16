@@ -51,12 +51,12 @@ func getTimelockUnlockState(ctx context.Context, data code_data.Provider, timelo
 		return nil, 0, err
 	}
 
-	vmConfig, err := common.GetVmConfigForMint(mintAccount)
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mintAccount)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	timelockAccounts, err := vaultOwnerAccount.GetTimelockAccounts(vmConfig.Vm, mintAccount)
+	timelockAccounts, err := vaultOwnerAccount.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, 0, err
 	}

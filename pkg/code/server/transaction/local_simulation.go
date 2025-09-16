@@ -241,11 +241,11 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 		}
 
 		// Validate authorities and respective derived timelock vault accounts match.
-		vmConfig, err := common.GetVmConfigForMint(mint)
+		vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 		if err != nil {
 			return nil, err
 		}
-		timelockAccounts, err := authority.GetTimelockAccounts(vmConfig.Vm, mint)
+		timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)
 		if err != nil {
 			return nil, err
 		}
