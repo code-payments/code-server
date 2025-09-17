@@ -52,8 +52,6 @@ type Record struct {
 	ReceivePaymentsPubliclyMetadata *ReceivePaymentsPubliclyMetadata
 	PublicDistributionMetadata      *PublicDistributionMetadata
 
-	ExtendedMetadata []byte
-
 	State State
 
 	Version uint64
@@ -164,8 +162,6 @@ func (r *Record) Clone() Record {
 		ReceivePaymentsPubliclyMetadata: receivePaymentsPubliclyMetadata,
 		PublicDistributionMetadata:      publicDistributionMetadata,
 
-		ExtendedMetadata: r.ExtendedMetadata,
-
 		State: r.State,
 
 		Version: r.Version,
@@ -189,8 +185,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.SendPublicPaymentMetadata = r.SendPublicPaymentMetadata
 	dst.ReceivePaymentsPubliclyMetadata = r.ReceivePaymentsPubliclyMetadata
 	dst.PublicDistributionMetadata = r.PublicDistributionMetadata
-
-	dst.ExtendedMetadata = r.ExtendedMetadata
 
 	dst.State = r.State
 

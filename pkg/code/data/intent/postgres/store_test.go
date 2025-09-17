@@ -26,6 +26,7 @@ const (
 			intent_type INTEGER NOT NULL,
 
 			mint TEXT NULL,
+
 			owner TEXT NOT NULL,
 			source TEXT NULL,
 			destination TEXT NULL,
@@ -43,9 +44,6 @@ const (
 			is_remote_send BOOL NOT NULL,
 			is_returned BOOL NOT NULL,
 			is_issuer_voiding_gift_card BOOL NOT NULL,
-			is_micro_payment BOOL NOT NULL,
-
-			extended_metadata BYTEA NULL,
 
 			state INTEGER NOT NULL,
 
