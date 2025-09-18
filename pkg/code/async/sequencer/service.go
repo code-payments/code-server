@@ -30,14 +30,14 @@ type service struct {
 	data                      code_data.Provider
 	scheduler                 Scheduler
 	vmIndexerClient           indexerpb.IndexerClient
-	noncePool                 *transaction.LocalNoncePool
+	solanaNoncePool           *transaction.LocalNoncePool
 	fulfillmentHandlersByType map[fulfillment.Type]FulfillmentHandler
 	actionHandlersByType      map[action.Type]ActionHandler
 	intentHandlersByType      map[intent.Type]IntentHandler
 }
 
-func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb.IndexerClient, noncePool *transaction.LocalNoncePool, configProvider ConfigProvider) (async.Service, error) {
-	if err := noncePool.Validate(nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction); err != nil {
+func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb.IndexerClient, solanaNoncePool *transaction.LocalNoncePool, configProvider ConfigProvider) (async.Service, error) {
+	if err := solanaNoncePool.Validate(nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction); err != nil {
 		return nil, err
 	}
 
@@ -47,7 +47,7 @@ func New(data code_data.Provider, scheduler Scheduler, vmIndexerClient indexerpb
 		data:                      data,
 		scheduler:                 scheduler,
 		vmIndexerClient:           vmIndexerClient,
-		noncePool:                 noncePool, // todo: validate configuration
+		solanaNoncePool:           solanaNoncePool,
 		fulfillmentHandlersByType: getFulfillmentHandlers(data, vmIndexerClient),
 		actionHandlersByType:      getActionHandlers(data),
 		intentHandlersByType:      getIntentHandlers(data),

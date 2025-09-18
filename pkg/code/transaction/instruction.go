@@ -6,9 +6,9 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/system"
 )
 
-func makeAdvanceNonceInstruction(nonce *common.Account) (solana.Instruction, error) {
+func makeAdvanceNonceInstruction(nonce, authority *common.Account) (solana.Instruction, error) {
 	return system.AdvanceNonce(
 		nonce.PublicKey().ToBytes(),
-		common.GetSubsidizer().PublicKey().ToBytes(),
+		authority.PublicKey().ToBytes(),
 	), nil
 }

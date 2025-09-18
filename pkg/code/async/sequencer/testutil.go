@@ -42,14 +42,13 @@ func (h *mockFulfillmentHandler) SupportsOnDemandTransactions() bool {
 	return h.supportsOnDemandTxnCreation
 }
 
-func (h *mockFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, error) {
+func (h *mockFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fulfillmentRecord *fulfillment.Record, selectedNonce *transaction_util.Nonce) (*solana.Transaction, []*common.Account, error) {
 	if !h.supportsOnDemandTxnCreation {
-		return nil, errors.New("not supported")
+		return nil, nil, errors.New("not supported")
 	}
 
 	txn := solana.NewTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(selectedNonce.Account.PublicKey().ToBase58()))
-	txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
-	return &txn, nil
+	return &txn, nil, nil
 }
 
 func (h *mockFulfillmentHandler) OnSuccess(ctx context.Context, fulfillmentRecord *fulfillment.Record, transactionRecord *transaction.Record) error {

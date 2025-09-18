@@ -17,12 +17,12 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/retry"
@@ -300,7 +300,12 @@ func updateAutoReturnFulfillmentPreSorting(
 }
 
 func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, giftCardIssuedIntent *intent.Record, isVoidedByUser bool) error {
-	usdExchangeRecord, err := data.GetExchangeRate(ctx, currency.USD, time.Now())
+	mintAccount, err := common.NewAccountFromPublicKeyString(giftCardIssuedIntent.MintAccount)
+	if err != nil {
+		return err
+	}
+
+	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, data, mintAccount, giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity, time.Now())
 	if err != nil {
 		return err
 	}
@@ -311,6 +316,8 @@ func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, 
 	intentRecord := &intent.Record{
 		IntentId:   getAutoReturnIntentId(giftCardIssuedIntent.IntentId),
 		IntentType: intent.ReceivePaymentsPublicly,
+
+		MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
 
 		InitiatorOwnerAccount: giftCardIssuedIntent.InitiatorOwnerAccount,
 
@@ -326,7 +333,7 @@ func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, 
 			OriginalExchangeRate:     giftCardIssuedIntent.SendPublicPaymentMetadata.ExchangeRate,
 			OriginalNativeAmount:     giftCardIssuedIntent.SendPublicPaymentMetadata.NativeAmount,
 
-			UsdMarketValue: usdExchangeRecord.Rate * float64(giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity) / float64(common.CoreMintQuarksPerUnit),
+			UsdMarketValue: usdMarketValue,
 		},
 
 		State: intent.StateConfirmed,

@@ -18,6 +18,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	timelock_token_v1 "github.com/code-payments/code-server/pkg/solana/timelock/v1"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -25,13 +26,13 @@ import (
 func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
-	vmAccount := testutil.NewRandomAccount(t)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
 	newOwnerAccount := testutil.NewRandomAccount(t)
-	newTokenAccount, err := newOwnerAccount.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	newTokenAccount, err := newOwnerAccount.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
-		vmAccount: vmAccount,
+		vmConfig:  vmConfig,
 		codeUsers: []*common.Account{newOwnerAccount},
 	}
 
@@ -44,7 +45,7 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, balance)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 0, balanceByAccount[newTokenAccount.PublicKey().ToBase58()])
@@ -58,15 +59,15 @@ func TestDefaultCalculationMethods_NewCodeAccount(t *testing.T) {
 func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
-	vmAccount := testutil.NewRandomAccount(t)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
 	owner := testutil.NewRandomAccount(t)
-	depositAccount, err := owner.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	depositAccount, err := owner.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	externalAccount := testutil.NewRandomAccount(t)
 
 	data := &balanceTestData{
-		vmAccount: vmAccount,
+		vmConfig:  vmConfig,
 		codeUsers: []*common.Account{owner},
 		transactions: []balanceTestTransaction{
 			// The following entries are added to the balance
@@ -87,7 +88,7 @@ func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
 	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 11, balanceByAccount[depositAccount.PublicKey().ToBase58()])
@@ -101,28 +102,28 @@ func TestDefaultCalculationMethods_DepositFromExternalWallet(t *testing.T) {
 func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
-	vmAccount := testutil.NewRandomAccount(t)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
 
 	owner1 := testutil.NewRandomAccount(t)
-	a1, err := owner1.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	a1, err := owner1.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	owner2 := testutil.NewRandomAccount(t)
-	a2, err := owner2.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	a2, err := owner2.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	owner3 := testutil.NewRandomAccount(t)
-	a3, err := owner3.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	a3, err := owner3.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	owner4 := testutil.NewRandomAccount(t)
-	a4, err := owner4.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	a4, err := owner4.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	externalAccount := testutil.NewRandomAccount(t)
 
 	data := &balanceTestData{
-		vmAccount: vmAccount,
+		vmConfig:  vmConfig,
 		codeUsers: []*common.Account{owner1, owner2, owner3, owner4},
 		transactions: []balanceTestTransaction{
 			// Fund account a1 through a4 with an external deposit
@@ -181,7 +182,7 @@ func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
 	accountRecords4, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner4)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords2[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords3[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords4[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords2[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords3[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords4[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 4)
 	assert.EqualValues(t, 11, balanceByAccount[a1.PublicKey().ToBase58()])
@@ -201,20 +202,20 @@ func TestDefaultCalculationMethods_MultipleIntents(t *testing.T) {
 func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
-	vmAccount := testutil.NewRandomAccount(t)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
 
 	owner1 := testutil.NewRandomAccount(t)
-	a1, err := owner1.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	a1, err := owner1.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	owner2 := testutil.NewRandomAccount(t)
-	a2, err := owner2.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	a2, err := owner2.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	externalAccount := testutil.NewRandomAccount(t)
 
 	data := &balanceTestData{
-		vmAccount: vmAccount,
+		vmConfig:  vmConfig,
 		codeUsers: []*common.Account{owner1, owner2},
 		transactions: []balanceTestTransaction{
 			// Fund account a1 through an external deposit
@@ -244,7 +245,7 @@ func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
 	accountRecords2, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, owner2)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords2[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords1[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0], accountRecords2[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 2)
 	assert.EqualValues(t, 0, balanceByAccount[a1.PublicKey().ToBase58()])
@@ -260,15 +261,15 @@ func TestDefaultCalculationMethods_BackAndForth(t *testing.T) {
 func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
-	vmAccount := testutil.NewRandomAccount(t)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
 	ownerAccount := testutil.NewRandomAccount(t)
-	tokenAccount, err := ownerAccount.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	tokenAccount, err := ownerAccount.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	externalAccount := testutil.NewRandomAccount(t)
 
 	data := &balanceTestData{
-		vmAccount: vmAccount,
+		vmConfig:  vmConfig,
 		codeUsers: []*common.Account{ownerAccount},
 		transactions: []balanceTestTransaction{
 			// Fund account the token account through an external deposit
@@ -291,7 +292,7 @@ func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
 	accountRecords, err := common.GetLatestTokenAccountRecordsForOwner(env.ctx, env.data, ownerAccount)
 	require.NoError(t, err)
 
-	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
+	balanceByAccount, err := BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	require.NoError(t, err)
 	require.Len(t, balanceByAccount, 1)
 	assert.EqualValues(t, 1, balanceByAccount[tokenAccount.PublicKey().ToBase58()])
@@ -305,13 +306,13 @@ func TestDefaultCalculationMethods_SelfPayments(t *testing.T) {
 func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	env := setupBalanceTestEnv(t)
 
-	vmAccount := testutil.NewRandomAccount(t)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
 	ownerAccount := testutil.NewRandomAccount(t)
-	tokenAccount, err := ownerAccount.ToTimelockVault(vmAccount, common.CoreMintAccount)
+	tokenAccount, err := ownerAccount.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 
 	data := &balanceTestData{
-		vmAccount: vmAccount,
+		vmConfig:  vmConfig,
 		codeUsers: []*common.Account{ownerAccount},
 	}
 
@@ -329,7 +330,7 @@ func TestDefaultCalculationMethods_NotManagedByCode(t *testing.T) {
 	_, err = CalculateFromCache(env.ctx, env.data, tokenAccount)
 	assert.Equal(t, ErrNotManagedByCode, err)
 
-	_, err = BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[common.CoreMintAccount.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
+	_, err = BatchCalculateFromCacheWithAccountRecords(env.ctx, env.data, accountRecords[vmConfig.Mint.PublicKey().ToBase58()][commonpb.AccountType_PRIMARY][0])
 	assert.Equal(t, ErrNotManagedByCode, err)
 
 	_, err = BatchCalculateFromCacheWithTokenAccounts(env.ctx, env.data, tokenAccount)
@@ -351,7 +352,7 @@ type balanceTestEnv struct {
 }
 
 type balanceTestData struct {
-	vmAccount    *common.Account
+	vmConfig     *common.VmConfig
 	codeUsers    []*common.Account
 	transactions []balanceTestTransaction
 }
@@ -376,7 +377,7 @@ func setupBalanceTestEnv(t *testing.T) (env balanceTestEnv) {
 
 func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestData) {
 	for _, owner := range data.codeUsers {
-		timelockAccounts, err := owner.GetTimelockAccounts(data.vmAccount, common.CoreMintAccount)
+		timelockAccounts, err := owner.GetTimelockAccounts(data.vmConfig)
 		require.NoError(t, err)
 		timelockRecord := timelockAccounts.ToDBRecord()
 		timelockRecord.VaultState = timelock_token_v1.StateLocked
@@ -387,7 +388,7 @@ func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestDat
 			OwnerAccount:     owner.PublicKey().ToBase58(),
 			AuthorityAccount: owner.PublicKey().ToBase58(),
 			TokenAccount:     timelockRecord.VaultAddress,
-			MintAccount:      common.CoreMintAccount.PublicKey().ToBase58(),
+			MintAccount:      data.vmConfig.Mint.PublicKey().ToBase58(),
 			AccountType:      commonpb.AccountType_PRIMARY,
 		}
 		require.NoError(t, env.data.CreateAccountInfo(env.ctx, accountInfoRecord))
@@ -399,13 +400,14 @@ func setupBalanceTestData(t *testing.T, env balanceTestEnv, data *balanceTestDat
 			intentRecord := &intent.Record{
 				IntentId:              txn.intentID,
 				IntentType:            intent.SendPrivatePayment,
+				MintAccount:           data.vmConfig.Mint.PublicKey().ToBase58(),
 				InitiatorOwnerAccount: "owner",
 				SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 					DestinationOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 					DestinationTokenAccount: txn.destination.PublicKey().ToBase58(),
 					Quantity:                txn.quantity,
 
-					ExchangeCurrency: common.CoreMintSymbol,
+					ExchangeCurrency: currency_lib.USD,
 					ExchangeRate:     1.0,
 					NativeAmount:     1.0,
 					UsdMarketValue:   1.0,

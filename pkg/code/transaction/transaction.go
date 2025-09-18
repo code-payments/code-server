@@ -19,34 +19,41 @@ import (
 
 // MakeNoncedTransaction makes a transaction that's backed by a nonce. The returned
 // transaction is not signed.
-func MakeNoncedTransaction(nonce *common.Account, bh solana.Blockhash, instructions ...solana.Instruction) (solana.Transaction, error) {
+func MakeNoncedTransaction(nonce *Nonce, instructions ...solana.Instruction) (solana.Transaction, error) {
 	if len(instructions) == 0 {
 		return solana.Transaction{}, errors.New("no instructions provided")
 	}
 
-	advanceNonceInstruction, err := makeAdvanceNonceInstruction(nonce)
+	payer := common.GetSubsidizer() // todo: Should this be the VM authority?
+
+	advanceNonceInstruction, err := makeAdvanceNonceInstruction(nonce.Account, payer)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
 
 	instructions = append([]solana.Instruction{advanceNonceInstruction}, instructions...)
 
-	txn := solana.NewTransaction(common.GetSubsidizer().PublicKey().ToBytes(), instructions...)
-	txn.SetBlockhash(bh)
+	txn := solana.NewTransaction(payer.PublicKey().ToBytes(), instructions...)
+	txn.SetBlockhash(nonce.Blockhash)
 
 	return txn, nil
 }
 
 func MakeOpenAccountTransaction(
-	nonce *common.Account,
-	bh solana.Blockhash,
+	nonce *Nonce,
+
+	vmConfig *common.VmConfig,
 
 	memory *common.Account,
 	accountIndex uint16,
 
 	timelockAccounts *common.TimelockAccounts,
 ) (solana.Transaction, error) {
-	initializeInstruction, err := timelockAccounts.GetInitializeInstruction(memory, accountIndex)
+	if !bytes.Equal(vmConfig.Vm.PublicKey().ToBytes(), timelockAccounts.Vm.PublicKey().ToBytes()) {
+		return solana.Transaction{}, errors.New("vm mismatch")
+	}
+
+	initializeInstruction, err := timelockAccounts.GetInitializeInstruction(vmConfig.Authority, memory, accountIndex)
 	if err != nil {
 		return solana.Transaction{}, err
 	}
@@ -56,29 +63,31 @@ func MakeOpenAccountTransaction(
 		compute_budget.SetComputeUnitLimit(50_000),
 		initializeInstruction,
 	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, instructions...)
 }
 
 func MakeCompressAccountTransaction(
-	nonce *common.Account,
-	bh solana.Blockhash,
+	nonce *Nonce,
 
-	vm *common.Account,
+	vmConfig *common.VmConfig,
+
 	memory *common.Account,
 	accountIndex uint16,
+
 	storage *common.Account,
+
 	virtualAccountState []byte,
 ) (solana.Transaction, error) {
 	hasher := sha256.New()
 	hasher.Write(virtualAccountState)
 	hashedVirtualAccountState := hasher.Sum(nil)
 
-	signature := ed25519.Sign(common.GetSubsidizer().PrivateKey().ToBytes(), hashedVirtualAccountState)
+	signature := ed25519.Sign(vmConfig.Authority.PrivateKey().ToBytes(), hashedVirtualAccountState)
 
 	compressInstruction := cvm.NewCompressInstruction(
 		&cvm.CompressInstructionAccounts{
-			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
-			Vm:          vm.PublicKey().ToBytes(),
+			VmAuthority: vmConfig.Authority.PublicKey().ToBytes(),
+			Vm:          vmConfig.Vm.PublicKey().ToBytes(),
 			VmMemory:    memory.PublicKey().ToBytes(),
 			VmStorage:   storage.PublicKey().ToBytes(),
 		},
@@ -93,20 +102,22 @@ func MakeCompressAccountTransaction(
 		compute_budget.SetComputeUnitLimit(200_000),
 		compressInstruction,
 	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, instructions...)
 }
 
 func MakeInternalWithdrawTransaction(
-	nonce *common.Account,
-	bh solana.Blockhash,
+	nonce *Nonce,
+
+	vmConfig *common.VmConfig,
 
 	virtualSignature solana.Signature,
 
-	vm *common.Account,
 	nonceMemory *common.Account,
 	nonceIndex uint16,
+
 	sourceMemory *common.Account,
 	sourceIndex uint16,
+
 	destinationMemory *common.Account,
 	destinationIndex uint16,
 ) (solana.Transaction, error) {
@@ -121,8 +132,8 @@ func MakeInternalWithdrawTransaction(
 
 	execInstruction := cvm.NewExecInstruction(
 		&cvm.ExecInstructionAccounts{
-			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
-			Vm:          vm.PublicKey().ToBytes(),
+			VmAuthority: vmConfig.Authority.PublicKey().ToBytes(),
+			Vm:          vmConfig.Vm.PublicKey().ToBytes(),
 			VmMemA:      mergedMemoryBanks.A,
 			VmMemB:      mergedMemoryBanks.B,
 			VmMemC:      mergedMemoryBanks.C,
@@ -140,20 +151,19 @@ func MakeInternalWithdrawTransaction(
 		compute_budget.SetComputeUnitLimit(100_000),
 		execInstruction,
 	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, instructions...)
 }
 
 func MakeExternalWithdrawTransaction(
-	nonce *common.Account,
-	bh solana.Blockhash,
+	nonce *Nonce,
+
+	vmConfig *common.VmConfig,
 
 	virtualSignature solana.Signature,
 
-	vm *common.Account,
-	vmOmnibus *common.Account,
-
 	nonceMemory *common.Account,
 	nonceIndex uint16,
+
 	sourceMemory *common.Account,
 	sourceIndex uint16,
 
@@ -164,7 +174,7 @@ func MakeExternalWithdrawTransaction(
 		return solana.Transaction{}, err
 	}
 
-	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
+	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmConfig.Omnibus.PublicKey().ToBytes())
 
 	externalAddressPublicKeyBytes := ed25519.PublicKey(externalDestination.PublicKey().ToBytes())
 
@@ -174,8 +184,8 @@ func MakeExternalWithdrawTransaction(
 
 	execInstruction := cvm.NewExecInstruction(
 		&cvm.ExecInstructionAccounts{
-			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
-			Vm:              vm.PublicKey().ToBytes(),
+			VmAuthority:     vmConfig.Authority.PublicKey().ToBytes(),
+			Vm:              vmConfig.Vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
 			VmMemB:          mergedMemoryBanks.B,
 			VmOmnibus:       &vmOmnibusPublicKeyBytes,
@@ -194,24 +204,26 @@ func MakeExternalWithdrawTransaction(
 		compute_budget.SetComputeUnitLimit(100_000),
 		execInstruction,
 	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, instructions...)
 }
 
 func MakeInternalTransferWithAuthorityTransaction(
-	nonce *common.Account,
-	bh solana.Blockhash,
+	nonce *Nonce,
+
+	vmConfig *common.VmConfig,
 
 	virtualSignature solana.Signature,
 
-	vm *common.Account,
 	nonceMemory *common.Account,
 	nonceIndex uint16,
+
 	sourceMemory *common.Account,
 	sourceIndex uint16,
+
 	destinationMemory *common.Account,
 	destinationIndex uint16,
 
-	coreMintQuarks uint64,
+	quarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory, destinationMemory)
 	if err != nil {
@@ -219,14 +231,14 @@ func MakeInternalTransferWithAuthorityTransaction(
 	}
 
 	vixn := cvm.NewTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
-		Amount:    coreMintQuarks,
+		Amount:    quarks,
 		Signature: cvm.Signature(virtualSignature),
 	})
 
 	execInstruction := cvm.NewExecInstruction(
 		&cvm.ExecInstructionAccounts{
-			VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
-			Vm:          vm.PublicKey().ToBytes(),
+			VmAuthority: vmConfig.Authority.PublicKey().ToBytes(),
+			Vm:          vmConfig.Vm.PublicKey().ToBytes(),
 			VmMemA:      mergedMemoryBanks.A,
 			VmMemB:      mergedMemoryBanks.B,
 			VmMemC:      mergedMemoryBanks.C,
@@ -244,28 +256,28 @@ func MakeInternalTransferWithAuthorityTransaction(
 		compute_budget.SetComputeUnitLimit(100_000),
 		execInstruction,
 	}
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, instructions...)
 }
 
 func MakeExternalTransferWithAuthorityTransaction(
-	nonce *common.Account,
-	bh solana.Blockhash,
+	nonce *Nonce,
+
+	vmConfig *common.VmConfig,
 
 	virtualSignature solana.Signature,
 
-	vm *common.Account,
-	vmOmnibus *common.Account,
-
 	nonceMemory *common.Account,
 	nonceIndex uint16,
+
 	sourceMemory *common.Account,
 	sourceIndex uint16,
 
-	isCreateOnSend bool,
 	externalDestinationOwner *common.Account,
 	externalDestination *common.Account,
 
-	coreMintQuarks uint64,
+	isCreateOnSend bool,
+	mint *common.Account,
+	quarks uint64,
 ) (solana.Transaction, error) {
 	mergedMemoryBanks, err := MergeMemoryBanks(nonceMemory, sourceMemory)
 	if err != nil {
@@ -274,17 +286,17 @@ func MakeExternalTransferWithAuthorityTransaction(
 
 	externalAddressPublicKeyBytes := ed25519.PublicKey(externalDestination.PublicKey().ToBytes())
 
-	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmOmnibus.PublicKey().ToBytes())
+	vmOmnibusPublicKeyBytes := ed25519.PublicKey(vmConfig.Omnibus.PublicKey().ToBytes())
 
 	vixn := cvm.NewExternalTransferVirtualInstruction(&cvm.TransferVirtualInstructionArgs{
-		Amount:    coreMintQuarks,
+		Amount:    quarks,
 		Signature: cvm.Signature(virtualSignature),
 	})
 
 	execInstruction := cvm.NewExecInstruction(
 		&cvm.ExecInstructionAccounts{
-			VmAuthority:     common.GetSubsidizer().PublicKey().ToBytes(),
-			Vm:              vm.PublicKey().ToBytes(),
+			VmAuthority:     vmConfig.Authority.PublicKey().ToBytes(),
+			Vm:              vmConfig.Vm.PublicKey().ToBytes(),
 			VmMemA:          mergedMemoryBanks.A,
 			VmMemB:          mergedMemoryBanks.B,
 			VmOmnibus:       &vmOmnibusPublicKeyBytes,
@@ -313,9 +325,9 @@ func MakeExternalTransferWithAuthorityTransaction(
 		}
 
 		createIdempotentInstruction, ata, err := token.CreateAssociatedTokenAccountIdempotent(
-			common.GetSubsidizer().PublicKey().ToBytes(),
+			common.GetSubsidizer().PublicKey().ToBytes(), // todo: Should this be the VM authority?
 			externalDestinationOwner.PublicKey().ToBytes(),
-			common.CoreMintAccount.PublicKey().ToBytes(),
+			mint.PublicKey().ToBytes(),
 		)
 		if err != nil {
 			return solana.Transaction{}, err
@@ -326,7 +338,7 @@ func MakeExternalTransferWithAuthorityTransaction(
 		instructions = append(instructions, createIdempotentInstruction)
 	}
 	instructions = append(instructions, execInstruction)
-	return MakeNoncedTransaction(nonce, bh, instructions...)
+	return MakeNoncedTransaction(nonce, instructions...)
 }
 
 type MergedMemoryBankResult struct {

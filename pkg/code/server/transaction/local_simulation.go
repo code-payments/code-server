@@ -1,6 +1,7 @@
 package transaction_v2
 
 import (
+	"bytes"
 	"context"
 	"errors"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
@@ -18,6 +20,7 @@ type LocalSimulationResult struct {
 
 type TokenAccountSimulation struct {
 	TokenAccount *common.Account
+	MintAccount  *common.Account
 
 	Transfers []TransferSimulation
 
@@ -39,20 +42,27 @@ type TransferSimulation struct {
 }
 
 // LocalSimulation simulates actions as if they were executed on the blockchain
-// taking into account cached Code DB state.
+// taking into account cached Code DB state. External state is not considered
+// and must be validated elsewhere.
 func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*transactionpb.Action) (*LocalSimulationResult, error) {
 	result := &LocalSimulationResult{
 		SimulationsByAccount: make(map[string]TokenAccountSimulation),
 	}
 
+	validatedDestinations := make(map[string]any)
 	for _, action := range actions {
-		var authority, derivedTimelockVault *common.Account
+		var authority, mint, derivedTimelockVault, destination *common.Account
 		var simulations []TokenAccountSimulation
 		var err error
 
 		// Simulate the action
 		switch typedAction := action.Type.(type) {
 		case *transactionpb.Action_OpenAccount:
+			mint, err = common.GetBackwardsCompatMint(typedAction.OpenAccount.Mint)
+			if err != nil {
+				return nil, err
+			}
+
 			opened, err := common.NewAccountFromProto(typedAction.OpenAccount.Token)
 			if err != nil {
 				return nil, err
@@ -82,11 +92,17 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				simulations,
 				TokenAccountSimulation{
 					TokenAccount: opened,
+					MintAccount:  mint,
 					Opened:       true,
 					OpenAction:   action,
 				},
 			)
 		case *transactionpb.Action_NoPrivacyTransfer:
+			mint, err = common.GetBackwardsCompatMint(typedAction.NoPrivacyTransfer.Mint)
+			if err != nil {
+				return nil, err
+			}
+
 			source, err := common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Source)
 			if err != nil {
 				return nil, err
@@ -98,7 +114,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				return nil, err
 			}
 
-			destination, err := common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Destination)
+			destination, err = common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Destination)
 			if err != nil {
 				return nil, err
 			}
@@ -109,6 +125,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				simulations,
 				TokenAccountSimulation{
 					TokenAccount: source,
+					MintAccount:  mint,
 					Transfers: []TransferSimulation{
 						{
 							Action:      action,
@@ -118,6 +135,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				},
 				TokenAccountSimulation{
 					TokenAccount: destination,
+					MintAccount:  mint,
 					Transfers: []TransferSimulation{
 						{
 							Action:      action,
@@ -127,6 +145,11 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				},
 			)
 		case *transactionpb.Action_FeePayment:
+			mint, err = common.GetBackwardsCompatMint(typedAction.FeePayment.Mint)
+			if err != nil {
+				return nil, err
+			}
+
 			source, err := common.NewAccountFromProto(typedAction.FeePayment.Source)
 			if err != nil {
 				return nil, err
@@ -144,6 +167,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				simulations,
 				TokenAccountSimulation{
 					TokenAccount: source,
+					MintAccount:  mint,
 					Transfers: []TransferSimulation{
 						{
 							Action:      action,
@@ -155,6 +179,11 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				// todo: Doesn't specify destination, but that's not required yet
 			)
 		case *transactionpb.Action_NoPrivacyWithdraw:
+			mint, err = common.GetBackwardsCompatMint(typedAction.NoPrivacyWithdraw.Mint)
+			if err != nil {
+				return nil, err
+			}
+
 			source, err := common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Source)
 			if err != nil {
 				return nil, err
@@ -166,7 +195,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				return nil, err
 			}
 
-			destination, err := common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Destination)
+			destination, err = common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Destination)
 			if err != nil {
 				return nil, err
 			}
@@ -181,6 +210,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				simulations,
 				TokenAccountSimulation{
 					TokenAccount: source,
+					MintAccount:  mint,
 					Transfers: []TransferSimulation{
 						{
 							Action:       action,
@@ -195,6 +225,7 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 				},
 				TokenAccountSimulation{
 					TokenAccount: destination,
+					MintAccount:  mint,
 					Transfers: []TransferSimulation{
 						{
 							Action:       action,
@@ -210,12 +241,33 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 		}
 
 		// Validate authorities and respective derived timelock vault accounts match.
-		timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+		vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
+		if err != nil {
+			return nil, err
+		}
+		timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)
 		if err != nil {
 			return nil, err
 		}
 		if timelockAccounts.Vault.PublicKey().ToBase58() != derivedTimelockVault.PublicKey().ToBase58() {
 			return nil, NewActionValidationErrorf(action, "token must be %s", timelockAccounts.Vault.PublicKey().ToBase58())
+		}
+
+		// Validate destination accounts make sense given cached state
+		if destination != nil {
+			if _, ok := validatedDestinations[destination.PublicKey().ToBase58()]; !ok {
+				destinationAccountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, destination.PublicKey().ToBase58())
+				switch err {
+				case nil:
+					if mint.PublicKey().ToBase58() != destinationAccountInfoRecord.MintAccount {
+						return nil, NewActionValidationErrorf(action, "%s mint is invalid", destination.PublicKey().ToBase58())
+					}
+				case account.ErrAccountInfoNotFound:
+				default:
+					return nil, err
+				}
+				validatedDestinations[destination.PublicKey().ToBase58()] = true
+			}
 		}
 
 		// Combine the simulated action to all previously simulated actions with
@@ -232,27 +284,32 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 			if ok {
 				// Attempt to open an already closed account, which isn't supported
 				if combined.Closed && simulation.Opened {
-					return nil, NewActionValidationError(action, "account cannot be reopened")
+					return nil, NewActionValidationErrorf(action, "%s cannot be reopened", simulation.TokenAccount.PublicKey().ToBase58())
 				}
 
 				// Attempt to open an already opened account
 				if combined.Opened && simulation.Opened {
-					return nil, NewActionValidationError(action, "account is already opened in another action")
+					return nil, NewActionValidationErrorf(action, "%s is already opened in another action", simulation.TokenAccount.PublicKey().ToBase58())
 				}
 
 				// Funds transferred to an account before it was opened
 				if len(combined.Transfers) > 0 && simulation.Opened {
-					return nil, NewActionValidationError(action, "opened an account after transferring funds to it")
+					return nil, NewActionValidationErrorf(action, "opened %s after transferring funds to it", simulation.TokenAccount.PublicKey().ToBase58())
 				}
 
 				// Attempt to close an already closed account
 				if combined.Closed && simulation.Closed {
-					return nil, NewActionValidationError(action, "account is already closed in another action")
+					return nil, NewActionValidationErrorf(action, "%s is already closed in another action", simulation.TokenAccount.PublicKey().ToBase58())
 				}
 
 				// Attempt to send/receive funds to a closed account
 				if combined.Closed && len(simulation.Transfers) > 0 {
-					return nil, NewActionValidationError(action, "account is closed and cannot send/receive funds")
+					return nil, NewActionValidationErrorf(action, "%s is closed and cannot send/receive funds", simulation.TokenAccount.PublicKey().ToBase58())
+				}
+
+				// Mint changed
+				if !bytes.Equal(combined.MintAccount.PublicKey().ToBytes(), simulation.MintAccount.PublicKey().ToBytes()) {
+					return nil, NewActionValidationErrorf(action, "%s mint is invalid", simulation.TokenAccount.PublicKey().ToBase58())
 				}
 
 				combined.Transfers = append(combined.Transfers, simulation.Transfers...)
@@ -327,7 +384,7 @@ func (s TokenAccountSimulation) EnforceBalances(ctx context.Context, data code_d
 	for _, transfer := range s.Transfers {
 		newBalance = newBalance + transfer.DeltaQuarks
 		if newBalance < 0 {
-			return NewActionValidationError(transfer.Action, "insufficient balance to perform action")
+			return NewActionValidationErrorf(transfer.Action, "%s has insufficient balance to perform action", s.TokenAccount.PublicKey().ToBase58())
 		}
 
 		// If it's withdrawn out of this account, remove any remaining balance.
@@ -339,7 +396,7 @@ func (s TokenAccountSimulation) EnforceBalances(ctx context.Context, data code_d
 	}
 
 	if s.Closed && newBalance != 0 {
-		return NewActionValidationError(s.CloseAction, "attempt to close an account with a non-zero balance")
+		return NewActionValidationErrorf(s.CloseAction, "attempt to close %s with a non-zero balance", s.TokenAccount.PublicKey().ToBase58())
 	}
 
 	return nil

@@ -176,6 +176,8 @@ func makeSendPublicPaymentIntent(t *testing.T, owner *common.Account, usdMarketV
 			IsWithdrawal: isWithdraw,
 		},
 
+		MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
+
 		InitiatorOwnerAccount: owner.PublicKey().ToBase58(),
 
 		State:     intent.StatePending,
