@@ -214,7 +214,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	coreMintAmount := nativeAmount / exchangeRateRecord.Rate
 	quarkAmount := uint64(coreMintAmount*float64(common.CoreMintQuarksPerUnit)) + additionalQuarks
 
-	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, s.data, common.CoreMintAccount, quarkAmount, currency_util.GetLatestExchangeRateTime())
+	usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, s.data, common.CoreMintAccount, quarkAmount, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		log.WithError(err).Warn("failure calculating usd market value")
 		return nil, err

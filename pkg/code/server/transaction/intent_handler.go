@@ -355,7 +355,7 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 
 	exchangeData := typedProtoMetadata.ExchangeData
 
-	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, h.data, mint, exchangeData.Quarks, currency_util.GetLatestExchangeRateTime())
+	usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, h.data, mint, exchangeData.Quarks, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return err
 	}
@@ -893,7 +893,7 @@ func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Cont
 	}
 	h.cachedGiftCardIssuedIntentRecord = giftCardIssuedIntentRecord
 
-	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, h.data, mint, typedProtoMetadata.Quarks, currency_util.GetLatestExchangeRateTime())
+	usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, h.data, mint, typedProtoMetadata.Quarks, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return err
 	}
@@ -1203,7 +1203,7 @@ func (h *PublicDistributionIntentHandler) PopulateMetadata(ctx context.Context, 
 		totalQuarks += distribution.Quarks
 	}
 
-	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, h.data, mint, totalQuarks, currency_util.GetLatestExchangeRateTime())
+	usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, h.data, mint, totalQuarks, currency_util.GetLatestExchangeRateTime())
 	if err != nil {
 		return err
 	}
