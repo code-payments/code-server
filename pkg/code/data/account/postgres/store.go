@@ -82,45 +82,49 @@ func (s *store) GetByTokenAddressBatch(ctx context.Context, addresses ...string)
 }
 
 // GetByAuthorityAddress implements account.Store.GetByAuthorityAddress
-func (s *store) GetByAuthorityAddress(ctx context.Context, address string) (*account.Record, error) {
-	model, err := dbGetByAuthorityAddress(ctx, s.db, address)
+func (s *store) GetByAuthorityAddress(ctx context.Context, address string) (map[string]*account.Record, error) {
+	models, err := dbGetByAuthorityAddress(ctx, s.db, address)
 	if err != nil {
 		return nil, err
 	}
-	return fromModel(model), nil
+
+	res := make(map[string]*account.Record)
+	for _, model := range models {
+		res[model.MintAccount] = fromModel(model)
+	}
+	return res, nil
 }
 
 // GetLatestByOwnerAddress implements account.Store.GetLatestByOwnerAddress
-func (s *store) GetLatestByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*account.Record, error) {
-	modelsByType, err := dbGetLatestByOwnerAddress(ctx, s.db, address)
+func (s *store) GetLatestByOwnerAddress(ctx context.Context, address string) (map[string]map[commonpb.AccountType][]*account.Record, error) {
+	models, err := dbGetLatestByOwnerAddress(ctx, s.db, address)
 	if err != nil {
 		return nil, err
 	}
 
-	res := make(map[commonpb.AccountType][]*account.Record)
-	for _, model := range modelsByType {
+	res := make(map[string]map[commonpb.AccountType][]*account.Record)
+	for _, model := range models {
+		if _, ok := res[model.MintAccount]; !ok {
+			res[model.MintAccount] = make(map[commonpb.AccountType][]*account.Record)
+		}
 		record := fromModel(model)
-		res[record.AccountType] = append(res[record.AccountType], record)
+		res[record.MintAccount][record.AccountType] = append(res[record.MintAccount][record.AccountType], record)
 	}
 	return res, nil
 }
 
 // GetLatestByOwnerAddressAndType implements account.Store.GetLatestByOwnerAddressAndType
-func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error) {
-	model, err := dbGetLatestByOwnerAddressAndType(ctx, s.db, address, accountType)
+func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (map[string]*account.Record, error) {
+	models, err := dbGetLatestByOwnerAddressAndType(ctx, s.db, address, accountType)
 	if err != nil {
 		return nil, err
 	}
-	return fromModel(model), nil
-}
 
-// GetRelationshipByOwnerAddress implements account.Store.GetRelationshipByOwnerAddress
-func (s *store) GetRelationshipByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error) {
-	model, err := dbGetRelationshipByOwnerAddress(ctx, s.db, address, relationshipTo)
-	if err != nil {
-		return nil, err
+	res := make(map[string]*account.Record)
+	for _, model := range models {
+		res[model.MintAccount] = fromModel(model)
 	}
-	return fromModel(model), nil
+	return res, nil
 }
 
 // GetPrioritizedRequiringDepositSync implements account.Store.GetPrioritizedRequiringDepositSync

@@ -12,7 +12,6 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 func RunTests(t *testing.T, s account.Store, teardown func()) {
@@ -23,7 +22,6 @@ func RunTests(t *testing.T, s account.Store, teardown func()) {
 		testGetLatestByOwner,
 		testBatchedMethods,
 		testRemoteSendEdgeCases,
-		testRelationshipAccountEdgeCases,
 		testSwapAccountEdgeCases,
 		testDepositSyncMethods,
 		testAutoReturnCheckMethods,
@@ -44,7 +42,7 @@ func testRoundTrip(t *testing.T, s account.Store) {
 			AuthorityAccount:     "authority",
 			TokenAccount:         "token",
 			MintAccount:          "mint",
-			AccountType:          commonpb.AccountType_TEMPORARY_OUTGOING,
+			AccountType:          commonpb.AccountType_POOL,
 			Index:                123,
 			RequiresDepositSync:  true,
 			DepositsLastSyncedAt: time.Now().Add(-time.Hour),
@@ -66,8 +64,10 @@ func testRoundTrip(t *testing.T, s account.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		actualByMint, err := s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
 		require.NoError(t, err)
+		require.Len(t, actualByMint, 1)
+		actual = actualByMint[cloned.MintAccount]
 		assertEquivalentRecords(t, &cloned, actual)
 
 		expected.RequiresDepositSync = false
@@ -79,8 +79,10 @@ func testRoundTrip(t *testing.T, s account.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		actualByMint, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
 		require.NoError(t, err)
+		require.Len(t, actualByMint, 1)
+		actual = actualByMint[cloned.MintAccount]
 		assertEquivalentRecords(t, &cloned, actual)
 	})
 }
@@ -98,7 +100,7 @@ func testPutMultipleRecords(t *testing.T, s account.Store) {
 				AuthorityAccount: fmt.Sprintf("authority_part1_%d", i),
 				TokenAccount:     fmt.Sprintf("token_part1_%d", i),
 				MintAccount:      "mint",
-				AccountType:      commonpb.AccountType_TEMPORARY_OUTGOING,
+				AccountType:      commonpb.AccountType_POOL,
 				Index:            uint64(i),
 			}
 			cloned := record.Clone()
@@ -110,9 +112,8 @@ func testPutMultipleRecords(t *testing.T, s account.Store) {
 
 		// Accounts across different type case
 		for i, accountType := range []commonpb.AccountType{
-			commonpb.AccountType_BUCKET_100_KIN,
-			commonpb.AccountType_BUCKET_10_000_KIN,
-			commonpb.AccountType_BUCKET_100_000_KIN,
+			commonpb.AccountType_PRIMARY,
+			commonpb.AccountType_SWAP,
 		} {
 			record := &account.Record{
 				OwnerAccount:     "owner_part2",
@@ -120,6 +121,26 @@ func testPutMultipleRecords(t *testing.T, s account.Store) {
 				TokenAccount:     fmt.Sprintf("token_part2_%d", i),
 				MintAccount:      "mint",
 				AccountType:      accountType,
+				Index:            0,
+			}
+			if accountType == commonpb.AccountType_PRIMARY {
+				record.AuthorityAccount = record.OwnerAccount
+			}
+			cloned := record.Clone()
+
+			require.NoError(t, s.Put(ctx, record))
+
+			records = append(records, &cloned)
+		}
+
+		// Accounts across different mints
+		for i := 0; i < 5; i++ {
+			record := &account.Record{
+				OwnerAccount:     "owner_part3",
+				AuthorityAccount: "owner_part3",
+				TokenAccount:     fmt.Sprintf("token_part3_%d", i),
+				MintAccount:      fmt.Sprintf("mint%d", i),
+				AccountType:      commonpb.AccountType_PRIMARY,
 				Index:            0,
 			}
 			cloned := record.Clone()
@@ -146,8 +167,8 @@ func testPutErrors(t *testing.T, s account.Store) {
 			AuthorityAccount: "authority",
 			TokenAccount:     "token",
 			MintAccount:      "mint",
-			AccountType:      commonpb.AccountType_TEMPORARY_OUTGOING,
-			Index:            123,
+			AccountType:      commonpb.AccountType_POOL,
+			Index:            0,
 		}
 		original := record.Clone()
 
@@ -174,7 +195,7 @@ func testPutErrors(t *testing.T, s account.Store) {
 		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
 
 		cloned = original.Clone()
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		cloned.AccountType = commonpb.AccountType_SWAP
 		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
 
 		// Changing multiple fields with owner changed
@@ -204,15 +225,16 @@ func testPutErrors(t *testing.T, s account.Store) {
 		cloned = original.Clone()
 		cloned.OwnerAccount = "new_owner"
 		cloned.TokenAccount = "new_token"
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		cloned.AccountType = commonpb.AccountType_SWAP
 		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
 
-		cloned = original.Clone()
+		// todo: this case isn't possible with current account structures
+		/*cloned = original.Clone()
 		cloned.OwnerAccount = "new_owner"
 		cloned.TokenAccount = "new_token"
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		cloned.AccountType = ?
 		cloned.Index = cloned.Index + 1
-		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
+		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))*/
 
 		// Changing multiple fields with token changed
 
@@ -223,14 +245,15 @@ func testPutErrors(t *testing.T, s account.Store) {
 
 		cloned = original.Clone()
 		cloned.TokenAccount = "new_token"
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		cloned.AccountType = commonpb.AccountType_SWAP
 		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
 
-		cloned = original.Clone()
+		// todo: this case isn't possible with current account structures
+		/*cloned = original.Clone()
 		cloned.TokenAccount = "new_token"
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		cloned.AccountType = ?
 		cloned.Index = cloned.Index + 1
-		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
+		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))*/
 
 		// Changing multiple fields with authority changed
 
@@ -239,18 +262,20 @@ func testPutErrors(t *testing.T, s account.Store) {
 		cloned.Index = cloned.Index + 1
 		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
 
-		cloned = original.Clone()
+		// todo: this case isn't possible with current account structures
+		/*cloned = original.Clone()
 		cloned.AuthorityAccount = "new_authority"
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		cloned.AccountType = ?
 		cloned.Index = cloned.Index + 1
-		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
+		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))*/
 
 		// Changing multiple fields with account type changed
 
-		cloned = original.Clone()
-		cloned.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		// todo: this case isn't possible with current account structures
+		/*cloned = original.Clone()
+		cloned.AccountType = ?
 		cloned.Index = cloned.Index + 1
-		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))
+		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, &cloned))*/
 
 		// Ensure we didn't overwrite the original record
 		actual, err := s.GetByTokenAddress(ctx, original.TokenAccount)
@@ -266,54 +291,80 @@ func testGetLatestByOwner(t *testing.T, s account.Store) {
 		_, err := s.GetLatestByOwnerAddress(ctx, "owner")
 		assert.Equal(t, account.ErrAccountInfoNotFound, err)
 
-		_, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_TEMPORARY_OUTGOING)
+		_, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_POOL)
 		assert.Equal(t, account.ErrAccountInfoNotFound, err)
 
-		for i, accountType := range []commonpb.AccountType{
-			commonpb.AccountType_TEMPORARY_INCOMING,
-			commonpb.AccountType_TEMPORARY_OUTGOING,
-			commonpb.AccountType_POOL,
-		} {
-			for j := 0; j < 5; j++ {
+		for _, mint := range []string{"mint1", "mint2"} {
+			for _, accountType := range []commonpb.AccountType{
+				commonpb.AccountType_PRIMARY,
+				commonpb.AccountType_SWAP,
+			} {
 				record := &account.Record{
 					OwnerAccount:     "owner",
-					AuthorityAccount: fmt.Sprintf("authority%d%d", i, j),
-					TokenAccount:     fmt.Sprintf("token%d%d", i, j),
-					MintAccount:      "mint",
+					AuthorityAccount: fmt.Sprintf("authority_%s", accountType.String()),
+					TokenAccount:     fmt.Sprintf("token_%s_%s", accountType.String(), mint),
+					MintAccount:      mint,
 					AccountType:      accountType,
-					Index:            uint64(j),
+					Index:            0,
 				}
+				if accountType == commonpb.AccountType_PRIMARY {
+					record.AuthorityAccount = record.OwnerAccount
+				}
+
 				require.NoError(t, s.Put(ctx, record))
 			}
 		}
 
-		actual, err := s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_TEMPORARY_INCOMING)
-		require.NoError(t, err)
-		assert.Equal(t, "token04", actual.TokenAccount)
-
-		actual, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_TEMPORARY_OUTGOING)
-		require.NoError(t, err)
-		assert.Equal(t, "token14", actual.TokenAccount)
-
-		actualByType, err := s.GetLatestByOwnerAddress(ctx, "owner")
-		require.NoError(t, err)
-		require.Len(t, actualByType, 3)
-
-		for i, accountType := range []commonpb.AccountType{
-			commonpb.AccountType_TEMPORARY_INCOMING,
-			commonpb.AccountType_TEMPORARY_OUTGOING,
-		} {
-			actual, ok := actualByType[accountType]
-			require.True(t, ok)
-			require.Len(t, actual, 1)
-			assert.Equal(t, fmt.Sprintf("token%d4", i), actual[0].TokenAccount)
+		for _, mint := range []string{"mint1", "mint2"} {
+			for i, accountType := range []commonpb.AccountType{
+				commonpb.AccountType_POOL,
+			} {
+				for j := 0; j < 5; j++ {
+					record := &account.Record{
+						OwnerAccount:     "owner",
+						AuthorityAccount: fmt.Sprintf("authority_%s_%d%d", accountType.String(), i, j),
+						TokenAccount:     fmt.Sprintf("token_%s_%s_%d%d", accountType.String(), mint, i, j),
+						MintAccount:      mint,
+						AccountType:      accountType,
+						Index:            uint64(j),
+					}
+					require.NoError(t, s.Put(ctx, record))
+				}
+			}
 		}
 
-		allActual, ok := actualByType[commonpb.AccountType_POOL]
-		require.True(t, ok)
-		require.Len(t, allActual, 5)
-		for i, actual := range allActual {
-			assert.Equal(t, fmt.Sprintf("token2%d", i), actual.TokenAccount)
+		actualByMintAndType, err := s.GetLatestByOwnerAddress(ctx, "owner")
+		require.NoError(t, err)
+		require.Len(t, actualByMintAndType, 2)
+		for _, mint := range []string{"mint1", "mint2"} {
+			actualByType, ok := actualByMintAndType[mint]
+			require.True(t, ok)
+
+			allActual, ok := actualByType[commonpb.AccountType_PRIMARY]
+			require.True(t, ok)
+			require.Len(t, allActual, 1)
+			assert.Equal(t, fmt.Sprintf("token_PRIMARY_%s", mint), allActual[0].TokenAccount)
+
+			allActual, ok = actualByType[commonpb.AccountType_SWAP]
+			require.True(t, ok)
+			require.Len(t, allActual, 1)
+			assert.Equal(t, fmt.Sprintf("token_SWAP_%s", mint), allActual[0].TokenAccount)
+
+			allActual, ok = actualByType[commonpb.AccountType_POOL]
+			require.True(t, ok)
+			require.Len(t, allActual, 5)
+			for i, actual := range allActual {
+				assert.Equal(t, fmt.Sprintf("token_POOL_%s_0%d", mint, i), actual.TokenAccount)
+			}
+		}
+
+		actualByMint, err := s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_POOL)
+		require.NoError(t, err)
+		require.Len(t, actualByMint, 2)
+		for _, mint := range []string{"mint1", "mint2"} {
+			actual, ok := actualByMint[mint]
+			require.True(t, ok)
+			assert.Equal(t, fmt.Sprintf("token_POOL_%s_04", mint), actual.TokenAccount)
 		}
 	})
 }
@@ -387,20 +438,25 @@ func testRemoteSendEdgeCases(t *testing.T, s account.Store) {
 		assert.Equal(t, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, actual.AccountType)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		actualByMint, err := s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
 		require.NoError(t, err)
+		require.Len(t, actualByMint, 1)
+		actual = actualByMint[cloned.MintAccount]
 		assert.Equal(t, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, actual.AccountType)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+		actualByMint, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 		require.NoError(t, err)
+		require.Len(t, actualByMint, 1)
+		actual = actualByMint[cloned.MintAccount]
 		assert.Equal(t, commonpb.AccountType_REMOTE_SEND_GIFT_CARD, actual.AccountType)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		latest, err := s.GetLatestByOwnerAddress(ctx, "owner")
+		latestByMintAndType, err := s.GetLatestByOwnerAddress(ctx, "owner")
 		require.NoError(t, err)
-		require.Len(t, latest, 1)
-		records, ok := latest[commonpb.AccountType_REMOTE_SEND_GIFT_CARD]
+		require.Len(t, latestByMintAndType, 1)
+		require.Len(t, latestByMintAndType[cloned.MintAccount], 1)
+		records, ok := latestByMintAndType[cloned.MintAccount][commonpb.AccountType_REMOTE_SEND_GIFT_CARD]
 		require.True(t, ok)
 		require.Len(t, records, 1)
 		actual = records[0]
@@ -416,66 +472,6 @@ func testRemoteSendEdgeCases(t *testing.T, s account.Store) {
 		require.NoError(t, err)
 		assert.False(t, actual.RequiresAutoReturnCheck)
 		assertEquivalentRecords(t, &cloned, actual)
-	})
-}
-
-func testRelationshipAccountEdgeCases(t *testing.T, s account.Store) {
-	t.Run("testRelationshipAccountEdgeCases", func(t *testing.T) {
-		ctx := context.Background()
-
-		// Different relationships within the same owner
-		var allExpectedRecords []*account.Record
-		for i, relationshipTo := range []string{"app1.com", "app2.com"} {
-			relationshipRecord := &account.Record{
-				OwnerAccount:     "owner",
-				AuthorityAccount: fmt.Sprintf("authority%d", i),
-				TokenAccount:     fmt.Sprintf("token%d", i),
-				MintAccount:      "mint",
-				AccountType:      commonpb.AccountType_RELATIONSHIP,
-				RelationshipTo:   &relationshipTo,
-				Index:            uint64(0),
-			}
-			cloned := relationshipRecord.Clone()
-			allExpectedRecords = append(allExpectedRecords, &cloned)
-
-			_, err := s.GetRelationshipByOwnerAddress(ctx, cloned.OwnerAccount, relationshipTo)
-			assert.Equal(t, account.ErrAccountInfoNotFound, err)
-
-			require.NoError(t, s.Put(ctx, relationshipRecord))
-			assert.Equal(t, account.ErrAccountInfoExists, s.Put(ctx, relationshipRecord))
-
-			// New authority assigned to the owner using an existing relationship
-			relationshipRecord.AuthorityAccount = "newAuthority"
-			assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, relationshipRecord))
-
-			// Existing authority assigned to the owner of a different relationship
-			relationshipRecord.RelationshipTo = pointer.String("newapp.com")
-			assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, relationshipRecord))
-
-			actual, err := s.GetByTokenAddress(ctx, cloned.TokenAccount)
-			require.NoError(t, err)
-			assertEquivalentRecords(t, &cloned, actual)
-
-			actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
-			require.NoError(t, err)
-			assertEquivalentRecords(t, &cloned, actual)
-
-			actual, err = s.GetRelationshipByOwnerAddress(ctx, cloned.OwnerAccount, relationshipTo)
-			require.NoError(t, err)
-			assertEquivalentRecords(t, &cloned, actual)
-		}
-
-		recordsByType, err := s.GetLatestByOwnerAddress(ctx, "owner")
-		require.NoError(t, err)
-		allActualRecords, ok := recordsByType[commonpb.AccountType_RELATIONSHIP]
-		require.True(t, ok)
-		require.Len(t, allActualRecords, len(allExpectedRecords))
-		for i := 0; i < len(allActualRecords); i++ {
-			assertEquivalentRecords(t, allExpectedRecords[i], allActualRecords[i])
-		}
-
-		_, err = s.GetLatestByOwnerAddressAndType(ctx, "owner", commonpb.AccountType_RELATIONSHIP)
-		assert.Error(t, err)
 	})
 }
 
@@ -500,27 +496,25 @@ func testSwapAccountEdgeCases(t *testing.T, s account.Store) {
 		require.NoError(t, err)
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
+		actualByMint, err := s.GetByAuthorityAddress(ctx, cloned.AuthorityAccount)
 		require.NoError(t, err)
+		require.Len(t, actualByMint, 1)
+		actual = actualByMint[cloned.MintAccount]
 		assertEquivalentRecords(t, &cloned, actual)
 
-		actual, err = s.GetLatestByOwnerAddressAndType(ctx, cloned.OwnerAccount, commonpb.AccountType_SWAP)
+		actualByMint, err = s.GetLatestByOwnerAddressAndType(ctx, cloned.OwnerAccount, commonpb.AccountType_SWAP)
 		require.NoError(t, err)
+		require.Len(t, actualByMint, 1)
+		actual = actualByMint[cloned.MintAccount]
 		assertEquivalentRecords(t, &cloned, actual)
 
-		recordsByType, err := s.GetLatestByOwnerAddress(ctx, cloned.OwnerAccount)
+		actualByMintAndType, err := s.GetLatestByOwnerAddress(ctx, cloned.OwnerAccount)
 		require.NoError(t, err)
-		require.Len(t, recordsByType, 1)
-		require.Len(t, recordsByType[commonpb.AccountType_SWAP], 1)
-		assertEquivalentRecords(t, &cloned, recordsByType[commonpb.AccountType_SWAP][0])
-
-		// This is technically a bug, but a feature given we know we have exactly
-		// one mint we're supporting for swaps. Supporting multiple mints at this
-		// point is a larger refactor of this data store we don't want to tackle
-		// just yet.
-		swapRecord.MintAccount = "mint2"
-		swapRecord.TokenAccount = "token2"
-		assert.Equal(t, account.ErrInvalidAccountInfo, s.Put(ctx, swapRecord))
+		require.Len(t, actualByMintAndType, 1)
+		require.Len(t, actualByMintAndType[actual.MintAccount], 1)
+		require.Len(t, actualByMintAndType[actual.MintAccount][commonpb.AccountType_SWAP], 1)
+		actual = actualByMintAndType[actual.MintAccount][commonpb.AccountType_SWAP][0]
+		assertEquivalentRecords(t, &cloned, actual)
 	})
 }
 
@@ -645,7 +639,6 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *account.Record) {
 	assert.Equal(t, obj1.MintAccount, obj2.MintAccount)
 	assert.Equal(t, obj1.AccountType, obj2.AccountType)
 	assert.Equal(t, obj1.Index, obj2.Index)
-	assert.EqualValues(t, obj1.RelationshipTo, obj2.RelationshipTo)
 	assert.Equal(t, obj1.RequiresDepositSync, obj2.RequiresDepositSync)
 	assert.Equal(t, obj1.DepositsLastSyncedAt.Unix(), obj2.DepositsLastSyncedAt.Unix())
 	assert.Equal(t, obj1.RequiresAutoReturnCheck, obj2.RequiresAutoReturnCheck)

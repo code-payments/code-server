@@ -6,25 +6,13 @@ import (
 	"github.com/pkg/errors"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
-
-	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 var AllAccountTypes = []commonpb.AccountType{
 	commonpb.AccountType_PRIMARY,
-	commonpb.AccountType_TEMPORARY_INCOMING,
-	commonpb.AccountType_TEMPORARY_OUTGOING,
-	commonpb.AccountType_BUCKET_1_KIN,
-	commonpb.AccountType_BUCKET_10_KIN,
-	commonpb.AccountType_BUCKET_100_KIN,
-	commonpb.AccountType_BUCKET_1_000_KIN,
-	commonpb.AccountType_BUCKET_10_000_KIN,
-	commonpb.AccountType_BUCKET_100_000_KIN,
-	commonpb.AccountType_BUCKET_1_000_000_KIN,
 	commonpb.AccountType_REMOTE_SEND_GIFT_CARD,
-	commonpb.AccountType_RELATIONSHIP,
-	commonpb.AccountType_SWAP,
 	commonpb.AccountType_POOL,
+	commonpb.AccountType_SWAP,
 }
 
 type Record struct {
@@ -35,9 +23,8 @@ type Record struct {
 	TokenAccount     string
 	MintAccount      string
 
-	AccountType    commonpb.AccountType
-	Index          uint64
-	RelationshipTo *string
+	AccountType commonpb.AccountType
+	Index       uint64
 
 	RequiresDepositSync  bool
 	DepositsLastSyncedAt time.Time
@@ -50,21 +37,6 @@ type Record struct {
 	CreatedAt time.Time
 }
 
-func (r *Record) IsBucket() bool {
-	switch r.AccountType {
-	case commonpb.AccountType_BUCKET_1_KIN,
-		commonpb.AccountType_BUCKET_10_KIN,
-		commonpb.AccountType_BUCKET_100_KIN,
-		commonpb.AccountType_BUCKET_1_000_KIN,
-		commonpb.AccountType_BUCKET_10_000_KIN,
-		commonpb.AccountType_BUCKET_100_000_KIN,
-		commonpb.AccountType_BUCKET_1_000_000_KIN:
-		return true
-	}
-
-	return false
-}
-
 func (r *Record) Clone() Record {
 	return Record{
 		Id:                      r.Id,
@@ -74,7 +46,6 @@ func (r *Record) Clone() Record {
 		MintAccount:             r.MintAccount,
 		AccountType:             r.AccountType,
 		Index:                   r.Index,
-		RelationshipTo:          pointer.StringCopy(r.RelationshipTo),
 		RequiresDepositSync:     r.RequiresDepositSync,
 		DepositsLastSyncedAt:    r.DepositsLastSyncedAt,
 		RequiresAutoReturnCheck: r.RequiresAutoReturnCheck,
@@ -92,7 +63,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.MintAccount = r.MintAccount
 	dst.AccountType = r.AccountType
 	dst.Index = r.Index
-	dst.RelationshipTo = pointer.StringCopy(dst.RelationshipTo)
 	dst.RequiresDepositSync = r.RequiresDepositSync
 	dst.DepositsLastSyncedAt = r.DepositsLastSyncedAt
 	dst.RequiresAutoReturnCheck = r.RequiresAutoReturnCheck
@@ -123,8 +93,6 @@ func (r *Record) Validate() error {
 	}
 
 	switch r.AccountType {
-	case commonpb.AccountType_LEGACY_PRIMARY_2022:
-		return errors.New("cannot store legacy primary 2022 account")
 	case commonpb.AccountType_PRIMARY:
 		if r.Index != 0 {
 			return errors.New("index must be 0 for primary account")
@@ -141,37 +109,9 @@ func (r *Record) Validate() error {
 		if r.OwnerAccount != r.AuthorityAccount {
 			return errors.New("owner must be authority of remote send gift card account")
 		}
-	case commonpb.AccountType_RELATIONSHIP:
-		if r.Index != 0 {
-			return errors.New("index must be 0 for relationship account")
-		}
-
+	case commonpb.AccountType_POOL:
 		if r.OwnerAccount == r.AuthorityAccount {
-			return errors.New("owner cannot be authority for relationship account")
-		}
-
-		if r.RelationshipTo == nil || len(*r.RelationshipTo) == 0 {
-			return errors.New("relationship metadata required for relationship account")
-		}
-	case commonpb.AccountType_BUCKET_1_KIN,
-		commonpb.AccountType_BUCKET_10_KIN,
-		commonpb.AccountType_BUCKET_100_KIN,
-		commonpb.AccountType_BUCKET_1_000_KIN,
-		commonpb.AccountType_BUCKET_10_000_KIN,
-		commonpb.AccountType_BUCKET_100_000_KIN,
-		commonpb.AccountType_BUCKET_1_000_000_KIN:
-
-		if r.Index != 0 {
-			return errors.New("index must be 0 for bucket account")
-		}
-
-		if r.OwnerAccount == r.AuthorityAccount {
-			return errors.New("owner cannot be authority for bucket account")
-		}
-	case commonpb.AccountType_TEMPORARY_INCOMING,
-		commonpb.AccountType_TEMPORARY_OUTGOING:
-		if r.OwnerAccount == r.AuthorityAccount {
-			return errors.New("owner cannot be authority for temporary rotating account")
+			return errors.New("owner cannot be authority pool account")
 		}
 	case commonpb.AccountType_SWAP:
 		if r.Index != 0 {
@@ -181,12 +121,8 @@ func (r *Record) Validate() error {
 		if r.OwnerAccount == r.AuthorityAccount {
 			return errors.New("owner cannot be authority for swap account")
 		}
-	case commonpb.AccountType_POOL:
-		if r.OwnerAccount == r.AuthorityAccount {
-			return errors.New("owner cannot be authority pool account")
-		}
 	default:
-		return errors.Errorf("unhandled account type: %s", r.AccountType.String())
+		return errors.Errorf("unsupported account type: %s", r.AccountType.String())
 	}
 
 	if r.TokenAccount == r.OwnerAccount || r.TokenAccount == r.AuthorityAccount {
@@ -199,10 +135,6 @@ func (r *Record) Validate() error {
 
 	if r.RequiresSwapRetry && r.AccountType != commonpb.AccountType_SWAP {
 		return errors.New("only swap accounts can require swap retries")
-	}
-
-	if r.RelationshipTo != nil && r.AccountType != commonpb.AccountType_RELATIONSHIP {
-		return errors.New("only relationship accounts can have a relationship metadata")
 	}
 
 	return nil

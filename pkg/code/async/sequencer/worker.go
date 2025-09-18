@@ -1,7 +1,9 @@
 package async_sequencer
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/retry"
+	"github.com/code-payments/code-server/pkg/solana"
 )
 
 func (p *service) worker(serviceCtx context.Context, state fulfillment.State, interval time.Duration) error {
@@ -32,21 +35,12 @@ func (p *service) worker(serviceCtx context.Context, state fulfillment.State, in
 			defer m.End()
 			tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-			// todo: proper config to tune states individually
-			var limit uint64
-			switch state {
-			case fulfillment.StatePending:
-				limit = 100 // todo: we'll likely want to up this one, but also rate limit our send/getSignature RPC calls
-			default:
-				limit = 100
-			}
-
 			// Get a batch of records in similar state (e.g. newly created, released, reserved, etc...)
 			items, err := p.data.GetAllFulfillmentsByState(
 				tracedCtx,
 				state,
 				false, // Don't poll for fulfillments that have active scheduling disabled
-				query.WithLimit(limit),
+				query.WithLimit(p.conf.fulfillmentBatchSize.Get(serviceCtx)),
 				query.WithCursor(cursor),
 			)
 			if err != nil {
@@ -223,31 +217,49 @@ func (p *service) handlePending(ctx context.Context, record *fulfillment.Record)
 			return errors.New("unexpected scheduled fulfillment without transaction data")
 		}
 
-		selectedNonce, err := p.noncePool.GetNonce(ctx)
+		selectedSolanaNonce, err := p.solanaNoncePool.GetNonce(ctx)
 		if err != nil {
 			return err
 		}
 		defer func() {
-			selectedNonce.ReleaseIfNotReserved(ctx)
+			selectedSolanaNonce.ReleaseIfNotReserved(ctx)
 		}()
 
 		err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
-			txn, err := fulfillmentHandler.MakeOnDemandTransaction(ctx, record, selectedNonce)
+			txn, signers, err := fulfillmentHandler.MakeOnDemandTransaction(ctx, record, selectedSolanaNonce)
 			if err != nil {
 				return err
 			}
 
-			err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+			signerPrivateKeys := []ed25519.PrivateKey{common.GetSubsidizer().PrivateKey().ToBytes()}
+			for _, signer := range signers {
+				if signer.PrivateKey() == nil {
+					return errors.New("signer private key not provided")
+				}
+
+				if !bytes.Equal(signer.PrivateKey().ToBytes(), signerPrivateKeys[0]) {
+					signerPrivateKeys = append(signerPrivateKeys, signer.PrivateKey().ToBytes())
+				}
+			}
+
+			err = txn.Sign(signerPrivateKeys...)
 			if err != nil {
 				return err
+			}
+
+			var emptySignature solana.Signature
+			for _, signature := range txn.Signatures {
+				if bytes.Equal(signature[:], emptySignature[:]) {
+					return errors.New("signature is missing")
+				}
 			}
 
 			record.Signature = pointer.String(base58.Encode(txn.Signature()))
-			record.Nonce = pointer.String(selectedNonce.Account.PublicKey().ToBase58())
-			record.Blockhash = pointer.String(base58.Encode(selectedNonce.Blockhash[:]))
+			record.Nonce = pointer.String(selectedSolanaNonce.Account.PublicKey().ToBase58())
+			record.Blockhash = pointer.String(base58.Encode(selectedSolanaNonce.Blockhash[:]))
 			record.Data = txn.Marshal()
 
-			err = selectedNonce.MarkReservedWithSignature(ctx, *record.Signature)
+			err = selectedSolanaNonce.MarkReservedWithSignature(ctx, *record.Signature)
 			if err != nil {
 				return err
 			}

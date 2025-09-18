@@ -450,7 +450,7 @@ func (c *clientEnv) sendRequestToGrabBillMessage(t *testing.T, rendezvousKey *co
 	}
 	if c.conf.simulateInvalidAccountType {
 		accountInfoRecord.AuthorityAccount = testutil.NewRandomAccount(t).PublicKey().ToBase58()
-		accountInfoRecord.AccountType = commonpb.AccountType_TEMPORARY_INCOMING
+		accountInfoRecord.AccountType = commonpb.AccountType_POOL
 	}
 	if !c.conf.simulateAccountNotCodeAccount {
 		require.NoError(t, c.directDataAccess.CreateAccountInfo(c.ctx, accountInfoRecord))

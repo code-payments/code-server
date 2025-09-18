@@ -171,12 +171,12 @@ func (a *Account) Sign(message []byte) ([]byte, error) {
 	return signature, nil
 }
 
-func (a *Account) ToTimelockVault(vm, mint *Account) (*Account, error) {
+func (a *Account) ToTimelockVault(vmConfig *VmConfig) (*Account, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	timelockAccounts, err := a.GetTimelockAccounts(vm, mint)
+	timelockAccounts, err := a.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +188,7 @@ func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	ata, err := token.GetAssociatedAccount(a.publicKey.ToBytes(), mint.publicKey.ToBytes())
+	ata, err := token.GetAssociatedAccount(a.PublicKey().ToBytes(), mint.PublicKey().ToBytes())
 	if err != nil {
 		return nil, err
 	}
@@ -196,27 +196,27 @@ func (a *Account) ToAssociatedTokenAccount(mint *Account) (*Account, error) {
 	return NewAccountFromPublicKeyBytes(ata)
 }
 
-func (a *Account) ToVmDepositAssociatedTokenAccount(vm, mint *Account) (*Account, error) {
+func (a *Account) ToVmDepositAta(vmConfig *VmConfig) (*Account, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
-	vmDepositAccounts, err := a.GetVmDepositAccounts(vm, mint)
+	vmDepositAccounts, err := a.GetVmDepositAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
 	return vmDepositAccounts.Ata, nil
 }
 
-func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, error) {
+func (a *Account) GetTimelockAccounts(vmConfig *VmConfig) (*TimelockAccounts, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
 	}
 
 	stateAddress, stateBump, err := cvm.GetVirtualTimelockAccountAddress(&cvm.GetVirtualTimelockAccountAddressArgs{
-		Mint:         mint.publicKey.ToBytes(),
-		VmAuthority:  GetSubsidizer().publicKey.ToBytes(),
-		Owner:        a.publicKey.ToBytes(),
+		Mint:         vmConfig.Mint.PublicKey().ToBytes(),
+		VmAuthority:  vmConfig.Authority.PublicKey().ToBytes(),
+		Owner:        a.PublicKey().ToBytes(),
 		LockDuration: timelock_token_v1.DefaultNumDaysLocked,
 	})
 	if err != nil {
@@ -233,7 +233,7 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 	unlockAddress, unlockBump, err := cvm.GetVmUnlockStateAccountAddress(&cvm.GetVmUnlockStateAccountAddressArgs{
 		VirtualAccountOwner: a.publicKey.ToBytes(),
 		VirtualAccount:      stateAddress,
-		Vm:                  vm.publicKey.ToBytes(),
+		Vm:                  vmConfig.Vm.publicKey.ToBytes(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting unlock address")
@@ -254,7 +254,7 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 		return nil, errors.Wrap(err, "invalid unlock address")
 	}
 
-	vmDepositAccounts, err := a.GetVmDepositAccounts(vm, mint)
+	vmDepositAccounts, err := a.GetVmDepositAccounts(vmConfig)
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting vm deposit accounts")
 	}
@@ -273,21 +273,21 @@ func (a *Account) GetTimelockAccounts(vm, mint *Account) (*TimelockAccounts, err
 
 		VmDepositAccounts: vmDepositAccounts,
 
-		Vm:   vm,
-		Mint: mint,
+		Vm:   vmConfig.Vm,
+		Mint: vmConfig.Mint,
 	}, nil
 }
 
-func (a *Account) GetVmDepositAccounts(vm, mint *Account) (*VmDepositAccounts, error) {
+func (a *Account) GetVmDepositAccounts(vmConfig *VmConfig) (*VmDepositAccounts, error) {
 	depositPdaAddress, depositPdaBump, err := cvm.GetVmDepositAddress(&cvm.GetVmDepositAddressArgs{
 		Depositor: a.PublicKey().ToBytes(),
-		Vm:        vm.PublicKey().ToBytes(),
+		Vm:        vmConfig.Vm.PublicKey().ToBytes(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting deposit pda address")
 	}
 
-	depositAtaAddress, err := token.GetAssociatedAccount(depositPdaAddress, mint.PublicKey().ToBytes())
+	depositAtaAddress, err := token.GetAssociatedAccount(depositPdaAddress, vmConfig.Mint.PublicKey().ToBytes())
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting deposit ata address")
 	}
@@ -310,13 +310,13 @@ func (a *Account) GetVmDepositAccounts(vm, mint *Account) (*VmDepositAccounts, e
 
 		VaultOwner: a,
 
-		Vm:   vm,
-		Mint: mint,
+		Vm:   vmConfig.Vm,
+		Mint: vmConfig.Mint,
 	}, nil
 }
 
 func (a *Account) IsManagedByCode(ctx context.Context, data code_data.Provider) (bool, error) {
-	timelockRecord, err := data.GetTimelockByVault(ctx, a.publicKey.ToBase58())
+	timelockRecord, err := data.GetTimelockByVault(ctx, a.PublicKey().ToBase58())
 	if err == timelock.ErrTimelockNotFound {
 		return false, nil
 	} else if err != nil {
@@ -327,7 +327,7 @@ func (a *Account) IsManagedByCode(ctx context.Context, data code_data.Provider) 
 }
 
 func (a *Account) IsOnCurve() bool {
-	return isOnCurve(a.publicKey.ToBytes())
+	return isOnCurve(a.PublicKey().ToBytes())
 }
 
 func (a *Account) Validate() error {
@@ -335,11 +335,11 @@ func (a *Account) Validate() error {
 		return errors.New("account is nil")
 	}
 
-	if err := a.publicKey.Validate(); err != nil {
+	if err := a.PublicKey().Validate(); err != nil {
 		return errors.Wrap(err, "error validating public key")
 	}
 
-	if !a.publicKey.IsPublic() {
+	if !a.PublicKey().IsPublic() {
 		return errors.New("public key isn't public")
 	}
 
@@ -357,7 +357,7 @@ func (a *Account) Validate() error {
 	}
 
 	expectedPublicKey := ed25519.PrivateKey(a.privateKey.ToBytes()).Public().(ed25519.PublicKey)
-	if !bytes.Equal(a.publicKey.ToBytes(), expectedPublicKey) {
+	if !bytes.Equal(a.PublicKey().ToBytes(), expectedPublicKey) {
 		return errors.New("private key doesn't map to public key")
 	}
 
@@ -365,7 +365,7 @@ func (a *Account) Validate() error {
 }
 
 func (a *Account) String() string {
-	return a.publicKey.ToBase58()
+	return a.PublicKey().ToBase58()
 }
 
 func (r *AccountRecords) IsManagedByCode(ctx context.Context) bool {
@@ -391,15 +391,15 @@ func IsManagedByCode(ctx context.Context, timelockRecord *timelock.Record) bool 
 // ToDBRecord transforms the TimelockAccounts struct to a default timelock.Record
 func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 	return &timelock.Record{
-		Address: a.State.publicKey.ToBase58(),
+		Address: a.State.PublicKey().ToBase58(),
 		Bump:    a.StateBump,
 
-		VaultAddress: a.Vault.publicKey.ToBase58(),
+		VaultAddress: a.Vault.PublicKey().ToBase58(),
 		VaultBump:    a.VaultBump,
-		VaultOwner:   a.VaultOwner.publicKey.ToBase58(),
+		VaultOwner:   a.VaultOwner.PublicKey().ToBase58(),
 		VaultState:   timelock_token_v1.StateUnknown,
 
-		DepositPdaAddress: a.VmDepositAccounts.Pda.publicKey.ToBase58(),
+		DepositPdaAddress: a.VmDepositAccounts.Pda.PublicKey().ToBase58(),
 		DepositPdaBump:    a.VmDepositAccounts.PdaBump,
 
 		UnlockAt: nil,
@@ -411,14 +411,14 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 // GetDBRecord fetches the equivalent timelock.Record for a TimelockAccounts from
 // the DB
 func (a *TimelockAccounts) GetDBRecord(ctx context.Context, data code_data.Provider) (*timelock.Record, error) {
-	return data.GetTimelockByVault(ctx, a.Vault.publicKey.ToBase58())
+	return data.GetTimelockByVault(ctx, a.Vault.PublicKey().ToBase58())
 }
 
-// GetInitializeInstruction gets a SystemTimelockInitInstruction instruction for a timelock account
-func (a *TimelockAccounts) GetInitializeInstruction(memory *Account, accountIndex uint16) (solana.Instruction, error) {
+// GetInitializeInstruction gets a SystemTimelockInitInstruction instruction for a Timelock account
+func (a *TimelockAccounts) GetInitializeInstruction(vmAuthority, memory *Account, accountIndex uint16) (solana.Instruction, error) {
 	return cvm.NewInitTimelockInstruction(
 		&cvm.InitTimelockInstructionAccounts{
-			VmAuthority:         GetSubsidizer().publicKey.ToBytes(),
+			VmAuthority:         vmAuthority.PublicKey().ToBytes(),
 			Vm:                  a.Vm.PublicKey().ToBytes(),
 			VmMemory:            memory.PublicKey().ToBytes(),
 			VirtualAccountOwner: a.VaultOwner.PublicKey().ToBytes(),
@@ -434,15 +434,15 @@ func (a *TimelockAccounts) GetInitializeInstruction(memory *Account, accountInde
 
 // ValidateExternalTokenAccount validates an address is an external token account for the core mint
 func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, tokenAccount *Account) (bool, string, error) {
-	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.publicKey.ToBase58(), solana.CommitmentFinalized)
+	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
 	switch err {
 	case nil:
 		// Double check there were no race conditions between other SubmitIntent
 		// calls and scheduling. This would be highly unlikely to occur, but is a
 		// safety precaution.
-		_, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.publicKey.ToBase58())
+		_, err := data.GetAccountInfoByTokenAddress(ctx, tokenAccount.PublicKey().ToBase58())
 		if err == nil {
-			return false, fmt.Sprintf("%s is not an external account", tokenAccount.publicKey.ToBase58()), nil
+			return false, fmt.Sprintf("%s is not an external account", tokenAccount.PublicKey().ToBase58()), nil
 		} else if err == account.ErrAccountInfoNotFound {
 			return true, "", nil
 		} else if err != nil {
@@ -450,9 +450,9 @@ func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, 
 		}
 		return true, "", nil
 	case solana.ErrNoAccountInfo, token.ErrAccountNotFound:
-		return false, fmt.Sprintf("%s doesn't exist on the blockchain", tokenAccount.publicKey.ToBase58()), nil
+		return false, fmt.Sprintf("%s doesn't exist on the blockchain", tokenAccount.PublicKey().ToBase58()), nil
 	case token.ErrInvalidTokenAccount:
-		return false, fmt.Sprintf("%s is not a core mint account", tokenAccount.publicKey.ToBase58()), nil
+		return false, fmt.Sprintf("%s is not a core mint account", tokenAccount.PublicKey().ToBase58()), nil
 	default:
 		// Unfortunate if Solana is down, but this only impacts withdraw flows,
 		// and we need to guarantee this isn't going to something that's not

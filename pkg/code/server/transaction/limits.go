@@ -76,15 +76,6 @@ func (s *transactionServer) GetLimits(ctx context.Context, req *transactionpb.Ge
 		}
 	}
 
-	usdSendLimits := sendLimits[string(currency_lib.USD)]
-
-	// Inject a core mint limit based on the remaining USD amount and rate
-	sendLimits[string(common.CoreMintSymbol)] = &transactionpb.SendLimit{
-		NextTransaction:   usdSendLimits.NextTransaction / float32(usdRate),
-		MaxPerTransaction: usdSendLimits.MaxPerTransaction / float32(usdRate),
-		MaxPerDay:         usdSendLimits.MaxPerDay / float32(usdRate),
-	}
-
 	return &transactionpb.GetLimitsResponse{
 		Result:               transactionpb.GetLimitsResponse_OK,
 		SendLimitsByCurrency: sendLimits,

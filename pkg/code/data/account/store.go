@@ -30,23 +30,22 @@ type Store interface {
 	GetByTokenAddressBatch(ctx context.Context, addresses ...string) (map[string]*Record, error)
 
 	// GetByAuthorityAddress finds the record for a given authority account address
-	GetByAuthorityAddress(ctx context.Context, address string) (*Record, error)
+	// keyed by mint
+	GetByAuthorityAddress(ctx context.Context, address string) (map[string]*Record, error)
 
-	// GetLatestByOwnerAddress gets the latest accounts for an owner
+	// GetLatestByOwnerAddress gets the latest accounts for an owner keyed by mint
+	// and type
 	//
 	// For account types where only 1 account can exist, the record with the latest index is returned.
 	// For account types where more than 1 account can exist, all records are returend.
-	GetLatestByOwnerAddress(ctx context.Context, address string) (map[commonpb.AccountType][]*Record, error)
+	GetLatestByOwnerAddress(ctx context.Context, address string) (map[string]map[commonpb.AccountType][]*Record, error)
 
-	// GetLatestByOwnerAddressAndType gets the latest account for an owner and account type.
+	// GetLatestByOwnerAddressAndType gets the latest account for an owner and account type
+	// keyed by mint
+	//
 	// Regardless if more than 1 account for the given type can exist, only the record with
 	// the largest index is returned
-	GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*Record, error)
-
-	// GetRelationshipByOwnerAddress gets a relationship account for a given owner.
-	//
-	// Note: Index is always zero, so there's no concept of a "latest"
-	GetRelationshipByOwnerAddress(ctx context.Context, address, relationshipTo string) (*Record, error)
+	GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (map[string]*Record, error)
 
 	// GetPrioritizedRequiringDepositSync gets a set of account info objects where
 	// RequiresDepositSync is true that's prioritized by DepositsLastSyncedAt

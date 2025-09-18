@@ -34,7 +34,6 @@ const (
 
 		account_type INTEGER NOT NULL,
 		index INTEGER NOT NULL,
-		relationship_to TEXT NOT NULL,
 
 		requires_deposit_sync BOOL NOT NULL,
 		deposits_last_synced_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -47,8 +46,8 @@ const (
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 
 		CONSTRAINT codewallet__core_accountinfov2__uniq__token_account UNIQUE (token_account),
-		CONSTRAINT codewallet__core_accountinfov2__uniq__authority_account UNIQUE (authority_account),
-		CONSTRAINT codewallet__core_accountinfov2__uniq__owner_account__and__account_type__and__index__and__relationship_to UNIQUE(owner_account, account_type, index, relationship_to)
+		CONSTRAINT codewallet__core_accountinfov2__uniq__authority_account__and__mint_account UNIQUE (authority_account, mint_account),
+		CONSTRAINT codewallet__core_accountinfov2__uniq__owner_account__and__mint_account__and__account_type__and__index UNIQUE(owner_account, mint_account, account_type, index)
 	);
 	`
 

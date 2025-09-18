@@ -103,14 +103,13 @@ func TestInvalidAccount(t *testing.T) {
 }
 
 func TestConvertToTimelockVault(t *testing.T) {
-	vmAccount := newRandomTestAccount(t)
-	subsidizerAccount = newRandomTestAccount(t)
+	vmConfig := newRandomVmConfig(t)
+
 	ownerAccount := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
 
 	stateAddress, _, err := cvm.GetVirtualTimelockAccountAddress(&cvm.GetVirtualTimelockAccountAddressArgs{
-		Mint:         mintAccount.PublicKey().ToBytes(),
-		VmAuthority:  subsidizerAccount.PublicKey().ToBytes(),
+		Mint:         vmConfig.Mint.PublicKey().ToBytes(),
+		VmAuthority:  vmConfig.Authority.PublicKey().ToBytes(),
 		Owner:        ownerAccount.PublicKey().ToBytes(),
 		LockDuration: timelock_token_v1.DefaultNumDaysLocked,
 	})
@@ -121,20 +120,19 @@ func TestConvertToTimelockVault(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	tokenAccount, err := ownerAccount.ToTimelockVault(vmAccount, mintAccount)
+	tokenAccount, err := ownerAccount.ToTimelockVault(vmConfig)
 	require.NoError(t, err)
 	assert.EqualValues(t, expectedVaultAddress, tokenAccount.PublicKey().ToBytes())
 }
 
 func TestGetTimelockAccounts(t *testing.T) {
-	vmAccount := newRandomTestAccount(t)
-	subsidizerAccount = newRandomTestAccount(t)
+	vmConfig := newRandomVmConfig(t)
+
 	ownerAccount := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
 
 	expectedStateAddress, expectedStateBump, err := cvm.GetVirtualTimelockAccountAddress(&cvm.GetVirtualTimelockAccountAddressArgs{
-		Mint:         mintAccount.PublicKey().ToBytes(),
-		VmAuthority:  subsidizerAccount.PublicKey().ToBytes(),
+		Mint:         vmConfig.Mint.PublicKey().ToBytes(),
+		VmAuthority:  vmConfig.Authority.PublicKey().ToBytes(),
 		Owner:        ownerAccount.PublicKey().ToBytes(),
 		LockDuration: timelock_token_v1.DefaultNumDaysLocked,
 	})
@@ -148,11 +146,11 @@ func TestGetTimelockAccounts(t *testing.T) {
 	expectedUnlockAddress, expectedUnlockBump, err := cvm.GetVmUnlockStateAccountAddress(&cvm.GetVmUnlockStateAccountAddressArgs{
 		VirtualAccountOwner: ownerAccount.PublicKey().ToBytes(),
 		VirtualAccount:      expectedStateAddress,
-		Vm:                  vmAccount.PublicKey().ToBytes(),
+		Vm:                  vmConfig.Vm.PublicKey().ToBytes(),
 	})
 	require.NoError(t, err)
 
-	actual, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
+	actual, err := ownerAccount.GetTimelockAccounts(vmConfig)
 	require.NoError(t, err)
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
 	assert.EqualValues(t, expectedStateAddress, actual.State.PublicKey().ToBytes())
@@ -161,32 +159,32 @@ func TestGetTimelockAccounts(t *testing.T) {
 	assert.Equal(t, expectedVaultBump, actual.VaultBump)
 	assert.EqualValues(t, expectedUnlockAddress, actual.Unlock.PublicKey().ToBytes())
 	assert.Equal(t, expectedUnlockBump, actual.UnlockBump)
-	assert.EqualValues(t, vmAccount.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
-	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
+	assert.EqualValues(t, vmConfig.Vm.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
+	assert.EqualValues(t, vmConfig.Mint.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 
 func TestGetVmDepositAccounts(t *testing.T) {
-	vmAccount := newRandomTestAccount(t)
+	vmConfig := newRandomVmConfig(t)
+
 	ownerAccount := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
 
 	expectedDepositPdaAddress, expectedDepositPdaBump, err := cvm.GetVmDepositAddress(&cvm.GetVmDepositAddressArgs{
 		Depositor: ownerAccount.PublicKey().ToBytes(),
-		Vm:        vmAccount.PublicKey().ToBytes(),
+		Vm:        vmConfig.Vm.PublicKey().ToBytes(),
 	})
 	require.NoError(t, err)
 
-	expectedDepositAtaAddress, err := token.GetAssociatedAccount(expectedDepositPdaAddress, mintAccount.PublicKey().ToBytes())
+	expectedDepositAtaAddress, err := token.GetAssociatedAccount(expectedDepositPdaAddress, vmConfig.Mint.PublicKey().ToBytes())
 	require.NoError(t, err)
 
-	actual, err := ownerAccount.GetVmDepositAccounts(vmAccount, mintAccount)
+	actual, err := ownerAccount.GetVmDepositAccounts(vmConfig)
 	require.NoError(t, err)
 	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
 	assert.EqualValues(t, expectedDepositPdaAddress, actual.Pda.PublicKey().ToBytes())
 	assert.Equal(t, expectedDepositPdaBump, actual.PdaBump)
 	assert.EqualValues(t, expectedDepositAtaAddress, actual.Ata.PublicKey().ToBytes())
-	assert.EqualValues(t, vmAccount.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
-	assert.EqualValues(t, mintAccount.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
+	assert.EqualValues(t, vmConfig.Vm.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
+	assert.EqualValues(t, vmConfig.Mint.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 
 func TestIsOnCurve(t *testing.T) {
@@ -208,11 +206,11 @@ func TestIsAccountManagedByCode_TimelockState(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmAccount := newRandomTestAccount(t)
-	ownerAccount := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
+	vmConfig := newRandomVmConfig(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
+	ownerAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmConfig)
 	require.NoError(t, err)
 
 	// No record of the account anywhere
@@ -259,11 +257,11 @@ func TestIsAccountManagedByCode_OtherAccounts(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmAccount := newRandomTestAccount(t)
-	ownerAccount := newRandomTestAccount(t)
-	mintAccount := newRandomTestAccount(t)
+	vmConfig := newRandomVmConfig(t)
 
-	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmAccount, mintAccount)
+	ownerAccount := newRandomTestAccount(t)
+
+	timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmConfig)
 	require.NoError(t, err)
 	require.NoError(t, data.SaveTimelock(ctx, timelockAccounts.ToDBRecord()))
 

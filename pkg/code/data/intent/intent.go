@@ -42,6 +42,8 @@ type Record struct {
 	IntentId   string
 	IntentType Type
 
+	MintAccount string
+
 	InitiatorOwnerAccount string
 
 	OpenAccountsMetadata            *OpenAccountsMetadata
@@ -49,8 +51,6 @@ type Record struct {
 	SendPublicPaymentMetadata       *SendPublicPaymentMetadata
 	ReceivePaymentsPubliclyMetadata *ReceivePaymentsPubliclyMetadata
 	PublicDistributionMetadata      *PublicDistributionMetadata
-
-	ExtendedMetadata []byte
 
 	State State
 
@@ -152,6 +152,8 @@ func (r *Record) Clone() Record {
 		IntentId:   r.IntentId,
 		IntentType: r.IntentType,
 
+		MintAccount: r.MintAccount,
+
 		InitiatorOwnerAccount: r.InitiatorOwnerAccount,
 
 		OpenAccountsMetadata:            openAccountsMetadata,
@@ -159,8 +161,6 @@ func (r *Record) Clone() Record {
 		SendPublicPaymentMetadata:       sendPublicPaymentMetadata,
 		ReceivePaymentsPubliclyMetadata: receivePaymentsPubliclyMetadata,
 		PublicDistributionMetadata:      publicDistributionMetadata,
-
-		ExtendedMetadata: r.ExtendedMetadata,
 
 		State: r.State,
 
@@ -176,6 +176,8 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.IntentId = r.IntentId
 	dst.IntentType = r.IntentType
 
+	dst.MintAccount = r.MintAccount
+
 	dst.InitiatorOwnerAccount = r.InitiatorOwnerAccount
 
 	dst.OpenAccountsMetadata = r.OpenAccountsMetadata
@@ -183,8 +185,6 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.SendPublicPaymentMetadata = r.SendPublicPaymentMetadata
 	dst.ReceivePaymentsPubliclyMetadata = r.ReceivePaymentsPubliclyMetadata
 	dst.PublicDistributionMetadata = r.PublicDistributionMetadata
-
-	dst.ExtendedMetadata = r.ExtendedMetadata
 
 	dst.State = r.State
 
@@ -200,6 +200,10 @@ func (r *Record) Validate() error {
 
 	if r.IntentType == UnknownType {
 		return errors.New("intent type is required")
+	}
+
+	if len(r.MintAccount) == 0 {
+		return errors.New("mint account is required")
 	}
 
 	if len(r.InitiatorOwnerAccount) == 0 {

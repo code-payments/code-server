@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -10,7 +9,6 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 
 	"github.com/code-payments/code-server/pkg/code/data/account"
-	"github.com/code-payments/code-server/pkg/pointer"
 )
 
 type store struct {
@@ -99,14 +97,16 @@ func (s *store) findByOwnerAddress(address string) []*account.Record {
 	return res
 }
 
-func (s *store) findByAuthorityAddress(address string) *account.Record {
+func (s *store) findByAuthorityAddress(address string) []*account.Record {
+	var res []*account.Record
+
 	for _, item := range s.records {
 		if item.AuthorityAccount == address {
-			return item
+			res = append(res, item)
 		}
 	}
 
-	return nil
+	return res
 }
 
 func (s *store) findByTokenAddress(address string) *account.Record {
@@ -149,21 +149,20 @@ func (s *store) filterByType(items []*account.Record, accountType commonpb.Accou
 	return res
 }
 
-func (s *store) filterByRelationship(items []*account.Record, relationshipTo string) []*account.Record {
+func (s *store) filterByMint(items []*account.Record, mint string) []*account.Record {
 	var res []*account.Record
 	for _, item := range items {
-		if item.RelationshipTo != nil && *item.RelationshipTo == relationshipTo {
+		if item.MintAccount == mint {
 			res = append(res, item)
 		}
 	}
 	return res
 }
 
-func (s *store) groupByRelationship(items []*account.Record) map[string][]*account.Record {
-	res := make(map[string][]*account.Record)
-	for _, item := range items {
-		key := *pointer.StringOrDefault(item.RelationshipTo, "")
-		res[key] = append(res[key], item)
+func (s *store) getAllMints() map[string]any {
+	res := make(map[string]any)
+	for _, item := range s.records {
+		res[item.MintAccount] = true
 	}
 	return res
 }
@@ -177,17 +176,20 @@ func (s *store) Put(_ context.Context, data *account.Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	item := s.findByAuthorityAddress(data.AuthorityAccount)
-	if item != nil && !equivalentRecords(item, data) {
-		return account.ErrInvalidAccountInfo
+	items := s.findByAuthorityAddress(data.AuthorityAccount)
+	for _, item := range items {
+		if !equivalentRecords(item, data) &&
+			data.MintAccount == item.MintAccount {
+			return account.ErrInvalidAccountInfo
+		}
 	}
 
-	items := s.findByOwnerAddress(data.OwnerAccount)
+	items = s.findByOwnerAddress(data.OwnerAccount)
 	for _, item := range items {
 		if !equivalentRecords(item, data) &&
 			data.AccountType == item.AccountType &&
 			data.Index == item.Index &&
-			*pointer.StringOrDefault(item.RelationshipTo, "") == *pointer.StringOrDefault(data.RelationshipTo, "") {
+			data.MintAccount == item.MintAccount {
 			return account.ErrInvalidAccountInfo
 		}
 	}
@@ -271,52 +273,72 @@ func (s *store) GetByTokenAddressBatch(_ context.Context, addresses ...string) (
 }
 
 // GetByAuthorityAddress implements account.Store.GetByAuthorityAddress
-func (s *store) GetByAuthorityAddress(_ context.Context, address string) (*account.Record, error) {
+func (s *store) GetByAuthorityAddress(_ context.Context, address string) (map[string]*account.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	item := s.findByAuthorityAddress(address)
-	if item == nil {
+	items := s.findByAuthorityAddress(address)
+	if len(items) == 0 {
 		return nil, account.ErrAccountInfoNotFound
 	}
 
-	cloned := item.Clone()
-	return &cloned, nil
+	res := make(map[string]*account.Record)
+	for _, item := range items {
+		cloned := item.Clone()
+		res[item.MintAccount] = &cloned
+	}
+	return res, nil
 }
 
 // GetLatestByOwnerAddress implements account.Store.GetLatestByOwnerAddress
-func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[commonpb.AccountType][]*account.Record, error) {
+func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[string]map[commonpb.AccountType][]*account.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res := make(map[commonpb.AccountType][]*account.Record)
+	res := make(map[string]map[commonpb.AccountType][]*account.Record)
 
 	items := s.findByOwnerAddress(address)
-	for _, accountType := range account.AllAccountTypes {
-		if accountType == commonpb.AccountType_POOL {
-			continue
-		}
+	mints := s.getAllMints()
+	for mint := range mints {
+		for _, accountType := range account.AllAccountTypes {
+			if accountType == commonpb.AccountType_POOL {
+				continue
+			}
 
-		items := s.filterByType(items, accountType)
-		if len(items) == 0 {
-			continue
-		}
+			items := s.filterByType(items, accountType)
+			if len(items) == 0 {
+				continue
+			}
 
-		grouped := s.groupByRelationship(items)
+			items = s.filterByMint(items, mint)
+			if len(items) == 0 {
+				continue
+			}
 
-		for _, group := range grouped {
-			sorted := ByIndex(group)
+			if _, ok := res[mint]; !ok {
+				res[mint] = make(map[commonpb.AccountType][]*account.Record)
+			}
+
+			sorted := ByIndex(items)
 			sort.Sort(sorted)
 
-			cloned := group[len(group)-1].Clone()
-
-			res[accountType] = append(res[accountType], &cloned)
+			cloned := sorted[len(sorted)-1].Clone()
+			res[mint][accountType] = append(res[mint][accountType], &cloned)
 		}
 	}
 
 	items = s.filterByType(items, commonpb.AccountType_POOL)
-	if len(items) > 0 {
-		res[commonpb.AccountType_POOL] = cloneRecords(items)
+	for mint := range mints {
+		items := s.filterByMint(items, mint)
+		if len(items) == 0 {
+			continue
+		}
+
+		if _, ok := res[mint]; !ok {
+			res[mint] = make(map[commonpb.AccountType][]*account.Record)
+		}
+
+		res[mint][commonpb.AccountType_POOL] = append(res[mint][commonpb.AccountType_POOL], cloneRecords(items)...)
 	}
 
 	if len(res) == 0 {
@@ -327,11 +349,7 @@ func (s *store) GetLatestByOwnerAddress(_ context.Context, address string) (map[
 }
 
 // GetLatestByOwnerAddressAndType implements account.Store.GetLatestByOwnerAddressAndType
-func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (*account.Record, error) {
-	if accountType == commonpb.AccountType_RELATIONSHIP {
-		return nil, errors.New("relationship account not supported")
-	}
-
+func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address string, accountType commonpb.AccountType) (map[string]*account.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -342,30 +360,22 @@ func (s *store) GetLatestByOwnerAddressAndType(ctx context.Context, address stri
 		return nil, account.ErrAccountInfoNotFound
 	}
 
-	sorted := ByIndex(items)
-	sort.Sort(sorted)
+	res := make(map[string]*account.Record)
 
-	cloned := items[len(items)-1].Clone()
-	return &cloned, nil
-}
+	mints := s.getAllMints()
+	for mint := range mints {
+		items := s.filterByMint(items, mint)
+		if len(items) == 0 {
+			continue
+		}
 
-// GetRelationshipByOwnerAddress implements account.Store.GetRelationshipByOwnerAddress
-func (s *store) GetRelationshipByOwnerAddress(ctx context.Context, address, relationshipTo string) (*account.Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+		sorted := ByIndex(items)
+		sort.Sort(sorted)
 
-	items := s.findByOwnerAddress(address)
-	items = s.filterByType(items, commonpb.AccountType_RELATIONSHIP)
-	items = s.filterByRelationship(items, relationshipTo)
-
-	if len(items) == 0 {
-		return nil, account.ErrAccountInfoNotFound
-	} else if len(items) > 1 {
-		return nil, errors.New("unexpected number of relationship accounts")
+		cloned := items[len(items)-1].Clone()
+		res[mint] = &cloned
 	}
-
-	cloned := items[0].Clone()
-	return &cloned, nil
+	return res, nil
 }
 
 // GetPrioritizedRequiringDepositSync implements account.Store.GetPrioritizedRequiringDepositSync
@@ -474,7 +484,7 @@ func equivalentRecords(obj1, obj2 *account.Record) bool {
 		return false
 	}
 
-	if *pointer.StringOrDefault(obj1.RelationshipTo, "") != *pointer.StringOrDefault(obj2.RelationshipTo, "") {
+	if obj1.MintAccount != obj2.MintAccount {
 		return false
 	}
 

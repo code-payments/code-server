@@ -58,8 +58,9 @@ type CreateActionHandler interface {
 
 	// RequiresNonce determines whether a nonce should be acquired for the
 	// fulfillment being created. This should be true whenever a virtual
-	// instruction needs to be signed by the client.
-	RequiresNonce(fulfillmentIndex int) bool
+	// instruction needs to be signed by the client. The VM where the action
+	// will take place is provided when the result is true.
+	RequiresNonce(fulfillmentIndex int) (bool, *common.Account)
 
 	// GetFulfillmentMetadata gets metadata for the fulfillment being created
 	GetFulfillmentMetadata(
@@ -85,7 +86,17 @@ type OpenAccountActionHandler struct {
 	unsavedTimelockRecord    *timelock.Record
 }
 
-func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transactionpb.OpenAccountAction, protoMetadata *transactionpb.Metadata) (CreateActionHandler, error) {
+func NewOpenAccountActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.OpenAccountAction, protoMetadata *transactionpb.Metadata) (CreateActionHandler, error) {
+	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
+	if err != nil {
+		return nil, err
+	}
+
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
+	if err != nil {
+		return nil, err
+	}
+
 	owner, err := common.NewAccountFromProto(protoAction.Owner)
 	if err != nil {
 		return nil, err
@@ -96,7 +107,7 @@ func NewOpenAccountActionHandler(data code_data.Provider, protoAction *transacti
 		return nil, err
 	}
 
-	timelockAccounts, err := authority.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +157,8 @@ func (h *OpenAccountActionHandler) GetServerParameter() *transactionpb.ServerPar
 	}
 }
 
-func (h *OpenAccountActionHandler) RequiresNonce(index int) bool {
-	return false
+func (h *OpenAccountActionHandler) RequiresNonce(index int) (bool, *common.Account) {
+	return false, nil
 }
 
 func (h *OpenAccountActionHandler) GetFulfillmentMetadata(
@@ -189,13 +200,23 @@ type NoPrivacyTransferActionHandler struct {
 	feeType     transactionpb.FeePaymentAction_FeeType // Internally, the mechanics of a fee payment are exactly the same
 }
 
-func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTransferAction) (CreateActionHandler, error) {
+func NewNoPrivacyTransferActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.NoPrivacyTransferAction) (CreateActionHandler, error) {
+	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
+	if err != nil {
+		return nil, err
+	}
+
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
+	if err != nil {
+		return nil, err
+	}
+
 	sourceAuthority, err := common.NewAccountFromProto(protoAction.Authority)
 	if err != nil {
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	source, err := sourceAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -212,13 +233,23 @@ func NewNoPrivacyTransferActionHandler(protoAction *transactionpb.NoPrivacyTrans
 	}, nil
 }
 
-func NewFeePaymentActionHandler(protoAction *transactionpb.FeePaymentAction, feeCollector *common.Account) (CreateActionHandler, error) {
+func NewFeePaymentActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.FeePaymentAction, feeCollector *common.Account) (CreateActionHandler, error) {
+	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
+	if err != nil {
+		return nil, err
+	}
+
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
+	if err != nil {
+		return nil, err
+	}
+
 	sourceAuthority, err := common.NewAccountFromProto(protoAction.Authority)
 	if err != nil {
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	source, err := sourceAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -268,8 +299,8 @@ func (h *NoPrivacyTransferActionHandler) GetServerParameter() *transactionpb.Ser
 	}
 }
 
-func (h *NoPrivacyTransferActionHandler) RequiresNonce(index int) bool {
-	return true
+func (h *NoPrivacyTransferActionHandler) RequiresNonce(index int) (bool, *common.Account) {
+	return true, h.source.Vm
 }
 
 func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
@@ -317,13 +348,23 @@ type NoPrivacyWithdrawActionHandler struct {
 	isAutoReturn bool
 }
 
-func NewNoPrivacyWithdrawActionHandler(intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
+func NewNoPrivacyWithdrawActionHandler(ctx context.Context, data code_data.Provider, intentRecord *intent.Record, protoAction *transactionpb.NoPrivacyWithdrawAction) (CreateActionHandler, error) {
+	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
+	if err != nil {
+		return nil, err
+	}
+
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
+	if err != nil {
+		return nil, err
+	}
+
 	sourceAuthority, err := common.NewAccountFromProto(protoAction.Authority)
 	if err != nil {
 		return nil, err
 	}
 
-	source, err := sourceAuthority.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+	source, err := sourceAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -373,8 +414,8 @@ func (h *NoPrivacyWithdrawActionHandler) GetServerParameter() *transactionpb.Ser
 	}
 }
 
-func (h *NoPrivacyWithdrawActionHandler) RequiresNonce(index int) bool {
-	return true
+func (h *NoPrivacyWithdrawActionHandler) RequiresNonce(index int) (bool, *common.Account) {
+	return true, h.source.Vm
 }
 
 func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(

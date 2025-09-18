@@ -3,7 +3,6 @@ package config
 import (
 	"github.com/mr-tron/base58"
 
-	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/usdc"
 )
 
@@ -15,12 +14,18 @@ const (
 	CoreMintQuarksPerUnit   = uint64(usdc.QuarksPerUsdc)
 	CoreMintDecimals        = usdc.Decimals
 	CoreMintName            = "USDC"
-	CoreMintSymbol          = currency_lib.USDC
+	CoreMintSymbol          = "USDC"
 
 	SubsidizerPublicKey = "cash11ndAmdKFEnG2wrQQ5Zqvr1kN9htxxLyoPLYFUV"
 
 	VmAccountPublicKey = "DHwPoAFFW4bTLBEdbFURvj5mJUUXCofPZwXXiZtRxRxw"
 	VmOmnibusPublicKey = "DLBG6mt2NbzvVmhUq1sTqpccJH2cvmtZ9rUVUD7d97uv"
+
+	// todo: DB store to track VM per mint
+	JeffyMintPublicKey      = "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj"
+	JeffyAuthorityPublicKey = "jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV"
+	JeffyVmAccountPublicKey = "Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta"
+	JeffyVmOmnibusPublicKey = "CQ5jni8XTXEcMFXS1ytNyTVbJBZHtHCzEtjBPowB3MLD"
 )
 
 var (

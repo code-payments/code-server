@@ -18,6 +18,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/pointer"
 	"github.com/code-payments/code-server/pkg/testutil"
 )
@@ -57,10 +58,11 @@ func setup(t *testing.T) *testEnv {
 }
 
 func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *testGiftCard {
-	vm := testutil.NewRandomAccount(t)
 	authority := testutil.NewRandomAccount(t)
 
-	timelockAccounts, err := authority.GetTimelockAccounts(vm, common.CoreMintAccount)
+	vmConfig := testutil.NewRandomVmConfig(t, true)
+
+	timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)
 	require.NoError(t, err)
 
 	accountInfoRecord := &account.Record{
@@ -81,13 +83,15 @@ func (e *testEnv) generateRandomGiftCard(t *testing.T, creationTs time.Time) *te
 		IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 		IntentType: intent.SendPublicPayment,
 
+		MintAccount: vmConfig.Mint.PublicKey().ToBase58(),
+
 		InitiatorOwnerAccount: testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 
 		SendPublicPaymentMetadata: &intent.SendPublicPaymentMetadata{
 			DestinationTokenAccount: accountInfoRecord.TokenAccount,
 			Quantity:                common.ToCoreMintQuarks(12345),
 
-			ExchangeCurrency: common.CoreMintSymbol,
+			ExchangeCurrency: currency_lib.USD,
 			ExchangeRate:     1.0,
 			NativeAmount:     12345,
 			UsdMarketValue:   1000.0,

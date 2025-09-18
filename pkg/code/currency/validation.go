@@ -2,9 +2,7 @@ package currency
 
 import (
 	"context"
-	"fmt"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -16,18 +14,13 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/database/query"
+	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 )
 
-// todo: add tests, but generally well tested in server tests since that's where most of this originated
-
-var (
-	SmallestSendAmount = common.CoreMintQuarksPerUnit / 100
-)
-
-// GetPotentialClientExchangeRates gets a set of exchange rates that a client
-// attempting to maintain a latest state could have fetched from the currency
-// server.
-func GetPotentialClientExchangeRates(ctx context.Context, data code_data.Provider, code currency_lib.Code) ([]*currency.ExchangeRateRecord, error) {
+// GetPotentialClientCoreMintExchangeRates gets a set of fiat exchange rates that
+// a client attempting to maintain a latest state could have fetched from the
+// currency server for the core mint.
+func GetPotentialClientCoreMintExchangeRates(ctx context.Context, data code_data.Provider, code currency_lib.Code) ([]*currency.ExchangeRateRecord, error) {
 	exchangeRecords, err := data.GetExchangeRateHistory(
 		ctx,
 		code,
@@ -65,46 +58,62 @@ func GetPotentialClientExchangeRates(ctx context.Context, data code_data.Provide
 
 // ValidateClientExchangeData validates proto exchange data provided by a client
 func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
-	currencyCode := strings.ToLower(proto.Currency)
-	switch currencyCode {
-	case string(common.CoreMintSymbol):
-		if proto.ExchangeRate != 1.0 {
-			return false, "core mint exchange rate must be 1", nil
-		}
-	default:
-		// Validate the exchange rate with what Code would have returned
-		exchangeRecords, err := GetPotentialClientExchangeRates(ctx, data, currency_lib.Code(currencyCode))
-		if err != nil {
+	mint, err := common.GetBackwardsCompatMint(proto.Mint)
+	if err != nil {
+		return false, "", err
+	}
+
+	latestExchangeRateTime := GetLatestExchangeRateTime()
+
+	var foundRate float64
+	var isClientRateValid bool
+	for i := range 3 {
+		exchangeRateTime := latestExchangeRateTime.Add(time.Duration(-i) * timePerExchangeRateUpdate)
+
+		coreMintFiatExchangeRateRecord, err := data.GetExchangeRate(ctx, currency_lib.Code(proto.Currency), exchangeRateTime)
+		if err == currency.ErrNotFound {
+			continue
+		} else if err != nil {
 			return false, "", err
 		}
 
-		// Alternatively, we could find the highest and lowest value and ensure
-		// the requested rate falls in that range. However, this method allows
-		// us to ensure clients are getting their data from code-server.
-		var foundExchangeRate bool
-		for _, exchangeRecord := range exchangeRecords {
-			// Avoid issues with floating points by examining the percentage
-			// difference
-			percentDiff := math.Abs(exchangeRecord.Rate-proto.ExchangeRate) / exchangeRecord.Rate
-			if percentDiff < 0.001 {
-				foundExchangeRate = true
-				break
+		pricePerCoreMint := 1.0
+		if mint.PublicKey().ToBase58() != common.CoreMintAccount.PublicKey().ToBase58() {
+			reserveRecord, err := data.GetCurrencyReserveAtTime(ctx, mint.PublicKey().ToBase58(), exchangeRateTime)
+			if err == currency.ErrNotFound {
+				continue
+			} else if err != nil {
+				return false, "", err
 			}
+
+			pricePerCoreMint, _ = currencycreator.EstimateCurrentPrice(reserveRecord.SupplyFromBonding).Float64()
 		}
 
-		if !foundExchangeRate {
-			return false, "fiat exchange rate is stale", nil
+		actualRate := pricePerCoreMint * coreMintFiatExchangeRateRecord.Rate
+
+		// Avoid issues with floating points by examining the percentage difference
+		//
+		// todo: configurable error tolerance?
+		percentDiff := math.Abs(actualRate-proto.ExchangeRate) / actualRate
+		if percentDiff < 0.001 {
+			isClientRateValid = true
+			foundRate = actualRate
+			break
 		}
 	}
 
+	if !isClientRateValid {
+		return false, "fiat exchange rate is stale or invalid", nil
+	}
+
 	// Validate that the native amount and exchange rate fall reasonably within
-	// the amount of quarks to send in the transaction. This must consider any
-	// truncation at the client due to minimum bucket sizes.
+	// the amount of quarks to send in the transaction.
 	//
-	// todo: This uses string conversions, which is less than ideal, but the only
-	//       thing available at the time of writing this for conversion.
-	quarksFromCurrency, _ := common.StrToQuarks(fmt.Sprintf("%.6f", proto.NativeAmount/proto.ExchangeRate))
-	if math.Abs(float64(quarksFromCurrency-int64(proto.Quarks))) > float64(SmallestSendAmount) {
+	// todo: configurable error tolerance?
+	quarksPerUnit := common.GetMintQuarksPerUnit(mint)
+	unitsOfMint := proto.NativeAmount / foundRate
+	expectedQuarks := int64(unitsOfMint * float64(quarksPerUnit))
+	if math.Abs(float64(expectedQuarks-int64(proto.Quarks))) > 100 {
 		return false, "payment native amount and quark value mismatch", nil
 	}
 

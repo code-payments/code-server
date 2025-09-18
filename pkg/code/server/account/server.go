@@ -155,24 +155,37 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	}
 
 	// Fetch all account records
-	allRecordsByType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, s.data, owner)
+	allRecordsByMintAndType, err := common.GetLatestTokenAccountRecordsForOwner(ctx, s.data, owner)
 	if err != nil {
 		log.WithError(err).Warn("failure getting latest account records")
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	switch req.Filter.(type) {
-	case *accountpb.GetTokenAccountInfosRequest_FilterByTokenAddress,
-		*accountpb.GetTokenAccountInfosRequest_FilterByAccountType:
-		if _, ok := allRecordsByType[commonpb.AccountType_REMOTE_SEND_GIFT_CARD]; ok {
-			return nil, status.Error(codes.InvalidArgument, "filter must be nil for gift card owner accounts")
+	var hasGiftCardAccount bool
+	var allRecords []*common.AccountRecords
+	for _, recordsByType := range allRecordsByMintAndType {
+		for _, batchRecords := range recordsByType {
+			for _, records := range batchRecords {
+				if records.General.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+					hasGiftCardAccount = true
+				}
+				allRecords = append(allRecords, records)
+			}
 		}
 	}
 
 	// Filter account records based on client request
 	//
 	// todo: this needs tests
-	filteredRecordsByType := make(map[commonpb.AccountType][]*common.AccountRecords)
+	var filteredRecords []*common.AccountRecords
+	switch req.Filter.(type) {
+	case *accountpb.GetTokenAccountInfosRequest_FilterByTokenAddress,
+		*accountpb.GetTokenAccountInfosRequest_FilterByAccountType,
+		*accountpb.GetTokenAccountInfosRequest_FilterByMintAddress:
+		if hasGiftCardAccount {
+			return nil, status.Error(codes.InvalidArgument, "filter must be nil for gift card owner accounts")
+		}
+	}
 	switch typed := req.Filter.(type) {
 	case *accountpb.GetTokenAccountInfosRequest_FilterByTokenAddress:
 		filterAccount, err := common.NewAccountFromProto(typed.FilterByTokenAddress)
@@ -180,24 +193,42 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 			log.WithError(err).Warn("invalid token address filter")
 			return nil, status.Error(codes.Internal, "")
 		}
-		for accountType, batchRecords := range allRecordsByType {
-			for _, records := range batchRecords {
-				if records.General.TokenAccount == filterAccount.PublicKey().ToBase58() {
-					filteredRecordsByType[accountType] = []*common.AccountRecords{records}
-				}
+		for _, records := range allRecords {
+			if records.General.TokenAccount == filterAccount.PublicKey().ToBase58() {
+				filteredRecords = append(filteredRecords, records)
+				break
 			}
 		}
 	case *accountpb.GetTokenAccountInfosRequest_FilterByAccountType:
-		filteredRecordsByType[typed.FilterByAccountType] = allRecordsByType[typed.FilterByAccountType]
+		for _, records := range allRecords {
+			if records.General.AccountType == typed.FilterByAccountType {
+				filteredRecords = append(filteredRecords, records)
+			}
+		}
+	case *accountpb.GetTokenAccountInfosRequest_FilterByMintAddress:
+		filterAccount, err := common.NewAccountFromProto(typed.FilterByMintAddress)
+		if err != nil {
+			log.WithError(err).Warn("invalid mint address filter")
+			return nil, status.Error(codes.Internal, "")
+		}
+		for _, records := range allRecords {
+			if records.General.MintAccount == filterAccount.PublicKey().ToBase58() {
+				filteredRecords = append(filteredRecords, records)
+			}
+		}
 	default:
-		filteredRecordsByType = allRecordsByType
+		filteredRecords = allRecords
 	}
 
 	var nextPoolIndex uint64
-	latestPoolAccountInfoRecord, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_POOL)
+	latestPoolAccountInfoRecordByMint, err := s.data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.PublicKey().ToBase58(), commonpb.AccountType_POOL)
 	switch err {
 	case nil:
-		nextPoolIndex = latestPoolAccountInfoRecord.Index + 1
+		// Pool accounts are only supported with the core mint
+		latestCoreMintPoolAccountInfoRecord, ok := latestPoolAccountInfoRecordByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+		if ok {
+			nextPoolIndex = latestCoreMintPoolAccountInfoRecord.Index + 1
+		}
 	case account.ErrAccountInfoNotFound:
 		nextPoolIndex = 0
 	default:
@@ -206,18 +237,18 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	}
 
 	// Trigger a deposit sync with the blockchain for the primary account, if it exists
-	if primaryRecords, ok := filteredRecordsByType[commonpb.AccountType_PRIMARY]; ok {
-		if !primaryRecords[0].General.RequiresDepositSync {
-			primaryRecords[0].General.RequiresDepositSync = true
-			err = s.data.UpdateAccountInfo(ctx, primaryRecords[0].General)
+	for _, records := range filteredRecords {
+		if records.General.AccountType == commonpb.AccountType_PRIMARY && !records.General.RequiresDepositSync {
+			records.General.RequiresDepositSync = true
+			err = s.data.UpdateAccountInfo(ctx, records.General)
 			if err != nil {
-				log.WithError(err).WithField("token_account", primaryRecords[0].General.TokenAccount).Warn("failure marking primary account for deposit sync")
+				log.WithError(err).WithField("token_account", records.General.TokenAccount).Warn("failure marking primary account for deposit sync")
 			}
 		}
 	}
 
 	// Fetch balances
-	balanceMetadataByTokenAccount, err := s.fetchBalances(ctx, filteredRecordsByType)
+	balanceMetadataByTokenAccount, err := s.fetchBalances(ctx, filteredRecords)
 	if err != nil {
 		log.WithError(err).Warn("failure fetching balances")
 		return nil, status.Error(codes.Internal, "")
@@ -225,18 +256,16 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 
 	// Construct token account info
 	tokenAccountInfos := make(map[string]*accountpb.TokenAccountInfo)
-	for _, batchRecords := range filteredRecordsByType {
-		for _, records := range batchRecords {
-			log := log.WithField("token_account", records.General.TokenAccount)
+	for _, records := range filteredRecords {
+		log := log.WithField("token_account", records.General.TokenAccount)
 
-			proto, err := s.getProtoAccountInfo(ctx, records, balanceMetadataByTokenAccount[records.General.TokenAccount])
-			if err != nil {
-				log.WithError(err).Warn("failure getting proto account info")
-				return nil, status.Error(codes.Internal, "")
-			}
-
-			tokenAccountInfos[records.General.TokenAccount] = proto
+		proto, err := s.getProtoAccountInfo(ctx, records, balanceMetadataByTokenAccount[records.General.TokenAccount])
+		if err != nil {
+			log.WithError(err).Warn("failure getting proto account info")
+			return nil, status.Error(codes.Internal, "")
 		}
+
+		tokenAccountInfos[records.General.TokenAccount] = proto
 	}
 
 	if len(tokenAccountInfos) == 0 {
@@ -252,8 +281,8 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 	}
 
 	// Is this a gift card in a terminal state that we can cache?
-	if _, ok := filteredRecordsByType[commonpb.AccountType_REMOTE_SEND_GIFT_CARD]; len(tokenAccountInfos) == 1 && ok {
-		tokenAccountInfo := tokenAccountInfos[filteredRecordsByType[commonpb.AccountType_REMOTE_SEND_GIFT_CARD][0].General.TokenAccount]
+	if len(tokenAccountInfos) == 1 && filteredRecords[0].General.AccountType == commonpb.AccountType_REMOTE_SEND_GIFT_CARD {
+		tokenAccountInfo := tokenAccountInfos[filteredRecords[0].General.TokenAccount]
 
 		switch tokenAccountInfo.ClaimState {
 		case accountpb.TokenAccountInfo_CLAIM_STATE_CLAIMED, accountpb.TokenAccountInfo_CLAIM_STATE_EXPIRED:
@@ -271,29 +300,23 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 
 // fetchBalances optimally routes and batches balance calculations for a set of
 // account records.
-func (s *server) fetchBalances(ctx context.Context, recordsByType map[commonpb.AccountType][]*common.AccountRecords) (map[string]*balanceMetadata, error) {
+func (s *server) fetchBalances(ctx context.Context, allAccountRecords []*common.AccountRecords) (map[string]*balanceMetadata, error) {
 	balanceMetadataByTokenAccount := make(map[string]*balanceMetadata)
 
-	var batchedAccountRecords []*common.AccountRecords
-	for accountType, batchAccountRecords := range recordsByType {
-		if accountType == commonpb.AccountType_LEGACY_PRIMARY_2022 {
-			continue
-		}
-
-		for _, accountRecords := range batchAccountRecords {
-			if accountRecords.IsManagedByCode(ctx) {
-				batchedAccountRecords = append(batchedAccountRecords, accountRecords)
-			} else {
-				// Don't calculate a balance for now, since the caching strategy
-				// is not possible.
-				balanceMetadataByTokenAccount[accountRecords.General.TokenAccount] = &balanceMetadata{
-					value:  0,
-					source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
-				}
+	var mangedByCodeRecords []*common.AccountRecords
+	for _, accountRecords := range allAccountRecords {
+		if accountRecords.IsManagedByCode(ctx) {
+			mangedByCodeRecords = append(mangedByCodeRecords, accountRecords)
+		} else {
+			// Don't calculate a balance for now, since the caching strategy
+			// is not possible.
+			balanceMetadataByTokenAccount[accountRecords.General.TokenAccount] = &balanceMetadata{
+				value:  0,
+				source: accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN,
 			}
 		}
 	}
-	balancesByTokenAccount, err := balance.BatchCalculateFromCacheWithAccountRecords(ctx, s.data, batchedAccountRecords...)
+	balancesByTokenAccount, err := balance.BatchCalculateFromCacheWithAccountRecords(ctx, s.data, mangedByCodeRecords...)
 	if err != nil {
 		return nil, err
 	}
@@ -307,34 +330,32 @@ func (s *server) fetchBalances(ctx context.Context, recordsByType map[commonpb.A
 	// Any accounts that aren't Timelock can be deferred to the blockchain
 	//
 	// todo: support batching
-	for _, batchAccountRecords := range recordsByType {
-		for _, accountRecords := range batchAccountRecords {
-			if accountRecords.IsTimelock() {
-				continue
-			}
+	for _, accountRecords := range allAccountRecords {
+		if accountRecords.IsTimelock() {
+			continue
+		}
 
-			tokenAccount, err := common.NewAccountFromPublicKeyString(accountRecords.General.TokenAccount)
-			if err != nil {
-				return nil, err
-			}
+		tokenAccount, err := common.NewAccountFromPublicKeyString(accountRecords.General.TokenAccount)
+		if err != nil {
+			return nil, err
+		}
 
-			quarks, balanceSource, err := balance.CalculateFromBlockchain(ctx, s.data, tokenAccount)
-			if err != nil {
-				return nil, err
-			}
-			var protoBalanceSource accountpb.TokenAccountInfo_BalanceSource
-			switch balanceSource {
-			case balance.BlockchainSource:
-				protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN
-			case balance.CacheSource:
-				protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE
-			default:
-				protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN
-			}
-			balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
-				value:  quarks,
-				source: protoBalanceSource,
-			}
+		quarks, balanceSource, err := balance.CalculateFromBlockchain(ctx, s.data, tokenAccount)
+		if err != nil {
+			return nil, err
+		}
+		var protoBalanceSource accountpb.TokenAccountInfo_BalanceSource
+		switch balanceSource {
+		case balance.BlockchainSource:
+			protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_BLOCKCHAIN
+		case balance.CacheSource:
+			protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_CACHE
+		default:
+			protoBalanceSource = accountpb.TokenAccountInfo_BALANCE_SOURCE_UNKNOWN
+		}
+		balanceMetadataByTokenAccount[tokenAccount.PublicKey().ToBase58()] = &balanceMetadata{
+			value:  quarks,
+			source: protoBalanceSource,
 		}
 	}
 
@@ -486,6 +507,7 @@ func (s *server) getOriginalGiftCardExchangeData(ctx context.Context, records *c
 		ExchangeRate: intentRecord.SendPublicPaymentMetadata.ExchangeRate,
 		NativeAmount: intentRecord.SendPublicPaymentMetadata.NativeAmount,
 		Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
+		Mint:         common.CoreMintAccount.ToProto(),
 	}, nil
 }
 

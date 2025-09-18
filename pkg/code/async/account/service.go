@@ -65,6 +65,11 @@ func (p *service) mustLoadAirdropper(ctx context.Context) {
 	})
 
 	err := func() error {
+		vmConfig, err := common.GetVmConfigForMint(ctx, p.data, common.CoreMintAccount)
+		if err != nil {
+			return err
+		}
+
 		vaultRecord, err := p.data.GetKey(ctx, p.conf.airdropperOwnerPublicKey.Get(ctx))
 		if err != nil {
 			return err
@@ -75,7 +80,7 @@ func (p *service) mustLoadAirdropper(ctx context.Context) {
 			return err
 		}
 
-		timelockAccounts, err := ownerAccount.GetTimelockAccounts(common.CodeVmAccount, common.CoreMintAccount)
+		timelockAccounts, err := ownerAccount.GetTimelockAccounts(vmConfig)
 		if err != nil {
 			return err
 		}

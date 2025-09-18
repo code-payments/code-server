@@ -2,6 +2,7 @@ package transaction_v2
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -31,7 +32,7 @@ type transactionServer struct {
 	antispamGuard *antispam.Guard
 	amlGuard      *aml.Guard
 
-	noncePool *transaction.LocalNoncePool
+	noncePools []*transaction.LocalNoncePool
 
 	localAccountLocksMu sync.Mutex
 	localAccountLocks   map[string]*sync.Mutex
@@ -50,17 +51,20 @@ func NewTransactionServer(
 	airdropIntegration AirdropIntegration,
 	antispamGuard *antispam.Guard,
 	amlGuard *aml.Guard,
-	noncePool *transaction.LocalNoncePool,
+	noncePools []*transaction.LocalNoncePool,
 	configProvider ConfigProvider,
 ) (transactionpb.TransactionServer, error) {
-	var err error
-
 	ctx := context.Background()
 
 	conf := configProvider()
 
-	if err := noncePool.Validate(nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), nonce.PurposeClientTransaction); err != nil {
-		return nil, err
+	_, err := transaction.SelectNoncePool(
+		nonce.EnvironmentCvm,
+		common.CodeVmAccount.PublicKey().ToBase58(),
+		nonce.PurposeClientTransaction,
+	)
+	if err != nil {
+		return nil, errors.New("nonce pool for core mint is not provided")
 	}
 
 	s := &transactionServer{
@@ -77,7 +81,7 @@ func NewTransactionServer(
 		antispamGuard: antispamGuard,
 		amlGuard:      amlGuard,
 
-		noncePool: noncePool,
+		noncePools: noncePools,
 
 		localAccountLocks: make(map[string]*sync.Mutex),
 	}
