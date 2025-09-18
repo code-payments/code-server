@@ -305,7 +305,7 @@ func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, 
 		return err
 	}
 
-	usdMarketValue, err := currency_util.CalculateUsdMarketValue(ctx, data, mintAccount, giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity, time.Now())
+	usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, data, mintAccount, giftCardIssuedIntent.SendPublicPaymentMetadata.Quantity, time.Now())
 	if err != nil {
 		return err
 	}
