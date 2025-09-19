@@ -48,7 +48,7 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	go p.generateNonceAccountsOnSolanaMainnet(ctx)
 
 	// Setup workers to watch for nonce state changes on the Solana side
-	for _, item := range []nonce.State{
+	for _, state := range []nonce.State{
 		nonce.StateUnknown,
 		nonce.StateReleased,
 	} {
@@ -59,7 +59,7 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for env %s, instance %s, state %d", nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state)
 			}
 
-		}(item)
+		}(state)
 	}
 
 	// Setup workers to watch for nonce state changes on the CVM side
@@ -67,9 +67,9 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	// todo: Dynamically detect VMs
 	for _, vm := range []string{
 		common.CodeVmAccount.PublicKey().ToBase58(),
-		"52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj",
+		"Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta",
 	} {
-		for _, item := range []nonce.State{
+		for _, state := range []nonce.State{
 			nonce.StateReleased,
 		} {
 			go func(vm string, state nonce.State) {
@@ -79,7 +79,7 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 					p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for env %s, instance %s, state %d", nonce.EnvironmentCvm, vm, state)
 				}
 
-			}(vm, item)
+			}(vm, state)
 		}
 	}
 
