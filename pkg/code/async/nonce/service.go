@@ -56,24 +56,31 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 
 			err := p.worker(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, interval)
 			if err != nil && err != context.Canceled {
-				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
+				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for env %s, instance %s, state %d", nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state)
 			}
 
 		}(item)
 	}
 
 	// Setup workers to watch for nonce state changes on the CVM side
-	for _, item := range []nonce.State{
-		nonce.StateReleased,
+	//
+	// todo: Dynamically detect VMs
+	for _, vm := range []string{
+		common.CodeVmAccount.PublicKey().ToBase58(),
+		"52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj",
 	} {
-		go func(state nonce.State) {
+		for _, item := range []nonce.State{
+			nonce.StateReleased,
+		} {
+			go func(state nonce.State) {
 
-			err := p.worker(ctx, nonce.EnvironmentCvm, common.CodeVmAccount.PublicKey().ToBase58(), state, interval)
-			if err != nil && err != context.Canceled {
-				p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for state %d", state)
-			}
+				err := p.worker(ctx, nonce.EnvironmentCvm, vm, state, interval)
+				if err != nil && err != context.Canceled {
+					p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for env %s, instance %s, state %d", nonce.EnvironmentCvm, vm, state)
+				}
 
-		}(item)
+			}(item)
+		}
 	}
 
 	go func() {
