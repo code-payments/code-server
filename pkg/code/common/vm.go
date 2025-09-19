@@ -38,18 +38,20 @@ func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Acco
 			Mint:      CoreMintAccount,
 		}, nil
 	case jeffyMintAccount.PublicKey().ToBase58():
-		vaultRecord, err := data.GetKey(ctx, jeffyAuthority.PublicKey().ToBase58())
-		if err != nil {
-			return nil, err
-		}
+		if jeffyAuthority.PrivateKey() == nil {
+			vaultRecord, err := data.GetKey(ctx, jeffyAuthority.PublicKey().ToBase58())
+			if err != nil {
+				return nil, err
+			}
 
-		authorityAccount, err := NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
-		if err != nil {
-			return nil, err
+			jeffyAuthority, err = NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		return &VmConfig{
-			Authority: authorityAccount,
+			Authority: jeffyAuthority,
 			Vm:        jeffyVmAccount,
 			Omnibus:   jeffyVmOmnibusAccount,
 			Mint:      mint,
