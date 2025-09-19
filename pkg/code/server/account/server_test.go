@@ -249,7 +249,7 @@ func TestGetTokenAccountInfos_UserAccounts_HappyPath(t *testing.T) {
 	primaryAccountInfoRecordsByMint, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, ownerAccount.PublicKey().ToBase58(), commonpb.AccountType_PRIMARY)
 	require.NoError(t, err)
 	assert.True(t, primaryAccountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()].RequiresDepositSync)
-	assert.True(t, primaryAccountInfoRecordsByMint[jeffyVmConfig.Mint.PublicKey().ToBase58()].RequiresDepositSync)
+	assert.False(t, primaryAccountInfoRecordsByMint[jeffyVmConfig.Mint.PublicKey().ToBase58()].RequiresDepositSync)
 }
 
 func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
