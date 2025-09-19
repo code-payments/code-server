@@ -62,6 +62,7 @@ func NewTransactionServer(
 		nonce.EnvironmentCvm,
 		common.CodeVmAccount.PublicKey().ToBase58(),
 		nonce.PurposeClientTransaction,
+		noncePools...,
 	)
 	if err != nil {
 		return nil, errors.New("nonce pool for core mint is not provided")
