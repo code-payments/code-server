@@ -548,6 +548,8 @@ func (t Type) String() string {
 		return "save_recent_root"
 	case MigrateToPrivacy2022:
 		return "migrate_to_privacy_2022"
+	case ExternalDeposit:
+		return "external_deposit"
 	case SendPublicPayment:
 		return "send_public_payment"
 	case ReceivePaymentsPublicly:
