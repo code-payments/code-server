@@ -22,8 +22,10 @@ type MultiRateRecord struct {
 type MetadataRecord struct {
 	Id uint64
 
-	Name   string
-	Symbol string
+	Name        string
+	Symbol      string
+	Description string
+	ImageUrl    string
 
 	Seed string
 
@@ -62,6 +64,14 @@ func (m *MetadataRecord) Validate() error {
 
 	if len(m.Symbol) == 0 {
 		return errors.New("symbol is required")
+	}
+
+	if len(m.Description) == 0 {
+		return errors.New("description is required")
+	}
+
+	if len(m.ImageUrl) == 0 {
+		return errors.New("image url is required")
 	}
 
 	if len(m.Seed) == 0 {
@@ -147,8 +157,10 @@ func (m *MetadataRecord) Clone() *MetadataRecord {
 	return &MetadataRecord{
 		Id: m.Id,
 
-		Name:   m.Name,
-		Symbol: m.Symbol,
+		Name:        m.Name,
+		Symbol:      m.Symbol,
+		Description: m.Description,
+		ImageUrl:    m.ImageUrl,
 
 		Seed: m.Seed,
 
@@ -186,6 +198,8 @@ func (m *MetadataRecord) CopyTo(dst *MetadataRecord) {
 
 	dst.Name = m.Name
 	dst.Symbol = m.Symbol
+	dst.Description = m.Description
+	dst.ImageUrl = m.ImageUrl
 
 	dst.Seed = m.Seed
 

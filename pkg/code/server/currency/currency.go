@@ -14,6 +14,7 @@ import (
 	currencypb "github.com/code-payments/code-protobuf-api/generated/go/currency/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
+	"github.com/code-payments/code-server/pkg/code/config"
 	currency_util "github.com/code-payments/code-server/pkg/code/currency"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
@@ -83,10 +84,12 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 		switch mintAccount.PublicKey().ToBase58() {
 		case common.CoreMintAccount.PublicKey().ToBase58():
 			protoMetadata = &currencypb.Mint{
-				Address:  protoMintAddress,
-				Decimals: uint32(common.CoreMintDecimals),
-				Name:     common.CoreMintName,
-				Symbol:   strings.ToUpper(string(common.CoreMintSymbol)),
+				Address:     protoMintAddress,
+				Decimals:    uint32(common.CoreMintDecimals),
+				Name:        common.CoreMintName,
+				Symbol:      strings.ToUpper(string(common.CoreMintSymbol)),
+				Description: config.CoreMintDescription,
+				ImageUrl:    config.CoreMintImageUrl,
 				VmMetadata: &currencypb.VmMetadata{
 					Vm:                 common.CodeVmAccount.ToProto(),
 					Authority:          common.GetSubsidizer().ToProto(),
@@ -105,6 +108,12 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 			reserveRecord, err := s.data.GetCurrencyReserveAtTime(ctx, mintAccount.PublicKey().ToBase58(), currency_util.GetLatestExchangeRateTime())
 			if err != nil {
 				log.WithError(err).Warn("failed to load currency reserve record")
+				return nil, status.Error(codes.Internal, "")
+			}
+
+			vmConfig, err := common.GetVmConfigForMint(ctx, s.data, mintAccount)
+			if err != nil {
+				log.WithError(err).Warn("failure getting vm config")
 				return nil, status.Error(codes.Internal, "")
 			}
 
@@ -144,18 +153,16 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				return nil, status.Error(codes.Internal, "")
 			}
 
-			// todo: Need a DB table for VMs
-			vmAccount, _ := common.NewAccountFromPublicKeyString("Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta")
-			vmAuthorityAccount := currencyAuthorityAccount
-
 			protoMetadata = &currencypb.Mint{
-				Address:  protoMintAddress,
-				Decimals: uint32(metadataRecord.Decimals),
-				Name:     metadataRecord.Name,
-				Symbol:   metadataRecord.Symbol,
+				Address:     protoMintAddress,
+				Decimals:    uint32(metadataRecord.Decimals),
+				Name:        metadataRecord.Name,
+				Symbol:      metadataRecord.Symbol,
+				Description: metadataRecord.Description,
+				ImageUrl:    metadataRecord.ImageUrl,
 				VmMetadata: &currencypb.VmMetadata{
-					Vm:                 vmAccount.ToProto(),
-					Authority:          vmAuthorityAccount.ToProto(),
+					Vm:                 vmConfig.Vm.ToProto(),
+					Authority:          vmConfig.Authority.ToProto(),
 					LockDurationInDays: uint32(timelock_token.DefaultNumDaysLocked),
 				},
 				LaunchpadMetadata: &currencypb.LaunchpadMetadata{

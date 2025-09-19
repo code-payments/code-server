@@ -35,6 +35,8 @@ const (
 
 		name TEXT NOT NULL,
 		symbol TEXT NOT NULL,
+		description TEXT NOT NULL,
+		image_url TEXT NOT NULL,
 
 		seed TEXT UNIQUE NOT NULL,
 

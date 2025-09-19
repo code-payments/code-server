@@ -51,8 +51,10 @@ func fromExchangeRateModel(obj *exchangeRateModel) *currency.ExchangeRateRecord 
 type metadataModel struct {
 	Id sql.NullInt64 `db:"id"`
 
-	Name   string `db:"name"`
-	Symbol string `db:"symbol"`
+	Name        string `db:"name"`
+	Symbol      string `db:"symbol"`
+	Description string `db:"description"`
+	ImageUrl    string `db:"image_url"`
 
 	Seed string `db:"seed"`
 
@@ -92,8 +94,10 @@ func toMetadataModel(obj *currency.MetadataRecord) (*metadataModel, error) {
 	return &metadataModel{
 		Id: sql.NullInt64{Int64: int64(obj.Id), Valid: obj.Id > 0},
 
-		Name:   obj.Name,
-		Symbol: obj.Symbol,
+		Name:        obj.Name,
+		Symbol:      obj.Symbol,
+		Description: obj.Description,
+		ImageUrl:    obj.ImageUrl,
 
 		Seed: obj.Seed,
 
@@ -130,8 +134,10 @@ func fromMetadataModel(obj *metadataModel) *currency.MetadataRecord {
 	return &currency.MetadataRecord{
 		Id: uint64(obj.Id.Int64),
 
-		Name:   obj.Name,
-		Symbol: obj.Symbol,
+		Name:        obj.Name,
+		Symbol:      obj.Symbol,
+		Description: obj.Description,
+		ImageUrl:    obj.ImageUrl,
 
 		Seed: obj.Seed,
 
@@ -246,11 +252,13 @@ func (m *metadataModel) dbSave(ctx context.Context, db *sqlx.DB) error {
 	return pgutil.ExecuteInTx(ctx, db, sql.LevelDefault, func(tx *sqlx.Tx) error {
 		err := tx.QueryRowxContext(ctx,
 			`INSERT INTO `+metadataTableName+`
-			(name, symbol, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-			RETURNING id, name, symbol, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at`,
+			(name, symbol, description, image_url, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+			RETURNING id, name, symbol, description, image_url, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at`,
 			m.Name,
 			m.Symbol,
+			m.Description,
+			m.ImageUrl,
 			m.Seed,
 			m.Authority,
 			m.Mint,
@@ -347,7 +355,7 @@ func dbGetAllExchangeRatesForRange(ctx context.Context, db *sqlx.DB, symbol stri
 func dbGetMetadataByMint(ctx context.Context, db *sqlx.DB, mint string) (*metadataModel, error) {
 	res := &metadataModel{}
 	err := db.GetContext(ctx, res,
-		`SELECT id, name, symbol, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at
+		`SELECT id, name, symbol, description, image_url, seed, authority, mint, mint_bump, decimals, currency_config, currency_config_bump, liquidity_pool, liquidity_pool_bump, vault_mint, vault_mint_bump, vault_core, vault_core_bump, fees_mint, buy_fee_bps, fees_core, sell_fee_bps, created_by, created_at
 		FROM `+metadataTableName+`
 		WHERE mint = $1`,
 		mint,

@@ -15,6 +15,8 @@ const (
 	CoreMintDecimals        = usdc.Decimals
 	CoreMintName            = "USDC"
 	CoreMintSymbol          = "USDC"
+	CoreMintDescription     = "USDC is a regulated digital currency established in 2018 and issued by Circle, a regulated financial service business that follows strict US laws and standards to protect your money. Every USDC in existence is backed by a US dollar or cash equivalent asset that Circle has in its publicly visible reserves, with assurances issued monthly by a Big Four accounting firm."
+	CoreMintImageUrl        = "https://pbs.twimg.com/profile_images/1916937910928211968/CKblfanr_400x400.png"
 
 	SubsidizerPublicKey = "cash11ndAmdKFEnG2wrQQ5Zqvr1kN9htxxLyoPLYFUV"
 

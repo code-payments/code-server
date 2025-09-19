@@ -118,8 +118,10 @@ func testGetExchangeRatesInRange(t *testing.T, s currency.Store) {
 
 func testMetadataRoundTrip(t *testing.T, s currency.Store) {
 	expected := &currency.MetadataRecord{
-		Name:   "Jeffy",
-		Symbol: "JFY",
+		Name:        "Jeffy",
+		Symbol:      "JFY",
+		Description: "A test currency for Flipcash created by Jeff Yanta so we can eat our own dog food as we build out the platform. Pun intended",
+		ImageUrl:    "https://flipcash-currency-assets.s3.us-east-1.amazonaws.com/52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj/icon.png",
 
 		Seed: "H7WNaHtCa5h2k7AwZ8DbdLfM6bU2bi2jmWiUkFqgeBYk",
 
@@ -202,6 +204,8 @@ func testReserveRoundTrip(t *testing.T, s currency.Store) {
 func assertEquivalentMetadataRecords(t *testing.T, obj1, obj2 *currency.MetadataRecord) {
 	assert.Equal(t, obj1.Name, obj2.Name)
 	assert.Equal(t, obj1.Symbol, obj2.Symbol)
+	assert.Equal(t, obj1.Description, obj2.Description)
+	assert.Equal(t, obj1.ImageUrl, obj2.ImageUrl)
 	assert.Equal(t, obj1.Seed, obj2.Seed)
 	assert.Equal(t, obj1.Authority, obj2.Authority)
 	assert.Equal(t, obj1.Mint, obj2.Mint)
