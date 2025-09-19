@@ -296,7 +296,7 @@ func (h *OpenAccountsIntentHandler) validateActions(
 			}
 		}
 
-		expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccounts(ctx, h.data, openAction.GetOpenAccount().Authority, openAction.GetFeePayment().Mint)
+		expectedVaultAccount, err := getExpectedTimelockVaultFromProtoAccounts(ctx, h.data, openAction.GetOpenAccount().Authority, openAction.GetOpenAccount().Mint)
 		if err != nil {
 			return err
 		}
@@ -1515,7 +1515,7 @@ func validateMoneyMovementActionUserAccounts(
 		case *transactionpb.Action_NoPrivacyTransfer:
 			// No privacy transfers are always come from a deposit account
 
-			mint, err = common.NewAccountFromProto(typedAction.NoPrivacyTransfer.Mint)
+			mint, err = common.GetBackwardsCompatMint(typedAction.NoPrivacyTransfer.Mint)
 			if err != nil {
 				return err
 			}
@@ -1539,7 +1539,7 @@ func validateMoneyMovementActionUserAccounts(
 			//  1. As an auto-return action back to the payer's primary account in a public payment intent for remote send
 			//  2. As a receiver of funds to the primary account in a public receive
 
-			mint, err = common.NewAccountFromProto(typedAction.NoPrivacyWithdraw.Mint)
+			mint, err = common.GetBackwardsCompatMint(typedAction.NoPrivacyWithdraw.Mint)
 			if err != nil {
 				return err
 			}
@@ -1569,7 +1569,7 @@ func validateMoneyMovementActionUserAccounts(
 		case *transactionpb.Action_FeePayment:
 			// Fee payments always come from the primary account
 
-			mint, err = common.NewAccountFromProto(typedAction.FeePayment.Mint)
+			mint, err = common.GetBackwardsCompatMint(typedAction.FeePayment.Mint)
 			if err != nil {
 				return err
 			}
@@ -1913,7 +1913,7 @@ func validateDistributedPool(ctx context.Context, data code_data.Provider, poolV
 }
 
 func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.Provider, openAction *transactionpb.OpenAccountAction) error {
-	mintAccount, err := common.NewAccountFromProto(openAction.Mint)
+	mintAccount, err := common.GetBackwardsCompatMint(openAction.Mint)
 	if err != nil {
 		return err
 	}
@@ -1972,7 +1972,7 @@ func validateIntentAndActionMintsMatch(intentMint *common.Account, actions []*tr
 }
 
 func getExpectedTimelockVaultFromProtoAccounts(ctx context.Context, data code_data.Provider, authorityProto, mintProto *commonpb.SolanaAccountId) (*common.Account, error) {
-	mintAccount, err := common.NewAccountFromProto(mintProto)
+	mintAccount, err := common.GetBackwardsCompatMint(mintProto)
 	if err != nil {
 		return nil, err
 	}
