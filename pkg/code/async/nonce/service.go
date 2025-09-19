@@ -72,14 +72,14 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		for _, item := range []nonce.State{
 			nonce.StateReleased,
 		} {
-			go func(state nonce.State) {
+			go func(vm string, state nonce.State) {
 
 				err := p.worker(ctx, nonce.EnvironmentCvm, vm, state, interval)
 				if err != nil && err != context.Canceled {
 					p.log.WithError(err).Warnf("nonce processing loop terminated unexpectedly for env %s, instance %s, state %d", nonce.EnvironmentCvm, vm, state)
 				}
 
-			}(item)
+			}(vm, item)
 		}
 	}
 
