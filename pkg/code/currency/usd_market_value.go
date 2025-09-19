@@ -32,6 +32,6 @@ func CalculateUsdMarketValue(ctx context.Context, data code_data.Provider, mint 
 
 	quarksPerUnit := common.GetMintQuarksPerUnit(mint)
 	units := float64(quarks) / float64(quarksPerUnit)
-	marketValue := usdExchangeRecord.Rate * units
+	marketValue := rate * units
 	return marketValue, rate, nil
 }
