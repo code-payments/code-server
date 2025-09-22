@@ -20,6 +20,7 @@ func recordUserIntentCreatedEvent(ctx context.Context, intentRecord *intent.Reco
 	metrics.RecordEvent(ctx, userIntentCreatedEventName, map[string]interface{}{
 		"id":   intentRecord.IntentId,
 		"type": intentRecord.IntentType.String(),
+		"mint": intentRecord.MintAccount,
 	})
 }
 
