@@ -317,7 +317,7 @@ func insertAutoReturnIntentRecord(ctx context.Context, data code_data.Provider, 
 		IntentId:   getAutoReturnIntentId(giftCardIssuedIntent.IntentId),
 		IntentType: intent.ReceivePaymentsPublicly,
 
-		MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
+		MintAccount: mintAccount.PublicKey().ToBase58(),
 
 		InitiatorOwnerAccount: giftCardIssuedIntent.InitiatorOwnerAccount,
 

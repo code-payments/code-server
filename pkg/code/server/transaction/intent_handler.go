@@ -346,9 +346,6 @@ func (h *SendPublicPaymentIntentHandler) PopulateMetadata(ctx context.Context, i
 	if err != nil {
 		return err
 	}
-	if !common.IsCoreMint(mint) && typedProtoMetadata.IsRemoteSend {
-		return NewIntentValidationError("only the core mint is supported for remote send")
-	}
 	if !common.IsCoreMint(mint) && typedProtoMetadata.IsWithdrawal {
 		return NewIntentValidationError("only the core mint is supported for withdrawals")
 	}

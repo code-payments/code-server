@@ -787,13 +787,13 @@ func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transact
 			log.WithError(err).Warn("failure getting source account info record")
 			return nil, status.Error(codes.Internal, "")
 		}
-		coreMintSourceAccountInfoRecord, ok := sourceAccountInfoRecordsByMint[mintAccount.PublicKey().ToBase58()]
+		sourceAccountInfoRecord, ok := sourceAccountInfoRecordsByMint[mintAccount.PublicKey().ToBase58()]
 		if !ok {
 			log.WithError(err).Warn("core mint source account info record doesn't exist")
 			return nil, status.Error(codes.Internal, "")
 		}
 
-		sourceAccount, err := common.NewAccountFromPublicKeyString(coreMintSourceAccountInfoRecord.TokenAccount)
+		sourceAccount, err := common.NewAccountFromPublicKeyString(sourceAccountInfoRecord.TokenAccount)
 		if err != nil {
 			log.WithError(err).Warn("invalid source account")
 			return nil, status.Error(codes.Internal, "")
@@ -1050,7 +1050,13 @@ func (s *transactionServer) VoidGiftCard(ctx context.Context, req *transactionpb
 
 	claimedActionRecord, err := s.data.GetGiftCardClaimedAction(ctx, giftCardVault.PublicKey().ToBase58())
 	if err == nil {
-		vmConfig, err := common.GetVmConfigForMint(ctx, s.data, common.CoreMintAccount)
+		mintAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.MintAccount)
+		if err != nil {
+			log.WithError(err).Warn("invalid mint account")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		vmConfig, err := common.GetVmConfigForMint(ctx, s.data, mintAccount)
 		if err != nil {
 			log.WithError(err).Warn("failure getting vm config")
 			return nil, status.Error(codes.Internal, "")
