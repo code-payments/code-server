@@ -469,6 +469,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	if err != nil {
 		return err
 	}
+
 	intentMintAccount, err := common.GetBackwardsCompatMint(typedMetadata.Mint)
 	if err != nil {
 		return err
@@ -870,9 +871,6 @@ func (h *ReceivePaymentsPubliclyIntentHandler) PopulateMetadata(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	if !common.IsCoreMint(mint) {
-		return NewIntentValidationError("only the core mint is supported")
-	}
 
 	giftCardVault, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
 	if err != nil {
@@ -962,6 +960,11 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 		return err
 	}
 
+	intentMintAccount, err := common.GetBackwardsCompatMint(typedMetadata.Mint)
+	if err != nil {
+		return err
+	}
+
 	giftCardVaultAccount, err := common.NewAccountFromPublicKeyString(intentRecord.ReceivePaymentsPubliclyMetadata.Source)
 	if err != nil {
 		return err
@@ -971,9 +974,9 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	if err != nil {
 		return err
 	}
-	initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
+	initiatorAccountsByType, ok := initiatorAccountsByMintAndType[intentMintAccount.PublicKey().ToBase58()]
 	if !ok {
-		return errors.New("initiator core mint accounts don't exist")
+		return errors.New("initiator mint accounts don't exist")
 	}
 
 	initiatorAccounts := make([]*common.AccountRecords, 0)
@@ -1095,11 +1098,14 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 		return err
 	}
 
-	// The destination account must be the primary
+	// The destination account must be the primary account of the same mint
 	destinationAccountInfo := initiatorAccountsByType[commonpb.AccountType_PRIMARY][0].General
 	destinationSimulation, ok := simResult.SimulationsByAccount[destinationAccountInfo.TokenAccount]
 	if !ok {
 		return NewActionValidationError(actions[0], "must send payment to primary account")
+	}
+	if destinationAccountInfo.MintAccount != intentMint.PublicKey().ToBase58() {
+		return NewIntentValidationErrorf("destination account is not of %s mint", intentMint.PublicKey().ToBase58())
 	}
 
 	//
