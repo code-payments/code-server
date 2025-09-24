@@ -149,7 +149,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 							log.WithError(err).Warn("failure getting user initiator owner account")
 							return handleSubmitIntentError(streamer, err)
 						} else if err == account.ErrAccountInfoNotFound || accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-							return NewActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account")
+							return handleSubmitIntentError(streamer, NewActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account"))
 						}
 
 						initiatorOwnerAccount, err = common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
