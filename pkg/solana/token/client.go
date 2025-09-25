@@ -18,27 +18,21 @@ var (
 
 // Client provides utilities for accessing token accounts for a given token.
 type Client struct {
-	sc    solana.Client
-	token ed25519.PublicKey
+	sc solana.Client
 }
 
 // NewClient creates a new Client.
-func NewClient(sc solana.Client, token ed25519.PublicKey) *Client {
+func NewClient(sc solana.Client) *Client {
 	return &Client{
-		sc:    sc,
-		token: token,
+		sc: sc,
 	}
-}
-
-func (c *Client) Token() ed25519.PublicKey {
-	return c.token
 }
 
 // GetAccount returns the token account info for the specified account.
 //
 // If the account is not initialized, or belongs to a different
 // mint, then ErrInvalidTokenAccount is returned.
-func (c *Client) GetAccount(accountID ed25519.PublicKey, commitment solana.Commitment) (*Account, error) {
+func (c *Client) GetAccount(accountID, mintID ed25519.PublicKey, commitment solana.Commitment) (*Account, error) {
 	accountInfo, err := c.sc.GetAccountInfo(accountID, commitment)
 	if err == solana.ErrNoAccountInfo {
 		return nil, ErrAccountNotFound
@@ -55,7 +49,7 @@ func (c *Client) GetAccount(accountID ed25519.PublicKey, commitment solana.Commi
 		return nil, ErrInvalidTokenAccount
 	}
 
-	if !bytes.Equal(c.token, account.Mint) {
+	if !bytes.Equal(mintID, account.Mint) {
 		return nil, ErrInvalidTokenAccount
 	}
 

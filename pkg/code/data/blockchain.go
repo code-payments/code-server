@@ -32,7 +32,7 @@ type BlockchainData interface {
 	GetBlockchainLatestBlockhash(ctx context.Context) (solana.Blockhash, error)
 	GetBlockchainSignatureStatuses(ctx context.Context, signatures []solana.Signature) ([]*solana.SignatureStatus, error)
 	GetBlockchainSlot(ctx context.Context, commitment solana.Commitment) (uint64, error)
-	GetBlockchainTokenAccountInfo(ctx context.Context, account string, commitment solana.Commitment) (*token.Account, error)
+	GetBlockchainTokenAccountInfo(ctx context.Context, account, mint string, commitment solana.Commitment) (*token.Account, error)
 	GetBlockchainTokenAccountsByOwner(ctx context.Context, account string) ([]ed25519.PublicKey, error)
 	GetBlockchainTransaction(ctx context.Context, sig string, commitment solana.Commitment) (*solana.ConfirmedTransaction, error)
 	GetBlockchainTransactionTokenBalances(ctx context.Context, sig string) (*solana.TransactionTokenBalances, error)
@@ -46,7 +46,7 @@ type BlockchainProvider struct {
 
 func NewBlockchainProvider(solanaEndpoint string) (BlockchainData, error) {
 	sc := solana.New(solanaEndpoint)
-	tc := token.NewClient(sc, config.CoreMintPublicKeyBytes)
+	tc := token.NewClient(sc)
 
 	return &BlockchainProvider{
 		sc: sc,
@@ -117,7 +117,7 @@ func (dp *BlockchainProvider) GetBlockchainAccountDataAfterBlock(ctx context.Con
 	}
 	return data, block, err
 }
-func (dp *BlockchainProvider) GetBlockchainTokenAccountInfo(ctx context.Context, account string, commitment solana.Commitment) (*token.Account, error) {
+func (dp *BlockchainProvider) GetBlockchainTokenAccountInfo(ctx context.Context, account, mint string, commitment solana.Commitment) (*token.Account, error) {
 	tracer := metrics.TraceMethodCall(ctx, blockchainProviderMetricsName, "GetBlockchainTokenAccountInfo")
 	defer tracer.End()
 
@@ -125,7 +125,13 @@ func (dp *BlockchainProvider) GetBlockchainTokenAccountInfo(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	res, err := dp.tc.GetAccount(accountId, commitment)
+
+	mintId, err := base58.Decode(mint)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := dp.tc.GetAccount(accountId, mintId, commitment)
 
 	if err != nil {
 		tracer.OnError(err)
