@@ -824,7 +824,7 @@ func isAccountInitialized(ctx context.Context, data code_data.Provider, address 
 	timelockRecord, err := data.GetTimelockByVault(ctx, address)
 	if err == timelock.ErrTimelockNotFound {
 		// Likely not a Code timelock account, so defer to the blockchain
-		_, err := data.GetBlockchainTokenAccountInfo(ctx, address, solana.CommitmentFinalized)
+		_, err := data.GetBlockchainAccountInfo(ctx, address, solana.CommitmentFinalized)
 		if err == solana.ErrNoAccountInfo || err == token.ErrAccountNotFound {
 			return false, nil
 		} else if err != nil {

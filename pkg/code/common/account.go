@@ -432,9 +432,9 @@ func (a *TimelockAccounts) GetInitializeInstruction(vmAuthority, memory *Account
 	), nil
 }
 
-// ValidateExternalTokenAccount validates an address is an external token account for the core mint
-func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, tokenAccount *Account) (bool, string, error) {
-	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+// ValidateExternalTokenAccount validates an address is an external token account for the provided mint
+func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, tokenAccount, mintAccount *Account) (bool, string, error) {
+	_, err := data.GetBlockchainTokenAccountInfo(ctx, tokenAccount.PublicKey().ToBase58(), mintAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
 	switch err {
 	case nil:
 		// Double check there were no race conditions between other SubmitIntent
@@ -452,7 +452,7 @@ func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, 
 	case solana.ErrNoAccountInfo, token.ErrAccountNotFound:
 		return false, fmt.Sprintf("%s doesn't exist on the blockchain", tokenAccount.PublicKey().ToBase58()), nil
 	case token.ErrInvalidTokenAccount:
-		return false, fmt.Sprintf("%s is not a core mint account", tokenAccount.PublicKey().ToBase58()), nil
+		return false, fmt.Sprintf("%s is not of %s mint", tokenAccount.PublicKey().ToBase58(), mintAccount.PublicKey().ToBase58()), nil
 	default:
 		// Unfortunate if Solana is down, but this only impacts withdraw flows,
 		// and we need to guarantee this isn't going to something that's not
