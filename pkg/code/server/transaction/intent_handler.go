@@ -455,7 +455,6 @@ func (h *SendPublicPaymentIntentHandler) GetBalanceLocks(ctx context.Context, in
 	return intentBalanceLocks, nil
 }
 
-// todo: Not all multi-mint validation checks are implemented
 func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := untypedMetadata.GetSendPublicPayment()
 	if typedMetadata == nil {
@@ -522,16 +521,7 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 3: Account validation to determine if it's managed by Code
-	//
-
-	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
-	if err != nil {
-		return err
-	}
-
-	//
-	// Part 4: Exchange data validation
+	// Part 3: Exchange data validation
 	//
 
 	if err := validateExchangeDataWithinIntent(ctx, h.data, typedMetadata.Mint, typedMetadata.ExchangeData); err != nil {
@@ -539,10 +529,36 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 5: Local simulation
+	// Part 4: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
+	if err != nil {
+		return err
+	}
+
+	// Fee payments always operate against the core mint, so we need to add relevant
+	// core mint initiator records
+	if simResult.HasAnyFeePayments() && !common.IsCoreMint(intentMintAccount) {
+		initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
+		if !ok {
+			return errors.New("initiator core mint accounts don't exist")
+		}
+		primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
+		if !ok {
+			return errors.New("initiator core mint primary account doesn't exist")
+		}
+		for _, records := range primaryAccountRecords {
+			initiatorAccounts = append(initiatorAccounts, records)
+			initiatorAccountsByVault[records.General.TokenAccount] = records
+		}
+	}
+
+	//
+	// Part 5: Account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
 	if err != nil {
 		return err
 	}
@@ -939,7 +955,6 @@ func (h *ReceivePaymentsPubliclyIntentHandler) GetBalanceLocks(ctx context.Conte
 	}, nil
 }
 
-// todo: Not all multi-mint validation checks are implemented
 func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, untypedMetadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := untypedMetadata.GetReceivePaymentsPublicly()
 	if typedMetadata == nil {
@@ -1013,7 +1028,16 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 3: Gift card account validation
+	// Part 3: User account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Gift card account validation
 	//
 
 	err = validateClaimedGiftCard(ctx, h.data, giftCardVaultAccount, typedMetadata.Quarks)
@@ -1022,36 +1046,10 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 4: Local simulation
+	// Part 5: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
-	if err != nil {
-		return err
-	}
-
-	// Fee payments always operate against the core mint, so we need to add relevant
-	// core mint initiator records
-	if simResult.HasAnyFeePayments() && !common.IsCoreMint(intentMintAccount) {
-		initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
-		if !ok {
-			return errors.New("initiator core mint accounts don't exist")
-		}
-		primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
-		if !ok {
-			return errors.New("initiator core mint primary account doesn't exist")
-		}
-		for _, records := range primaryAccountRecords {
-			initiatorAccounts = append(initiatorAccounts, records)
-			initiatorAccountsByVault[records.General.TokenAccount] = records
-		}
-	}
-
-	//
-	// Part 5: User account validation to determine if it's managed by Code
-	//
-
-	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
 	if err != nil {
 		return err
 	}
