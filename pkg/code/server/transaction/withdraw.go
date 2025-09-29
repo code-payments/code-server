@@ -91,7 +91,7 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 	//
 
 	var isVmDepositPda bool
-	_, err = s.data.GetTimelockByDepositPda(ctx, accountToCheck.PublicKey().ToBase58())
+	timelockRecord, err := s.data.GetTimelockByDepositPda(ctx, accountToCheck.PublicKey().ToBase58())
 	switch err {
 	case nil:
 		isVmDepositPda = true
@@ -106,6 +106,21 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 			IsValidPaymentDestination: false,
 			AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
 		}, nil
+	}
+
+	if isVmDepositPda {
+		accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, timelockRecord.VaultAddress)
+		if err != nil {
+			log.WithError(err).Warn("failure checking account info db")
+			return nil, status.Error(codes.Internal, "")
+		}
+
+		if accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY || accountInfoRecord.MintAccount != mintAccount.PublicKey().ToBase58() {
+			return &transactionpb.CanWithdrawToAccountResponse{
+				IsValidPaymentDestination: false,
+				AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
+			}, nil
+		}
 	}
 
 	ata, err := accountToCheck.ToAssociatedTokenAccount(mintAccount)
