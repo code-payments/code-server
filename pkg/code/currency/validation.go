@@ -113,7 +113,7 @@ func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, pr
 	quarksPerUnit := common.GetMintQuarksPerUnit(mint)
 	unitsOfMint := proto.NativeAmount / foundRate
 	expectedQuarks := int64(unitsOfMint * float64(quarksPerUnit))
-	if math.Abs(float64(expectedQuarks-int64(proto.Quarks))) > 100 {
+	if math.Abs(float64(expectedQuarks-int64(proto.Quarks))) > 1000 {
 		return false, "payment native amount and quark value mismatch", nil
 	}
 
