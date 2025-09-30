@@ -8,5 +8,5 @@ import (
 
 // Integration allows for notifications based on events processed by Geyser
 type Integration interface {
-	OnDepositReceived(ctx context.Context, owner *common.Account, quarksReceived uint64) error
+	OnDepositReceived(ctx context.Context, owner, mint *common.Account, quarksReceived uint64, usdMarketValue float64) error
 }

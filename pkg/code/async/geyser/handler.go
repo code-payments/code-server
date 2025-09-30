@@ -85,7 +85,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 
 	switch mintAccount.PublicKey().ToBase58() {
 
-	case common.CoreMintAccount.PublicKey().ToBase58():
+	case common.CoreMintAccount.PublicKey().ToBase58(), "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
 		// Not an ATA, so filter it out. It cannot be a VM deposit ATA
 		if bytes.Equal(tokenAccount.PublicKey().ToBytes(), ownerAccount.PublicKey().ToBytes()) {
 			return nil
@@ -98,13 +98,13 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 			return nil
 		}
 
-		err = processPotentialExternalDepositIntoVm(ctx, h.data, h.integration, signature, userAuthorityAccount)
+		err = processPotentialExternalDepositIntoVm(ctx, h.data, h.integration, signature, userAuthorityAccount, mintAccount)
 		if err != nil {
 			return errors.Wrap(err, "error processing signature for external deposit into vm")
 		}
 
 		if unmarshalled.Amount > 0 {
-			err = initiateExternalDepositIntoVm(ctx, h.data, h.vmIndexerClient, userAuthorityAccount, unmarshalled.Amount)
+			err = initiateExternalDepositIntoVm(ctx, h.data, h.vmIndexerClient, userAuthorityAccount, mintAccount, unmarshalled.Amount)
 			if err != nil {
 				return errors.Wrap(err, "error depositing into the vm")
 			}
@@ -112,7 +112,6 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 
 		return nil
 	default:
-		// Not a Core Mint account, so filter it out
 		return nil
 	}
 }

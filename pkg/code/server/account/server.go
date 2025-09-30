@@ -238,7 +238,7 @@ func (s *server) GetTokenAccountInfos(ctx context.Context, req *accountpb.GetTok
 
 	// Trigger a deposit sync with the blockchain for the primary account, if it exists
 	for _, records := range filteredRecords {
-		if records.General.AccountType == commonpb.AccountType_PRIMARY && !records.General.RequiresDepositSync && records.General.MintAccount == common.CoreMintAccount.PublicKey().ToBase58() {
+		if records.General.AccountType == commonpb.AccountType_PRIMARY && !records.General.RequiresDepositSync {
 			records.General.RequiresDepositSync = true
 			err = s.data.UpdateAccountInfo(ctx, records.General)
 			if err != nil {
