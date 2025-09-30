@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/sirupsen/logrus"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/account"
@@ -146,9 +147,18 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 							return
 						}
 
-						log := log.WithField("authority", authorityAccount.PublicKey().ToBase58())
+						mintAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.MintAccount)
+						if err != nil {
+							log.WithError(err).Warn("invalid mint account")
+							return
+						}
 
-						err = fixMissingExternalDeposits(tracedCtx, p.data, p.vmIndexerClient, p.integration, authorityAccount)
+						log := log.WithFields(logrus.Fields{
+							"authority": authorityAccount.PublicKey().ToBase58(),
+							"mint":      mintAccount.PublicKey().ToBase58(),
+						})
+
+						err = fixMissingExternalDeposits(tracedCtx, p.data, p.vmIndexerClient, p.integration, authorityAccount, mintAccount)
 						if err != nil {
 							log.WithError(err).Warn("failed to fix missing external deposits")
 						}

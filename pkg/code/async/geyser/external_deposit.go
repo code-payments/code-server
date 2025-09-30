@@ -39,20 +39,20 @@ var (
 	syncedDepositCache = cache.NewCache(1_000_000)
 )
 
-func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration, userAuthority *common.Account) error {
-	err := maybeInitiateExternalDepositIntoVm(ctx, data, vmIndexerClient, userAuthority)
+func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration, userAuthority, mint *common.Account) error {
+	err := maybeInitiateExternalDepositIntoVm(ctx, data, vmIndexerClient, userAuthority, mint)
 	if err != nil {
 		return errors.Wrap(err, "error depositing into the vm")
 	}
 
-	signatures, err := findPotentialExternalDepositsIntoVm(ctx, data, userAuthority)
+	signatures, err := findPotentialExternalDepositsIntoVm(ctx, data, userAuthority, mint)
 	if err != nil {
 		return errors.Wrap(err, "error finding potential external deposits into vm")
 	}
 
 	var anyError error
 	for _, signature := range signatures {
-		err := processPotentialExternalDepositIntoVm(ctx, data, integration, signature, userAuthority)
+		err := processPotentialExternalDepositIntoVm(ctx, data, integration, signature, userAuthority, mint)
 		if err != nil {
 			anyError = errors.Wrap(err, "error processing signature for external deposit into vm")
 		}
@@ -61,11 +61,11 @@ func fixMissingExternalDeposits(ctx context.Context, data code_data.Provider, vm
 		return anyError
 	}
 
-	return markDepositsAsSynced(ctx, data, userAuthority)
+	return markDepositsAsSynced(ctx, data, userAuthority, mint)
 }
 
-func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority *common.Account) error {
-	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority, mint *common.Account) error {
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return err
 	}
@@ -85,11 +85,11 @@ func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Prov
 	if balance == 0 {
 		return nil
 	}
-	return initiateExternalDepositIntoVm(ctx, data, vmIndexerClient, userAuthority, balance)
+	return initiateExternalDepositIntoVm(ctx, data, vmIndexerClient, userAuthority, mint, balance)
 }
 
-func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority *common.Account, balance uint64) error {
-	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority, mint *common.Account, balance uint64) error {
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return err
 	}
@@ -99,25 +99,25 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 		return errors.Wrap(err, "error getting vm deposit ata")
 	}
 
-	memoryAccount, memoryIndex, err := getVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, common.CodeVmAccount, userAuthority)
+	memoryAccount, memoryIndex, err := getVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
 	if err != nil {
 		return errors.Wrap(err, "error getting vta location in memory")
 	}
 
 	txn := solana.NewTransaction(
-		common.GetSubsidizer().PublicKey().ToBytes(),
+		vmConfig.Authority.PublicKey().ToBytes(),
 		memo.Instruction(codeVmDepositMemoValue),
 		compute_budget.SetComputeUnitPrice(1_000),
 		compute_budget.SetComputeUnitLimit(50_000),
 		cvm.NewDepositInstruction(
 			&cvm.DepositInstructionAccounts{
-				VmAuthority: common.GetSubsidizer().PublicKey().ToBytes(),
-				Vm:          common.CodeVmAccount.PublicKey().ToBytes(),
+				VmAuthority: vmConfig.Authority.PublicKey().ToBytes(),
+				Vm:          vmConfig.Vm.PublicKey().ToBytes(),
 				VmMemory:    memoryAccount.PublicKey().ToBytes(),
 				Depositor:   vmDepositAccounts.VaultOwner.PublicKey().ToBytes(),
 				DepositPda:  vmDepositAccounts.Pda.PublicKey().ToBytes(),
 				DepositAta:  vmDepositAccounts.Ata.PublicKey().ToBytes(),
-				VmOmnibus:   common.CodeVmOmnibusAccount.PublicKey().ToBytes(),
+				VmOmnibus:   vmConfig.Omnibus.PublicKey().ToBytes(),
 			},
 			&cvm.DepositInstructionArgs{
 				AccountIndex: memoryIndex,
@@ -133,7 +133,7 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 	}
 	txn.SetBlockhash(bh)
 
-	err = txn.Sign(common.GetSubsidizer().PrivateKey().ToBytes())
+	err = txn.Sign(vmConfig.Authority.PrivateKey().ToBytes())
 	if err != nil {
 		return errors.Wrap(err, "error signing transaction")
 	}
@@ -159,8 +159,8 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 	return nil
 }
 
-func findPotentialExternalDepositsIntoVm(ctx context.Context, data code_data.Provider, userAuthority *common.Account) ([]string, error) {
-	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+func findPotentialExternalDepositsIntoVm(ctx context.Context, data code_data.Provider, userAuthority, mint *common.Account) ([]string, error) {
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +218,8 @@ func findPotentialExternalDepositsIntoVm(ctx context.Context, data code_data.Pro
 	}
 }
 
-func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.Provider, integration Integration, signature string, userAuthority *common.Account) error {
-	vmConfig, err := common.GetVmConfigForMint(ctx, data, common.CoreMintAccount)
+func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.Provider, integration Integration, signature string, userAuthority, mint *common.Account) error {
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return err
 	}
@@ -253,13 +253,13 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		return errors.Wrap(err, "error getting transaction token balances")
 	}
 
-	// Check whether the VM authority was involved in this transaction as a signer.
-	// If not, then it couldn't have been deposited into the VM
-	if tokenBalances.Accounts[0] != common.GetSubsidizer().PublicKey().ToBase58() {
+	// Check whether the VM authority or subsidizer was involved in this transaction
+	// as a payer. If not, then it couldn't have been deposited into the VM
+	if tokenBalances.Accounts[0] != vmConfig.Authority.PublicKey().ToBase58() && tokenBalances.Accounts[0] != common.GetSubsidizer().PublicKey().ToBase58() {
 		return nil
 	}
 
-	deltaQuarksIntoOmnibus, err := getDeltaQuarksFromTokenBalances(common.CodeVmOmnibusAccount, tokenBalances)
+	deltaQuarksIntoOmnibus, err := getDeltaQuarksFromTokenBalances(vmConfig.Omnibus, tokenBalances)
 	if err != nil {
 		return errors.Wrap(err, "error getting delta quarks for vm omnibus from token balances")
 	}
@@ -278,21 +278,21 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		return nil
 	}
 
-	accountInfoRecords, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
+	accountInfoRecordsByMint, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
 	if err != nil {
 		return errors.Wrap(err, "error getting account info record")
 	}
-	coreMintAccountInfoRecord, ok := accountInfoRecords[common.CoreMintAccount.PublicKey().ToBase58()]
+	accountInfoRecord, ok := accountInfoRecordsByMint[mint.PublicKey().ToBase58()]
 	if !ok {
 		return errors.New("core mint account info record doesn't exist")
 	}
-	userVirtualTimelockVaultAccount, err := common.NewAccountFromPublicKeyString(coreMintAccountInfoRecord.TokenAccount)
+	userVirtualTimelockVaultAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.TokenAccount)
 	if err != nil {
 		return errors.Wrap(err, "invalid virtual timelock vault account")
 	}
 
 	// Use the account type to determine how we'll process this external deposit
-	switch coreMintAccountInfoRecord.AccountType {
+	switch accountInfoRecord.AccountType {
 	case commonpb.AccountType_PRIMARY:
 		// Check whether we've previously processed this external deposit
 		_, err = data.GetExternalDeposit(ctx, signature, userVirtualTimelockVaultAccount.PublicKey().ToBase58())
@@ -303,12 +303,12 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 			return errors.Wrap(err, "error checking for existing external deposit record")
 		}
 
-		ownerAccount, err := common.NewAccountFromPublicKeyString(coreMintAccountInfoRecord.OwnerAccount)
+		ownerAccount, err := common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
 		if err != nil {
 			return errors.Wrap(err, "invalid owner account")
 		}
 
-		usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, data, common.CoreMintAccount, uint64(deltaQuarksIntoOmnibus), time.Now())
+		usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, data, mint, uint64(deltaQuarksIntoOmnibus), time.Now())
 		if err != nil {
 			return errors.Wrap(err, "error calculating usd market value")
 		}
@@ -319,7 +319,7 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 				IntentId:   getExternalDepositIntentID(signature, userVirtualTimelockVaultAccount),
 				IntentType: intent.ExternalDeposit,
 
-				MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
+				MintAccount: mint.PublicKey().ToBase58(),
 
 				InitiatorOwnerAccount: ownerAccount.PublicKey().ToBase58(),
 
@@ -363,7 +363,7 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		syncedDepositCache.Insert(cacheKey, true, 1)
 
 		// Best-effort processing for notification back to the user
-		integration.OnDepositReceived(ctx, ownerAccount, uint64(deltaQuarksIntoOmnibus))
+		integration.OnDepositReceived(ctx, ownerAccount, mint, uint64(deltaQuarksIntoOmnibus), usdMarketValue)
 
 		return nil
 	default:
@@ -422,20 +422,20 @@ func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances
 	return postQuarkBalance - preQuarkBalance, nil
 }
 
-func markDepositsAsSynced(ctx context.Context, data code_data.Provider, userAuthority *common.Account) error {
+func markDepositsAsSynced(ctx context.Context, data code_data.Provider, userAuthority, mint *common.Account) error {
 	accountInfoRecords, err := data.GetAccountInfoByAuthorityAddress(ctx, userAuthority.PublicKey().ToBase58())
 	if err != nil {
 		return errors.Wrap(err, "error getting account info record")
 	}
-	coreMintAccountInfoRecord, ok := accountInfoRecords[common.CoreMintAccount.PublicKey().ToBase58()]
+	accountInfoRecord, ok := accountInfoRecords[mint.PublicKey().ToBase58()]
 	if !ok {
 		return errors.New("core mint account info record doesn't exist")
 	}
 
-	coreMintAccountInfoRecord.RequiresDepositSync = false
-	coreMintAccountInfoRecord.DepositsLastSyncedAt = time.Now()
+	accountInfoRecord.RequiresDepositSync = false
+	accountInfoRecord.DepositsLastSyncedAt = time.Now()
 
-	err = data.UpdateAccountInfo(ctx, coreMintAccountInfoRecord)
+	err = data.UpdateAccountInfo(ctx, accountInfoRecord)
 	if err != nil {
 		return errors.Wrap(err, "error updating account info record")
 	}
