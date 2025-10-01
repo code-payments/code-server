@@ -18,20 +18,29 @@ func CalculateUsdMarketValue(ctx context.Context, data code_data.Provider, mint 
 		return 0, 0, err
 	}
 
-	pricePerCoreMint := 1.0
-	if mint.PublicKey().ToBase58() != common.CoreMintAccount.PublicKey().ToBase58() {
-		reserveRecord, err := data.GetCurrencyReserveAtTime(ctx, mint.PublicKey().ToBase58(), at)
-		if err != nil {
-			return 0, 0, err
-		}
+	coreMintQuarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
 
-		pricePerCoreMint, _ = currencycreator.EstimateCurrentPrice(reserveRecord.SupplyFromBonding).Float64()
+	if common.IsCoreMint(mint) {
+		units := float64(quarks) / float64(coreMintQuarksPerUnit)
+		marketValue := usdExchangeRecord.Rate * units
+		return marketValue, usdExchangeRecord.Rate, nil
 	}
 
-	rate := pricePerCoreMint * usdExchangeRecord.Rate
+	reserveRecord, err := data.GetCurrencyReserveAtTime(ctx, mint.PublicKey().ToBase58(), at)
+	if err != nil {
+		return 0, 0, err
+	}
 
-	quarksPerUnit := common.GetMintQuarksPerUnit(mint)
-	units := float64(quarks) / float64(quarksPerUnit)
-	marketValue := rate * units
+	coreMintSellValueInQuarks, _ := currencycreator.EstimateSell(&currencycreator.EstimateSellArgs{
+		SellAmountInQuarks:   quarks,
+		CurrentValueInQuarks: reserveRecord.CoreMintLocked,
+		ValueMintDecimals:    uint8(common.CoreMintDecimals),
+		SellFeeBps:           0,
+	})
+
+	coreMintSellValueInUnits := float64(coreMintSellValueInQuarks) / float64(coreMintQuarksPerUnit)
+	otherMintUnits := float64(quarks) / float64(common.GetMintQuarksPerUnit(mint))
+	marketValue := usdExchangeRecord.Rate * coreMintSellValueInUnits
+	rate := marketValue / otherMintUnits
 	return marketValue, rate, nil
 }

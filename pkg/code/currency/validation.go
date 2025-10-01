@@ -63,41 +63,33 @@ func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, pr
 		return false, "", err
 	}
 
+	if common.IsCoreMint(mint) {
+		return validateCoreMintClientExchangeData(ctx, data, proto)
+	}
+	return validateCurrencyLaunchpadClientExchangeData(ctx, data, proto)
+}
+
+func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
 	latestExchangeRateTime := GetLatestExchangeRateTime()
 
+	// Find an exchange rate that the client could have fetched from a RPC call
+	// within a reasonable time in the past
 	var foundRate float64
 	var isClientRateValid bool
-	for i := range 3 {
+	for i := range 2 {
 		exchangeRateTime := latestExchangeRateTime.Add(time.Duration(-i) * timePerExchangeRateUpdate)
 
-		coreMintFiatExchangeRateRecord, err := data.GetExchangeRate(ctx, currency_lib.Code(proto.Currency), exchangeRateTime)
+		exchangeRateRecord, err := data.GetExchangeRate(ctx, currency_lib.Code(proto.Currency), exchangeRateTime)
 		if err == currency.ErrNotFound {
 			continue
 		} else if err != nil {
 			return false, "", err
 		}
 
-		pricePerCoreMint := 1.0
-		if mint.PublicKey().ToBase58() != common.CoreMintAccount.PublicKey().ToBase58() {
-			reserveRecord, err := data.GetCurrencyReserveAtTime(ctx, mint.PublicKey().ToBase58(), exchangeRateTime)
-			if err == currency.ErrNotFound {
-				continue
-			} else if err != nil {
-				return false, "", err
-			}
-
-			pricePerCoreMint, _ = currencycreator.EstimateCurrentPrice(reserveRecord.SupplyFromBonding).Float64()
-		}
-
-		actualRate := pricePerCoreMint * coreMintFiatExchangeRateRecord.Rate
-
-		// Avoid issues with floating points by examining the percentage difference
-		//
-		// todo: configurable error tolerance?
-		percentDiff := math.Abs(actualRate-proto.ExchangeRate) / actualRate
+		percentDiff := math.Abs(exchangeRateRecord.Rate-proto.ExchangeRate) / exchangeRateRecord.Rate
 		if percentDiff < 0.001 {
 			isClientRateValid = true
-			foundRate = actualRate
+			foundRate = exchangeRateRecord.Rate
 			break
 		}
 	}
@@ -108,14 +100,81 @@ func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, pr
 
 	// Validate that the native amount and exchange rate fall reasonably within
 	// the amount of quarks to send in the transaction.
-	//
-	// todo: configurable error tolerance?
-	quarksPerUnit := common.GetMintQuarksPerUnit(mint)
-	unitsOfMint := proto.NativeAmount / foundRate
-	expectedQuarks := int64(unitsOfMint * float64(quarksPerUnit))
+	quarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
+	unitsOfCoreMint := proto.NativeAmount / foundRate
+	expectedQuarks := int64(unitsOfCoreMint * float64(quarksPerUnit))
 	if math.Abs(float64(expectedQuarks-int64(proto.Quarks))) > 1000 {
 		return false, "payment native amount and quark value mismatch", nil
 	}
 
 	return true, "", nil
+}
+
+func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
+	mintAccount, err := common.GetBackwardsCompatMint(proto.Mint)
+	if err != nil {
+		return false, "", err
+	}
+
+	coreMintQuarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
+	otherMintQuarksPerUnit := common.GetMintQuarksPerUnit(mintAccount)
+
+	latestExchangeRateTime := GetLatestExchangeRateTime()
+	for i := range 2 {
+		exchangeRateTime := latestExchangeRateTime.Add(time.Duration(-i) * timePerExchangeRateUpdate)
+
+		reserveRecord, err := data.GetCurrencyReserveAtTime(ctx, mintAccount.PublicKey().ToBase58(), exchangeRateTime)
+		if err == currency.ErrNotFound {
+			continue
+		} else if err != nil {
+			return false, "", err
+		}
+
+		usdExchangeRateRecord, err := data.GetExchangeRate(ctx, currency_lib.USD, exchangeRateTime)
+		if err == currency.ErrNotFound {
+			continue
+		} else if err != nil {
+			return false, "", err
+		}
+
+		var otherExchangeRateRecord *currency.ExchangeRateRecord
+		if proto.Currency == string(currency_lib.USD) {
+			otherExchangeRateRecord = usdExchangeRateRecord
+		} else {
+			otherExchangeRateRecord, err = data.GetExchangeRate(ctx, currency_lib.Code(proto.Currency), exchangeRateTime)
+			if err == currency.ErrNotFound {
+				continue
+			} else if err != nil {
+				return false, "", err
+			}
+		}
+
+		// How much core mint would be received for a sell against the currency creator program?
+		coreMintSellValueInQuarks, _ := currencycreator.EstimateSell(&currencycreator.EstimateSellArgs{
+			SellAmountInQuarks:   proto.Quarks,
+			CurrentValueInQuarks: reserveRecord.CoreMintLocked,
+			ValueMintDecimals:    uint8(common.CoreMintDecimals),
+			SellFeeBps:           0,
+		})
+
+		// Given the sell value, does it align with the native amount in the target currency?
+		coreMintSellValueInUnits := float64(coreMintSellValueInQuarks) / float64(coreMintQuarksPerUnit)
+		potentialNativeAmount := otherExchangeRateRecord.Rate * coreMintSellValueInUnits / usdExchangeRateRecord.Rate
+		percentDiff := math.Abs(proto.NativeAmount-potentialNativeAmount) / potentialNativeAmount
+		if percentDiff > 0.001 {
+			continue
+		}
+
+		// For the valid native amount, is the exchange rate calculated correctly?
+		otherMintUnits := float64(proto.Quarks) / float64(otherMintQuarksPerUnit)
+		expectedRate := potentialNativeAmount / otherMintUnits
+		percentDiff = math.Abs(proto.ExchangeRate-expectedRate) / expectedRate
+		if percentDiff > 0.001 {
+			continue
+		}
+
+		return true, "", nil
+	}
+
+	return false, "fiat exchange data is stale or invalid", nil
 }

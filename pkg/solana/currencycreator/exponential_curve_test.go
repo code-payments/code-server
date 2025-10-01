@@ -30,8 +30,6 @@ func TestCalculateCurveConstants(t *testing.T) {
 }
 
 func TestGenerateCurveTable(t *testing.T) {
-	t.Skip()
-
 	curve := DefaultExponentialCurve()
 
 	fmt.Println("|------|----------------|----------------------------------|----------------------------|")
@@ -43,7 +41,7 @@ func TestGenerateCurveTable(t *testing.T) {
 	supply := new(big.Float).Copy(zero)
 
 	for i := 0; i <= 100; i++ {
-		cost := curve.TokensToValueFromCurrentSupply(zero, supply)
+		cost := curve.CostToBuyTokens(zero, supply)
 		spotPrice := curve.SpotPriceAtSupply(supply)
 
 		fmt.Printf("| %3d%% | %14s | %32s | %26s |\n",

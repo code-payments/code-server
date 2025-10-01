@@ -29,8 +29,9 @@ func (curve *ExponentialCurve) SpotPriceAtSupply(currentSupply *big.Float) *big.
 	return new(big.Float).Mul(new(big.Float).Mul(curve.a, curve.b), exp)
 }
 
-func (curve *ExponentialCurve) TokensToValueFromCurrentSupply(currentSupply, tokens *big.Float) *big.Float {
-	newSupply := new(big.Float).Add(currentSupply, tokens)
+// What is the cost to buy tokensToBuy given the currentSupply?
+func (curve *ExponentialCurve) CostToBuyTokens(currentSupply, tokensToBuy *big.Float) *big.Float {
+	newSupply := new(big.Float).Add(currentSupply, tokensToBuy)
 	cs := new(big.Float).Mul(curve.c, currentSupply)
 	ns := new(big.Float).Mul(curve.c, newSupply)
 	expCS := expBig(cs)
@@ -40,22 +41,45 @@ func (curve *ExponentialCurve) TokensToValueFromCurrentSupply(currentSupply, tok
 	return new(big.Float).Mul(abOverC, diff)
 }
 
-func (curve *ExponentialCurve) TokensToValueFromCurrentValue(currentValue, tokens *big.Float) *big.Float {
+// How much value is received when selling tokensToSell with currentValueLocked in the reserves?
+func (curve *ExponentialCurve) ValueFromSellingTokens(currentValue, tokensToSell *big.Float) *big.Float {
 	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
 	cvPlusAbOverC := new(big.Float).Add(currentValue, abOverC)
-	cTimesTokens := new(big.Float).Mul(curve.c, tokens)
-	exp := expBig(new(big.Float).Neg(cTimesTokens))
+	cTimesTokensToSell := new(big.Float).Mul(curve.c, tokensToSell)
+	exp := expBig(new(big.Float).Neg(cTimesTokensToSell))
 	oneMinusExp := new(big.Float).Sub(big.NewFloat(1.0), exp)
 	return new(big.Float).Mul(cvPlusAbOverC, oneMinusExp)
 }
 
-func (curve *ExponentialCurve) ValueToTokens(currentSupply, value *big.Float) *big.Float {
+// How many tokens will be bought for a value given the currentSupply?
+func (curve *ExponentialCurve) TokensBoughtForValue(currentSupply, value *big.Float) *big.Float {
 	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
 	expCS := expBig(new(big.Float).Mul(curve.c, currentSupply))
 	term := new(big.Float).Add(new(big.Float).Quo(value, abOverC), expCS)
 	lnTerm := logBig(term)
 	result := new(big.Float).Quo(lnTerm, curve.c)
 	return new(big.Float).Sub(result, currentSupply)
+}
+
+// How many tokens should be exchanged for a value given the currentSupply?
+//
+// Note: This function assumes the default curve, and is not present in the currency creator program.
+func (curve *ExponentialCurve) TokensForValueExchange(currentSupply, value *big.Float) *big.Float {
+	hundred := big.NewFloat(100)
+	oneOverHundred := new(big.Float).Quo(big.NewFloat(1), hundred)
+
+	hundredTimesA := new(big.Float).Mul(hundred, curve.a)
+	negativeHundredTimesA := new(big.Float).Mul(big.NewFloat(-1), hundredTimesA)
+
+	valueTimesB := new(big.Float).Mul(value, curve.b)
+
+	expCsTimesB := expBig(new(big.Float).Mul(currentSupply, curve.b))
+	oneOverHundredTimesExpCsTimesB := new(big.Float).Mul(oneOverHundred, expCsTimesB)
+
+	lnInput := new(big.Float).Quo(valueTimesB, oneOverHundredTimesExpCsTimesB)
+	lnInput = new(big.Float).Sub(big.NewFloat(1), lnInput)
+
+	return new(big.Float).Mul(negativeHundredTimesA, logBig(lnInput))
 }
 
 func DefaultExponentialCurve() *ExponentialCurve {
