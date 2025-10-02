@@ -161,7 +161,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		coreMintSellValueInUnits := float64(coreMintSellValueInQuarks) / float64(coreMintQuarksPerUnit)
 		potentialNativeAmount := otherExchangeRateRecord.Rate * coreMintSellValueInUnits / usdExchangeRateRecord.Rate
 		percentDiff := math.Abs(proto.NativeAmount-potentialNativeAmount) / potentialNativeAmount
-		if percentDiff > 0.001 {
+		if percentDiff > 0.0001 {
 			continue
 		}
 
@@ -169,7 +169,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		otherMintUnits := float64(proto.Quarks) / float64(otherMintQuarksPerUnit)
 		expectedRate := potentialNativeAmount / otherMintUnits
 		percentDiff = math.Abs(proto.ExchangeRate-expectedRate) / expectedRate
-		if percentDiff > 0.001 {
+		if percentDiff > 0.0001 {
 			continue
 		}
 

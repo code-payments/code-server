@@ -12,8 +12,8 @@ func TestEstimateCurrentPrice(t *testing.T) {
 
 func TestEstimatValueExchange(t *testing.T) {
 	quarks := EstimateValueExchange(&EstimateValueExchangeArgs{
-		ValueInQuarks:         5_000_000,
-		CurrentSupplyInQuarks: 7_232_649_000_000_000,
+		ValueInQuarks:         5000000,          // $5
+		CurrentSupplyInQuarks: 7232649000000000, // 723,264.9 tokens
 		ValueMintDecimals:     6,
 	})
 
@@ -22,37 +22,36 @@ func TestEstimatValueExchange(t *testing.T) {
 
 func TestEstimateBuy(t *testing.T) {
 	received, fees := EstimateBuy(&EstimateBuyArgs{
-		BuyAmountInQuarks:     50_000_000,
-		CurrentSupplyInQuarks: 0,
+		BuyAmountInQuarks:     100000000,        // $100
+		CurrentSupplyInQuarks: 7179502000000000, // 717,950.2 tokens
 		ValueMintDecimals:     6,
-		BuyFeeBps:             0,
+		BuyFeeBps:             0, //0%
 	})
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
 
 	received, fees = EstimateBuy(&EstimateBuyArgs{
-		BuyAmountInQuarks: 50_000_000,
-
-		CurrentSupplyInQuarks: 4_989_067_263,
+		BuyAmountInQuarks:     100000000,        // $100
+		CurrentSupplyInQuarks: 7179502000000000, // 717,950.2 tokens
 		ValueMintDecimals:     6,
-		BuyFeeBps:             100,
+		BuyFeeBps:             100, // 1%
 	})
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
 }
 
 func TestEstimateSell(t *testing.T) {
 	received, fees := EstimateSell(&EstimateSellArgs{
-		SellAmountInQuarks:   12_345_678_900_000,
-		CurrentValueInQuarks: 50_000_000,
+		SellAmountInQuarks:   2651496281136, // 265.1496281136 tokens
+		CurrentValueInQuarks: 10100000000,   // $10100
 		ValueMintDecimals:    6,
-		SellFeeBps:           0,
+		SellFeeBps:           0, // 0%
 	})
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
 
 	received, fees = EstimateSell(&EstimateSellArgs{
-		SellAmountInQuarks:   12_345_678_900_000,
-		CurrentValueInQuarks: 50_000_000,
+		SellAmountInQuarks:   2651496281136, // 265.1496281136 tokens
+		CurrentValueInQuarks: 10100000000,   // $10100
 		ValueMintDecimals:    6,
-		SellFeeBps:           100,
+		SellFeeBps:           100, // 1%
 	})
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
 }
