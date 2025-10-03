@@ -521,7 +521,16 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 3: Exchange data validation
+	// Part 3: Account validation to determine if it's managed by Code
+	//
+
+	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 4: Exchange data validation
 	//
 
 	if err := validateExchangeDataWithinIntent(ctx, h.data, typedMetadata.Mint, typedMetadata.ExchangeData); err != nil {
@@ -529,36 +538,10 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 4: Local simulation
+	// Part 5: Local simulation
 	//
 
 	simResult, err := LocalSimulation(ctx, h.data, actions)
-	if err != nil {
-		return err
-	}
-
-	// Fee payments always operate against the core mint, so we need to add relevant
-	// core mint initiator records
-	if simResult.HasAnyFeePayments() && !common.IsCoreMint(intentMintAccount) {
-		initiatorAccountsByType, ok := initiatorAccountsByMintAndType[common.CoreMintAccount.PublicKey().ToBase58()]
-		if !ok {
-			return errors.New("initiator core mint accounts don't exist")
-		}
-		primaryAccountRecords, ok := initiatorAccountsByType[commonpb.AccountType_PRIMARY]
-		if !ok {
-			return errors.New("initiator core mint primary account doesn't exist")
-		}
-		for _, records := range primaryAccountRecords {
-			initiatorAccounts = append(initiatorAccounts, records)
-			initiatorAccountsByVault[records.General.TokenAccount] = records
-		}
-	}
-
-	//
-	// Part 5: Account validation to determine if it's managed by Code
-	//
-
-	err = validateAllUserAccountsManagedByCode(ctx, initiatorAccounts)
 	if err != nil {
 		return err
 	}
@@ -724,7 +707,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 				return nil
 			}
 
-			// Check whether the destination account is a core mint token account that's
+			// Check whether the destination account is a token account of the same mint that's
 			// been created on the blockchain. If not, a fee is required
 			err = validateExternalTokenAccountWithinIntent(ctx, h.data, destination, intentMint)
 			switch err {
@@ -756,7 +739,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 	//
 	// Part 4.1: Check destination account is paid exact quark amount from the deposit account
-	//           minus any fees if we're operating against the core mint
+	//           minus any fees
 	//
 
 	expectedDestinationPayment := int64(metadata.ExchangeData.Quarks)
@@ -768,9 +751,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		return NewIntentValidationError("expected at most 1 fee payment")
 	}
 	for _, feePayment := range feePayments {
-		if common.IsCoreMint(intentMint) {
-			expectedDestinationPayment += feePayment.DeltaQuarks
-		}
+		expectedDestinationPayment += feePayment.DeltaQuarks
 	}
 
 	destinationSimulation, ok := simResult.SimulationsByAccount[destination.PublicKey().ToBase58()]
@@ -1584,8 +1565,6 @@ func validateMoneyMovementActionUserAccounts(
 				}
 			}
 		case *transactionpb.Action_FeePayment:
-			// Fee payments always come from the core mint primary account
-
 			mint, err = common.GetBackwardsCompatMint(typedAction.FeePayment.Mint)
 			if err != nil {
 				return err
@@ -1602,8 +1581,8 @@ func validateMoneyMovementActionUserAccounts(
 			}
 
 			sourceAccountInfo, ok := initiatorAccountsByVault[source.PublicKey().ToBase58()]
-			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY || sourceAccountInfo.General.MintAccount != common.CoreMintAccount.PublicKey().ToBase58() {
-				return NewActionValidationError(action, "source account must be the core mint primary account")
+			if !ok || sourceAccountInfo.General.AccountType != commonpb.AccountType_PRIMARY {
+				return NewActionValidationError(action, "source account must be the PRMARY account")
 			}
 		default:
 			continue
@@ -1760,11 +1739,6 @@ func validateFeePayments(
 		return err
 	}
 
-	// todo: Probably not always going to be the case, but add a strict validation to start
-	if !common.IsCoreMint(mintAccount) {
-		return NewActionValidationError(feePayment.Action, "fee payment must be made in core mint")
-	}
-
 	if feePaymentAction.Type != expectedFeeType {
 		return NewActionValidationErrorf(feePayment.Action, "expected a %s fee payment", expectedFeeType.String())
 	}
@@ -1783,23 +1757,20 @@ func validateFeePayments(
 	}
 	feeAmount = -feeAmount // Because it's coming out of a user account in this simulation
 
-	var foundUsdExchangeRecord bool
-	usdExchangeRecords, err := currency_util.GetPotentialClientCoreMintExchangeRates(ctx, data, currency_lib.USD)
+	mintQuarksPerUnit := common.GetMintQuarksPerUnit(mintAccount)
+	unitsOfMint := float64(feeAmount) / float64(mintQuarksPerUnit)
+
+	isValid, _, err := currency_util.ValidateClientExchangeData(ctx, data, &transactionpb.ExchangeData{
+		Currency:     string(currency_lib.USD),
+		NativeAmount: expectedUsdValue,
+		ExchangeRate: expectedUsdValue / unitsOfMint,
+		Quarks:       uint64(feeAmount),
+		Mint:         mintAccount.ToProto(),
+	})
 	if err != nil {
 		return err
-	}
-	for _, exchangeRecord := range usdExchangeRecords {
-		usdValue := exchangeRecord.Rate * float64(feeAmount) / float64(common.CoreMintQuarksPerUnit)
-
-		// Allow for some small margin of error
-		if usdValue > expectedUsdValue-0.0001 && usdValue < expectedUsdValue+0.0001 {
-			foundUsdExchangeRecord = true
-			break
-		}
-	}
-
-	if !foundUsdExchangeRecord {
-		return NewActionValidationErrorf(feePayment.Action, "%s fee payment amount must be $%.2f USD", expectedFeeType.String(), expectedUsdValue)
+	} else if !isValid {
+		return NewActionValidationErrorf(feePayment.Action, "%s fee payment amount must be %.2f USD", expectedFeeType.String(), expectedUsdValue)
 	}
 
 	return nil
@@ -1963,7 +1934,6 @@ func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.
 
 func validateIntentAndActionMintsMatch(intentMint *common.Account, actions []*transactionpb.Action) error {
 	for _, action := range actions {
-		var forceCoreMint bool
 		var actionMint *common.Account
 		var err error
 		switch typed := action.Type.(type) {
@@ -1974,23 +1944,16 @@ func validateIntentAndActionMintsMatch(intentMint *common.Account, actions []*tr
 		case *transactionpb.Action_NoPrivacyWithdraw:
 			actionMint, err = common.GetBackwardsCompatMint(typed.NoPrivacyWithdraw.Mint)
 		case *transactionpb.Action_FeePayment:
-			forceCoreMint = true // Fee payments are an exception, since they always operate against the core mint
 			actionMint, err = common.GetBackwardsCompatMint(typed.FeePayment.Mint)
 		default:
 			return errors.New("unsupported action for mint extraction")
 		}
-
 		if err != nil {
 			return err
 		}
-		if forceCoreMint {
-			if !common.IsCoreMint(actionMint) {
-				return NewActionValidationErrorf(action, "mint must be %s", common.CoreMintAccount.PublicKey().ToBase58())
-			}
-		} else {
-			if !bytes.Equal(intentMint.PublicKey().ToBytes(), actionMint.PublicKey().ToBytes()) {
-				return NewActionValidationErrorf(action, "mint must be %s", intentMint.PublicKey().ToBase58())
-			}
+
+		if !bytes.Equal(intentMint.PublicKey().ToBytes(), actionMint.PublicKey().ToBytes()) {
+			return NewActionValidationErrorf(action, "mint must be %s", intentMint.PublicKey().ToBase58())
 		}
 	}
 	return nil

@@ -233,7 +233,7 @@ func NewNoPrivacyTransferActionHandler(ctx context.Context, data code_data.Provi
 	}, nil
 }
 
-func NewFeePaymentActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.FeePaymentAction, feeCollector *common.Account) (CreateActionHandler, error) {
+func NewFeePaymentActionHandler(ctx context.Context, data code_data.Provider, protoAction *transactionpb.FeePaymentAction, feeCollectorOwner *common.Account) (CreateActionHandler, error) {
 	mint, err := common.GetBackwardsCompatMint(protoAction.Mint)
 	if err != nil {
 		return nil, err
@@ -254,9 +254,14 @@ func NewFeePaymentActionHandler(ctx context.Context, data code_data.Provider, pr
 		return nil, err
 	}
 
+	destination, err := feeCollectorOwner.ToAssociatedTokenAccount(mint)
+	if err != nil {
+		return nil, err
+	}
+
 	return &NoPrivacyTransferActionHandler{
 		source:      source,
-		destination: feeCollector,
+		destination: destination,
 		amount:      protoAction.Amount,
 		feeType:     protoAction.Type,
 	}, nil
