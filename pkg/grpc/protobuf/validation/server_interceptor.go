@@ -23,8 +23,8 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if v, ok := req.(Validator); ok {
 			if err := v.Validate(); err != nil {
-				// We use a debug level here because it is outside of 'our' control.
-				log.WithError(err).Debug("dropping invalid request")
+				// We use an info level here because it is outside of 'our' control.
+				log.WithError(err).WithField("req", req).Info("dropping invalid request")
 				return nil, status.Errorf(codes.InvalidArgument, err.Error())
 			}
 		}
@@ -37,7 +37,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 		if v, ok := resp.(Validator); ok {
 			if err := v.Validate(); err != nil {
 				// We warn here because this indicates a problem with 'our' service.
-				log.WithError(err).Warn("dropping invalid response")
+				log.WithError(err).WithField("resp", req).Warn("dropping invalid response")
 				return nil, status.Errorf(codes.Internal, err.Error())
 			}
 		}
@@ -69,7 +69,7 @@ func (s *serverStreamWrapper) RecvMsg(req interface{}) error {
 
 	if v, ok := req.(Validator); ok {
 		if err := v.Validate(); err != nil {
-			s.log.WithError(err).Debug("dropping invalid request")
+			s.log.WithError(err).WithField("req", req).Info("dropping invalid request")
 			return status.Errorf(codes.InvalidArgument, err.Error())
 		}
 	}
@@ -77,13 +77,13 @@ func (s *serverStreamWrapper) RecvMsg(req interface{}) error {
 	return nil
 }
 
-func (s *serverStreamWrapper) SendMsg(res interface{}) error {
-	if v, ok := res.(Validator); ok {
+func (s *serverStreamWrapper) SendMsg(resp interface{}) error {
+	if v, ok := resp.(Validator); ok {
 		if err := v.Validate(); err != nil {
-			s.log.WithError(err).Warn("dropping invalid response")
+			s.log.WithError(err).WithField("resp", resp).Warn("dropping invalid response")
 			return status.Errorf(codes.Internal, err.Error())
 		}
 	}
 
-	return s.ServerStream.SendMsg(res)
+	return s.ServerStream.SendMsg(resp)
 }
