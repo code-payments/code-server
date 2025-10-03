@@ -16,26 +16,26 @@ import (
 func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
 	log := logrus.StandardLogger().WithField("type", "protobuf/validation/interceptor")
 
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, resp interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		// Validate request
 		if v, ok := req.(Validator); ok {
 			if err := v.Validate(); err != nil {
 				// Log warn since the caller is at fault.
-				log.WithError(err).Warn("dropping invalid request")
+				log.WithError(err).WithField("req", req).Warn("dropping invalid request")
 				return status.Errorf(codes.InvalidArgument, err.Error())
 			}
 		}
 
 		// Do service call
-		if err := invoker(ctx, method, req, reply, cc, opts...); err != nil {
+		if err := invoker(ctx, method, req, resp, cc, opts...); err != nil {
 			return err
 		}
 
 		// Validate service response
-		if v, ok := reply.(Validator); ok {
+		if v, ok := resp.(Validator); ok {
 			if err := v.Validate(); err != nil {
-				// Just log debug here since the outbound service is mis-behaving.
-				log.WithError(err).Debug("dropping invalid response")
+				// Just log info here since the outbound service is mis-behaving.
+				log.WithError(err).WithField("resp", resp).Info("dropping invalid response")
 				return status.Errorf(codes.Internal, err.Error())
 			}
 		}
@@ -73,7 +73,7 @@ func (c *clientStreamWrapper) SendMsg(req interface{}) error {
 	if v, ok := req.(Validator); ok {
 		if err := v.Validate(); err != nil {
 			// Log warn since the caller is at fault.
-			c.log.WithError(err).Warn("dropping invalid request")
+			c.log.WithError(err).WithField("req", req).Warn("dropping invalid request")
 			return status.Errorf(codes.InvalidArgument, err.Error())
 		}
 	}
@@ -81,16 +81,16 @@ func (c *clientStreamWrapper) SendMsg(req interface{}) error {
 	return c.ClientStream.SendMsg(req)
 }
 
-func (c *clientStreamWrapper) RecvMsg(res interface{}) error {
-	if err := c.ClientStream.RecvMsg(res); err != nil {
+func (c *clientStreamWrapper) RecvMsg(resp interface{}) error {
+	if err := c.ClientStream.RecvMsg(resp); err != nil {
 		return err
 	}
 
 	// Validate service response
-	if v, ok := res.(Validator); ok {
+	if v, ok := resp.(Validator); ok {
 		if err := v.Validate(); err != nil {
-			// Just log debug here since the outbound service is mis-behaving.
-			c.log.WithError(err).Debug("dropping invalid response")
+			// Just log info here since the outbound service is mis-behaving.
+			c.log.WithError(err).WithField("resp", resp).Info("dropping invalid response")
 			return status.Errorf(codes.Internal, err.Error())
 		}
 	}
