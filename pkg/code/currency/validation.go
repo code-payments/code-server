@@ -5,56 +5,14 @@ import (
 	"math"
 	"time"
 
-	"github.com/pkg/errors"
-
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/currency"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
-	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 )
-
-// GetPotentialClientCoreMintExchangeRates gets a set of fiat exchange rates that
-// a client attempting to maintain a latest state could have fetched from the
-// currency server for the core mint.
-func GetPotentialClientCoreMintExchangeRates(ctx context.Context, data code_data.Provider, code currency_lib.Code) ([]*currency.ExchangeRateRecord, error) {
-	exchangeRecords, err := data.GetExchangeRateHistory(
-		ctx,
-		code,
-		query.WithStartTime(time.Now().Add(-30*time.Minute)), // Give enough leeway to allow for 15 minute old rates
-		query.WithEndTime(time.Now().Add(time.Minute)),       // Ensure we pick up recent exchange rates
-		query.WithLimit(32),                   // Try to pick up all records
-		query.WithDirection(query.Descending), // Optimize for most recent records first
-	)
-	if err != nil && err != currency.ErrNotFound {
-		return nil, err
-	}
-
-	// To handle cases where the exchange rate worker might be down, try
-	// loading the latest rate as clients would have and add it to valid
-	// set of comparable records.
-	latestExchangeRecord, err := data.GetExchangeRate(
-		ctx,
-		code,
-		GetLatestExchangeRateTime(),
-	)
-	if err != nil && err != currency.ErrNotFound {
-		return nil, err
-	}
-
-	if latestExchangeRecord != nil {
-		exchangeRecords = append(exchangeRecords, latestExchangeRecord)
-	}
-
-	// This is bad, and means we can't query for any records
-	if len(exchangeRecords) == 0 {
-		return nil, errors.Errorf("found no exchange records for %s currency", code)
-	}
-	return exchangeRecords, nil
-}
 
 // ValidateClientExchangeData validates proto exchange data provided by a client
 func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {

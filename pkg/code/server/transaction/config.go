@@ -21,7 +21,7 @@ const (
 	ClientReceiveTimeoutConfigEnvName = envConfigPrefix + "CLIENT_RECEIVE_TIMEOUT"
 	defaultClientReceiveTimeout       = time.Second
 
-	FeeCollectorTokenPublicKeyConfigEnvName = envConfigPrefix + "FEE_COLLECTOR_TOKEN_PUBLIC_KEY"
+	FeeCollectorOwnerPublicKeyConfigEnvName = envConfigPrefix + "FEE_COLLECTOR_OWNER_PUBLIC_KEY"
 	defaultFeeCollectorPublicKey            = "invalid" // Ensure something valid is set
 
 	CreateOnSendWithdrawalUsdFeeConfigEnvName = envConfigPrefix + "CREATE_ON_SEND_WITHDRAWAL_USD_FEE"
@@ -44,7 +44,7 @@ type conf struct {
 	disableBlockchainChecks      config.Bool // To avoid blockchain checks during testing
 	submitIntentTimeout          config.Duration
 	clientReceiveTimeout         config.Duration
-	feeCollectorTokenPublicKey   config.String
+	feeCollectorOwnerPublicKey   config.String
 	createOnSendWithdrawalUsdFee config.Float64
 	enableAirdrops               config.Bool
 	airdropperOwnerPublicKey     config.String
@@ -64,7 +64,7 @@ func WithEnvConfigs() ConfigProvider {
 			disableBlockchainChecks:      wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			submitIntentTimeout:          env.NewDurationConfig(SubmitIntentTimeoutConfigEnvName, defaultSubmitIntentTimeout),
 			clientReceiveTimeout:         env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
-			feeCollectorTokenPublicKey:   env.NewStringConfig(FeeCollectorTokenPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
+			feeCollectorOwnerPublicKey:   env.NewStringConfig(FeeCollectorOwnerPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
 			createOnSendWithdrawalUsdFee: env.NewFloat64Config(CreateOnSendWithdrawalUsdFeeConfigEnvName, defaultCreateOnSendWithdrawalUsdFee),
 			enableAirdrops:               env.NewBoolConfig(EnableAirdropsConfigEnvName, defaultEnableAirdrops),
 			airdropperOwnerPublicKey:     env.NewStringConfig(AirdropperOwnerPublicKeyEnvName, defaultAirdropperOwnerPublicKey),
@@ -79,7 +79,7 @@ type testOverrides struct {
 	enableAmlChecks            bool
 	enableAirdrops             bool
 	clientReceiveTimeout       time.Duration
-	feeCollectorTokenPublicKey string
+	feeCollectorOwnerPublicKey string
 }
 
 func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
@@ -91,7 +91,7 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 			disableBlockchainChecks:      wrapper.NewBoolConfig(memory.NewConfig(true), true),
 			submitIntentTimeout:          wrapper.NewDurationConfig(memory.NewConfig(defaultSubmitIntentTimeout), defaultSubmitIntentTimeout),
 			clientReceiveTimeout:         wrapper.NewDurationConfig(memory.NewConfig(overrides.clientReceiveTimeout), defaultClientReceiveTimeout),
-			feeCollectorTokenPublicKey:   wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorTokenPublicKey), defaultFeeCollectorPublicKey),
+			feeCollectorOwnerPublicKey:   wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorOwnerPublicKey), defaultFeeCollectorPublicKey),
 			createOnSendWithdrawalUsdFee: wrapper.NewFloat64Config(memory.NewConfig(defaultCreateOnSendWithdrawalUsdFee), defaultCreateOnSendWithdrawalUsdFee),
 			enableAirdrops:               wrapper.NewBoolConfig(memory.NewConfig(overrides.enableAirdrops), false),
 			airdropperOwnerPublicKey:     wrapper.NewStringConfig(memory.NewConfig(defaultAirdropperOwnerPublicKey), defaultAirdropperOwnerPublicKey),

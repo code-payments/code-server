@@ -87,7 +87,7 @@ func NewTransactionServer(
 		localAccountLocks: make(map[string]*sync.Mutex),
 	}
 
-	s.feeCollector, err = common.NewAccountFromPublicKeyString(s.conf.feeCollectorTokenPublicKey.Get(ctx))
+	s.feeCollector, err = common.NewAccountFromPublicKeyString(s.conf.feeCollectorOwnerPublicKey.Get(ctx))
 	if err != nil {
 		return nil, err
 	}
