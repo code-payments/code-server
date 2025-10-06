@@ -63,3 +63,42 @@ func (h *RequestToGrabBillMessageHandler) Validate(ctx context.Context, rendezvo
 func (h *RequestToGrabBillMessageHandler) OnSuccess(ctx context.Context) error {
 	return nil
 }
+
+// todo: This message type needs tests
+type RequestToGiveBillMessageHandler struct {
+	data code_data.Provider
+}
+
+func NewRequestToGiveBillMessageHandler(data code_data.Provider) MessageHandler {
+	return &RequestToGiveBillMessageHandler{
+		data: data,
+	}
+}
+
+func (h *RequestToGiveBillMessageHandler) Validate(ctx context.Context, rendezvous *common.Account, untypedMessage *messagingpb.Message) error {
+	typedMessage := untypedMessage.GetRequestToGiveBill()
+	if typedMessage == nil {
+		return errors.New("invalid message type")
+	}
+
+	//
+	// Part 1: Mint account must be the Core Mint or a Launchpad Currency
+	//
+
+	mintAccount, err := common.NewAccountFromProto(typedMessage.Mint)
+	if err != nil {
+		return err
+	}
+
+	switch mintAccount.PublicKey().ToBase58() {
+	case common.CoreMintAccount.PublicKey().ToBase58(), "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
+	default:
+		return newMessageValidationError("mint account must be the core mint or a launcpad currency")
+	}
+
+	return nil
+}
+
+func (h *RequestToGiveBillMessageHandler) OnSuccess(ctx context.Context) error {
+	return nil
+}

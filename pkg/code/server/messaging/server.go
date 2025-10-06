@@ -658,6 +658,10 @@ func (s *server) SendMessage(ctx context.Context, req *messagingpb.SendMessageRe
 		log = log.WithField("message_type", "request_to_grab_bill")
 		messageHandler = NewRequestToGrabBillMessageHandler(s.data)
 
+	case *messagingpb.Message_RequestToGiveBill:
+		log = log.WithField("message_type", "request_to_give_bill")
+		messageHandler = NewRequestToGiveBillMessageHandler(s.data)
+
 	default:
 		return nil, status.Error(codes.InvalidArgument, "message.kind must be set")
 	}
