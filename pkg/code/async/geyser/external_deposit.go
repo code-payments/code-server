@@ -94,12 +94,25 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 		return err
 	}
 
-	vmDepositAccounts, err := userAuthority.GetVmDepositAccounts(vmConfig)
+	timelockAccounts, err := userAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
-		return errors.Wrap(err, "error getting vm deposit ata")
+		return err
 	}
 
-	memoryAccount, memoryIndex, err := getVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
+	err = ensureVirtualTimelockAccountIsInitialzed(ctx, data, timelockAccounts.Vault)
+	if err != nil {
+		return err
+	}
+
+	var memoryAccount *common.Account
+	var memoryIndex uint16
+	_, err = retry.Retry(
+		func() error {
+			memoryAccount, memoryIndex, err = getVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
+			return err
+		},
+		waitForFinalizationRetryStrategies...,
+	)
 	if err != nil {
 		return errors.Wrap(err, "error getting vta location in memory")
 	}
@@ -114,15 +127,15 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 				VmAuthority: vmConfig.Authority.PublicKey().ToBytes(),
 				Vm:          vmConfig.Vm.PublicKey().ToBytes(),
 				VmMemory:    memoryAccount.PublicKey().ToBytes(),
-				Depositor:   vmDepositAccounts.VaultOwner.PublicKey().ToBytes(),
-				DepositPda:  vmDepositAccounts.Pda.PublicKey().ToBytes(),
-				DepositAta:  vmDepositAccounts.Ata.PublicKey().ToBytes(),
+				Depositor:   timelockAccounts.VaultOwner.PublicKey().ToBytes(),
+				DepositPda:  timelockAccounts.VmDepositAccounts.Pda.PublicKey().ToBytes(),
+				DepositAta:  timelockAccounts.VmDepositAccounts.Ata.PublicKey().ToBytes(),
 				VmOmnibus:   vmConfig.Omnibus.PublicKey().ToBytes(),
 			},
 			&cvm.DepositInstructionArgs{
 				AccountIndex: memoryIndex,
 				Amount:       balance,
-				Bump:         vmDepositAccounts.PdaBump,
+				Bump:         timelockAccounts.VmDepositAccounts.PdaBump,
 			},
 		),
 	)

@@ -18,7 +18,7 @@ func TestGetOwnerMetadata_User12Words(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	coreVmConfig := newRandomVmConfig(t)
+	coreVmConfig := newRandomVmConfig(t, true)
 
 	swapMintAccount := newRandomTestAccount(t)
 
@@ -87,7 +87,7 @@ func TestGetOwnerMetadata_RemoteSendGiftCard(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	coreVmConfig := newRandomVmConfig(t)
+	coreVmConfig := newRandomVmConfig(t, true)
 
 	owner := newRandomTestAccount(t)
 
@@ -120,8 +120,8 @@ func TestGetLatestTokenAccountRecordsForOwner(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	coreVmConfig := newRandomVmConfig(t)
-	jeffyVmConfig := newRandomVmConfig(t)
+	coreVmConfig := newRandomVmConfig(t, true)
+	jeffyVmConfig := newRandomVmConfig(t, false)
 
 	swapMintAccount := newRandomTestAccount(t)
 

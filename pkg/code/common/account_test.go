@@ -103,7 +103,7 @@ func TestInvalidAccount(t *testing.T) {
 }
 
 func TestConvertToTimelockVault(t *testing.T) {
-	vmConfig := newRandomVmConfig(t)
+	vmConfig := newRandomVmConfig(t, true)
 
 	ownerAccount := newRandomTestAccount(t)
 
@@ -126,7 +126,7 @@ func TestConvertToTimelockVault(t *testing.T) {
 }
 
 func TestGetTimelockAccounts(t *testing.T) {
-	vmConfig := newRandomVmConfig(t)
+	vmConfig := newRandomVmConfig(t, true)
 
 	ownerAccount := newRandomTestAccount(t)
 
@@ -164,7 +164,7 @@ func TestGetTimelockAccounts(t *testing.T) {
 }
 
 func TestGetVmDepositAccounts(t *testing.T) {
-	vmConfig := newRandomVmConfig(t)
+	vmConfig := newRandomVmConfig(t, true)
 
 	ownerAccount := newRandomTestAccount(t)
 
@@ -206,7 +206,7 @@ func TestIsAccountManagedByCode_TimelockState(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmConfig := newRandomVmConfig(t)
+	vmConfig := newRandomVmConfig(t, true)
 
 	ownerAccount := newRandomTestAccount(t)
 
@@ -257,7 +257,7 @@ func TestIsAccountManagedByCode_OtherAccounts(t *testing.T) {
 	ctx := context.Background()
 	data := code_data.NewTestDataProvider()
 
-	vmConfig := newRandomVmConfig(t)
+	vmConfig := newRandomVmConfig(t, true)
 
 	ownerAccount := newRandomTestAccount(t)
 

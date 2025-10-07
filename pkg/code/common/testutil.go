@@ -14,7 +14,15 @@ func newRandomTestAccount(t *testing.T) *Account {
 }
 
 // Required because we'd have a dependency loop with the testutil package
-func newRandomVmConfig(t *testing.T) *VmConfig {
+func newRandomVmConfig(t *testing.T, isCore bool) *VmConfig {
+	if isCore {
+		return &VmConfig{
+			Authority: newRandomTestAccount(t),
+			Vm:        newRandomTestAccount(t),
+			Omnibus:   newRandomTestAccount(t),
+			Mint:      CoreMintAccount,
+		}
+	}
 	return &VmConfig{
 		Authority: newRandomTestAccount(t),
 		Vm:        newRandomTestAccount(t),

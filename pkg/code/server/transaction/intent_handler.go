@@ -87,8 +87,9 @@ func (h *OpenAccountsIntentHandler) PopulateMetadata(ctx context.Context, intent
 	if err != nil {
 		return err
 	}
-	if !common.IsCoreMint(mint) {
-		return NewIntentValidationError("only the core mint is supported")
+
+	if typedProtoMetadata.AccountSet != transactionpb.OpenAccountsMetadata_USER && !common.IsCoreMint(mint) {
+		return NewIntentDeniedError("non-core mint account opening is only supported for the user account set")
 	}
 
 	intentRecord.IntentType = intent.OpenAccounts
@@ -104,10 +105,14 @@ func (h *OpenAccountsIntentHandler) CreatesNewUser(ctx context.Context, metadata
 		return false, errors.New("unexpected metadata proto message")
 	}
 
-	return typedMetadata.AccountSet == transactionpb.OpenAccountsMetadata_USER, nil
+	mint, err := common.GetBackwardsCompatMint(typedMetadata.Mint)
+	if err != nil {
+		return false, err
+	}
+
+	return typedMetadata.AccountSet == transactionpb.OpenAccountsMetadata_USER && common.IsCoreMint(mint), nil
 }
 
-// todo: Not all multi-mint validation checks are implemented
 func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) (bool, error) {
 	typedMetadata := metadata.GetOpenAccounts()
 	if typedMetadata == nil {
@@ -119,9 +124,13 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 		return false, NewActionValidationError(actions[0], "expected an open account action")
 	}
 
+	mint, err := common.GetBackwardsCompatMint(typedMetadata.Mint)
+	if err != nil {
+		return false, err
+	}
+
 	var authorityToCheck *common.Account
 	var expectedAccountType commonpb.AccountType
-	var err error
 	switch typedMetadata.AccountSet {
 	case transactionpb.OpenAccountsMetadata_USER:
 		authorityToCheck, err = common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
@@ -145,18 +154,17 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 	} else if err != nil {
 		return false, err
 	}
-	coreMintAccountInfoRecord, ok := accountInfoRecordByMint[common.CoreMintAccount.PublicKey().ToBase58()]
+	accountInfoRecord, ok := accountInfoRecordByMint[mint.PublicKey().ToBase58()]
 	if !ok {
 		return false, nil
 	}
-	return coreMintAccountInfoRecord.AccountType == expectedAccountType, nil
+	return accountInfoRecord.AccountType == expectedAccountType, nil
 }
 
 func (h *OpenAccountsIntentHandler) GetBalanceLocks(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*intentBalanceLock, error) {
 	return nil, nil
 }
 
-// todo: Not all multi-mint validation checks are implemented
 func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error {
 	typedMetadata := metadata.GetOpenAccounts()
 	if typedMetadata == nil {
@@ -1188,7 +1196,7 @@ func (h *PublicDistributionIntentHandler) PopulateMetadata(ctx context.Context, 
 		return err
 	}
 	if !common.IsCoreMint(mint) {
-		return NewIntentValidationError("only the core mint is supported")
+		return NewIntentDeniedError("only the core mint is supported")
 	}
 
 	source, err := common.NewAccountFromPublicKeyBytes(typedProtoMetadata.Source.Value)
