@@ -56,10 +56,13 @@ func GetOwnerMetadata(ctx context.Context, data code_data.Provider, owner *Accou
 	}
 
 	if mtdt.Type == OwnerTypeUnknown {
-		// Is the owner account a user 12 words?
-		_, err := data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.publicKey.ToBase58(), commonpb.AccountType_PRIMARY)
+		// Is the owner account a user 12 words? We know by detecting the presence of a core mint primary account.
+		accountInfoRecordsByMint, err := data.GetLatestAccountInfoByOwnerAddressAndType(ctx, owner.publicKey.ToBase58(), commonpb.AccountType_PRIMARY)
 		if err == nil {
-			mtdt.Type = OwnerTypeUser12Words
+			_, ok := accountInfoRecordsByMint[CoreMintAccount.PublicKey().ToBase58()]
+			if ok {
+				mtdt.Type = OwnerTypeUser12Words
+			}
 		} else if err != account.ErrAccountInfoNotFound {
 			return nil, err
 		}

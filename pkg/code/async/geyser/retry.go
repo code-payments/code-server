@@ -2,16 +2,10 @@ package async_geyser
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/retry/backoff"
-)
-
-var (
-	errSignatureNotConfirmed = errors.New("signature is not confirmed")
-	errSignatureNotFinalized = errors.New("signature is not finalized")
 )
 
 var waitForFinalizationRetryStrategies = []retry.Strategy{

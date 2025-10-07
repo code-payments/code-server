@@ -8,6 +8,7 @@ import (
 	"github.com/code-payments/code-server/pkg/cache"
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 )
 
@@ -42,4 +43,43 @@ func testForKnownUserAuthorityFromDepositPda(ctx context.Context, data code_data
 	default:
 		return false, nil, errors.Wrap(err, "error getting timelock record")
 	}
+}
+
+func ensureVirtualTimelockAccountIsInitialzed(ctx context.Context, data code_data.Provider, vault *common.Account) error {
+	timelockRecord, err := data.GetTimelockByVault(ctx, vault.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
+
+	if !timelockRecord.ExistsOnBlockchain() {
+		initializeFulfillmentRecord, err := data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, vault.PublicKey().ToBase58())
+		if err != nil {
+			return err
+		}
+
+		if initializeFulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
+			return errors.New("expected an initialize locked timelock account fulfillment")
+		}
+
+		return markFulfillmentAsActivelyScheduled(ctx, data, initializeFulfillmentRecord)
+	}
+
+	return nil
+}
+
+func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) error {
+	if fulfillmentRecord.Id == 0 {
+		return nil
+	}
+
+	if !fulfillmentRecord.DisableActiveScheduling {
+		return nil
+	}
+
+	if fulfillmentRecord.State != fulfillment.StateUnknown {
+		return nil
+	}
+
+	fulfillmentRecord.DisableActiveScheduling = false
+	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }

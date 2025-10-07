@@ -93,7 +93,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 				VmMetadata: &currencypb.VmMetadata{
 					Vm:                 common.CodeVmAccount.ToProto(),
 					Authority:          common.GetSubsidizer().ToProto(),
-					LockDurationInDays: 21,
+					LockDurationInDays: uint32(timelock_token.DefaultNumDaysLocked),
 				},
 			}
 		default:

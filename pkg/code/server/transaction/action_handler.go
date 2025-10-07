@@ -177,10 +177,10 @@ func (h *OpenAccountActionHandler) GetFulfillmentMetadata(
 			source:                   h.timelockAccounts.Vault,
 			destination:              nil,
 			fulfillmentOrderingIndex: 0,
-			disableActiveScheduling:  h.accountType != commonpb.AccountType_PRIMARY, // Non-primary accounts are created on demand after first usage
+			disableActiveScheduling:  h.accountType != commonpb.AccountType_PRIMARY || !common.IsCoreMint(h.timelockAccounts.Mint), // Non-primary and non-core mint accounts are created on demand after first usage
 		}, nil
 	default:
-		return nil, errors.New("invalid virtual ixn index")
+		return nil, errors.New("invalid transaction index")
 	}
 }
 
@@ -334,7 +334,7 @@ func (h *NoPrivacyTransferActionHandler) GetFulfillmentMetadata(
 			fulfillmentOrderingIndex: 0,
 		}, nil
 	default:
-		return nil, errors.New("invalid transaction index")
+		return nil, errors.New("invalid virtual ixn index")
 	}
 }
 
@@ -459,7 +459,7 @@ func (h *NoPrivacyWithdrawActionHandler) GetFulfillmentMetadata(
 			disableActiveScheduling:     h.isAutoReturn,
 		}, nil
 	default:
-		return nil, errors.New("invalid transaction index")
+		return nil, errors.New("invalid virtual ixn index")
 	}
 }
 
