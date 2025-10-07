@@ -130,6 +130,7 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 	}
 
 	var authorityToCheck *common.Account
+	var tokenAccountToCheck *common.Account
 	var expectedAccountType commonpb.AccountType
 	switch typedMetadata.AccountSet {
 	case transactionpb.OpenAccountsMetadata_USER:
@@ -137,9 +138,17 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 		if err != nil {
 			return false, err
 		}
+		tokenAccountToCheck, err = common.NewAccountFromProto(openAction.Token)
+		if err != nil {
+			return false, err
+		}
 		expectedAccountType = commonpb.AccountType_PRIMARY
 	case transactionpb.OpenAccountsMetadata_POOL:
-		authorityToCheck, err = common.NewAccountFromProto(actions[0].GetOpenAccount().Authority)
+		authorityToCheck, err = common.NewAccountFromProto(openAction.Authority)
+		if err != nil {
+			return false, err
+		}
+		tokenAccountToCheck, err = common.NewAccountFromProto(openAction.Token)
 		if err != nil {
 			return false, err
 		}
@@ -158,7 +167,7 @@ func (h *OpenAccountsIntentHandler) IsNoop(ctx context.Context, intentRecord *in
 	if !ok {
 		return false, nil
 	}
-	return accountInfoRecord.AccountType == expectedAccountType, nil
+	return accountInfoRecord.TokenAccount == tokenAccountToCheck.PublicKey().ToBase58() && accountInfoRecord.AccountType == expectedAccountType, nil
 }
 
 func (h *OpenAccountsIntentHandler) GetBalanceLocks(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata) ([]*intentBalanceLock, error) {

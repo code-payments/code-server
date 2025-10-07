@@ -177,7 +177,7 @@ func (h *OpenAccountActionHandler) GetFulfillmentMetadata(
 			source:                   h.timelockAccounts.Vault,
 			destination:              nil,
 			fulfillmentOrderingIndex: 0,
-			disableActiveScheduling:  h.accountType != commonpb.AccountType_PRIMARY || !common.IsCoreMint(h.timelockAccounts.Mint), // Non-primary and non-core mint accounts are created on demand after first usage
+			disableActiveScheduling:  true, // All accounts are created on demand at time of first receipt of funds
 		}, nil
 	default:
 		return nil, errors.New("invalid transaction index")
