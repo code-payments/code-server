@@ -20,6 +20,8 @@ const AccountSize = 165
 // Reference: https://github.com/solana-labs/solana-program-library/blob/8944f428fe693c3a4226bf766a79be9c75e8e520/token/program/src/state.rs#L214
 const MultisigAccountSize = 355
 
+const optionSize = 4
+
 type Account struct {
 	// The mint associated with this account
 	Mint ed25519.PublicKey
@@ -68,12 +70,12 @@ func (a *Account) Unmarshal(b []byte) bool {
 	binary.GetKey32(b, &a.Mint, &offset)
 	binary.GetKey32(b[offset:], &a.Owner, &offset)
 	binary.GetUint64(b[offset:], &a.Amount, &offset)
-	binary.GetOptionalKey32(b[offset:], &a.Delegate, &offset)
+	binary.GetOptionalKey32(b[offset:], &a.Delegate, &offset, optionSize)
 	a.State = AccountState(b[offset])
 	offset++
 	binary.GetOptionalUint64(b[offset:], &a.IsNative, &offset)
 	binary.GetUint64(b[offset:], &a.DelegatedAmount, &offset)
-	binary.GetOptionalKey32(b[offset:], &a.CloseAuthority, &offset)
+	binary.GetOptionalKey32(b[offset:], &a.CloseAuthority, &offset, optionSize)
 
 	return true
 }
