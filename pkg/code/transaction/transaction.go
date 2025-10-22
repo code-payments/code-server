@@ -33,9 +33,8 @@ func MakeNoncedTransaction(nonce *Nonce, instructions ...solana.Instruction) (so
 
 	instructions = append([]solana.Instruction{advanceNonceInstruction}, instructions...)
 
-	txn := solana.NewTransaction(payer.PublicKey().ToBytes(), instructions...)
+	txn := solana.NewLegacyTransaction(payer.PublicKey().ToBytes(), instructions...)
 	txn.SetBlockhash(nonce.Blockhash)
-
 	return txn, nil
 }
 

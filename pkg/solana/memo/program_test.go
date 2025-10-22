@@ -17,7 +17,7 @@ func TestInstruction(t *testing.T) {
 }
 
 func TestDecompile(t *testing.T) {
-	tx := solana.NewTransaction(
+	tx := solana.NewLegacyTransaction(
 		make([]byte, 32),
 		Instruction("hello, world"),
 	)

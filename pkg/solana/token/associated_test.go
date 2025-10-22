@@ -51,7 +51,7 @@ func TestCreateAssociatedAccount(t *testing.T) {
 	assert.EqualValues(t, ProgramKey, instruction.Accounts[5].PublicKey)
 	assert.EqualValues(t, system.RentSysVar, instruction.Accounts[6].PublicKey)
 
-	decompiled, err := DecompileCreateAssociatedAccount(solana.NewTransaction(keys[0], instruction).Message, 0)
+	decompiled, err := DecompileCreateAssociatedAccount(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, keys[0], decompiled.Subsidizer)
 	assert.Equal(t, keys[1], decompiled.Owner)
@@ -84,7 +84,7 @@ func TestCreateAssociatedAccountIdempotent(t *testing.T) {
 	assert.EqualValues(t, ProgramKey, instruction.Accounts[5].PublicKey)
 	assert.EqualValues(t, system.RentSysVar, instruction.Accounts[6].PublicKey)
 
-	decompiled, err := DecompileCreateAssociatedAccountIdempotent(solana.NewTransaction(keys[0], instruction).Message, 0)
+	decompiled, err := DecompileCreateAssociatedAccountIdempotent(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, keys[0], decompiled.Subsidizer)
 	assert.Equal(t, keys[1], decompiled.Owner)

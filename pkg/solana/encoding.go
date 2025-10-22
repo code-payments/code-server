@@ -11,6 +11,10 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/shortvec"
 )
 
+const (
+	messageVersionSerializationOffset = 127
+)
+
 func (s TransactionSignature) ToBase58() string {
 	return base58.Encode(s.Signature[:])
 }
@@ -49,8 +53,19 @@ func (t *Transaction) Unmarshal(b []byte) error {
 }
 
 func (m Message) Marshal() []byte {
-	b := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(nil)
+	switch m.Version {
+	case MessageVersionLegacy:
+		m.marshalLegacy(buf)
+	case MessageVersion0:
+		m.marshalV0(buf)
+	default:
+		panic("unsupported message version")
+	}
+	return buf.Bytes()
+}
 
+func (m *Message) marshalLegacy(b *bytes.Buffer) {
 	// Header
 	_ = b.WriteByte(m.Header.NumSignatures)
 	_ = b.WriteByte(m.Header.NumReadonlySigned)
@@ -78,13 +93,56 @@ func (m Message) Marshal() []byte {
 		_, _ = shortvec.EncodeLen(b, len(i.Data))
 		_, _ = b.Write(i.Data)
 	}
+}
 
-	return b.Bytes()
+func (m *Message) marshalV0(b *bytes.Buffer) {
+	// Version Number
+	_ = b.WriteByte(byte(m.Version + messageVersionSerializationOffset))
+
+	// Message Content
+	//
+	// Note: The "middle" section remains the same as legacy format
+	m.marshalLegacy(b)
+
+	// Address Table Lookups
+	_, _ = shortvec.EncodeLen(b, len(m.AddressTableLookups))
+	for _, addressTableLookup := range m.AddressTableLookups {
+		_, _ = b.Write(addressTableLookup.PublicKey)
+
+		_, _ = shortvec.EncodeLen(b, len(addressTableLookup.WritableIndexes))
+		_, _ = b.Write(addressTableLookup.WritableIndexes)
+
+		_, _ = shortvec.EncodeLen(b, len(addressTableLookup.ReadonlyIndexes))
+		_, _ = b.Write(addressTableLookup.ReadonlyIndexes)
+	}
 }
 
 func (m *Message) Unmarshal(b []byte) (err error) {
+	if len(b) == 0 {
+		return errors.New("invalid byte buffer")
+	}
+
+	if b[0] < messageVersionSerializationOffset {
+		m.Version = MessageVersionLegacy
+	} else if b[0] == byte(MessageVersion0+messageVersionSerializationOffset) {
+		m.Version = MessageVersion0
+	} else {
+		return errors.New("unsupported message version")
+	}
+
 	buf := bytes.NewBuffer(b)
 
+	switch m.Version {
+	case MessageVersionLegacy:
+		return m.unmarshalLegacy(buf)
+	case MessageVersion0:
+		return m.unmarshalV0(buf)
+	default:
+		return errors.New("unsupported message version")
+	}
+}
+
+func (m *Message) unmarshalLegacy(buf *bytes.Buffer) (err error) {
 	// Header
 	if m.Header.NumSignatures, err = buf.ReadByte(); err != nil {
 		return errors.Wrap(err, "failed to read num signatures")
@@ -109,7 +167,7 @@ func (m *Message) Unmarshal(b []byte) (err error) {
 		}
 	}
 
-	// Recent block hash
+	// Recent blockhash
 	if _, err = io.ReadFull(buf, m.RecentBlockhash[:]); err != nil {
 		return errors.Wrap(err, "failed to read recent block hash")
 	}
@@ -142,7 +200,7 @@ func (m *Message) Unmarshal(b []byte) (err error) {
 		}
 
 		for _, index := range c.Accounts {
-			if int(index) >= len(m.Accounts) {
+			if int(index) >= len(m.Accounts) && m.Version == MessageVersionLegacy {
 				return errors.Errorf("account index out of range: %d:%d", i, index)
 			}
 		}
@@ -158,6 +216,62 @@ func (m *Message) Unmarshal(b []byte) (err error) {
 		}
 
 		m.Instructions[i] = c
+	}
+
+	return nil
+}
+
+func (m *Message) unmarshalV0(buf *bytes.Buffer) (err error) {
+	// Message Version
+	version, err := buf.ReadByte()
+	if err != nil {
+		return errors.Wrap(err, "failed to read version byte")
+	}
+	if version != byte(MessageVersion0+messageVersionSerializationOffset) {
+		return errors.New("message version is not v0")
+	}
+
+	// Message Content
+	//
+	// Note: The "middle" section remains the same as legacy format
+	err = m.unmarshalLegacy(buf)
+	if err != nil {
+		return err
+	}
+
+	// Address Table Lookups
+	addressTableLookupLen, err := shortvec.DecodeLen(buf)
+	if err != nil {
+		return errors.Wrap(err, "failed to read address table lookup len")
+	}
+
+	m.AddressTableLookups = make([]MessageAddressTableLookup, addressTableLookupLen)
+	for i := range addressTableLookupLen {
+		// Public Key
+		m.AddressTableLookups[i].PublicKey = make([]byte, ed25519.PublicKeySize)
+		if _, err = io.ReadFull(buf, m.AddressTableLookups[i].PublicKey); err != nil {
+			return errors.Wrapf(err, "failed to read address table lookup[%d] public key", i)
+		}
+
+		// Writeable indexes
+		writableIndexesLen, err := shortvec.DecodeLen(buf)
+		if err != nil {
+			return errors.Wrapf(err, "failed to read address table lookup[%d] writable indexes len", i)
+		}
+		m.AddressTableLookups[i].WritableIndexes = make([]byte, writableIndexesLen)
+		if _, err = io.ReadFull(buf, m.AddressTableLookups[i].WritableIndexes); err != nil {
+			return errors.Wrapf(err, "failed to read address table lookup[%d] writeable indexes", i)
+		}
+
+		// Readonly indexes
+		readonlyIndexesLen, err := shortvec.DecodeLen(buf)
+		if err != nil {
+			return errors.Wrapf(err, "failed to read address table lookup[%d] readonly indexes len", i)
+		}
+		m.AddressTableLookups[i].ReadonlyIndexes = make([]byte, readonlyIndexesLen)
+		if _, err = io.ReadFull(buf, m.AddressTableLookups[i].ReadonlyIndexes); err != nil {
+			return errors.Wrapf(err, "failed to read address table lookup[%d] readonly indexes", i)
+		}
 	}
 
 	return nil

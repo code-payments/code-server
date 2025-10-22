@@ -51,12 +51,12 @@ func (a *Account) Marshal() []byte {
 	binary.PutKey32(b, a.Mint, &offset)
 	binary.PutKey32(b[offset:], a.Owner, &offset)
 	binary.PutUint64(b[offset:], a.Amount, &offset)
-	binary.PutOptionalKey32(b[offset:], a.Delegate, &offset)
+	binary.PutOptionalKey32(b[offset:], a.Delegate, &offset, optionSize)
 	b[offset] = byte(a.State)
 	offset++
-	binary.PutOptionalUint64(b[offset:], a.IsNative, &offset)
+	binary.PutOptionalUint64(b[offset:], a.IsNative, &offset, optionSize)
 	binary.PutUint64(b[offset:], a.DelegatedAmount, &offset)
-	binary.PutOptionalKey32(b[offset:], a.CloseAuthority, &offset)
+	binary.PutOptionalKey32(b[offset:], a.CloseAuthority, &offset, optionSize)
 
 	return b
 }
@@ -73,7 +73,7 @@ func (a *Account) Unmarshal(b []byte) bool {
 	binary.GetOptionalKey32(b[offset:], &a.Delegate, &offset, optionSize)
 	a.State = AccountState(b[offset])
 	offset++
-	binary.GetOptionalUint64(b[offset:], &a.IsNative, &offset)
+	binary.GetOptionalUint64(b[offset:], &a.IsNative, &offset, optionSize)
 	binary.GetUint64(b[offset:], &a.DelegatedAmount, &offset)
 	binary.GetOptionalKey32(b[offset:], &a.CloseAuthority, &offset, optionSize)
 

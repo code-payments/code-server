@@ -19,7 +19,6 @@ const (
 
 type BlockchainData interface {
 	SubmitBlockchainTransaction(ctx context.Context, tx *solana.Transaction) (solana.Signature, error)
-	RequestBlockchainAirdrop(ctx context.Context, account string, amount uint64) (solana.Signature, error)
 
 	GetBlockchainAccountInfo(ctx context.Context, account string, commitment solana.Commitment) (*solana.AccountInfo, error)
 	GetBlockchainAccountDataAfterBlock(ctx context.Context, account string, slot uint64) ([]byte, uint64, error)
@@ -63,23 +62,6 @@ func (dp *BlockchainProvider) SubmitBlockchainTransaction(ctx context.Context, t
 
 	res, err := dp.sc.SubmitTransaction(*tx, solana.CommitmentProcessed)
 
-	if err != nil {
-		tracer.OnError(err)
-	}
-
-	return res, err
-}
-
-func (dp *BlockchainProvider) RequestBlockchainAirdrop(ctx context.Context, account string, amount uint64) (solana.Signature, error) {
-	tracer := metrics.TraceMethodCall(ctx, blockchainProviderMetricsName, "RequestBlockchainAirdrop")
-	defer tracer.End()
-
-	pubkey, err := base58.Decode(account)
-	if err != nil {
-		return solana.Signature{}, err
-	}
-
-	res, err := dp.sc.RequestAirdrop(pubkey, amount, solana.CommitmentProcessed)
 	if err != nil {
 		tracer.OnError(err)
 	}

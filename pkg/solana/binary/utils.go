@@ -10,13 +10,13 @@ func PutKey32(dst []byte, src []byte, offset *int) {
 	*offset += ed25519.PublicKeySize
 }
 
-func PutOptionalKey32(dst []byte, src []byte, offset *int) {
+func PutOptionalKey32(dst []byte, src []byte, offset *int, optionSize int) {
 	if len(src) > 0 {
 		dst[0] = 1
-		copy(dst[4:], src)
+		copy(dst[optionSize:], src)
 	}
 
-	*offset += 4 + ed25519.PublicKeySize
+	*offset += optionSize + ed25519.PublicKeySize
 }
 
 func PutUint64(dst []byte, v uint64, offset *int) {
@@ -34,12 +34,12 @@ func PutUint8(dst []byte, v uint8, offset *int) {
 	*offset += 1
 }
 
-func PutOptionalUint64(dst []byte, v *uint64, offset *int) {
+func PutOptionalUint64(dst []byte, v *uint64, offset *int, optionSize int) {
 	if v != nil {
 		dst[0] = 1
-		binary.LittleEndian.PutUint64(dst[4:], *v)
+		binary.LittleEndian.PutUint64(dst[optionSize:], *v)
 	}
-	*offset += 4 + 8
+	*offset += optionSize + 8
 }
 
 func GetKey32(src []byte, dst *ed25519.PublicKey, offset *int) {
@@ -71,10 +71,10 @@ func GetUint8(src []byte, dst *uint8, offset *int) {
 	*offset += 1
 }
 
-func GetOptionalUint64(src []byte, dst **uint64, offset *int) {
+func GetOptionalUint64(src []byte, dst **uint64, offset *int, optionSize int) {
 	if src[0] == 1 {
-		val := binary.LittleEndian.Uint64(src[4:])
+		val := binary.LittleEndian.Uint64(src[optionSize:])
 		*dst = &val
 	}
-	*offset += 4 + 8
+	*offset += optionSize + 8
 }

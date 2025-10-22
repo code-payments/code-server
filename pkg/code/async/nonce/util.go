@@ -169,7 +169,7 @@ func (p *service) createNonceAccountTx(ctx context.Context, nonce *nonce.Record)
 		),
 	}
 
-	tx := solana.NewTransaction(subPub, instructions...)
+	tx := solana.NewLegacyTransaction(subPub, instructions...)
 
 	bh, err := p.getLatestBlockhash(ctx)
 	if err != nil {

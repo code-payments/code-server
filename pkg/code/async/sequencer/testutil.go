@@ -47,7 +47,7 @@ func (h *mockFulfillmentHandler) MakeOnDemandTransaction(ctx context.Context, fu
 		return nil, nil, errors.New("not supported")
 	}
 
-	txn := solana.NewTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(selectedNonce.Account.PublicKey().ToBase58()))
+	txn := solana.NewLegacyTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(selectedNonce.Account.PublicKey().ToBase58()))
 	return &txn, nil, nil
 }
 
