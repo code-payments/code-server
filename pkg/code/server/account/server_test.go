@@ -256,7 +256,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 	env, cleanup := setup(t)
 	defer cleanup()
 
-	coreVmConfig := testutil.NewRandomVmConfig(t, true)
+	vmConfig := testutil.NewRandomVmConfig(t, false)
 
 	// Test cases represent main iterations of a gift card account's state throughout
 	// its lifecycle. All states beyond claimed status are not fully tested here and
@@ -385,13 +385,13 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 		giftCardIssuerOwnerAccount := testutil.NewRandomAccount(t)
 		giftCardOwnerAccount := testutil.NewRandomAccount(t)
 
-		accountRecords := setupAccountRecords(t, env, giftCardOwnerAccount, giftCardOwnerAccount, coreVmConfig, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
+		accountRecords := setupAccountRecords(t, env, giftCardOwnerAccount, giftCardOwnerAccount, vmConfig, 0, commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 
 		giftCardIssuedIntentRecord := &intent.Record{
 			IntentId:   testutil.NewRandomAccount(t).PublicKey().ToBase58(),
 			IntentType: intent.SendPublicPayment,
 
-			MintAccount: common.CoreMintAccount.PublicKey().ToBase58(),
+			MintAccount: vmConfig.Mint.PublicKey().ToBase58(),
 
 			InitiatorOwnerAccount: giftCardIssuerOwnerAccount.PublicKey().ToBase58(),
 
@@ -460,7 +460,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			testutil.NewRandomAccount(t),
 			giftCardIssuerOwnerAccount,
 		} {
-			timelockAccounts, err := giftCardOwnerAccount.GetTimelockAccounts(coreVmConfig)
+			timelockAccounts, err := giftCardOwnerAccount.GetTimelockAccounts(vmConfig)
 			require.NoError(t, err)
 
 			req := &accountpb.GetTokenAccountInfosRequest{
@@ -495,7 +495,7 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			assert.Equal(t, giftCardOwnerAccount.PublicKey().ToBytes(), accountInfo.Owner.Value)
 			assert.Equal(t, giftCardOwnerAccount.PublicKey().ToBytes(), accountInfo.Authority.Value)
 			assert.Equal(t, timelockAccounts.Vault.PublicKey().ToBytes(), accountInfo.Address.Value)
-			assert.Equal(t, common.CoreMintAccount.PublicKey().ToBytes(), accountInfo.Mint.Value)
+			assert.Equal(t, vmConfig.Mint.PublicKey().ToBytes(), accountInfo.Mint.Value)
 			assert.EqualValues(t, 0, accountInfo.Index)
 
 			assert.Equal(t, tc.expectedBalanceSource, accountInfo.BalanceSource)
@@ -516,12 +516,13 @@ func TestGetTokenAccountInfos_RemoteSendGiftCard_HappyPath(t *testing.T) {
 			assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.ExchangeRate, accountInfo.OriginalExchangeData.ExchangeRate)
 			assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.NativeAmount, accountInfo.OriginalExchangeData.NativeAmount)
 			assert.Equal(t, giftCardIssuedIntentRecord.SendPublicPaymentMetadata.Quantity, accountInfo.OriginalExchangeData.Quarks)
+			assert.Equal(t, vmConfig.Mint.PublicKey().ToBytes(), accountInfo.OriginalExchangeData.Mint.Value)
 
 			assert.Equal(t, requestingOwnerAccount != nil && requestingOwnerAccount == giftCardIssuerOwnerAccount, accountInfo.IsGiftCardIssuer)
 
 			accountInfoRecordsByMint, err := env.data.GetLatestAccountInfoByOwnerAddressAndType(env.ctx, giftCardOwnerAccount.PublicKey().ToBase58(), commonpb.AccountType_REMOTE_SEND_GIFT_CARD)
 			require.NoError(t, err)
-			assert.False(t, accountInfoRecordsByMint[common.CoreMintAccount.PublicKey().ToBase58()].RequiresDepositSync)
+			assert.False(t, accountInfoRecordsByMint[vmConfig.Mint.PublicKey().ToBase58()].RequiresDepositSync)
 		}
 	}
 }

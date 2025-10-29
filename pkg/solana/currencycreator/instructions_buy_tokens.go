@@ -54,7 +54,7 @@ func NewBuyTokensInstruction(
 			{
 				PublicKey:  accounts.Buyer,
 				IsWritable: true,
-				IsSigner:   false,
+				IsSigner:   true,
 			},
 			{
 				PublicKey:  accounts.Pool,

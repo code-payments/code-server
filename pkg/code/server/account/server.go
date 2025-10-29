@@ -502,12 +502,17 @@ func (s *server) getOriginalGiftCardExchangeData(ctx context.Context, records *c
 		return nil, err
 	}
 
+	mintAccount, err := common.NewAccountFromPublicKeyString(intentRecord.MintAccount)
+	if err != nil {
+		return nil, err
+	}
+
 	return &transactionpb.ExchangeData{
 		Currency:     string(intentRecord.SendPublicPaymentMetadata.ExchangeCurrency),
 		ExchangeRate: intentRecord.SendPublicPaymentMetadata.ExchangeRate,
 		NativeAmount: intentRecord.SendPublicPaymentMetadata.NativeAmount,
 		Quarks:       intentRecord.SendPublicPaymentMetadata.Quantity,
-		Mint:         common.CoreMintAccount.ToProto(),
+		Mint:         mintAccount.ToProto(),
 	}, nil
 }
 

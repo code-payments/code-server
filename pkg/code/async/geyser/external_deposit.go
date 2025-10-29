@@ -117,7 +117,7 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 		return errors.Wrap(err, "error getting vta location in memory")
 	}
 
-	txn := solana.NewTransaction(
+	txn := solana.NewLegacyTransaction(
 		vmConfig.Authority.PublicKey().ToBytes(),
 		memo.Instruction(codeVmDepositMemoValue),
 		compute_budget.SetComputeUnitPrice(1_000),

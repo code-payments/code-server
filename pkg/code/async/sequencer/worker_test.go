@@ -271,7 +271,7 @@ func (e *workerTestEnv) createAnyFulfillmentInState(t *testing.T, state fulfillm
 	fakeCodeAccouht := testutil.NewRandomAccount(t)
 	fakeNonceAccount := testutil.NewRandomAccount(t)
 
-	txn := solana.NewTransaction(
+	txn := solana.NewLegacyTransaction(
 		fakeCodeAccouht.PublicKey().ToBytes(),
 		system.AdvanceNonce(fakeNonceAccount.PublicKey().ToBytes(), fakeCodeAccouht.PublicKey().ToBytes()),
 	)
@@ -361,7 +361,7 @@ func (e *workerTestEnv) assertFulfillmentCreatedOnDemand(t *testing.T, id uint64
 	require.NotNil(t, fulfillmentRecord.Blockhash)
 	require.NotEmpty(t, fulfillmentRecord.Data)
 
-	expectedTxn := solana.NewTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(nonceAddress))
+	expectedTxn := solana.NewLegacyTransaction(common.GetSubsidizer().PublicKey().ToBytes(), memo.Instruction(nonceAddress))
 	expectedTxn.Sign(e.subsidizer.PrivateKey().ToBytes())
 	expectedSignature := base58.Encode(expectedTxn.Signature())
 

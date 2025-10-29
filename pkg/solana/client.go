@@ -178,9 +178,9 @@ type Client interface {
 	GetConfirmationStatus(Signature, Commitment) (bool, error)
 	GetConfirmedBlock(slot uint64) (*Block, error)
 	GetConfirmedBlocksWithLimit(start, limit uint64) ([]uint64, error)
-	GetConfirmedTransaction(Signature) (ConfirmedTransaction, error)
-	GetMinimumBalanceForRentExemption(size uint64) (lamports uint64, err error)
+	GetFilteredProgramAccounts(program ed25519.PublicKey, offset uint, filterValue []byte) ([]string, uint64, error)
 	GetLatestBlockhash() (Blockhash, error)
+	GetMinimumBalanceForRentExemption(size uint64) (lamports uint64, err error)
 	GetSignatureStatus(Signature, Commitment) (*SignatureStatus, error)
 	GetSignatureStatuses([]Signature) ([]*SignatureStatus, error)
 	GetSignaturesForAddress(owner ed25519.PublicKey, commitment Commitment, limit uint64, before, until string) ([]*TransactionSignature, error)
@@ -189,8 +189,6 @@ type Client interface {
 	GetTokenAccountsByOwner(owner, mint ed25519.PublicKey) ([]ed25519.PublicKey, error)
 	GetTransaction(Signature, Commitment) (ConfirmedTransaction, error)
 	GetTransactionTokenBalances(Signature) (TransactionTokenBalances, error)
-	GetFilteredProgramAccounts(program ed25519.PublicKey, offset uint, filterValue []byte) ([]string, uint64, error)
-	RequestAirdrop(ed25519.PublicKey, uint64, Commitment) (Signature, error)
 	SubmitTransaction(Transaction, Commitment) (Signature, error)
 }
 
@@ -528,47 +526,6 @@ func (c *client) GetConfirmedBlocksWithLimit(start, limit uint64) (slots []uint6
 	return slots, c.call(&slots, "getConfirmedBlocksWithLimit", start, limit)
 }
 
-func (c *client) GetConfirmedTransaction(sig Signature) (ConfirmedTransaction, error) {
-	type rpcResponse struct {
-		Slot        uint64   `json:"slot"`
-		Transaction []string `json:"transaction"` // [val, encoding]
-		Meta        *struct {
-			Err interface{} `json:"err"`
-		} `json:"meta"`
-	}
-
-	var resp *rpcResponse
-	if err := c.call(&resp, "getConfirmedTransaction", base58.Encode(sig[:]), "base64"); err != nil {
-		return ConfirmedTransaction{}, err
-	}
-
-	if resp == nil {
-		return ConfirmedTransaction{}, ErrSignatureNotFound
-	}
-
-	txn := ConfirmedTransaction{
-		Slot: resp.Slot,
-	}
-
-	var err error
-	rawTxn, err := base64.StdEncoding.DecodeString(resp.Transaction[0])
-	if err != nil {
-		return txn, errors.Wrap(err, "failed to decode transaction")
-	}
-	if err := txn.Transaction.Unmarshal(rawTxn); err != nil {
-		return txn, errors.Wrap(err, "failed to unmarshal transaction")
-	}
-
-	if resp.Meta != nil {
-		txn.Err, err = ParseTransactionError(resp.Meta.Err)
-		if err != nil {
-			return txn, errors.Wrap(err, "failed to parse transaction result")
-		}
-	}
-
-	return txn, nil
-}
-
 func (c *client) GetTransaction(sig Signature, commitment Commitment) (ConfirmedTransaction, error) {
 	type rpcResponse struct {
 		Slot        uint64           `json:"slot"`
@@ -578,11 +535,13 @@ func (c *client) GetTransaction(sig Signature, commitment Commitment) (Confirmed
 	}
 
 	config := struct {
-		Commitment string `json:"commitment"`
-		Encoding   string `json:"encoding"`
+		Commitment                     string `json:"commitment"`
+		Encoding                       string `json:"encoding"`
+		MaxSupportedTransactionVersion int    `json:"maxSupportedTransactionVersion"`
 	}{
-		Commitment: commitment.Commitment,
-		Encoding:   "base64",
+		Commitment:                     commitment.Commitment,
+		Encoding:                       "base64",
+		MaxSupportedTransactionVersion: 0,
 	}
 
 	var resp *rpcResponse
@@ -933,27 +892,6 @@ func (c *client) GetAccountDataAfterBlock(account ed25519.PublicKey, slot uint64
 		return nil, 0, errors.Wrap(err, "invalid base64 encoded account data")
 	}
 	return rawData, unmarshalledGetAccountInfoResp.Context.Slot, nil
-}
-
-func (c *client) RequestAirdrop(account ed25519.PublicKey, lamports uint64, commitment Commitment) (Signature, error) {
-	var sigStr string
-	if err := c.call(&sigStr, "requestAirdrop", base58.Encode(account[:]), lamports, commitment); err != nil {
-		return Signature{}, errors.Wrapf(err, "requestAirdrop() failed to send request")
-	}
-
-	sigBytes, err := base58.Decode(sigStr)
-	if err != nil {
-		return Signature{}, errors.Wrap(err, "invalid signature in response")
-	}
-
-	var sig Signature
-	copy(sig[:], sigBytes)
-
-	if sig == (Signature{}) {
-		return Signature{}, errors.New("empty signature returned")
-	}
-
-	return sig, nil
 }
 
 func (c *client) GetConfirmationStatus(sig Signature, commitment Commitment) (bool, error) {

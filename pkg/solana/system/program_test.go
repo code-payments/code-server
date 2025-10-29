@@ -29,7 +29,7 @@ func TestCreateAccount(t *testing.T) {
 	assert.Equal(t, []byte(keys[2]), instruction.Data[20:52])
 
 	var tx solana.Transaction
-	require.NoError(t, tx.Unmarshal(solana.NewTransaction(keys[0], instruction).Marshal()))
+	require.NoError(t, tx.Unmarshal(solana.NewLegacyTransaction(keys[0], instruction).Marshal()))
 
 	decompiled, err := DecompileCreateAccount(tx.Message, 0)
 	require.NoError(t, err)
@@ -46,23 +46,23 @@ func TestDecompileNonCreate(t *testing.T) {
 	instruction := CreateAccount(keys[0], keys[1], keys[2], 12345, 67890)
 
 	instruction.Accounts = instruction.Accounts[:1]
-	_, err := DecompileCreateAccount(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err := DecompileCreateAccount(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.NotNil(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "invalid number of accounts"), err)
 
 	binary.BigEndian.PutUint32(instruction.Data, commandAllocate)
-	_, err = DecompileCreateAccount(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileCreateAccount(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.Equal(t, solana.ErrIncorrectInstruction, err)
 
 	instruction.Data = make([]byte, 3)
-	_, err = DecompileCreateAccount(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileCreateAccount(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.Equal(t, solana.ErrIncorrectInstruction, err)
 
 	instruction.Program = keys[3]
-	_, err = DecompileCreateAccount(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileCreateAccount(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.Equal(t, solana.ErrIncorrectProgram, err)
 
-	_, err = DecompileCreateAccount(solana.NewTransaction(keys[0], instruction).Message, 1)
+	_, err = DecompileCreateAccount(solana.NewLegacyTransaction(keys[0], instruction).Message, 1)
 	assert.NotNil(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "instruction doesn't exist"))
 }
@@ -90,31 +90,31 @@ func TestAdvanceNonceAccount(t *testing.T) {
 	assert.EqualValues(t, keys[1], instruction.Accounts[2].PublicKey)
 	assert.True(t, instruction.Accounts[2].IsSigner)
 
-	decompiled, err := DecompileAdvanceNonce(solana.NewTransaction(keys[0], instruction).Message, 0)
+	decompiled, err := DecompileAdvanceNonce(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, keys[0], decompiled.Nonce)
 	assert.EqualValues(t, keys[1], decompiled.Authority)
 
 	instruction.Accounts[1].PublicKey = keys[2]
-	_, err = DecompileAdvanceNonce(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileAdvanceNonce(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "invalid RecentBlockhashesSysVar"))
 
 	instruction.Accounts = instruction.Accounts[:1]
-	_, err = DecompileAdvanceNonce(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileAdvanceNonce(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "invalid number of accounts"))
 
 	binary.LittleEndian.PutUint32(instruction.Data, commandCreateAccount)
-	_, err = DecompileAdvanceNonce(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileAdvanceNonce(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.Equal(t, solana.ErrIncorrectInstruction, err)
 
 	instruction.Data = nil
-	_, err = DecompileAdvanceNonce(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileAdvanceNonce(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.Equal(t, solana.ErrIncorrectInstruction, err)
 
 	instruction.Program = keys[2]
-	_, err = DecompileAdvanceNonce(solana.NewTransaction(keys[0], instruction).Message, 0)
+	_, err = DecompileAdvanceNonce(solana.NewLegacyTransaction(keys[0], instruction).Message, 0)
 	assert.Equal(t, solana.ErrIncorrectProgram, err)
 }
 
