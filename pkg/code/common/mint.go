@@ -17,7 +17,8 @@ var (
 	CoreMintName          = config.CoreMintName
 	CoreMintSymbol        = config.CoreMintSymbol
 
-	jeffyMintAccount, _ = NewAccountFromPublicKeyString(config.JeffyMintPublicKey)
+	jeffyMintAccount, _       = NewAccountFromPublicKeyString(config.JeffyMintPublicKey)
+	knicksNightMintAccount, _ = NewAccountFromPublicKeyString(config.KnicksNightMintPublicKey)
 )
 
 func GetBackwardsCompatMint(protoMint *commonpb.SolanaAccountId) (*Account, error) {

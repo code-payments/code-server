@@ -85,7 +85,7 @@ func (h *TokenProgramAccountHandler) Handle(ctx context.Context, update *geyserp
 
 	switch mintAccount.PublicKey().ToBase58() {
 
-	case common.CoreMintAccount.PublicKey().ToBase58(), "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
+	case common.CoreMintAccount.PublicKey().ToBase58(), "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj", "497Wy6cY9BjWBiaDHzJ7TcUZqF2gE1Qm7yXtSj1vSr5W":
 		// Not an ATA, so filter it out. It cannot be a VM deposit ATA
 		if bytes.Equal(tokenAccount.PublicKey().ToBytes(), ownerAccount.PublicKey().ToBytes()) {
 			return nil

@@ -17,7 +17,7 @@ const (
 	CoreMintName            = "USDC"
 	CoreMintSymbol          = "USDC"
 	CoreMintDescription     = "USDC is a regulated digital currency established in 2018 and issued by Circle, a regulated financial service business that follows strict US laws and standards to protect your money. Every USDC in existence is backed by a US dollar or cash equivalent asset that Circle has in its publicly visible reserves, with assurances issued monthly by a Big Four accounting firm."
-	CoreMintImageUrl        = "https://pbs.twimg.com/profile_images/1916937910928211968/CKblfanr_400x400.png"
+	CoreMintImageUrl        = "https://flipcash-currency-assets.s3.us-east-1.amazonaws.com/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/icon.png"
 
 	// Random value. Replace with real subsidizer public keys
 	SubsidizerPublicKey = "84ydcM4Yp59W6aZP6eSaKiAMaKidNLfb5k318sT2pm14"
@@ -27,10 +27,14 @@ const (
 	VmOmnibusPublicKey = "GNw1t85VH8b1CcwB5933KBC7PboDPJ5EcQdGynbfN1Pb"
 
 	// todo: DB store to track VM per mint
-	JeffyMintPublicKey      = "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj"
-	JeffyAuthorityPublicKey = "jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV"
-	JeffyVmAccountPublicKey = "Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta"
-	JeffyVmOmnibusPublicKey = "CQ5jni8XTXEcMFXS1ytNyTVbJBZHtHCzEtjBPowB3MLD"
+	JeffyMintPublicKey            = "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj"
+	JeffyAuthorityPublicKey       = "jfy1btcfsjSn2WCqLVaxiEjp4zgmemGyRsdCPbPwnZV"
+	JeffyVmAccountPublicKey       = "Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta"
+	JeffyVmOmnibusPublicKey       = "CQ5jni8XTXEcMFXS1ytNyTVbJBZHtHCzEtjBPowB3MLD"
+	KnicksNightMintPublicKey      = "497Wy6cY9BjWBiaDHzJ7TcUZqF2gE1Qm7yXtSj1vSr5W"
+	KnicksNightAuthorityPublicKey = "kn1VC4z3LUupQu41jCxx3PGNDmVyN3PswcAuvtyyHzS"
+	KnicksNightVmAccountPublicKey = "9Du5GuKYT21ydLQ9KzUTWWQ7NKdwoXB15y4ypNnnpbJa"
+	KnicksNightVmOmnibusPublicKey = "CqiUoainSQuqJNUxngLxemtGHcJR8tAueReduaL42kmK"
 )
 
 var (

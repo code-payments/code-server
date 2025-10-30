@@ -72,29 +72,68 @@ func (p *reserveService) Start(serviceCtx context.Context, interval time.Duratio
 
 // todo: Don't hardcode Jeffy
 func (p *reserveService) UpdateAllLaunchpadCurrencyReserves(ctx context.Context) error {
-	jeffyMintAccount, _ := common.NewAccountFromPublicKeyString("52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj")
-	jeffyVaultAccount, _ := common.NewAccountFromPublicKeyString("BFDanLgELhpCCGTtaa7c8WGxTXcTxgwkf9DMQd4qheSK")
-	coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4")
+	err1 := func() error {
+		jeffyMintAccount, _ := common.NewAccountFromPublicKeyString("52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj")
+		jeffyVaultAccount, _ := common.NewAccountFromPublicKeyString("BFDanLgELhpCCGTtaa7c8WGxTXcTxgwkf9DMQd4qheSK")
+		coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("A9NVHVuorNL4y2YFxdwdU3Hqozxw1Y1YJ81ZPxJsRrT4")
 
-	var tokenAccount token.Account
-	ai, err := p.data.GetBlockchainAccountInfo(ctx, jeffyVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
-	if err != nil {
-		return err
+		var tokenAccount token.Account
+		ai, err := p.data.GetBlockchainAccountInfo(ctx, jeffyVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		if err != nil {
+			return err
+		}
+		tokenAccount.Unmarshal(ai.Data)
+		jeffyVaultBalance := tokenAccount.Amount
+
+		ai, err = p.data.GetBlockchainAccountInfo(ctx, coreMintVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		if err != nil {
+			return err
+		}
+		tokenAccount.Unmarshal(ai.Data)
+		coreMintVaultBalance := tokenAccount.Amount
+
+		return p.data.PutCurrencyReserve(ctx, &currency.ReserveRecord{
+			Mint:              jeffyMintAccount.PublicKey().ToBase58(),
+			SupplyFromBonding: currencycreator.DefaultMintMaxQuarkSupply - jeffyVaultBalance,
+			CoreMintLocked:    coreMintVaultBalance,
+			Time:              time.Now(),
+		})
+	}()
+
+	err2 := func() error {
+		knicksNightMintAccount, _ := common.NewAccountFromPublicKeyString("497Wy6cY9BjWBiaDHzJ7TcUZqF2gE1Qm7yXtSj1vSr5W")
+		knicksNightVaultAccount, _ := common.NewAccountFromPublicKeyString("GEJGcTHfggJ4P82AwrmNWji2AkLq5eRUDM2hQSZ5SXpt")
+		coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("AZN7RinWLBtjxtJL6rLxFgb2rtcbpUJ67pfcq71Z3mKk")
+
+		var tokenAccount token.Account
+		ai, err := p.data.GetBlockchainAccountInfo(ctx, knicksNightVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		if err != nil {
+			return err
+		}
+		tokenAccount.Unmarshal(ai.Data)
+		knicksNightVaultBalance := tokenAccount.Amount
+
+		ai, err = p.data.GetBlockchainAccountInfo(ctx, coreMintVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		if err != nil {
+			return err
+		}
+		tokenAccount.Unmarshal(ai.Data)
+		coreMintVaultBalance := tokenAccount.Amount
+
+		return p.data.PutCurrencyReserve(ctx, &currency.ReserveRecord{
+			Mint:              knicksNightMintAccount.PublicKey().ToBase58(),
+			SupplyFromBonding: currencycreator.DefaultMintMaxQuarkSupply - knicksNightVaultBalance,
+			CoreMintLocked:    coreMintVaultBalance,
+			Time:              time.Now(),
+		})
+	}()
+
+	if err1 != nil {
+		return err1
 	}
-	tokenAccount.Unmarshal(ai.Data)
-	jeffyVaultBalance := tokenAccount.Amount
-
-	ai, err = p.data.GetBlockchainAccountInfo(ctx, coreMintVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
-	if err != nil {
-		return err
+	if err2 != nil {
+		return err2
 	}
-	tokenAccount.Unmarshal(ai.Data)
-	coreMintVaultBalance := tokenAccount.Amount
 
-	return p.data.PutCurrencyReserve(ctx, &currency.ReserveRecord{
-		Mint:              jeffyMintAccount.PublicKey().ToBase58(),
-		SupplyFromBonding: currencycreator.DefaultMintMaxQuarkSupply - jeffyVaultBalance,
-		CoreMintLocked:    coreMintVaultBalance,
-		Time:              time.Now(),
-	})
+	return nil
 }
