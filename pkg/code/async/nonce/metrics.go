@@ -45,6 +45,12 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 				}
 				recordNonceCountEvent(ctx, nonce.EnvironmentCvm, "Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta", state, nonce.PurposeClientTransaction, count)
 
+				count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentCvm, "9Du5GuKYT21ydLQ9KzUTWWQ7NKdwoXB15y4ypNnnpbJa", state, nonce.PurposeClientTransaction)
+				if err != nil {
+					continue
+				}
+				recordNonceCountEvent(ctx, nonce.EnvironmentCvm, "9Du5GuKYT21ydLQ9KzUTWWQ7NKdwoXB15y4ypNnnpbJa", state, nonce.PurposeClientTransaction, count)
+
 				count, err = p.data.GetNonceCountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeOnDemandTransaction)
 				if err != nil {
 					continue
