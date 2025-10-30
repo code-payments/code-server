@@ -16,9 +16,12 @@ var (
 	CodeVmOmnibusAccount, _ = NewAccountFromPublicKeyString(config.VmOmnibusPublicKey)
 
 	// todo: DB store to track VM per mint
-	jeffyAuthority, _        = NewAccountFromPublicKeyString(config.JeffyAuthorityPublicKey)
-	jeffyVmAccount, _        = NewAccountFromPublicKeyString(config.JeffyVmAccountPublicKey)
-	jeffyVmOmnibusAccount, _ = NewAccountFromPublicKeyString(config.JeffyVmOmnibusPublicKey)
+	jeffyAuthority, _              = NewAccountFromPublicKeyString(config.JeffyAuthorityPublicKey)
+	jeffyVmAccount, _              = NewAccountFromPublicKeyString(config.JeffyVmAccountPublicKey)
+	jeffyVmOmnibusAccount, _       = NewAccountFromPublicKeyString(config.JeffyVmOmnibusPublicKey)
+	knicksNightAuthority, _        = NewAccountFromPublicKeyString(config.KnicksNightAuthorityPublicKey)
+	knicksNightVmAccount, _        = NewAccountFromPublicKeyString(config.KnicksNightVmAccountPublicKey)
+	knicksNightVmOmnibusAccount, _ = NewAccountFromPublicKeyString(config.KnicksNightVmOmnibusPublicKey)
 )
 
 type VmConfig struct {
@@ -54,6 +57,25 @@ func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Acco
 			Authority: jeffyAuthority,
 			Vm:        jeffyVmAccount,
 			Omnibus:   jeffyVmOmnibusAccount,
+			Mint:      mint,
+		}, nil
+	case knicksNightMintAccount.PublicKey().ToBase58():
+		if knicksNightAuthority.PrivateKey() == nil {
+			vaultRecord, err := data.GetKey(ctx, knicksNightAuthority.PublicKey().ToBase58())
+			if err != nil {
+				return nil, err
+			}
+
+			knicksNightAuthority, err = NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return &VmConfig{
+			Authority: knicksNightAuthority,
+			Vm:        knicksNightVmAccount,
+			Omnibus:   knicksNightVmOmnibusAccount,
 			Mint:      mint,
 		}, nil
 	default:
