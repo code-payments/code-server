@@ -242,7 +242,9 @@ func LocalSimulation(ctx context.Context, data code_data.Provider, actions []*tr
 
 		// Validate authorities and respective derived timelock vault accounts match.
 		vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
-		if err != nil {
+		if err == common.ErrUnsupportedMint {
+			return nil, NewActionValidationError(action, "mint account must be the core mint or a launchpad currency")
+		} else if err != nil {
 			return nil, err
 		}
 		timelockAccounts, err := authority.GetTimelockAccounts(vmConfig)

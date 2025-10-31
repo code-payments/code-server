@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"errors"
 
 	"github.com/code-payments/code-server/pkg/code/config"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -79,6 +78,6 @@ func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Acco
 			Mint:      mint,
 		}, nil
 	default:
-		return nil, errors.New("unsupported mint")
+		return nil, ErrUnsupportedMint
 	}
 }
