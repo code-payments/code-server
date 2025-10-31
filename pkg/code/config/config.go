@@ -32,6 +32,10 @@ const (
 	KnicksNightAuthorityPublicKey = "kn1VC4z3LUupQu41jCxx3PGNDmVyN3PswcAuvtyyHzS"
 	KnicksNightVmAccountPublicKey = "9Du5GuKYT21ydLQ9KzUTWWQ7NKdwoXB15y4ypNnnpbJa"
 	KnicksNightVmOmnibusPublicKey = "CqiUoainSQuqJNUxngLxemtGHcJR8tAueReduaL42kmK"
+	FarmerCoinMintPublicKey       = "2o4PFbDZ73BihFraknfVTQeUtELKAeVUL4oa6bkrYU3A"
+	FarmerCoinAuthorityPublicKey  = "Farms86uyc1wqeHemtxFeUnN3Cs28d4PVYKymXzbMy6T"
+	FarmerCoinVmAccountPublicKey  = "5x9SP9a7dEGxK4xy8kurh8RC2fxvL1DSXhTCdcAMgpdb"
+	FarmerCoinVmOmnibusPublicKey  = "ANHQ3psrtquyYS2sGbJ6tpmVxZ9Sxq21BTNjD2Rf9Uvj"
 )
 
 var (

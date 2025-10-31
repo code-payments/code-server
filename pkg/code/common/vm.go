@@ -21,6 +21,9 @@ var (
 	knicksNightAuthority, _        = NewAccountFromPublicKeyString(config.KnicksNightAuthorityPublicKey)
 	knicksNightVmAccount, _        = NewAccountFromPublicKeyString(config.KnicksNightVmAccountPublicKey)
 	knicksNightVmOmnibusAccount, _ = NewAccountFromPublicKeyString(config.KnicksNightVmOmnibusPublicKey)
+	farmerCoinAuthority, _         = NewAccountFromPublicKeyString(config.FarmerCoinAuthorityPublicKey)
+	farmerCoinVmAccount, _         = NewAccountFromPublicKeyString(config.FarmerCoinVmAccountPublicKey)
+	farmerCoinVmOmnibusAccount, _  = NewAccountFromPublicKeyString(config.FarmerCoinVmOmnibusPublicKey)
 )
 
 type VmConfig struct {
@@ -75,6 +78,25 @@ func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Acco
 			Authority: knicksNightAuthority,
 			Vm:        knicksNightVmAccount,
 			Omnibus:   knicksNightVmOmnibusAccount,
+			Mint:      mint,
+		}, nil
+	case farmerCoinMintAccount.PublicKey().ToBase58():
+		if farmerCoinAuthority.PrivateKey() == nil {
+			vaultRecord, err := data.GetKey(ctx, farmerCoinAuthority.PublicKey().ToBase58())
+			if err != nil {
+				return nil, err
+			}
+
+			farmerCoinAuthority, err = NewAccountFromPrivateKeyString(vaultRecord.PrivateKey)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return &VmConfig{
+			Authority: farmerCoinAuthority,
+			Vm:        farmerCoinVmAccount,
+			Omnibus:   farmerCoinVmOmnibusAccount,
 			Mint:      mint,
 		}, nil
 	default:
