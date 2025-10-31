@@ -2,9 +2,12 @@ package common
 
 import (
 	"bytes"
+	"context"
+	"errors"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	"github.com/code-payments/code-server/pkg/code/config"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 	"github.com/code-payments/code-server/pkg/usdc"
 	"github.com/code-payments/code-server/pkg/usdt"
@@ -16,6 +19,8 @@ var (
 	CoreMintDecimals      = config.CoreMintDecimals
 	CoreMintName          = config.CoreMintName
 	CoreMintSymbol        = config.CoreMintSymbol
+
+	ErrUnsupportedMint = errors.New("unsupported mint")
 
 	jeffyMintAccount, _       = NewAccountFromPublicKeyString(config.JeffyMintPublicKey)
 	knicksNightMintAccount, _ = NewAccountFromPublicKeyString(config.KnicksNightMintPublicKey)
@@ -55,4 +60,14 @@ func GetMintQuarksPerUnit(mint *Account) uint64 {
 		return CoreMintQuarksPerUnit
 	}
 	return currencycreator.DefaultMintQuarksPerUnit
+}
+
+func IsSupportedMint(ctx context.Context, data code_data.Provider, mintAccount *Account) (bool, error) {
+	_, err := GetVmConfigForMint(ctx, data, mintAccount)
+	if err == ErrUnsupportedMint {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }

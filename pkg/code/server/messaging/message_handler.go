@@ -90,10 +90,11 @@ func (h *RequestToGiveBillMessageHandler) Validate(ctx context.Context, rendezvo
 		return err
 	}
 
-	switch mintAccount.PublicKey().ToBase58() {
-	case common.CoreMintAccount.PublicKey().ToBase58(), "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
-	default:
-		return newMessageValidationError("mint account must be the core mint or a launcpad currency")
+	isSupportedMint, err := common.IsSupportedMint(ctx, h.data, mintAccount)
+	if err != nil {
+		return err
+	} else if !isSupportedMint {
+		return newMessageValidationError("mint account must be the core mint or a launchpad currency")
 	}
 
 	return nil
