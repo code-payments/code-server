@@ -24,6 +24,7 @@ var (
 
 	jeffyMintAccount, _       = NewAccountFromPublicKeyString(config.JeffyMintPublicKey)
 	knicksNightMintAccount, _ = NewAccountFromPublicKeyString(config.KnicksNightMintPublicKey)
+	farmerCoinMintAccount, _  = NewAccountFromPublicKeyString(config.FarmerCoinMintPublicKey)
 )
 
 func GetBackwardsCompatMint(protoMint *commonpb.SolanaAccountId) (*Account, error) {

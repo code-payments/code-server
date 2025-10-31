@@ -70,7 +70,7 @@ func (p *reserveService) Start(serviceCtx context.Context, interval time.Duratio
 	}
 }
 
-// todo: Don't hardcode Jeffy
+// todo: Don't hardcode Jeffy and other Flipcash currencies
 func (p *reserveService) UpdateAllLaunchpadCurrencyReserves(ctx context.Context) error {
 	err1 := func() error {
 		jeffyMintAccount, _ := common.NewAccountFromPublicKeyString("52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj")
@@ -128,11 +128,42 @@ func (p *reserveService) UpdateAllLaunchpadCurrencyReserves(ctx context.Context)
 		})
 	}()
 
+	err3 := func() error {
+		farmerCoinMintAccount, _ := common.NewAccountFromPublicKeyString("2o4PFbDZ73BihFraknfVTQeUtELKAeVUL4oa6bkrYU3A")
+		farmerCoinVaultAccount, _ := common.NewAccountFromPublicKeyString("29LVpSKGQ9PmdWnXmrTD6RmNqNTW9umCjfJzdFPXNKAR")
+		coreMintVaultAccount, _ := common.NewAccountFromPublicKeyString("7hdq6ipigk9Jb5LwpK8M4688Fch4a8Q9HLsjQp8R2VLw")
+
+		var tokenAccount token.Account
+		ai, err := p.data.GetBlockchainAccountInfo(ctx, farmerCoinVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		if err != nil {
+			return err
+		}
+		tokenAccount.Unmarshal(ai.Data)
+		farmerCoinVaultBalance := tokenAccount.Amount
+
+		ai, err = p.data.GetBlockchainAccountInfo(ctx, coreMintVaultAccount.PublicKey().ToBase58(), solana.CommitmentFinalized)
+		if err != nil {
+			return err
+		}
+		tokenAccount.Unmarshal(ai.Data)
+		coreMintVaultBalance := tokenAccount.Amount
+
+		return p.data.PutCurrencyReserve(ctx, &currency.ReserveRecord{
+			Mint:              farmerCoinMintAccount.PublicKey().ToBase58(),
+			SupplyFromBonding: currencycreator.DefaultMintMaxQuarkSupply - farmerCoinVaultBalance,
+			CoreMintLocked:    coreMintVaultBalance,
+			Time:              time.Now(),
+		})
+	}()
+
 	if err1 != nil {
 		return err1
 	}
 	if err2 != nil {
 		return err2
+	}
+	if err3 != nil {
+		return err3
 	}
 
 	return nil

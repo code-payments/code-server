@@ -69,6 +69,7 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 		common.CodeVmAccount.PublicKey().ToBase58(),
 		"Bii3UFB9DzPq6UxgewF5iv9h1Gi8ZnP6mr7PtocHGNta",
 		"9Du5GuKYT21ydLQ9KzUTWWQ7NKdwoXB15y4ypNnnpbJa",
+		"5x9SP9a7dEGxK4xy8kurh8RC2fxvL1DSXhTCdcAMgpdb",
 	} {
 		for _, state := range []nonce.State{
 			nonce.StateReleased,
