@@ -375,8 +375,17 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 
 		syncedDepositCache.Insert(cacheKey, true, 1)
 
+		currencyName := common.CoreMintName
+		if !common.IsCoreMint(mint) {
+			currencyMetadata, err := data.GetCurrencyMetadata(ctx, mint.PublicKey().ToBase58())
+			if err != nil {
+				return nil
+			}
+			currencyName = currencyMetadata.Name
+		}
+
 		// Best-effort processing for notification back to the user
-		integration.OnDepositReceived(ctx, ownerAccount, mint, uint64(deltaQuarksIntoOmnibus), usdMarketValue)
+		integration.OnDepositReceived(ctx, ownerAccount, mint, currencyName, uint64(deltaQuarksIntoOmnibus), usdMarketValue)
 
 		return nil
 	default:
