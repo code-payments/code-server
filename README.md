@@ -49,4 +49,4 @@ This will evolve as we continue to build out the platform and open up more ways 
 
 ## Getting Help
 
-If you have any additional questions or need help integrating Code into your website or application, please reach out to us on [Twitter](https://twitter.com/flipcash).
+If you have any additional questions or need help integrating Flipcash into your website or application, please reach out to us on [Twitter](https://twitter.com/flipcash).
