@@ -9,9 +9,9 @@
 
 Code server monolith containing the gRPC/web services and workers that power a next-generation payments system. The project contains the first L2 solution on top of Solana, utilizing an intent-based system backed by the Code Sequencer to handle transactions.
 
-## What is Code?
+## What is Flipcash?
 
-[Code](https://getcode.com) is a mobile wallet app leveraging self-custodial blockchain technology to provide an instant, global, and private payments experience.
+[Flipcash](https://flipcash.com) is a mobile wallet app leveraging self-custodial blockchain technology to provide an instant, global, and private payments experience. We are currently working on a currency launchpad.
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ make test
 
 ## Project Structure
 
-The implementations powering the Code ecosystem (Code Wallet App, Code SDK, etc) can be found under the `pkg/code/` directory. All other code under the `pkg/` directory are generic libraries and utilities.
+The implementations powering the Code ecosystem (Flipcash App, SDK, etc) can be found under the `pkg/code/` directory. All other code under the `pkg/` directory are generic libraries and utilities.
 
 To begin diving into core systems, we recommend starting with the following packages:
 - `pkg/code/async/`: Asynchronous workers that perform tasks outside of RPC and web calls
@@ -39,20 +39,14 @@ To begin diving into core systems, we recommend starting with the following pack
 
 ## APIs
 
-The gRPC APIs provided by Code server can be found in the [code-protobuf-api](https://github.com/code-payments/code-protobuf-api) project. Refer to the [Code SDK](https://github.com/code-payments/code-sdk) if you want to integrate micropayments into your web application.
-
-## Learn More
-
-To learn more about fundamental concepts and advanced topics related to Code server, we recommend jumping into the Code SDK [documentation](https://code-payments.github.io/code-sdk/docs/guide/introduction) for a high-level overview. The Extra Topics section includes notes on topics like the Sequencer, Privacy Protocol, Timelock, and more.
+The gRPC APIs provided by Code server can be found in the [code-protobuf-api](https://github.com/code-payments/code-protobuf-api) project.
 
 ## Contributing
 
 Anyone is welcome to make code contributions through a PR.
 
-The best way to share general feedback is on [Discord](https://discord.gg/T8Tpj8DBFp).
-
 This will evolve as we continue to build out the platform and open up more ways to contribute.
 
 ## Getting Help
 
-If you have any additional questions or need help integrating Code into your website or application, please reach out to us on [Discord](https://discord.gg/T8Tpj8DBFp) or [Twitter](https://twitter.com/getcode).
+If you have any additional questions or need help integrating Code into your website or application, please reach out to us on [Twitter](https://twitter.com/flipcash).
