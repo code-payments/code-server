@@ -2,7 +2,10 @@ package currencycreator
 
 import (
 	"fmt"
+	"math"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestEstimateCurrentPrice(t *testing.T) {
@@ -54,4 +57,36 @@ func TestEstimateSell(t *testing.T) {
 		SellFeeBps:           100, // 1%
 	})
 	fmt.Printf("%d total, %d received, %d fees\n", received+fees, received, fees)
+}
+
+func TestEstimates_CsvTable(t *testing.T) {
+	startValue := uint64(10000)          // $0.01
+	endValue := uint64(1000000000000000) // $1T
+
+	fmt.Println("value locked,payment value,payment quarks,sell value")
+	for valueLocked := startValue; valueLocked <= endValue; valueLocked *= 10 {
+		circulatingSupply, _ := EstimateBuy(&EstimateBuyArgs{
+			BuyAmountInQuarks:     valueLocked,
+			CurrentSupplyInQuarks: 0,
+			ValueMintDecimals:     6,
+		})
+
+		for paymentValue := startValue; paymentValue <= valueLocked; paymentValue *= 10 {
+			paymenQuarks := EstimateValueExchange(&EstimateValueExchangeArgs{
+				ValueInQuarks:         paymentValue,
+				CurrentSupplyInQuarks: circulatingSupply,
+				ValueMintDecimals:     6,
+			})
+
+			sellValue, _ := EstimateSell(&EstimateSellArgs{
+				SellAmountInQuarks:   paymenQuarks,
+				CurrentValueInQuarks: valueLocked,
+				ValueMintDecimals:    6,
+			})
+
+			require.True(t, math.Abs(float64(paymentValue)-float64(sellValue)) <= 1)
+
+			fmt.Printf("%d,%d,%d,%d\n", valueLocked, paymentValue, paymenQuarks, sellValue)
+		}
+	}
 }
