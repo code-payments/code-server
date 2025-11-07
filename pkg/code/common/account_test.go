@@ -187,6 +187,30 @@ func TestGetVmDepositAccounts(t *testing.T) {
 	assert.EqualValues(t, vmConfig.Mint.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
 }
 
+func TestGetVmSwapAccounts(t *testing.T) {
+	vmConfig := newRandomVmConfig(t, true)
+
+	ownerAccount := newRandomTestAccount(t)
+
+	expectedSwapPdaAddress, expectedSwapPdaBump, err := cvm.GetVmSwapAddress(&cvm.GetVmSwapAddressArgs{
+		Swapper: ownerAccount.PublicKey().ToBytes(),
+		Vm:      vmConfig.Vm.PublicKey().ToBytes(),
+	})
+	require.NoError(t, err)
+
+	expectedSwapAtaAddress, err := token.GetAssociatedAccount(expectedSwapPdaAddress, vmConfig.Mint.PublicKey().ToBytes())
+	require.NoError(t, err)
+
+	actual, err := ownerAccount.GetVmSwapAccounts(vmConfig)
+	require.NoError(t, err)
+	assert.EqualValues(t, ownerAccount.PublicKey().ToBytes(), actual.VaultOwner.PublicKey().ToBytes())
+	assert.EqualValues(t, expectedSwapPdaAddress, actual.Pda.PublicKey().ToBytes())
+	assert.Equal(t, expectedSwapPdaBump, actual.PdaBump)
+	assert.EqualValues(t, expectedSwapAtaAddress, actual.Ata.PublicKey().ToBytes())
+	assert.EqualValues(t, vmConfig.Vm.PublicKey().ToBytes(), actual.Vm.PublicKey().ToBytes())
+	assert.EqualValues(t, vmConfig.Mint.PublicKey().ToBytes(), actual.Mint.PublicKey().ToBytes())
+}
+
 func TestIsOnCurve(t *testing.T) {
 	for _, tc := range []struct {
 		expected  bool

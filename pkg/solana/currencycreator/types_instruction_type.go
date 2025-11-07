@@ -11,6 +11,8 @@ const (
 
 	InstructionTypeBuyTokens
 	InstructionTypeSellTokens
+	InstructionTypeBuyAndDepositIntoVm
+	InstructionTypeSellAndDepositIntoVm
 )
 
 func putInstructionType(dst []byte, v InstructionType, offset *int) {

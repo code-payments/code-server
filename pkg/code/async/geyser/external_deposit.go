@@ -122,8 +122,8 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 		memo.Instruction(codeVmDepositMemoValue),
 		compute_budget.SetComputeUnitPrice(1_000),
 		compute_budget.SetComputeUnitLimit(50_000),
-		cvm.NewDepositInstruction(
-			&cvm.DepositInstructionAccounts{
+		cvm.NewDepositFromPdaInstruction(
+			&cvm.DepositFromPdaInstructionAccounts{
 				VmAuthority: vmConfig.Authority.PublicKey().ToBytes(),
 				Vm:          vmConfig.Vm.PublicKey().ToBytes(),
 				VmMemory:    memoryAccount.PublicKey().ToBytes(),
@@ -132,7 +132,7 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 				DepositAta:  timelockAccounts.VmDepositAccounts.Ata.PublicKey().ToBytes(),
 				VmOmnibus:   vmConfig.Omnibus.PublicKey().ToBytes(),
 			},
-			&cvm.DepositInstructionArgs{
+			&cvm.DepositFromPdaInstructionArgs{
 				AccountIndex: memoryIndex,
 				Amount:       balance,
 				Bump:         timelockAccounts.VmDepositAccounts.PdaBump,
