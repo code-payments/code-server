@@ -23,6 +23,7 @@ var (
 	VmRelayProofPrefix      = []byte("vm_proof_account")
 	VmRelayVaultPrefix      = []byte("vm_relay_vault")
 	VmRelayCommitmentPrefix = []byte("relay_commitment")
+	VmSwapPdaPrefix         = []byte("vm_swap_pda")
 	VmTimelockStatePrefix   = []byte("timelock_state")
 	VmTimelockVaultPrefix   = []byte("timelock_vault")
 )
@@ -134,6 +135,21 @@ func GetVmDepositAddress(args *GetVmDepositAddressArgs) (ed25519.PublicKey, uint
 		CodeVmPrefix,
 		VmDepositPdaPrefix,
 		args.Depositor,
+		args.Vm,
+	)
+}
+
+type GetVmSwapAddressArgs struct {
+	Swapper ed25519.PublicKey
+	Vm      ed25519.PublicKey
+}
+
+func GetVmSwapAddress(args *GetVmSwapAddressArgs) (ed25519.PublicKey, uint8, error) {
+	return solana.FindProgramAddressAndBump(
+		PROGRAM_ID,
+		CodeVmPrefix,
+		VmSwapPdaPrefix,
+		args.Swapper,
 		args.Vm,
 	)
 }

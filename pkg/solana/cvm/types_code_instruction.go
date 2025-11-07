@@ -20,9 +20,14 @@ const (
 	CodeInstructionResizeMemory
 	CodeInstructionSnapshot
 
-	CodeInstructionDeposit
+	CodeInstructionDepositFromPda
 	CodeInstructionWithdraw
-	CodeInstructionUnlockI
+	CodeInstructionUnlock
+	CodeInstructionDepositWithAuthorityIx
+
+	CodeInstructionTransferForSwap
+	CodeInstructionCancelSwap
+	CodeInstructionCloseSwapAccountIfEmpty
 )
 
 func putCodeInstruction(dst []byte, v CodeInstruction, offset *int) {

@@ -38,12 +38,25 @@ type TimelockAccounts struct {
 	UnlockBump uint8
 
 	VmDepositAccounts *VmDepositAccounts
+	VmSwapAccounts    *VmSwapAccounts
 
 	Vm   *Account
 	Mint *Account
 }
 
 type VmDepositAccounts struct {
+	VaultOwner *Account
+
+	Pda     *Account
+	PdaBump uint8
+
+	Ata *Account
+
+	Vm   *Account
+	Mint *Account
+}
+
+type VmSwapAccounts struct {
 	VaultOwner *Account
 
 	Pda     *Account
@@ -208,6 +221,18 @@ func (a *Account) ToVmDepositAta(vmConfig *VmConfig) (*Account, error) {
 	return vmDepositAccounts.Ata, nil
 }
 
+func (a *Account) ToVmSwapAta(vmConfig *VmConfig) (*Account, error) {
+	if err := a.Validate(); err != nil {
+		return nil, errors.Wrap(err, "error validating owner account")
+	}
+
+	vmSwapAccounts, err := a.GetVmSwapAccounts(vmConfig)
+	if err != nil {
+		return nil, err
+	}
+	return vmSwapAccounts.Ata, nil
+}
+
 func (a *Account) GetTimelockAccounts(vmConfig *VmConfig) (*TimelockAccounts, error) {
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrap(err, "error validating owner account")
@@ -259,6 +284,11 @@ func (a *Account) GetTimelockAccounts(vmConfig *VmConfig) (*TimelockAccounts, er
 		return nil, errors.Wrap(err, "error getting vm deposit accounts")
 	}
 
+	vmSwapAccounts, err := a.GetVmSwapAccounts(vmConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting vm swap accounts")
+	}
+
 	return &TimelockAccounts{
 		VaultOwner: a,
 
@@ -272,6 +302,7 @@ func (a *Account) GetTimelockAccounts(vmConfig *VmConfig) (*TimelockAccounts, er
 		UnlockBump: unlockBump,
 
 		VmDepositAccounts: vmDepositAccounts,
+		VmSwapAccounts:    vmSwapAccounts,
 
 		Vm:   vmConfig.Vm,
 		Mint: vmConfig.Mint,
@@ -307,6 +338,43 @@ func (a *Account) GetVmDepositAccounts(vmConfig *VmConfig) (*VmDepositAccounts, 
 		PdaBump: depositPdaBump,
 
 		Ata: depositAtaAccount,
+
+		VaultOwner: a,
+
+		Vm:   vmConfig.Vm,
+		Mint: vmConfig.Mint,
+	}, nil
+}
+
+func (a *Account) GetVmSwapAccounts(vmConfig *VmConfig) (*VmSwapAccounts, error) {
+	swapPdaAddress, swapPdaBump, err := cvm.GetVmSwapAddress(&cvm.GetVmSwapAddressArgs{
+		Swapper: a.PublicKey().ToBytes(),
+		Vm:      vmConfig.Vm.PublicKey().ToBytes(),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting swap pda address")
+	}
+
+	swapAtaAddress, err := token.GetAssociatedAccount(swapPdaAddress, vmConfig.Mint.PublicKey().ToBytes())
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting swap ata address")
+	}
+
+	swapPdaAccount, err := NewAccountFromPublicKeyBytes(swapPdaAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid deposit pda address")
+	}
+
+	swapAtaAccount, err := NewAccountFromPublicKeyBytes(swapAtaAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid deposit ata address")
+	}
+
+	return &VmSwapAccounts{
+		Pda:     swapPdaAccount,
+		PdaBump: swapPdaBump,
+
+		Ata: swapAtaAccount,
 
 		VaultOwner: a,
 

@@ -7,37 +7,37 @@ import (
 )
 
 const (
-	DepositInstructionArgsSize = (2 + // account_index
-		8 + //amount
+	CancelSwapInstructionArgsSize = (2 + // account_index
+		8 + // amount
 		1) // bump
 )
 
-type DepositInstructionArgs struct {
+type CancelSwapInstructionArgs struct {
 	AccountIndex uint16
 	Amount       uint64
 	Bump         uint8
 }
 
-type DepositInstructionAccounts struct {
+type CancelSwapInstructionAccounts struct {
 	VmAuthority ed25519.PublicKey
 	Vm          ed25519.PublicKey
 	VmMemory    ed25519.PublicKey
-	Depositor   ed25519.PublicKey
-	DepositPda  ed25519.PublicKey
-	DepositAta  ed25519.PublicKey
+	Swapper     ed25519.PublicKey
+	SwapPda     ed25519.PublicKey
+	SwapAta     ed25519.PublicKey
 	VmOmnibus   ed25519.PublicKey
 }
 
-func NewDepositInstruction(
-	accounts *DepositInstructionAccounts,
-	args *DepositInstructionArgs,
+func NewCancelSwapInstruction(
+	accounts *CancelSwapInstructionAccounts,
+	args *CancelSwapInstructionArgs,
 ) solana.Instruction {
 	var offset int
 
 	// Serialize instruction arguments
-	data := make([]byte, 1+DepositInstructionArgsSize)
+	data := make([]byte, 1+CancelSwapInstructionArgsSize)
 
-	putCodeInstruction(data, CodeInstructionDeposit, &offset)
+	putCodeInstruction(data, CodeInstructionCancelSwap, &offset)
 	putUint16(data, args.AccountIndex, &offset)
 	putUint64(data, args.Amount, &offset)
 	putUint8(data, args.Bump, &offset)
@@ -66,17 +66,17 @@ func NewDepositInstruction(
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.Depositor,
+				PublicKey:  accounts.Swapper,
 				IsWritable: false,
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.DepositPda,
+				PublicKey:  accounts.SwapPda,
 				IsWritable: false,
 				IsSigner:   false,
 			},
 			{
-				PublicKey:  accounts.DepositAta,
+				PublicKey:  accounts.SwapAta,
 				IsWritable: true,
 				IsSigner:   false,
 			},
