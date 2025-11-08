@@ -118,7 +118,10 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		// Given the sell value, does it align with the native amount in the target currency
 		// within half a penny?
 		errorThreshold := 0.005
-		nativeAmountLowerBound := math.Max(proto.NativeAmount-errorThreshold, errorThreshold)
+		nativeAmountLowerBound := proto.NativeAmount - errorThreshold
+		if nativeAmountLowerBound < errorThreshold {
+			nativeAmountLowerBound = errorThreshold
+		}
 		nativeAmountUpperBound := proto.NativeAmount + errorThreshold
 		coreMintSellValueInUnits := float64(coreMintSellValueInQuarks) / float64(coreMintQuarksPerUnit)
 		potentialNativeAmount := otherExchangeRateRecord.Rate * coreMintSellValueInUnits / usdExchangeRateRecord.Rate
