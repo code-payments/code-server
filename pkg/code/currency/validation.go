@@ -6,6 +6,7 @@ import (
 	"time"
 
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+	"github.com/sirupsen/logrus"
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
@@ -74,6 +75,14 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		return false, "", err
 	}
 
+	log := logrus.StandardLogger().WithFields(logrus.Fields{
+		"currency":      proto.Currency,
+		"native_amount": proto.NativeAmount,
+		"exhange_rate":  proto.ExchangeRate,
+		"quarks":        proto.Quarks,
+		"mint":          mintAccount.PublicKey().ToBase58(),
+	})
+
 	coreMintQuarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
 	otherMintQuarksPerUnit := common.GetMintQuarksPerUnit(mintAccount)
 
@@ -126,6 +135,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		coreMintSellValueInUnits := float64(coreMintSellValueInQuarks) / float64(coreMintQuarksPerUnit)
 		potentialNativeAmount := otherExchangeRateRecord.Rate * coreMintSellValueInUnits / usdExchangeRateRecord.Rate
 		if potentialNativeAmount < nativeAmountLowerBound || potentialNativeAmount > nativeAmountUpperBound {
+			log.WithField("potential_native_amount", potentialNativeAmount).Info("native amount is outside error threshold")
 			continue
 		}
 
@@ -134,6 +144,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		expectedRate := potentialNativeAmount / otherMintUnits
 		percentDiff := math.Abs(proto.ExchangeRate-expectedRate) / expectedRate
 		if percentDiff > 0.0001 {
+			log.WithField("potential_exchange_rate", expectedRate).Info("native amount is outside error threshold")
 			continue
 		}
 
