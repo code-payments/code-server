@@ -15,6 +15,10 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 )
 
+const (
+	defaultPrecision = 128
+)
+
 // ValidateClientExchangeData validates proto exchange data provided by a client
 func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
 	mint, err := common.GetBackwardsCompatMint(proto.Mint)
@@ -31,12 +35,12 @@ func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, pr
 func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
 	latestExchangeRateTime := GetLatestExchangeRateTime()
 
-	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(18)
-	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(18)
-	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(18)
+	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(defaultPrecision)
+	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
+	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(defaultPrecision)
 
-	rateErrorThreshold := big.NewFloat(0.01).SetPrec(18)
-	quarkErrorThreshold := big.NewFloat(1000).SetPrec(18)
+	rateErrorThreshold := big.NewFloat(0.01).SetPrec(defaultPrecision)
+	quarkErrorThreshold := big.NewFloat(1000).SetPrec(defaultPrecision)
 
 	// Find an exchange rate that the client could have fetched from a RPC call
 	// within a reasonable time in the past
@@ -82,12 +86,12 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		return false, "", err
 	}
 
-	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(18)
-	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(18)
-	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(18)
+	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(defaultPrecision)
+	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(defaultPrecision)
+	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 
-	rateErrorThreshold := big.NewFloat(0.01).SetPrec(18)
-	nativeAmountErrorThreshold := big.NewFloat(0.005).SetPrec(18)
+	rateErrorThreshold := big.NewFloat(0.01).SetPrec(defaultPrecision)
+	nativeAmountErrorThreshold := big.NewFloat(0.005).SetPrec(defaultPrecision)
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"currency":      proto.Currency,
@@ -117,7 +121,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		} else if err != nil {
 			return false, "", err
 		}
-		usdRate := big.NewFloat(usdExchangeRateRecord.Rate).SetPrec(18)
+		usdRate := big.NewFloat(usdExchangeRateRecord.Rate).SetPrec(defaultPrecision)
 
 		var otherExchangeRateRecord *currency.ExchangeRateRecord
 		if proto.Currency == string(currency_lib.USD) {
@@ -130,7 +134,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 				return false, "", err
 			}
 		}
-		otherRate := big.NewFloat(otherExchangeRateRecord.Rate).SetPrec(18)
+		otherRate := big.NewFloat(otherExchangeRateRecord.Rate).SetPrec(defaultPrecision)
 
 		// How much core mint would be received for a sell against the currency creator program?
 		coreMintSellValueInQuarks, _ := currencycreator.EstimateSell(&currencycreator.EstimateSellArgs{
@@ -148,8 +152,8 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		}
 		nativeAmountUpperBound := new(big.Float).Add(clientNativeAmount, nativeAmountErrorThreshold)
 		coreMintSellValueInUnits := new(big.Float).Quo(
-			big.NewFloat(float64(coreMintSellValueInQuarks)).SetPrec(18),
-			big.NewFloat(float64(coreMintQuarksPerUnit)).SetPrec(18),
+			big.NewFloat(float64(coreMintSellValueInQuarks)).SetPrec(defaultPrecision),
+			big.NewFloat(float64(coreMintQuarksPerUnit)).SetPrec(defaultPrecision),
 		)
 		potentialNativeAmount := new(big.Float).Mul(new(big.Float).Quo(otherRate, usdRate), coreMintSellValueInUnits)
 		if potentialNativeAmount.Cmp(nativeAmountLowerBound) < 0 || potentialNativeAmount.Cmp(nativeAmountUpperBound) > 0 {
@@ -165,7 +169,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		// For the valid native amount, is the exchange rate calculated correctly?
 		otherMintUnits := new(big.Float).Quo(
 			clientQuarks,
-			big.NewFloat(float64(otherMintQuarksPerUnit)).SetPrec(18),
+			big.NewFloat(float64(otherMintQuarksPerUnit)).SetPrec(defaultPrecision),
 		)
 		expectedRate := new(big.Float).Quo(potentialNativeAmount, otherMintUnits)
 		percentDiff := new(big.Float).Quo(new(big.Float).Abs(new(big.Float).Sub(clientRate, expectedRate)), expectedRate)
