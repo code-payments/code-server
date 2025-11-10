@@ -135,7 +135,11 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		coreMintSellValueInUnits := float64(coreMintSellValueInQuarks) / float64(coreMintQuarksPerUnit)
 		potentialNativeAmount := otherExchangeRateRecord.Rate * coreMintSellValueInUnits / usdExchangeRateRecord.Rate
 		if potentialNativeAmount < nativeAmountLowerBound || potentialNativeAmount > nativeAmountUpperBound {
-			log.WithField("potential_native_amount", potentialNativeAmount).Info("native amount is outside error threshold")
+			log.WithFields(logrus.Fields{
+				"native_amount_lower_bound": nativeAmountLowerBound,
+				"native_amount_upper_bound": nativeAmountUpperBound,
+				"potential_native_amount":   potentialNativeAmount,
+			}).Info("native amount is outside error threshold")
 			continue
 		}
 
