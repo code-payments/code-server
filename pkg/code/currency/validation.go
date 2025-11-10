@@ -147,8 +147,8 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		otherMintUnits := float64(proto.Quarks) / float64(otherMintQuarksPerUnit)
 		expectedRate := potentialNativeAmount / otherMintUnits
 		percentDiff := math.Abs(proto.ExchangeRate-expectedRate) / expectedRate
-		if percentDiff > 0.0001 {
-			log.WithField("potential_exchange_rate", expectedRate).Info("native amount is outside error threshold")
+		if percentDiff > 0.001 {
+			log.WithField("potential_exchange_rate", expectedRate).Info("exchange rate is outside error threshold")
 			continue
 		}
 
