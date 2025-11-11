@@ -20,6 +20,7 @@ type CloseSwapAccountIfEmptyInstructionAccounts struct {
 	Swapper     ed25519.PublicKey
 	SwapPda     ed25519.PublicKey
 	SwapAta     ed25519.PublicKey
+	Destination ed25519.PublicKey
 }
 
 func NewCloseSwapAccountIfEmptyInstruction(
@@ -64,6 +65,11 @@ func NewCloseSwapAccountIfEmptyInstruction(
 			},
 			{
 				PublicKey:  accounts.SwapAta,
+				IsWritable: true,
+				IsSigner:   false,
+			},
+			{
+				PublicKey:  accounts.Destination,
 				IsWritable: true,
 				IsSigner:   false,
 			},
