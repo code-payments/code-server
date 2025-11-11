@@ -102,12 +102,12 @@ func NewSellAndDepositIntoVmInstruction(
 			},
 			{
 				PublicKey:  accounts.FeeTarget,
-				IsWritable: true,
+				IsWritable: false,
 				IsSigner:   false,
 			},
 			{
 				PublicKey:  accounts.FeeBase,
-				IsWritable: false,
+				IsWritable: true,
 				IsSigner:   false,
 			},
 
