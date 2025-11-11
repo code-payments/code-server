@@ -86,7 +86,14 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		return false, "", err
 	}
 
+	coreMintQuarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
+	otherMintQuarksPerUnit := common.GetMintQuarksPerUnit(mintAccount)
+
 	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(defaultPrecision)
+	clientTokenUnits := new(big.Float).Quo(
+		clientQuarks,
+		big.NewFloat(float64(otherMintQuarksPerUnit)).SetPrec(defaultPrecision),
+	)
 	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(defaultPrecision)
 	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 
@@ -94,15 +101,13 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 	nativeAmountErrorThreshold := big.NewFloat(0.005).SetPrec(defaultPrecision)
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"currency":      proto.Currency,
-		"native_amount": clientNativeAmount,
-		"exhange_rate":  clientRate,
-		"quarks":        proto.Quarks,
-		"mint":          mintAccount.PublicKey().ToBase58(),
+		"currency":             proto.Currency,
+		"client_native_amount": clientNativeAmount,
+		"client_exchange_rate": clientRate,
+		"client_token_units":   clientTokenUnits,
+		"client_quarks":        proto.Quarks,
+		"mint":                 mintAccount.PublicKey().ToBase58(),
 	})
-
-	coreMintQuarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
-	otherMintQuarksPerUnit := common.GetMintQuarksPerUnit(mintAccount)
 
 	latestExchangeRateTime := GetLatestExchangeRateTime()
 	for i := range 2 {
@@ -162,16 +167,14 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 				"native_amount_lower_bound": nativeAmountLowerBound,
 				"native_amount_upper_bound": nativeAmountUpperBound,
 				"potential_native_amount":   potentialNativeAmount,
+				"usd_rate":                  usdRate,
+				"other_rate":                otherRate,
 			}).Info("native amount is outside error threshold")
 			continue
 		}
 
 		// For the valid native amount, is the exchange rate calculated correctly?
-		otherMintUnits := new(big.Float).Quo(
-			clientQuarks,
-			big.NewFloat(float64(otherMintQuarksPerUnit)).SetPrec(defaultPrecision),
-		)
-		expectedRate := new(big.Float).Quo(potentialNativeAmount, otherMintUnits)
+		expectedRate := new(big.Float).Quo(potentialNativeAmount, clientTokenUnits)
 		percentDiff := new(big.Float).Quo(new(big.Float).Abs(new(big.Float).Sub(clientRate, expectedRate)), expectedRate)
 		if percentDiff.Cmp(rateErrorThreshold) > 0 {
 			log.WithField("potential_exchange_rate", expectedRate).Info("exchange rate is outside error threshold")
