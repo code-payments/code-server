@@ -2,7 +2,6 @@ package currencycreator
 
 import (
 	"fmt"
-	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,9 +14,9 @@ func TestEstimateCurrentPrice(t *testing.T) {
 
 func TestEstimatValueExchange(t *testing.T) {
 	quarks := EstimateValueExchange(&EstimateValueExchangeArgs{
-		ValueInQuarks:         5000000,          // $5
-		CurrentSupplyInQuarks: 7232649000000000, // 723,264.9 tokens
-		ValueMintDecimals:     6,
+		ValueInQuarks:        10000000,   // $10
+		CurrentValueInQuarks: 1000000000, // $1000
+		ValueMintDecimals:    6,
 	})
 
 	fmt.Printf("%d quarks\n", quarks)
@@ -63,9 +62,9 @@ func TestEstimates_CsvTable(t *testing.T) {
 	startValue := uint64(10000)          // $0.01
 	endValue := uint64(1000000000000000) // $1T
 
-	fmt.Println("value locked,payment value,payment quarks,sell value")
+	fmt.Println("value locked,total circulating supply,new circulating supply,payment value,payment quarks,sell value")
 	for valueLocked := startValue; valueLocked <= endValue; valueLocked *= 10 {
-		circulatingSupply, _ := EstimateBuy(&EstimateBuyArgs{
+		totalCirculatingSupply, _ := EstimateBuy(&EstimateBuyArgs{
 			BuyAmountInQuarks:     valueLocked,
 			CurrentSupplyInQuarks: 0,
 			ValueMintDecimals:     6,
@@ -73,9 +72,9 @@ func TestEstimates_CsvTable(t *testing.T) {
 
 		for paymentValue := startValue; paymentValue <= valueLocked; paymentValue *= 10 {
 			paymenQuarks := EstimateValueExchange(&EstimateValueExchangeArgs{
-				ValueInQuarks:         paymentValue,
-				CurrentSupplyInQuarks: circulatingSupply,
-				ValueMintDecimals:     6,
+				ValueInQuarks:        paymentValue,
+				CurrentValueInQuarks: valueLocked,
+				ValueMintDecimals:    6,
 			})
 
 			sellValue, _ := EstimateSell(&EstimateSellArgs{
@@ -84,9 +83,18 @@ func TestEstimates_CsvTable(t *testing.T) {
 				ValueMintDecimals:    6,
 			})
 
-			require.True(t, math.Abs(float64(paymentValue)-float64(sellValue)) <= 1)
+			diff := int64(paymentValue) - int64(sellValue)
+			require.True(t, diff >= -1 && diff <= 1)
 
-			fmt.Printf("%d,%d,%d,%d\n", valueLocked, paymentValue, paymenQuarks, sellValue)
+			newCirculatingSupply, _ := EstimateBuy(&EstimateBuyArgs{
+				BuyAmountInQuarks:     valueLocked - paymentValue,
+				CurrentSupplyInQuarks: 0,
+				ValueMintDecimals:     6,
+			})
+			diff = int64(totalCirculatingSupply) - int64(newCirculatingSupply) - int64(paymenQuarks)
+			require.True(t, diff >= -1 && diff <= 1)
+
+			fmt.Printf("%d,%d,%d,%d,%d,%d\n", valueLocked, totalCirculatingSupply, newCirculatingSupply, paymentValue, paymenQuarks, sellValue)
 		}
 	}
 }

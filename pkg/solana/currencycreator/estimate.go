@@ -13,9 +13,9 @@ func EstimateCurrentPrice(currentSupplyInQuarks uint64) *big.Float {
 }
 
 type EstimateValueExchangeArgs struct {
-	ValueInQuarks         uint64
-	CurrentSupplyInQuarks uint64
-	ValueMintDecimals     uint8
+	ValueInQuarks        uint64
+	CurrentValueInQuarks uint64
+	ValueMintDecimals    uint8
 }
 
 func EstimateValueExchange(args *EstimateValueExchangeArgs) uint64 {
@@ -23,12 +23,12 @@ func EstimateValueExchange(args *EstimateValueExchangeArgs) uint64 {
 	unscaledValue := big.NewFloat(float64(args.ValueInQuarks)).SetPrec(defaultCurvePrec)
 	scaledValue := new(big.Float).Quo(unscaledValue, scale)
 
-	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
-	unscaledCurrentSupply := big.NewFloat(float64(args.CurrentSupplyInQuarks)).SetPrec(defaultCurvePrec)
-	scaledCurrentSupply := new(big.Float).Quo(unscaledCurrentSupply, scale)
+	scale = big.NewFloat(math.Pow10(int(args.ValueMintDecimals))).SetPrec(defaultCurvePrec)
+	unscaledCurrentValue := big.NewFloat(float64(args.CurrentValueInQuarks)).SetPrec(defaultCurvePrec)
+	scaledCurrentValue := new(big.Float).Quo(unscaledCurrentValue, scale)
 
 	scale = big.NewFloat(math.Pow10(int(DefaultMintDecimals))).SetPrec(defaultCurvePrec)
-	scaledTokens := DefaultExponentialCurve().TokensForValueExchange(scaledCurrentSupply, scaledValue)
+	scaledTokens := DefaultExponentialCurve().TokensForValueExchange(scaledCurrentValue, scaledValue)
 	unscaledTokens := new(big.Float).Mul(scaledTokens, scale)
 
 	quarks, _ := unscaledTokens.Int64()

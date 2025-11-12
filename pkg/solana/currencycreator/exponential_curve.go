@@ -61,14 +61,16 @@ func (curve *ExponentialCurve) TokensBoughtForValue(currentSupply, value *big.Fl
 	return new(big.Float).Sub(result, currentSupply)
 }
 
-// How many tokens should be exchanged for a value given the currentSupply?
-func (curve *ExponentialCurve) TokensForValueExchange(currentSupply, value *big.Float) *big.Float {
+// How many tokens should be exchanged for a value given the currentValue?
+func (curve *ExponentialCurve) TokensForValueExchange(currentValue, value *big.Float) *big.Float {
 	abOverC := new(big.Float).Quo(new(big.Float).Mul(curve.a, curve.b), curve.c)
-	expCs := expBig(new(big.Float).Mul(curve.c, currentSupply))
-	abOverCTimesExpCs := new(big.Float).Mul(abOverC, expCs)
-	oneMinusFrac := new(big.Float).Sub(big.NewFloat(1), new(big.Float).Quo(value, abOverCTimesExpCs))
-	ln := logBig(oneMinusFrac)
-	return new(big.Float).Quo(new(big.Float).Neg(ln), curve.c)
+	newValue := new(big.Float).Sub(currentValue, value)
+	currentValueOverAbOverC := new(big.Float).Quo(currentValue, abOverC)
+	newValueOverAbOverC := new(big.Float).Quo(newValue, abOverC)
+	lnTerm1 := logBig(new(big.Float).Add(big.NewFloat(1.0), currentValueOverAbOverC))
+	lnTerm2 := logBig(new(big.Float).Add(big.NewFloat(1.0), newValueOverAbOverC))
+	diffLnTerms := new(big.Float).Sub(lnTerm1, lnTerm2)
+	return new(big.Float).Quo(diffLnTerms, curve.c)
 }
 
 func DefaultExponentialCurve() *ExponentialCurve {
