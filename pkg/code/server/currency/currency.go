@@ -95,6 +95,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 					Authority:          common.GetSubsidizer().ToProto(),
 					LockDurationInDays: uint32(timelock_token.DefaultNumDaysLocked),
 				},
+				CreatedAt: timestamppb.New(time.Time{}),
 			}
 		default:
 			metadataRecord, err := s.data.GetCurrencyMetadata(ctx, mintAccount.PublicKey().ToBase58())
@@ -177,6 +178,7 @@ func (s *currencyServer) GetMints(ctx context.Context, req *currencypb.GetMintsR
 					CoreMintLocked:    reserveRecord.CoreMintLocked,
 					SellFeeBps:        uint32(metadataRecord.SellFeeBps),
 				},
+				CreatedAt: timestamppb.New(metadataRecord.CreatedAt),
 			}
 		}
 
