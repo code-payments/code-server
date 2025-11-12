@@ -13,6 +13,7 @@ import (
 
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/account"
+	"github.com/code-payments/code-server/pkg/code/data/currency"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
@@ -527,6 +528,64 @@ func ValidateExternalTokenAccount(ctx context.Context, data code_data.Provider, 
 		// a core mint token acocunt.
 		return false, "", err
 	}
+}
+
+type LaunchpadCurrencyAccounts struct {
+	Mint               *Account
+	CurrencyConfig     *Account
+	CurrencyConfigBump uint8
+	LiquidityPool      *Account
+	LiquidityPoolBump  uint8
+	VaultBase          *Account
+	VaultBaseBump      uint8
+	VaultMint          *Account
+	VaultMintBump      uint8
+	FeesBase           *Account
+	FeesMint           *Account
+}
+
+func GetLaunchpadCurrencyAccounts(metadataRecord *currency.MetadataRecord) (*LaunchpadCurrencyAccounts, error) {
+	mint, err := NewAccountFromPublicKeyString(metadataRecord.Mint)
+	if err != nil {
+		return nil, err
+	}
+	currencyConfig, err := NewAccountFromPublicKeyString(metadataRecord.CurrencyConfig)
+	if err != nil {
+		return nil, err
+	}
+	liquidityPool, err := NewAccountFromPublicKeyString(metadataRecord.LiquidityPool)
+	if err != nil {
+		return nil, err
+	}
+	vaultBase, err := NewAccountFromPublicKeyString(metadataRecord.VaultCore)
+	if err != nil {
+		return nil, err
+	}
+	vaultMint, err := NewAccountFromPublicKeyString(metadataRecord.VaultMint)
+	if err != nil {
+		return nil, err
+	}
+	feesBase, err := NewAccountFromPublicKeyString(metadataRecord.FeesCore)
+	if err != nil {
+		return nil, err
+	}
+	feesMint, err := NewAccountFromPublicKeyString(metadataRecord.FeesMint)
+	if err != nil {
+		return nil, err
+	}
+	return &LaunchpadCurrencyAccounts{
+		Mint:               mint,
+		CurrencyConfig:     currencyConfig,
+		CurrencyConfigBump: metadataRecord.CurrencyConfigBump,
+		LiquidityPool:      liquidityPool,
+		LiquidityPoolBump:  metadataRecord.LiquidityPoolBump,
+		VaultBase:          vaultBase,
+		VaultBaseBump:      metadataRecord.VaultCoreBump,
+		VaultMint:          vaultMint,
+		VaultMintBump:      metadataRecord.VaultMintBump,
+		FeesBase:           feesBase,
+		FeesMint:           feesMint,
+	}, nil
 }
 
 func isOnCurve(pubKey ed25519.PublicKey) bool {

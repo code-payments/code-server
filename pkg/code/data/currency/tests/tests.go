@@ -149,6 +149,8 @@ func testMetadataRoundTrip(t *testing.T, s currency.Store) {
 		FeesCore:   "5EcVYL8jHRKeeQqg6eYVBzc73ecH1PFzzaavoQBKRYy5",
 		SellFeeBps: currencycreator.DefaultSellFeeBps,
 
+		Alt: "EkAeTCceLWbmZrAzVZanDJBtHSnkAWndMFgmTnUnVLRR",
+
 		CreatedBy: "jyyy4RpW3X5ApbW5G6vx9ZVPxhoUKGRLbZ4LxC47LYG",
 		CreatedAt: time.Now(),
 	}
@@ -223,6 +225,7 @@ func assertEquivalentMetadataRecords(t *testing.T, obj1, obj2 *currency.Metadata
 	assert.Equal(t, obj1.BuyFeeBps, obj2.BuyFeeBps)
 	assert.Equal(t, obj1.FeesCore, obj2.FeesCore)
 	assert.Equal(t, obj1.SellFeeBps, obj2.SellFeeBps)
+	assert.Equal(t, obj1.Alt, obj2.Alt)
 	assert.Equal(t, obj1.CreatedBy, obj2.CreatedBy)
 	assert.Equal(t, obj1.CreatedAt.Unix(), obj2.CreatedAt.Unix())
 }
