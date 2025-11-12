@@ -39,7 +39,7 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(defaultPrecision)
 
-	rateErrorThreshold := big.NewFloat(0.01).SetPrec(defaultPrecision)
+	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
 	quarkErrorThreshold := big.NewFloat(1000).SetPrec(defaultPrecision)
 
 	// Find an exchange rate that the client could have fetched from a RPC call
@@ -97,7 +97,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(defaultPrecision)
 	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 
-	rateErrorThreshold := big.NewFloat(0.01).SetPrec(defaultPrecision)
+	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
 	nativeAmountErrorThreshold := big.NewFloat(0.005).SetPrec(defaultPrecision)
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
@@ -161,23 +161,29 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 			big.NewFloat(float64(coreMintQuarksPerUnit)).SetPrec(defaultPrecision),
 		)
 		potentialNativeAmount := new(big.Float).Mul(new(big.Float).Quo(otherRate, usdRate), coreMintSellValueInUnits)
+
+		log := log.WithFields(logrus.Fields{
+			"core_mint_sell_value":      coreMintSellValueInUnits,
+			"native_amount_lower_bound": nativeAmountLowerBound,
+			"native_amount_upper_bound": nativeAmountUpperBound,
+			"potential_native_amount":   potentialNativeAmount,
+			"usd_rate":                  usdRate,
+			"other_rate":                otherRate,
+		})
+
 		if potentialNativeAmount.Cmp(nativeAmountLowerBound) < 0 || potentialNativeAmount.Cmp(nativeAmountUpperBound) > 0 {
-			log.WithFields(logrus.Fields{
-				"core_mint_sell_value":      coreMintSellValueInUnits,
-				"native_amount_lower_bound": nativeAmountLowerBound,
-				"native_amount_upper_bound": nativeAmountUpperBound,
-				"potential_native_amount":   potentialNativeAmount,
-				"usd_rate":                  usdRate,
-				"other_rate":                otherRate,
-			}).Info("native amount is outside error threshold")
+			log.Info("native amount is outside error threshold")
 			continue
 		}
 
 		// For the valid native amount, is the exchange rate calculated correctly?
 		expectedRate := new(big.Float).Quo(clientNativeAmount, clientTokenUnits)
 		percentDiff := new(big.Float).Quo(new(big.Float).Abs(new(big.Float).Sub(clientRate, expectedRate)), expectedRate)
+
+		log = log.WithField("potential_exchange_rate", expectedRate)
+
 		if percentDiff.Cmp(rateErrorThreshold) > 0 {
-			log.WithField("potential_exchange_rate", expectedRate).Info("exchange rate is outside error threshold")
+			log.Info("exchange rate is outside error threshold")
 			continue
 		}
 
