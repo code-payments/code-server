@@ -64,6 +64,8 @@ const (
 		fees_core TEXT NOT NULL,
 		sell_fee_bps INTEGER NOT NULL,
 
+		alt TEXT NOT NULL,
+
 		created_by TEXT NOT NULL,
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL
 	);

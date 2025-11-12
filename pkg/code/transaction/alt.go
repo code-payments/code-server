@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 
-	"github.com/pkg/errors"
-
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -15,29 +13,17 @@ import (
 // GetAltForMint gets an address lookup table to operate in a versioned
 // transaction for the provided mint
 func GetAltForMint(ctx context.Context, data code_data.Provider, mint *common.Account) (solana.AddressLookupTable, error) {
-	// todo: This would be tracked in a DB table
-	var account *common.Account
-	var err error
-	switch mint.PublicKey().ToBase58() {
-	case "52MNGpgvydSwCtC2H4qeiZXZ1TxEuRVCRGa8LAfk2kSj":
-		account, err = common.NewAccountFromPublicKeyString("EkAeTCceLWbmZrAzVZanDJBtHSnkAWndMFgmTnUnVLRR")
-	case "497Wy6cY9BjWBiaDHzJ7TcUZqF2gE1Qm7yXtSj1vSr5W":
-		account, err = common.NewAccountFromPublicKeyString("3QLcDkhXMAKuRvCJuc6kcye4w6yyHaDs1dYcktcB1pRA")
-	case "2o4PFbDZ73BihFraknfVTQeUtELKAeVUL4oa6bkrYU3A":
-		account, err = common.NewAccountFromPublicKeyString("4bPdZB23pPYSg49H3fEMLSaqarQayvhpRJatxgv1P2JP")
-	default:
-		return solana.AddressLookupTable{}, errors.New("unsupported currency")
+	metadataRecord, err := data.GetCurrencyMetadata(ctx, mint.PublicKey().ToBase58())
+	if err != nil {
+		return solana.AddressLookupTable{}, err
 	}
+
+	account, err := common.NewAccountFromPublicKeyString(metadataRecord.Alt)
 	if err != nil {
 		return solana.AddressLookupTable{}, err
 	}
 
 	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
-	if err != nil {
-		return solana.AddressLookupTable{}, err
-	}
-
-	metadataRecord, err := data.GetCurrencyMetadata(ctx, mint.PublicKey().ToBase58())
 	if err != nil {
 		return solana.AddressLookupTable{}, err
 	}

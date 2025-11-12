@@ -53,6 +53,8 @@ type MetadataRecord struct {
 	FeesCore   string
 	SellFeeBps uint16
 
+	Alt string
+
 	CreatedBy string
 	CreatedAt time.Time
 }
@@ -142,6 +144,10 @@ func (m *MetadataRecord) Validate() error {
 		return errors.New("invalid buy sell bps")
 	}
 
+	if len(m.Alt) == 0 {
+		return errors.New("alt is required")
+	}
+
 	if len(m.CreatedBy) == 0 {
 		return errors.New("created by is required")
 	}
@@ -188,6 +194,8 @@ func (m *MetadataRecord) Clone() *MetadataRecord {
 		FeesCore:   m.FeesCore,
 		SellFeeBps: m.SellFeeBps,
 
+		Alt: m.Alt,
+
 		CreatedBy: m.CreatedBy,
 		CreatedAt: m.CreatedAt,
 	}
@@ -226,6 +234,8 @@ func (m *MetadataRecord) CopyTo(dst *MetadataRecord) {
 
 	dst.FeesCore = m.FeesCore
 	dst.SellFeeBps = m.SellFeeBps
+
+	dst.Alt = m.Alt
 
 	dst.CreatedBy = m.CreatedBy
 	dst.CreatedAt = m.CreatedAt
