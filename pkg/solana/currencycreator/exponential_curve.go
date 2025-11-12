@@ -5,8 +5,6 @@ import (
 	"math/big"
 )
 
-// Note: Generated with Grok 4 based on curve.rs, and not 100% accurate with on-chain program
-
 const (
 	DefaultCurveDecimals = 18
 

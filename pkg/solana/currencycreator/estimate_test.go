@@ -62,7 +62,7 @@ func TestEstimates_CsvTable(t *testing.T) {
 	startValue := uint64(10000)          // $0.01
 	endValue := uint64(1000000000000000) // $1T
 
-	fmt.Println("value locked,total circulating supply,new circulating supply,payment value,payment quarks,sell value")
+	fmt.Println("value locked,total circulating supply,payment value,payment quarks,sell value,new circulating supply")
 	for valueLocked := startValue; valueLocked <= endValue; valueLocked *= 10 {
 		totalCirculatingSupply, _ := EstimateBuy(&EstimateBuyArgs{
 			BuyAmountInQuarks:     valueLocked,
@@ -91,10 +91,11 @@ func TestEstimates_CsvTable(t *testing.T) {
 				CurrentSupplyInQuarks: 0,
 				ValueMintDecimals:     6,
 			})
+
 			diff = int64(totalCirculatingSupply) - int64(newCirculatingSupply) - int64(paymenQuarks)
 			require.True(t, diff >= -1 && diff <= 1)
 
-			fmt.Printf("%d,%d,%d,%d,%d,%d\n", valueLocked, totalCirculatingSupply, newCirculatingSupply, paymentValue, paymenQuarks, sellValue)
+			fmt.Printf("%d,%d,%d,%d,%d,%d\n", valueLocked, totalCirculatingSupply, paymentValue, paymenQuarks, sellValue, newCirculatingSupply)
 		}
 	}
 }
