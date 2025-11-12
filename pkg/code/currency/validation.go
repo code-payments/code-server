@@ -174,7 +174,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		}
 
 		// For the valid native amount, is the exchange rate calculated correctly?
-		expectedRate := new(big.Float).Quo(potentialNativeAmount, clientTokenUnits)
+		expectedRate := new(big.Float).Quo(clientNativeAmount, clientTokenUnits)
 		percentDiff := new(big.Float).Quo(new(big.Float).Abs(new(big.Float).Sub(clientRate, expectedRate)), expectedRate)
 		if percentDiff.Cmp(rateErrorThreshold) > 0 {
 			log.WithField("potential_exchange_rate", expectedRate).Info("exchange rate is outside error threshold")
