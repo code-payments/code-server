@@ -118,6 +118,16 @@ func (s *store) GetByDepositPda(ctx context.Context, depositPda string) (*timelo
 	return nil, timelock.ErrTimelockNotFound
 }
 
+func (s *store) GetBySwapPda(ctx context.Context, swapPda string) (*timelock.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if item := s.findBySwapPda(swapPda); item != nil {
+		return item.Clone(), nil
+	}
+	return nil, timelock.ErrTimelockNotFound
+}
+
 // GetAllByState implements timelock.Store.GetAllByState
 func (s *store) GetAllByState(ctx context.Context, state timelock_token.TimelockState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*timelock.Record, error) {
 	s.mu.Lock()
@@ -178,6 +188,15 @@ func (s *store) findByVault(vault string) *timelock.Record {
 func (s *store) findByDepositPda(depositPda string) *timelock.Record {
 	for _, item := range s.records {
 		if depositPda == item.DepositPdaAddress {
+			return item
+		}
+	}
+	return nil
+}
+
+func (s *store) findBySwapPda(swapPda string) *timelock.Record {
+	for _, item := range s.records {
+		if swapPda == item.SwapPdaAddress {
 			return item
 		}
 	}

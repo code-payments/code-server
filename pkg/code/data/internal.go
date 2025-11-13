@@ -229,6 +229,7 @@ type DatabaseData interface {
 	GetTimelockByAddress(ctx context.Context, address string) (*timelock.Record, error)
 	GetTimelockByVault(ctx context.Context, vault string) (*timelock.Record, error)
 	GetTimelockByDepositPda(ctx context.Context, depositPda string) (*timelock.Record, error)
+	GetTimelockBySwapPda(ctx context.Context, swapPda string) (*timelock.Record, error)
 	GetTimelockByVaultBatch(ctx context.Context, vaults ...string) (map[string]*timelock.Record, error)
 	GetAllTimelocksByState(ctx context.Context, state timelock_token.TimelockState, opts ...query.Option) ([]*timelock.Record, error)
 	GetTimelockCountByState(ctx context.Context, state timelock_token.TimelockState) (uint64, error)
@@ -840,6 +841,9 @@ func (dp *DatabaseProvider) GetTimelockByVault(ctx context.Context, vault string
 }
 func (dp *DatabaseProvider) GetTimelockByDepositPda(ctx context.Context, depositPda string) (*timelock.Record, error) {
 	return dp.timelocks.GetByDepositPda(ctx, depositPda)
+}
+func (dp *DatabaseProvider) GetTimelockBySwapPda(ctx context.Context, swapPda string) (*timelock.Record, error) {
+	return dp.timelocks.GetBySwapPda(ctx, swapPda)
 }
 func (dp *DatabaseProvider) GetAllTimelocksByState(ctx context.Context, state timelock_token.TimelockState, opts ...query.Option) ([]*timelock.Record, error) {
 	req, err := query.DefaultPaginationHandler(opts...)

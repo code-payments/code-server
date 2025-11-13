@@ -44,6 +44,9 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 			DepositPdaAddress: "deposit",
 			DepositPdaBump:    253,
 
+			SwapPdaAddress: "swap",
+			SwapPdaBump:    252,
+
 			Block: 123456,
 		}
 		cloned := expected.Clone()
@@ -57,6 +60,9 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 		assert.Equal(t, timelock.ErrTimelockNotFound, err)
 
 		_, err = s.GetByDepositPda(ctx, expected.DepositPdaAddress)
+		assert.Equal(t, timelock.ErrTimelockNotFound, err)
+
+		_, err = s.GetBySwapPda(ctx, expected.SwapPdaAddress)
 		assert.Equal(t, timelock.ErrTimelockNotFound, err)
 
 		// Save the record
@@ -76,6 +82,10 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 		assertEquivalentRecords(t, cloned, actual)
 
 		actual, err = s.GetByDepositPda(ctx, expected.DepositPdaAddress)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, cloned, actual)
+
+		actual, err = s.GetBySwapPda(ctx, expected.SwapPdaAddress)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, cloned, actual)
 
@@ -119,6 +129,10 @@ func testHappyPath(t *testing.T, s timelock.Store) {
 		actual, err = s.GetByDepositPda(ctx, expected.DepositPdaAddress)
 		require.NoError(t, err)
 		assertEquivalentRecords(t, cloned, actual)
+
+		actual, err = s.GetBySwapPda(ctx, expected.SwapPdaAddress)
+		require.NoError(t, err)
+		assertEquivalentRecords(t, cloned, actual)
 	})
 }
 
@@ -139,6 +153,9 @@ func testBatchedMethods(t *testing.T, s timelock.Store) {
 
 				DepositPdaAddress: fmt.Sprintf("deposit%d", i),
 				DepositPdaBump:    253,
+
+				SwapPdaAddress: fmt.Sprintf("swap%d", i),
+				SwapPdaBump:    252,
 
 				Block: uint64(i),
 			}
@@ -188,6 +205,9 @@ func testGetAllByState(t *testing.T, s timelock.Store) {
 
 				DepositPdaAddress: fmt.Sprintf("deposit%d", i),
 				DepositPdaBump:    253,
+
+				SwapPdaAddress: fmt.Sprintf("swap%d", i),
+				SwapPdaBump:    252,
 
 				Block: uint64(i),
 			}
@@ -260,6 +280,9 @@ func testGetCountByState(t *testing.T, s timelock.Store) {
 
 					DepositPdaAddress: fmt.Sprintf("deposit-%s-%d", state, i),
 					DepositPdaBump:    253,
+
+					SwapPdaAddress: fmt.Sprintf("swap-%s-%d", state, i),
+					SwapPdaBump:    252,
 				}
 
 				require.NoError(t, s.Save(ctx, record))

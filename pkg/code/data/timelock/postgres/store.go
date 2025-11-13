@@ -83,6 +83,16 @@ func (s *store) GetByDepositPda(ctx context.Context, depositPda string) (*timelo
 	return fromModel(model), nil
 }
 
+// GetBySwapPda implements timelock.Store.GetBySwapPda
+func (s *store) GetBySwapPda(ctx context.Context, swapPda string) (*timelock.Record, error) {
+	model, err := dbGetBySwapPda(ctx, s.db, swapPda)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromModel(model), nil
+}
+
 // GetOldestByState implements timelock.Store.GetAllByState
 func (s *store) GetAllByState(ctx context.Context, state timelock_token.TimelockState, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*timelock.Record, error) {
 	res, err := dbGetAllByState(ctx, s.db, state, cursor, limit, direction)
