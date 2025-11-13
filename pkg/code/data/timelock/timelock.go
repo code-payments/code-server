@@ -31,6 +31,9 @@ type Record struct {
 	DepositPdaAddress string
 	DepositPdaBump    uint8
 
+	SwapPdaAddress string
+	SwapPdaBump    uint8
+
 	UnlockAt *uint64
 
 	Block uint64
@@ -78,6 +81,9 @@ func (r *Record) Clone() *Record {
 		DepositPdaAddress: r.DepositPdaAddress,
 		DepositPdaBump:    r.DepositPdaBump,
 
+		SwapPdaAddress: r.SwapPdaAddress,
+		SwapPdaBump:    r.SwapPdaBump,
+
 		UnlockAt: unlockAt,
 
 		Block: r.Block,
@@ -106,6 +112,9 @@ func (r *Record) CopyTo(dst *Record) {
 	dst.DepositPdaAddress = r.DepositPdaAddress
 	dst.DepositPdaBump = r.DepositPdaBump
 
+	dst.SwapPdaAddress = r.SwapPdaAddress
+	dst.SwapPdaBump = r.SwapPdaBump
+
 	dst.UnlockAt = unlockAt
 
 	dst.Block = r.Block
@@ -132,6 +141,10 @@ func (r *Record) Validate() error {
 
 	if len(r.DepositPdaAddress) == 0 {
 		return errors.New("deposit pda address is required")
+	}
+
+	if len(r.SwapPdaAddress) == 0 {
+		return errors.New("swap pda address is required")
 	}
 
 	return nil

@@ -471,6 +471,9 @@ func (a *TimelockAccounts) ToDBRecord() *timelock.Record {
 		DepositPdaAddress: a.VmDepositAccounts.Pda.PublicKey().ToBase58(),
 		DepositPdaBump:    a.VmDepositAccounts.PdaBump,
 
+		SwapPdaAddress: a.VmSwapAccounts.Pda.PublicKey().ToBase58(),
+		SwapPdaBump:    a.VmSwapAccounts.PdaBump,
+
 		UnlockAt: nil,
 
 		Block: 0,
