@@ -46,8 +46,9 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 
 	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
 	quarkErrorThreshold := big.NewFloat(1000).SetPrec(defaultPrecision)
+	nativeAmountErrorThreshold := new(big.Float).Quo(minTransferValue, big.NewFloat(2.0))
 
-	if clientNativeAmount.Cmp(minTransferValue) < 0 {
+	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
 		return false, "native amount is less than minimum transfer value", nil
 	}
 
@@ -123,7 +124,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		"min_transfer_value":   minTransferValue,
 	})
 
-	if clientNativeAmount.Cmp(minTransferValue) < 0 {
+	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
 		log.Info("native amount is less than minimum transfer value")
 		return false, "native amount is less than minimum transfer value", nil
 	}
