@@ -59,14 +59,14 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"currency":                  proto.Currency,
-		"client_native_amount":      clientNativeAmount,
-		"client_exchange_rate":      clientRate,
+		"client_native_amount":      clientNativeAmount.Text('f', 10),
+		"client_exchange_rate":      clientRate.Text('f', 10),
 		"client_quarks":             proto.Quarks,
-		"min_transfer_value":        minTransferValue,
-		"native_amount_lower_bound": nativeAmountLowerBound,
-		"native_amount_upper_bound": nativeAmountUpperBound,
-		"quarks_lower_bound":        quarksLowerBound,
-		"quarks_upper_bound":        quarksUpperBound,
+		"min_transfer_value":        minTransferValue.Text('f', 10),
+		"native_amount_lower_bound": nativeAmountLowerBound.Text('f', 10),
+		"native_amount_upper_bound": nativeAmountUpperBound.Text('f', 10),
+		"quarks_lower_bound":        quarksLowerBound.Text('f', 10),
+		"quarks_upper_bound":        quarksUpperBound.Text('f', 10),
 	})
 
 	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
@@ -94,7 +94,7 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 			break
 		}
 
-		log.WithField("rate", actualRate).Info("exchange rate doesn't match")
+		log.WithField("found_rate", actualRate.Text('f', 10)).Info("exchange rate doesn't match")
 	}
 
 	if !isClientRateValid {
@@ -135,14 +135,22 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
 	nativeAmountErrorThreshold := new(big.Float).Quo(minTransferValue, big.NewFloat(2.0))
 
+	nativeAmountLowerBound := new(big.Float).Sub(clientNativeAmount, nativeAmountErrorThreshold)
+	if nativeAmountLowerBound.Cmp(nativeAmountErrorThreshold) < 0 {
+		nativeAmountLowerBound = nativeAmountErrorThreshold
+	}
+	nativeAmountUpperBound := new(big.Float).Add(clientNativeAmount, nativeAmountErrorThreshold)
+
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
-		"currency":             proto.Currency,
-		"client_native_amount": clientNativeAmount,
-		"client_exchange_rate": clientRate,
-		"client_token_units":   clientTokenUnits,
-		"client_quarks":        proto.Quarks,
-		"mint":                 mintAccount.PublicKey().ToBase58(),
-		"min_transfer_value":   minTransferValue,
+		"currency":                  proto.Currency,
+		"client_native_amount":      clientNativeAmount.Text('f', 10),
+		"client_exchange_rate":      clientRate.Text('f', 10),
+		"client_token_units":        clientTokenUnits.Text('f', 10),
+		"client_quarks":             proto.Quarks,
+		"min_transfer_value":        minTransferValue.Text('f', 10),
+		"native_amount_lower_bound": nativeAmountLowerBound.Text('f', 10),
+		"native_amount_upper_bound": nativeAmountUpperBound.Text('f', 10),
+		"mint":                      mintAccount.PublicKey().ToBase58(),
 	})
 
 	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
@@ -192,11 +200,6 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 
 		// Given the sell value, does it align with the native amount in the target currency
 		// within half a minimum transfer unit?
-		nativeAmountLowerBound := new(big.Float).Sub(clientNativeAmount, nativeAmountErrorThreshold)
-		if nativeAmountLowerBound.Cmp(nativeAmountErrorThreshold) < 0 {
-			nativeAmountLowerBound = nativeAmountErrorThreshold
-		}
-		nativeAmountUpperBound := new(big.Float).Add(clientNativeAmount, nativeAmountErrorThreshold)
 		coreMintSellValueInUnits := new(big.Float).Quo(
 			big.NewFloat(float64(coreMintSellValueInQuarks)).SetPrec(defaultPrecision),
 			big.NewFloat(float64(coreMintQuarksPerUnit)).SetPrec(defaultPrecision),
@@ -204,12 +207,11 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		potentialNativeAmount := new(big.Float).Mul(new(big.Float).Quo(otherRate, usdRate), coreMintSellValueInUnits)
 
 		log := log.WithFields(logrus.Fields{
-			"core_mint_sell_value":      coreMintSellValueInUnits,
-			"native_amount_lower_bound": nativeAmountLowerBound,
-			"native_amount_upper_bound": nativeAmountUpperBound,
-			"potential_native_amount":   potentialNativeAmount,
-			"usd_rate":                  usdRate,
-			"other_rate":                otherRate,
+			"core_mint_sell_value":    coreMintSellValueInUnits.Text('f', 10),
+			"potential_native_amount": potentialNativeAmount.Text('f', 10),
+			"found_core_mint_locked":  reserveRecord.CoreMintLocked,
+			"found_usd_rate":          usdRate.Text('f', 10),
+			"found_other_rate":        otherRate.Text('f', 10),
 		})
 
 		if potentialNativeAmount.Cmp(nativeAmountLowerBound) < 0 || potentialNativeAmount.Cmp(nativeAmountUpperBound) > 0 {
@@ -220,9 +222,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		// For the valid native amount, is the exchange rate calculated correctly?
 		expectedRate := new(big.Float).Quo(clientNativeAmount, clientTokenUnits)
 		percentDiff := new(big.Float).Quo(new(big.Float).Abs(new(big.Float).Sub(clientRate, expectedRate)), expectedRate)
-
-		log = log.WithField("potential_exchange_rate", expectedRate)
-
+		log = log.WithField("potential_exchange_rate", expectedRate.Text('f', 10))
 		if percentDiff.Cmp(rateErrorThreshold) > 0 {
 			log.Info("exchange rate is outside error threshold")
 			continue
