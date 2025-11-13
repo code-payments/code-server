@@ -45,11 +45,31 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 	minTransferValue := new(big.Float).Quo(one, big.NewFloat(math.Pow10(currencyDecimals)))
 
 	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
-	quarkErrorThreshold := big.NewFloat(1000).SetPrec(defaultPrecision)
 	nativeAmountErrorThreshold := new(big.Float).Quo(minTransferValue, big.NewFloat(2.0))
 
+	nativeAmountLowerBound := new(big.Float).Sub(clientNativeAmount, nativeAmountErrorThreshold)
+	if nativeAmountLowerBound.Cmp(nativeAmountErrorThreshold) < 0 {
+		nativeAmountLowerBound = nativeAmountErrorThreshold
+	}
+	nativeAmountUpperBound := new(big.Float).Add(clientNativeAmount, nativeAmountErrorThreshold)
+	quarksLowerBound := new(big.Float).Quo(nativeAmountLowerBound, clientRate)
+	quarksUpperBound := new(big.Float).Quo(nativeAmountUpperBound, clientRate)
+
+	log := logrus.StandardLogger().WithFields(logrus.Fields{
+		"currency":                  proto.Currency,
+		"client_native_amount":      clientNativeAmount,
+		"client_exchange_rate":      clientRate,
+		"client_quarks":             proto.Quarks,
+		"min_transfer_value":        minTransferValue,
+		"native_amount_lower_bound": nativeAmountLowerBound,
+		"native_amount_upper_bound": nativeAmountUpperBound,
+		"quarks_lower_bound":        nativeAmountLowerBound,
+		"quarks_upper_bound":        nativeAmountUpperBound,
+	})
+
 	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
-		return false, "native amount is less than minimum transfer value", nil
+		log.Info("native amount is less than minimum transfer value error threshold")
+		return false, "native amount is less than minimum transfer value error threshold", nil
 	}
 
 	// Find an exchange rate that the client could have fetched from a RPC call
@@ -74,16 +94,13 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 	}
 
 	if !isClientRateValid {
+		log.Info("fiat exchange rate is stale or invalid")
 		return false, "fiat exchange rate is stale or invalid", nil
 	}
 
-	// Validate that the native amount and exchange rate fall reasonably within
-	// the amount of quarks to send in the transaction.
-	quarksPerUnit := big.NewFloat(float64(common.GetMintQuarksPerUnit(common.CoreMintAccount)))
-	unitsOfCoreMint := new(big.Float).Quo(clientNativeAmount, clientRate)
-	expectedQuarks := new(big.Float).Mul(unitsOfCoreMint, quarksPerUnit)
-	diff := new(big.Float).Abs(new(big.Float).Sub(expectedQuarks, clientQuarks))
-	if diff.Cmp(quarkErrorThreshold) > 0 {
+	// Validate that the native amount within half of the minimum transfer value
+	if clientQuarks.Cmp(quarksLowerBound) < 0 || clientQuarks.Cmp(quarksUpperBound) > 0 {
+		log.Info("native amount is outside error threshold")
 		return false, "payment native amount and quark value mismatch", nil
 	}
 
@@ -125,8 +142,8 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 	})
 
 	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
-		log.Info("native amount is less than minimum transfer value")
-		return false, "native amount is less than minimum transfer value", nil
+		log.Info("native amount is less than minimum transfer value error threshold")
+		return false, "native amount is less than minimum transfer value error threshold", nil
 	}
 
 	latestExchangeRateTime := GetLatestExchangeRateTime()
@@ -170,7 +187,7 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		})
 
 		// Given the sell value, does it align with the native amount in the target currency
-		// within half a penny?
+		// within half a minimum transfer unit?
 		nativeAmountLowerBound := new(big.Float).Sub(clientNativeAmount, nativeAmountErrorThreshold)
 		if nativeAmountLowerBound.Cmp(nativeAmountErrorThreshold) < 0 {
 			nativeAmountLowerBound = nativeAmountErrorThreshold
