@@ -2,6 +2,7 @@ package currency
 
 import (
 	"context"
+	"math"
 	"math/big"
 	"time"
 
@@ -39,8 +40,16 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(defaultPrecision)
 
+	currencyDecimals := currency_lib.GetDecimals(currency_lib.Code(proto.Currency))
+	one := big.NewFloat(1.0).SetPrec(defaultPrecision)
+	minTransferValue := new(big.Float).Quo(one, big.NewFloat(math.Pow10(currencyDecimals)))
+
 	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
 	quarkErrorThreshold := big.NewFloat(1000).SetPrec(defaultPrecision)
+
+	if clientNativeAmount.Cmp(minTransferValue) < 0 {
+		return false, "native amount is less than minimum transfer value", nil
+	}
 
 	// Find an exchange rate that the client could have fetched from a RPC call
 	// within a reasonable time in the past
@@ -73,7 +82,7 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 	unitsOfCoreMint := new(big.Float).Quo(clientNativeAmount, clientRate)
 	expectedQuarks := new(big.Float).Mul(unitsOfCoreMint, quarksPerUnit)
 	diff := new(big.Float).Abs(new(big.Float).Sub(expectedQuarks, clientQuarks))
-	if diff.Cmp(quarkErrorThreshold) > 1000 {
+	if diff.Cmp(quarkErrorThreshold) > 0 {
 		return false, "payment native amount and quark value mismatch", nil
 	}
 
@@ -97,8 +106,12 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(defaultPrecision)
 	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 
+	currencyDecimals := currency_lib.GetDecimals(currency_lib.Code(proto.Currency))
+	one := big.NewFloat(1.0).SetPrec(defaultPrecision)
+	minTransferValue := new(big.Float).Quo(one, big.NewFloat(math.Pow10(currencyDecimals)))
+
 	rateErrorThreshold := big.NewFloat(0.001).SetPrec(defaultPrecision)
-	nativeAmountErrorThreshold := big.NewFloat(0.005).SetPrec(defaultPrecision)
+	nativeAmountErrorThreshold := new(big.Float).Quo(minTransferValue, big.NewFloat(2.0))
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"currency":             proto.Currency,
@@ -107,7 +120,13 @@ func validateCurrencyLaunchpadClientExchangeData(ctx context.Context, data code_
 		"client_token_units":   clientTokenUnits,
 		"client_quarks":        proto.Quarks,
 		"mint":                 mintAccount.PublicKey().ToBase58(),
+		"min_transfer_value":   minTransferValue,
 	})
+
+	if clientNativeAmount.Cmp(minTransferValue) < 0 {
+		log.Info("native amount is less than minimum transfer value")
+		return false, "native amount is less than minimum transfer value", nil
+	}
 
 	latestExchangeRateTime := GetLatestExchangeRateTime()
 	for i := range 2 {
