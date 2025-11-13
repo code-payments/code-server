@@ -36,6 +36,8 @@ func ValidateClientExchangeData(ctx context.Context, data code_data.Provider, pr
 func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Provider, proto *transactionpb.ExchangeData) (bool, string, error) {
 	latestExchangeRateTime := GetLatestExchangeRateTime()
 
+	coreMintQuarksPerUnit := common.GetMintQuarksPerUnit(common.CoreMintAccount)
+
 	clientRate := big.NewFloat(proto.ExchangeRate).SetPrec(defaultPrecision)
 	clientNativeAmount := big.NewFloat(proto.NativeAmount).SetPrec(defaultPrecision)
 	clientQuarks := big.NewFloat(float64(proto.Quarks)).SetPrec(defaultPrecision)
@@ -52,8 +54,8 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 		nativeAmountLowerBound = nativeAmountErrorThreshold
 	}
 	nativeAmountUpperBound := new(big.Float).Add(clientNativeAmount, nativeAmountErrorThreshold)
-	quarksLowerBound := new(big.Float).Quo(nativeAmountLowerBound, clientRate)
-	quarksUpperBound := new(big.Float).Quo(nativeAmountUpperBound, clientRate)
+	quarksLowerBound := new(big.Float).Mul(new(big.Float).Quo(nativeAmountLowerBound, clientRate), big.NewFloat(float64(coreMintQuarksPerUnit)))
+	quarksUpperBound := new(big.Float).Mul(new(big.Float).Quo(nativeAmountUpperBound, clientRate), big.NewFloat(float64(coreMintQuarksPerUnit)))
 
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"currency":                  proto.Currency,
@@ -63,8 +65,8 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 		"min_transfer_value":        minTransferValue,
 		"native_amount_lower_bound": nativeAmountLowerBound,
 		"native_amount_upper_bound": nativeAmountUpperBound,
-		"quarks_lower_bound":        nativeAmountLowerBound,
-		"quarks_upper_bound":        nativeAmountUpperBound,
+		"quarks_lower_bound":        quarksLowerBound,
+		"quarks_upper_bound":        quarksUpperBound,
 	})
 
 	if clientNativeAmount.Cmp(nativeAmountErrorThreshold) < 0 {
@@ -91,6 +93,8 @@ func validateCoreMintClientExchangeData(ctx context.Context, data code_data.Prov
 			isClientRateValid = true
 			break
 		}
+
+		log.WithField("rate", actualRate).Info("exchange rate doesn't match")
 	}
 
 	if !isClientRateValid {
