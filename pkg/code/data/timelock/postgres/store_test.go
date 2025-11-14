@@ -45,11 +45,7 @@ const (
 			CONSTRAINT codewallet__core_timelock__uniq__address UNIQUE (address),
 			CONSTRAINT codewallet__core_timelock__uniq__vault_address UNIQUE (vault_address),
 			CONSTRAINT codewallet__core_timelock__uniq__deposit_pda_address UNIQUE (deposit_pda_address),
-			CONSTRAINT codewallet__core_timelock__uniq__swap_pda_address UNIQUE (swap_pda_address),
-			CONSTRAINT codewallet__core_timelock__uniq__address__and__vault_owner UNIQUE (address, vault_owner),
-			CONSTRAINT codewallet__core_timelock__uniq__address__and__vault_address UNIQUE (address, vault_address),
-			CONSTRAINT codewallet__core_timelock__uniq__address__and__deposit_pda_address UNIQUE (address, deposit_pda_address),
-			CONSTRAINT codewallet__core_timelock__uniq__address__and__deposit_swap_address UNIQUE (address, swap_pda_address)
+			CONSTRAINT codewallet__core_timelock__uniq__swap_pda_address UNIQUE (swap_pda_address)
 		);
 	`
 
