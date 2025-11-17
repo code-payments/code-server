@@ -309,5 +309,8 @@ func assertEquivalentRecords(t *testing.T, obj1, obj2 *timelock.Record) {
 	assert.Equal(t, obj1.DepositPdaAddress, obj2.DepositPdaAddress)
 	assert.Equal(t, obj1.DepositPdaBump, obj2.DepositPdaBump)
 
+	assert.Equal(t, obj1.SwapPdaAddress, obj2.SwapPdaAddress)
+	assert.Equal(t, obj1.SwapPdaBump, obj2.SwapPdaBump)
+
 	assert.Equal(t, obj1.Block, obj2.Block)
 }

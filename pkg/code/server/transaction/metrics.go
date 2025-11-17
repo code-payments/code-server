@@ -12,6 +12,7 @@ import (
 const (
 	userIntentCreatedEventName            = "UserIntentCreated"
 	submitIntentLatencyBreakdownEventName = "SubmitIntentLatencyBreakdown"
+	criticalSubmitIntentFailure           = "CriticalSubmitIntentFailure"
 
 	airdropEventName = "Airdrop"
 )
@@ -32,6 +33,23 @@ func recordSubmitIntentLatencyBreakdownEvent(ctx context.Context, section string
 		"action_count": actionCount,
 		"intent_type":  intentType,
 	})
+}
+
+func recordCriticalSubmitIntentFailure(ctx context.Context, intentRecord *intent.Record, err error) {
+	kvs := map[string]interface{}{
+		"error": err.Error(),
+	}
+
+	if intentRecord != nil {
+		if len(intentRecord.IntentId) > 0 {
+			kvs["intent_id"] = intentRecord.IntentId
+		}
+		if len(intentRecord.InitiatorOwnerAccount) > 0 {
+			kvs["user_public_key"] = intentRecord.InitiatorOwnerAccount
+		}
+	}
+
+	metrics.RecordEvent(ctx, criticalSubmitIntentFailure, kvs)
 }
 
 func recordAirdropEvent(ctx context.Context, owner *common.Account, airdropType AirdropType) {
