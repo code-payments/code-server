@@ -60,7 +60,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	req, err := s.boundedSubmitIntentRecv(ctx, streamer)
 	if err != nil {
 		log.WithError(err).Info("error receiving request from client")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, nil, err)
 	}
 
 	start := time.Now()
@@ -70,16 +70,22 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions is nil")
 	}
 
+	intentId := base58.Encode(submitActionsReq.Id.Value)
+	log = log.WithField("intent", intentId)
+
+	intentRecord := &intent.Record{
+		IntentId:  intentId,
+		State:     intent.StatePending,
+		CreatedAt: start,
+	}
+
 	// Do some very basic and general validation that cannot be caught by
 	// proto validation
 	for i, protoAction := range submitActionsReq.Actions {
 		if protoAction.Id != uint32(i) {
-			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "invalid SubmitIntentRequest.SubmitActions.Actions[%d].Id", i))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, status.Errorf(codes.InvalidArgument, "invalid SubmitIntentRequest.SubmitActions.Actions[%d].Id", i))
 		}
 	}
-
-	intentId := base58.Encode(submitActionsReq.Id.Value)
-	log = log.WithField("intent", intentId)
 
 	marshalled, err := proto.Marshal(submitActionsReq)
 	if err == nil {
@@ -102,7 +108,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		log = log.WithField("intent_type", "public_distribution")
 		intentHandler = NewPublicDistributionIntentHandler(s.conf, s.data, s.antispamGuard, s.amlGuard)
 	default:
-		return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
+		return handleSubmitIntentError(ctx, streamer, intentRecord, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Metadata is nil"))
 	}
 
 	// The public key that is the owner and signed the intent. This may not be
@@ -110,14 +116,14 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	submitActionsOwnerAccount, err := common.NewAccountFromProto(submitActionsReq.Owner)
 	if err != nil {
 		log.WithError(err).Warn("invalid submit actions owner account")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 	log = log.WithField("submit_actions_owner_account", submitActionsOwnerAccount.PublicKey().ToBase58())
 
 	createsNewUserOwner, err := intentHandler.CreatesNewUser(ctx, submitActionsReq.Metadata)
 	if err != nil {
 		log.WithError(err).Warn("failure checking if intent creates a new user")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	var initiatorOwnerAccount *common.Account
@@ -142,15 +148,15 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 						accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, base58.Encode(typed.NoPrivacyWithdraw.Destination.Value))
 						if err != nil && err != account.ErrAccountInfoNotFound {
 							log.WithError(err).Warn("failure getting user initiator owner account")
-							return handleSubmitIntentError(streamer, err)
+							return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 						} else if err == account.ErrAccountInfoNotFound || accountInfoRecord.AccountType != commonpb.AccountType_PRIMARY {
-							return handleSubmitIntentError(streamer, NewActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account"))
+							return handleSubmitIntentError(ctx, streamer, intentRecord, NewActionValidationError(submitActionsReq.Actions[0], "destination must be a primary account"))
 						}
 
 						initiatorOwnerAccount, err = common.NewAccountFromPublicKeyString(accountInfoRecord.OwnerAccount)
 						if err != nil {
 							log.WithError(err).Warn("failure getting user initiator owner account")
-							return handleSubmitIntentError(streamer, err)
+							return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 						}
 					default:
 						return NewActionValidationError(submitActionsReq.Actions[0], "expected a no privacy withdraw action")
@@ -161,26 +167,27 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			}
 		default:
 			log.Warnf("unhandled owner account type %s", submitActionsOwnerMetadata.Type)
-			return handleSubmitIntentError(streamer, errors.New("unhandled owner account type"))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, errors.New("unhandled owner account type"))
 		}
 	} else if err == common.ErrOwnerNotFound {
 		if !createsNewUserOwner {
-			return handleSubmitIntentError(streamer, NewIntentDeniedError("unexpected owner account"))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, NewIntentDeniedError("unexpected owner account"))
 		}
 		initiatorOwnerAccount = submitActionsOwnerAccount
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting owner account metadata")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	log = log.WithField("initiator_owner_account", initiatorOwnerAccount.PublicKey().ToBase58())
+	intentRecord.InitiatorOwnerAccount = initiatorOwnerAccount.PublicKey().ToBase58()
 
 	// Check that all provided signatures in proto messages are valid
 	signature := submitActionsReq.Signature
 	submitActionsReq.Signature = nil
 	err = s.auth.Authenticate(ctx, submitActionsOwnerAccount, submitActionsReq, signature)
 	if err != nil {
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	for _, action := range submitActionsReq.Actions {
@@ -188,19 +195,19 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		case *transactionpb.Action_OpenAccount:
 			authorityAccount, err := common.NewAccountFromProto(typedAction.OpenAccount.Authority)
 			if err != nil {
-				return handleSubmitIntentError(streamer, err)
+				return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 			}
 
 			switch typedAction.OpenAccount.AccountType {
 			case commonpb.AccountType_REMOTE_SEND_GIFT_CARD:
 				// Remote gift cards are random accounts not owned by a user account's 12 words
 				if !bytes.Equal(typedAction.OpenAccount.Owner.Value, typedAction.OpenAccount.Authority.Value) {
-					return handleSubmitIntentError(streamer, NewActionValidationErrorf(action, "owner must be %s", authorityAccount.PublicKey().ToBase58()))
+					return handleSubmitIntentError(ctx, streamer, intentRecord, NewActionValidationErrorf(action, "owner must be %s", authorityAccount.PublicKey().ToBase58()))
 				}
 			default:
 				// Everything else is owned by a user account's 12 words
 				if !bytes.Equal(typedAction.OpenAccount.Owner.Value, initiatorOwnerAccount.PublicKey().ToBytes()) {
-					return handleSubmitIntentError(streamer, NewActionValidationErrorf(action, "owner must be %s", initiatorOwnerAccount.PublicKey().ToBase58()))
+					return handleSubmitIntentError(ctx, streamer, intentRecord, NewActionValidationErrorf(action, "owner must be %s", initiatorOwnerAccount.PublicKey().ToBase58()))
 				}
 			}
 
@@ -208,28 +215,21 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			typedAction.OpenAccount.AuthoritySignature = nil
 			err = s.auth.Authenticate(ctx, authorityAccount, typedAction.OpenAccount, signature)
 			if err != nil {
-				return handleSubmitIntentError(streamer, err)
+				return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 			}
 		}
-	}
-
-	intentRecord := &intent.Record{
-		IntentId:              intentId,
-		InitiatorOwnerAccount: initiatorOwnerAccount.PublicKey().ToBase58(),
-		State:                 intent.StatePending,
-		CreatedAt:             time.Now(),
 	}
 
 	existingIntentRecord, err := s.data.GetIntent(ctx, intentId)
 	if err != intent.ErrIntentNotFound && err != nil {
 		log.WithError(err).Warn("failure checking for existing intent record")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	// We're operating on a new intent, so validate we don't have an existing DB record
 	if existingIntentRecord != nil {
 		log.Warn("client is attempting to resubmit an intent or reuse an intent id")
-		return handleSubmitIntentError(streamer, NewStaleStateError("intent already exists"))
+		return handleSubmitIntentError(ctx, streamer, intentRecord, NewStaleStateError("intent already exists"))
 	}
 
 	// Populate metadata into the new DB record
@@ -245,17 +245,17 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		default:
 			log.WithError(err).Warn("failure populating intent metadata")
 		}
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	// Check whether the intent is a no-op
 	isNoop, err := intentHandler.IsNoop(ctx, intentRecord, submitActionsReq.Metadata, submitActionsReq.Actions)
 	if err != nil {
 		log.WithError(err).Warn("failure checking if intent is a no-op")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	} else if isNoop {
 		if err := streamer.Send(okResp); err != nil {
-			return handleSubmitIntentError(streamer, err)
+			return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 		}
 		return nil
 	}
@@ -268,7 +268,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	globalBalanceLocks, err := intentHandler.GetBalanceLocks(ctx, intentRecord, submitActionsReq.Metadata)
 	if err != nil {
 		log.WithError(err).Warn("failure getting accounts with balances to lock")
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 	localAccountLocks := make([]*sync.Mutex, 0)
 	locallyLockedAccounts := make(map[string]any)
@@ -293,7 +293,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		default:
 			log.WithError(err).Warn("failure checking if new intent was allowed")
 		}
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	// Validate the new intent with app-specific logic
@@ -309,7 +309,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		default:
 			log.WithError(err).Warn("failure checking if new intent was allowed by integration")
 		}
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	type fulfillmentWithSigningMetadata struct {
@@ -353,11 +353,11 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			actionType = action.NoPrivacyWithdraw
 			actionHandler, err = NewNoPrivacyWithdrawActionHandler(ctx, s.data, intentRecord, typed.NoPrivacyWithdraw)
 		default:
-			return handleSubmitIntentError(streamer, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, status.Errorf(codes.InvalidArgument, "SubmitIntentRequest.SubmitActions.Actions[%d].Type is nil", i))
 		}
 		if err != nil {
 			log.WithError(err).Warn("failure initializing action handler")
-			return handleSubmitIntentError(streamer, errors.New("error initializing action handler"))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, errors.New("error initializing action handler"))
 		}
 
 		actionHandlers = append(actionHandlers, actionHandler)
@@ -376,7 +376,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		err := actionHandler.PopulateMetadata(actionRecord)
 		if err != nil {
 			log.WithError(err).Warn("failure populating action metadata")
-			return handleSubmitIntentError(streamer, err)
+			return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 		}
 
 		actionRecords = append(actionRecords, actionRecord)
@@ -407,13 +407,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting nonce pool")
-					return handleSubmitIntentError(streamer, err)
+					return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 				}
 
 				selectedNonce, err = noncePool.GetNonce(ctx)
 				if err != nil {
 					log.WithError(err).Warn("failure selecting available nonce")
-					return handleSubmitIntentError(streamer, err)
+					return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 				}
 				defer func() {
 					// If we never assign the nonce a signature in the action creation flow,
@@ -434,7 +434,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			)
 			if err != nil {
 				log.WithError(err).Warn("failure getting fulfillment metadata")
-				return handleSubmitIntentError(streamer, err)
+				return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 			}
 
 			actionId = protoAction.Id
@@ -526,20 +526,20 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		// Send server parameters, which initiates phase 2 of the RPC for generating
 		// and receiving signatures.
 		if err := streamer.Send(serverParametersResp); err != nil {
-			return handleSubmitIntentError(streamer, err)
+			return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 		}
 
 		req, err = s.boundedSubmitIntentRecv(ctx, streamer)
 		if err != nil {
 			log.WithError(err).Info("error receiving request from client")
-			return handleSubmitIntentError(streamer, err)
+			return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 		}
 
 		tsAfterSignatureSubmission = time.Now()
 
 		submitSignaturesReq := req.GetSubmitSignatures()
 		if submitSignaturesReq == nil {
-			return handleSubmitIntentError(streamer, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitSignatures is nil"))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, status.Error(codes.InvalidArgument, "SubmitIntentRequest.SubmitSignatures is nil"))
 		}
 
 		marshalled, err := proto.Marshal(submitSignaturesReq)
@@ -549,9 +549,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 		// Validate the number of signatures
 		if len(submitSignaturesReq.Signatures) < len(unsignedFulfillments) {
-			return handleSubmitIntentError(streamer, ErrMissingSignature)
+			return handleSubmitIntentError(ctx, streamer, intentRecord, ErrMissingSignature)
 		} else if len(submitSignaturesReq.Signatures) > len(unsignedFulfillments) {
-			return handleSubmitIntentError(streamer, ErrTooManySignatures)
+			return handleSubmitIntentError(ctx, streamer, intentRecord, ErrTooManySignatures)
 		}
 
 		// Validate the signature value and update the fulfillment
@@ -648,9 +648,9 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	if err != nil {
 		if strings.Contains(err.Error(), "stale") || strings.Contains(err.Error(), "exist") {
 			log.WithError(err).Info("race condition detected")
-			return handleSubmitIntentError(streamer, NewStaleStateErrorf("race detected: %s", err.Error()))
+			return handleSubmitIntentError(ctx, streamer, intentRecord, NewStaleStateErrorf("race detected: %s", err.Error()))
 		}
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 
 	go func() {
@@ -689,7 +689,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 	// RPC is finished. Send success to the client
 	if err := streamer.Send(okResp); err != nil {
-		return handleSubmitIntentError(streamer, err)
+		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 	return nil
 }

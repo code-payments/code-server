@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -11,6 +12,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
@@ -182,7 +184,11 @@ func toDeniedErrorDetails(err error) *transactionpb.ErrorDetails {
 	}
 }
 
-func handleSubmitIntentError(streamer transactionpb.Transaction_SubmitIntentServer, err error) error {
+func handleSubmitIntentError(ctx context.Context, streamer transactionpb.Transaction_SubmitIntentServer, intentRecord *intent.Record, err error) error {
+	if !shouldFilterSubmitIntentFailureMetricReport(err) {
+		recordCriticalSubmitIntentFailure(ctx, intentRecord, err)
+	}
+
 	// gRPC status errors are passed through as is
 	if _, ok := status.FromError(err); ok {
 		return err
@@ -243,4 +249,25 @@ func handleSubmitIntentStructuredError(streamer transactionpb.Transaction_Submit
 		},
 	}
 	return streamer.Send(errResp)
+}
+
+func shouldFilterSubmitIntentFailureMetricReport(err error) bool {
+	if statusErr, ok := status.FromError(err); ok {
+		switch statusErr.Code() {
+		case codes.Canceled:
+			return true
+		}
+	}
+
+	// todo: something more scalable
+	for _, filteredSubstr := range []string{
+		context.Canceled.Error(),
+		"gift card balance has already been claimed",
+	} {
+		if strings.Contains(strings.ToLower(err.Error()), filteredSubstr) {
+			return true
+		}
+	}
+
+	return false
 }
