@@ -86,3 +86,17 @@ func (g *Guard) AllowDistribution(ctx context.Context, owner *common.Account, is
 	}
 	return allow, nil
 }
+
+func (g *Guard) AllowSwap(ctx context.Context, owner, fromMint, toMint *common.Account) (bool, error) {
+	tracer := metrics.TraceMethodCall(ctx, metricsStructName, "AllowSwap")
+	defer tracer.End()
+
+	allow, reason, err := g.integration.AllowSwap(ctx, owner, fromMint, toMint)
+	if err != nil {
+		return false, err
+	}
+	if !allow {
+		recordDenialEvent(ctx, actionSwap, reason)
+	}
+	return allow, nil
+}

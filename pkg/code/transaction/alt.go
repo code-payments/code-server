@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 
+	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
+
 	"github.com/code-payments/code-server/pkg/code/common"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -50,4 +52,17 @@ func GetAltForMint(ctx context.Context, data code_data.Provider, mint *common.Ac
 			system.RecentBlockhashesSysVar,
 		},
 	}, nil
+}
+
+func ToProtoAlt(alt solana.AddressLookupTable) *commonpb.SolanaAddressLookupTable {
+	proto := &commonpb.SolanaAddressLookupTable{
+		Address: &commonpb.SolanaAccountId{Value: alt.PublicKey},
+		Entries: make([]*commonpb.SolanaAccountId, len(alt.Addresses)),
+	}
+
+	for i, address := range alt.Addresses {
+		proto.Entries[i] = &commonpb.SolanaAccountId{Value: address}
+	}
+
+	return proto
 }
