@@ -108,7 +108,7 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 	var memoryIndex uint16
 	_, err = retry.Retry(
 		func() error {
-			memoryAccount, memoryIndex, err = getVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
+			memoryAccount, memoryIndex, err = common.GetVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
 			return err
 		},
 		waitForFinalizationRetryStrategies...,
@@ -392,31 +392,6 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		syncedDepositCache.Insert(cacheKey, true, 1)
 		return nil
 	}
-}
-
-func getVirtualTimelockAccountLocationInMemory(ctx context.Context, vmIndexerClient indexerpb.IndexerClient, vm, owner *common.Account) (*common.Account, uint16, error) {
-	resp, err := vmIndexerClient.GetVirtualTimelockAccounts(ctx, &indexerpb.GetVirtualTimelockAccountsRequest{
-		VmAccount: &indexerpb.Address{Value: vm.PublicKey().ToBytes()},
-		Owner:     &indexerpb.Address{Value: owner.PublicKey().ToBytes()},
-	})
-	if err != nil {
-		return nil, 0, err
-	} else if resp.Result != indexerpb.GetVirtualTimelockAccountsResponse_OK {
-		return nil, 0, errors.Errorf("received rpc result %s", resp.Result.String())
-	}
-
-	if len(resp.Items) > 1 {
-		return nil, 0, errors.New("multiple results returned")
-	} else if resp.Items[0].Storage.GetMemory() == nil {
-		return nil, 0, errors.New("account is compressed or hasn't been initialized")
-	}
-
-	protoMemory := resp.Items[0].Storage.GetMemory()
-	memory, err := common.NewAccountFromPublicKeyBytes(protoMemory.Account.Value)
-	if err != nil {
-		return nil, 0, err
-	}
-	return memory, uint16(protoMemory.Index), nil
 }
 
 func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {

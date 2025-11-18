@@ -77,6 +77,42 @@ func (e IntentDeniedError) Error() string {
 	return e.message
 }
 
+type SwapValidationError struct {
+	message string
+}
+
+func NewSwapValidationError(message string) SwapValidationError {
+	return SwapValidationError{
+		message: message,
+	}
+}
+
+func NewSwapValidationErrorf(format string, args ...any) SwapValidationError {
+	return NewSwapValidationError(fmt.Sprintf(format, args...))
+}
+
+func (e SwapValidationError) Error() string {
+	return e.message
+}
+
+type SwapDeniedError struct {
+	message string
+}
+
+func NewSwapDeniedError(message string) SwapDeniedError {
+	return SwapDeniedError{
+		message: message,
+	}
+}
+
+func NewSwapDeniedErrorf(format string, args ...any) SwapDeniedError {
+	return NewSwapDeniedError(fmt.Sprintf(format, args...))
+}
+
+func (e SwapDeniedError) Error() string {
+	return e.message
+}
+
 type StaleStateError struct {
 	message string
 }
@@ -243,6 +279,61 @@ func handleSubmitIntentStructuredError(streamer transactionpb.Transaction_Submit
 	errResp := &transactionpb.SubmitIntentResponse{
 		Response: &transactionpb.SubmitIntentResponse_Error_{
 			Error: &transactionpb.SubmitIntentResponse_Error{
+				Code:         code,
+				ErrorDetails: errorDetails,
+			},
+		},
+	}
+	return streamer.Send(errResp)
+}
+
+func handleSwapError(streamer transactionpb.Transaction_SwapServer, err error) error {
+	// gRPC status errors are passed through as is
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+
+	// Case 1: Errors that map to a Code error response
+	switch err.(type) {
+	case SwapValidationError:
+		return handleSwapStructuredError(
+			streamer,
+			transactionpb.SwapResponse_Error_INVALID_SWAP,
+			toReasonStringErrorDetails(err),
+		)
+	case SwapDeniedError:
+		return handleSwapStructuredError(
+			streamer,
+			transactionpb.SwapResponse_Error_DENIED,
+			toDeniedErrorDetails(err),
+		)
+	}
+
+	switch err {
+	case ErrInvalidSignature:
+		return handleSwapStructuredError(
+			streamer,
+			transactionpb.SwapResponse_Error_SIGNATURE_ERROR,
+			toReasonStringErrorDetails(err),
+		)
+	case ErrNotImplemented:
+		return status.Error(codes.Unimplemented, err.Error())
+	}
+
+	// Case 2: Errors that map to gRPC status errors
+	switch err {
+	case ErrTimedOutReceivingRequest, context.DeadlineExceeded:
+		return status.Error(codes.DeadlineExceeded, err.Error())
+	case context.Canceled:
+		return status.Error(codes.Canceled, err.Error())
+	}
+	return status.Error(codes.Internal, "rpc server failure")
+}
+
+func handleSwapStructuredError(streamer transactionpb.Transaction_SwapServer, code transactionpb.SwapResponse_Error_Code, errorDetails ...*transactionpb.ErrorDetails) error {
+	errResp := &transactionpb.SwapResponse{
+		Response: &transactionpb.SwapResponse_Error_{
+			Error: &transactionpb.SwapResponse_Error{
 				Code:         code,
 				ErrorDetails: errorDetails,
 			},

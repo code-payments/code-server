@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/aml"
 	"github.com/code-payments/code-server/pkg/code/antispam"
@@ -22,7 +23,8 @@ type transactionServer struct {
 	log  *logrus.Entry
 	conf *conf
 
-	data code_data.Provider
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
 
 	auth *auth_util.RPCSignatureVerifier
 
@@ -47,6 +49,7 @@ type transactionServer struct {
 
 func NewTransactionServer(
 	data code_data.Provider,
+	vmIndexerClient indexerpb.IndexerClient,
 	submitIntentIntegration SubmitIntentIntegration,
 	airdropIntegration AirdropIntegration,
 	antispamGuard *antispam.Guard,
@@ -72,7 +75,8 @@ func NewTransactionServer(
 		log:  logrus.StandardLogger().WithField("type", "transaction/v2/server"),
 		conf: conf,
 
-		data: data,
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
 
 		auth: auth_util.NewRPCSignatureVerifier(data),
 

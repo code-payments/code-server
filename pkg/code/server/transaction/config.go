@@ -18,6 +18,9 @@ const (
 	SubmitIntentTimeoutConfigEnvName = envConfigPrefix + "SUBMIT_INTENT_TIMEOUT"
 	defaultSubmitIntentTimeout       = 5 * time.Second
 
+	SwapTimeoutConfigEnvName = envConfigPrefix + "SWAP_TIMEOUT"
+	defaultSwapTimeout       = 60 * time.Second
+
 	ClientReceiveTimeoutConfigEnvName = envConfigPrefix + "CLIENT_RECEIVE_TIMEOUT"
 	defaultClientReceiveTimeout       = time.Second
 
@@ -43,6 +46,7 @@ type conf struct {
 	disableAmlChecks             config.Bool // To avoid limits during testing
 	disableBlockchainChecks      config.Bool // To avoid blockchain checks during testing
 	submitIntentTimeout          config.Duration
+	swapTimeout                  config.Duration
 	clientReceiveTimeout         config.Duration
 	feeCollectorOwnerPublicKey   config.String
 	createOnSendWithdrawalUsdFee config.Float64
@@ -63,6 +67,7 @@ func WithEnvConfigs() ConfigProvider {
 			disableAmlChecks:             wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			disableBlockchainChecks:      wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			submitIntentTimeout:          env.NewDurationConfig(SubmitIntentTimeoutConfigEnvName, defaultSubmitIntentTimeout),
+			swapTimeout:                  env.NewDurationConfig(SwapTimeoutConfigEnvName, defaultSwapTimeout),
 			clientReceiveTimeout:         env.NewDurationConfig(ClientReceiveTimeoutConfigEnvName, defaultClientReceiveTimeout),
 			feeCollectorOwnerPublicKey:   env.NewStringConfig(FeeCollectorOwnerPublicKeyConfigEnvName, defaultFeeCollectorPublicKey),
 			createOnSendWithdrawalUsdFee: env.NewFloat64Config(CreateOnSendWithdrawalUsdFeeConfigEnvName, defaultCreateOnSendWithdrawalUsdFee),
@@ -90,6 +95,7 @@ func withManualTestOverrides(overrides *testOverrides) ConfigProvider {
 			disableAmlChecks:             wrapper.NewBoolConfig(memory.NewConfig(!overrides.enableAmlChecks), false),
 			disableBlockchainChecks:      wrapper.NewBoolConfig(memory.NewConfig(true), true),
 			submitIntentTimeout:          wrapper.NewDurationConfig(memory.NewConfig(defaultSubmitIntentTimeout), defaultSubmitIntentTimeout),
+			swapTimeout:                  wrapper.NewDurationConfig(memory.NewConfig(defaultSwapTimeout), defaultSwapTimeout),
 			clientReceiveTimeout:         wrapper.NewDurationConfig(memory.NewConfig(overrides.clientReceiveTimeout), defaultClientReceiveTimeout),
 			feeCollectorOwnerPublicKey:   wrapper.NewStringConfig(memory.NewConfig(overrides.feeCollectorOwnerPublicKey), defaultFeeCollectorPublicKey),
 			createOnSendWithdrawalUsdFee: wrapper.NewFloat64Config(memory.NewConfig(defaultCreateOnSendWithdrawalUsdFee), defaultCreateOnSendWithdrawalUsdFee),
