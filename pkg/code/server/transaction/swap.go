@@ -92,6 +92,15 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Antispam
 	//
 
+	ownerManagemntState, err := common.GetOwnerManagementState(ctx, s.data, owner)
+	if err != nil {
+		log.WithError(err).Warn("failure getting owner management state")
+		return handleSwapError(streamer, err)
+	}
+	if ownerManagemntState != common.OwnerManagementStateCodeAccount {
+		return handleSwapError(streamer, NewSwapDeniedError("not a code account"))
+	}
+
 	allow, err := s.antispamGuard.AllowSwap(ctx, owner, fromMint, toMint)
 	if err != nil {
 		return handleSwapError(streamer, err)
