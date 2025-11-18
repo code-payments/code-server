@@ -423,6 +423,11 @@ func NewCurrencyCreatorBuySwapHandler(
 		data:            data,
 		vmIndexerClient: vmIndexerClient,
 
+		buyer:           buyer,
+		temporaryHolder: temporaryHolder,
+		mint:            mint,
+		amount:          amount,
+
 		computeUnitLimit: 300_000,
 		computeUnitPrice: 1_000,
 		memoValue:        "buy_v0",
