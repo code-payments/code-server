@@ -172,7 +172,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 			continue
 		}
 
-		alt, err := transaction.GetAltForMint(ctx, s.data, fromMint)
+		alt, err := transaction.GetAltForMint(ctx, s.data, mint)
 		if err != nil {
 			log.WithError(err).Warn("failure getting alt")
 			return handleSwapError(streamer, err)
@@ -200,6 +200,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	txn.SetBlockhash(blockhash)
 
 	marshalledTxn := txn.Marshal()
+	marshalledTxnMessage := txn.Message.Marshal()
 
 	//
 	// Section: Server parameters
@@ -269,7 +270,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 		if !ed25519.Verify(
 			account,
-			marshalledTxn,
+			marshalledTxnMessage,
 			protoSignature.Value,
 		) {
 			return handleSwapStructuredError(
@@ -297,7 +298,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Transaction submission
 	//
 
-	log = log.WithField("txn", base64.StdEncoding.EncodeToString(txn.Marshal()))
+	log = log.WithField("txn", base64.StdEncoding.EncodeToString(marshalledTxn))
 
 	_, err = s.data.SubmitBlockchainTransaction(ctx, &txn)
 	if err != nil {
