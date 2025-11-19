@@ -6,6 +6,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
 
@@ -38,6 +39,11 @@ func recordSubmitIntentLatencyBreakdownEvent(ctx context.Context, section string
 func recordCriticalSubmitIntentFailure(ctx context.Context, intentRecord *intent.Record, err error) {
 	kvs := map[string]interface{}{
 		"error": err.Error(),
+	}
+
+	userAgent, err := client.GetUserAgent(ctx)
+	if err == nil {
+		kvs["user_agent"] = userAgent.String()
 	}
 
 	if intentRecord != nil {

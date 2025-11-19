@@ -15,6 +15,7 @@ func TestGetUserAgent_HappyPath(t *testing.T) {
 	for _, headerValue := range []string{
 		"Code/iOS/11.22.33",
 		"Code/Android/11.22.33",
+		"OpenCodeProtocol/Android/11.22.33",
 		"Mozilla/5.0 Code/iOS/11.22.33 Mobile Safari/533.1",
 	} {
 		ctx := context.Background()
@@ -81,5 +82,5 @@ func TestUserAgent_StringValue(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, "Code/iOS/1.2.3", ua.String())
+	assert.Equal(t, "OpenCodeProtocol/iOS/1.2.3", ua.String())
 }
