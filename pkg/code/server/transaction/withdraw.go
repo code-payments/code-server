@@ -101,14 +101,27 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 		return nil, status.Error(codes.Internal, "")
 	}
 
-	if !isOnCurve && !isVmDepositPda {
+	var isVmSwapPda bool
+	if !isVmDepositPda {
+		timelockRecord, err = s.data.GetTimelockBySwapPda(ctx, accountToCheck.PublicKey().ToBase58())
+		switch err {
+		case nil:
+			isVmSwapPda = true
+		case timelock.ErrTimelockNotFound:
+		default:
+			log.WithError(err).Warn("failure checking timelock db as a swap pda account")
+			return nil, status.Error(codes.Internal, "")
+		}
+	}
+
+	if !isOnCurve && !isVmDepositPda && !isVmSwapPda {
 		return &transactionpb.CanWithdrawToAccountResponse{
 			IsValidPaymentDestination: false,
 			AccountType:               transactionpb.CanWithdrawToAccountResponse_Unknown,
 		}, nil
 	}
 
-	if isVmDepositPda {
+	if isVmDepositPda || isVmSwapPda {
 		accountInfoRecord, err := s.data.GetAccountInfoByTokenAddress(ctx, timelockRecord.VaultAddress)
 		if err != nil {
 			log.WithError(err).Warn("failure checking account info db")
@@ -137,16 +150,20 @@ func (s *transactionServer) CanWithdrawToAccount(ctx context.Context, req *trans
 			AccountType:               transactionpb.CanWithdrawToAccountResponse_OwnerAccount,
 		}, nil
 	case token.ErrAccountNotFound, solana.ErrNoAccountInfo:
-		// ATA doesn't exist, and we won't be subsidizing it. Let the client know
-		// they require a fee.
+		// ATA doesn't exist, and we won't be subsidizing it unless it's a VM Swap PDA.
+		// Let the client know they require a fee.
+		var feeAmount *transactionpb.ExchangeDataWithoutRate
+		if !isVmSwapPda {
+			feeAmount = &transactionpb.ExchangeDataWithoutRate{
+				Currency:     string(currency_lib.USD),
+				NativeAmount: s.conf.createOnSendWithdrawalUsdFee.Get(ctx),
+			}
+		}
 		return &transactionpb.CanWithdrawToAccountResponse{
 			IsValidPaymentDestination: true,
 			AccountType:               transactionpb.CanWithdrawToAccountResponse_OwnerAccount,
 			RequiresInitialization:    true,
-			FeeAmount: &transactionpb.ExchangeDataWithoutRate{
-				Currency:     string(currency_lib.USD),
-				NativeAmount: s.conf.createOnSendWithdrawalUsdFee.Get(ctx),
-			},
+			FeeAmount:                 feeAmount,
 		}, nil
 	case token.ErrInvalidTokenAccount:
 		return &transactionpb.CanWithdrawToAccountResponse{
