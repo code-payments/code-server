@@ -4,27 +4,30 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"fmt"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/mr-tron/base58/base58"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
-	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
 
 	"github.com/code-payments/code-server/pkg/code/common"
-	code_data "github.com/code-payments/code-server/pkg/code/data"
-	"github.com/code-payments/code-server/pkg/code/transaction"
+	currency_util "github.com/code-payments/code-server/pkg/code/currency"
+	"github.com/code-payments/code-server/pkg/code/data/deposit"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/solana"
-	compute_budget "github.com/code-payments/code-server/pkg/solana/computebudget"
-	"github.com/code-payments/code-server/pkg/solana/currencycreator"
-	"github.com/code-payments/code-server/pkg/solana/cvm"
-	"github.com/code-payments/code-server/pkg/solana/memo"
-	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
 // Currently we only support stateless swaps against the Currency Creator program
@@ -61,9 +64,9 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 	log = log.WithField("owner", owner.PublicKey().ToBase58())
 
-	signature := statelessReq.Signature
+	reqSignature := statelessReq.Signature
 	statelessReq.Signature = nil
-	if err := s.auth.Authenticate(ctx, owner, statelessReq, signature); err != nil {
+	if err := s.auth.Authenticate(ctx, owner, statelessReq, reqSignature); err != nil {
 		return err
 	}
 
@@ -181,7 +184,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 			continue
 		}
 
-		alt, err := transaction.GetAltForMint(ctx, s.data, mint)
+		alt, err := transaction_util.GetAltForMint(ctx, s.data, mint)
 		if err != nil {
 			log.WithError(err).Warn("failure getting alt")
 			return handleSwapError(streamer, err)
@@ -219,7 +222,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	protoAlts := make([]*commonpb.SolanaAddressLookupTable, len(alts))
 	for i, alt := range alts {
-		protoAlts[i] = transaction.ToProtoAlt(alt)
+		protoAlts[i] = transaction_util.ToProtoAlt(alt)
 	}
 
 	protoServerParameters := &transactionpb.SwapResponse{
@@ -301,7 +304,9 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		log.WithError(err).Info("failure signing transaction")
 		return handleSwapError(streamer, err)
 	}
-	log = log.WithField("signature", base58.Encode(txn.Signature()))
+
+	txnSignature := base58.Encode(txn.Signature())
+	log = log.WithField("signature", txnSignature)
 
 	//
 	// Section: Transaction submission
@@ -320,6 +325,107 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	log.Info("transaction submitted")
+
+	//
+	// Section: Balance and transaction history
+	//
+
+	// todo: This will live somewhere else once we add the state management system
+	var waitForBalanceUpdate sync.WaitGroup
+	waitForBalanceUpdate.Add(1)
+	go func() {
+		defer waitForBalanceUpdate.Done()
+
+		ctx := context.Background()
+
+		ownerDestinationTimelockVault, err := owner.ToTimelockVault(destinationVmConfig)
+		if err != nil {
+			log.WithError(err).Warn("failure getting owner destination timelock accounts")
+			return
+		}
+
+		var tokenBalances *solana.TransactionTokenBalances
+		for range 30 {
+			time.Sleep(time.Second)
+
+			tokenBalances, err = s.data.GetBlockchainTransactionTokenBalances(ctx, txnSignature)
+			if err == nil {
+				break
+			}
+		}
+
+		if err != nil {
+			log.WithError(err).Warn("failure getting transaction token balances")
+			return
+		}
+
+		deltaQuarksIntoOmnibus, err := getDeltaQuarksFromTokenBalances(destinationVmConfig.Omnibus, tokenBalances)
+		if err != nil {
+			log.WithError(err).Warn("failure getting delta quarks into destination vm omnibus")
+			return
+		}
+		if deltaQuarksIntoOmnibus <= 0 {
+			log.Warn("delta quarks into destination vm omnibus is not positive")
+			return
+		}
+
+		usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, s.data, toMint, uint64(deltaQuarksIntoOmnibus), time.Now())
+		if err != nil {
+			log.WithError(err).Warn("failure calculating usd market value")
+			return
+		}
+
+		err = s.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+			// For transaction history
+			intentRecord := &intent.Record{
+				IntentId:   getSwapDepositIntentID(txnSignature, ownerDestinationTimelockVault),
+				IntentType: intent.ExternalDeposit,
+
+				MintAccount: toMint.PublicKey().ToBase58(),
+
+				InitiatorOwnerAccount: owner.PublicKey().ToBase58(),
+
+				ExternalDepositMetadata: &intent.ExternalDepositMetadata{
+					DestinationTokenAccount: ownerDestinationTimelockVault.PublicKey().ToBase58(),
+					Quantity:                uint64(deltaQuarksIntoOmnibus),
+					UsdMarketValue:          usdMarketValue,
+				},
+
+				State:     intent.StateConfirmed,
+				CreatedAt: time.Now(),
+			}
+			err = s.data.SaveIntent(ctx, intentRecord)
+			if err != nil {
+				return errors.Wrap(err, "error saving intent record")
+			}
+
+			// For tracking in cached balances
+			externalDepositRecord := &deposit.Record{
+				Signature:      txnSignature,
+				Destination:    ownerDestinationTimelockVault.PublicKey().ToBase58(),
+				Amount:         uint64(deltaQuarksIntoOmnibus),
+				UsdMarketValue: usdMarketValue,
+
+				Slot:              tokenBalances.Slot,
+				ConfirmationState: transaction.ConfirmationFinalized,
+
+				CreatedAt: time.Now(),
+			}
+			err = s.data.SaveExternalDeposit(ctx, externalDepositRecord)
+			if err != nil {
+				return errors.Wrap(err, "error saving external deposit record")
+			}
+
+			return nil
+		})
+		if err != nil {
+			log.WithError(err).Warn("failure updating transaction history and balance")
+		}
+	}()
+
+	//
+	// Section: Final RPC response
+	//
 
 	if !statelessReq.WaitForBlockchainStatus {
 		err = streamer.Send(&transactionpb.SwapResponse{
@@ -351,6 +457,9 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 			if statuses[0].Finalized() {
 				log.Debug("transaction succeeded and is finalized")
+
+				waitForBalanceUpdate.Wait()
+
 				err = streamer.Send(&transactionpb.SwapResponse{
 					Response: &transactionpb.SwapResponse_Success_{
 						Success: &transactionpb.SwapResponse_Success{
@@ -389,561 +498,34 @@ type SwapServerParameters struct {
 	MemoryIndex      uint16
 }
 
-type SwapHandler interface {
-	GetServerParameters() *SwapServerParameters
+func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {
+	var preQuarkBalance, postQuarkBalance int64
+	var err error
+	for _, tokenBalance := range tokenBalances.PreTokenBalances {
+		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
+			preQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
+			if err != nil {
+				return 0, errors.Wrap(err, "error parsing pre token balance")
+			}
+			break
+		}
+	}
+	for _, tokenBalance := range tokenBalances.PostTokenBalances {
+		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
+			postQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
+			if err != nil {
+				return 0, errors.Wrap(err, "error parsing post token balance")
+			}
+			break
+		}
+	}
 
-	MakeInstructions(ctx context.Context) ([]solana.Instruction, error)
+	return postQuarkBalance - preQuarkBalance, nil
 }
 
-type CurrencyCreatorBuySwapHandler struct {
-	data            code_data.Provider
-	vmIndexerClient indexerpb.IndexerClient
-
-	buyer           *common.Account
-	temporaryHolder *common.Account
-	mint            *common.Account
-	amount          uint64
-
-	computeUnitLimit uint32
-	computeUnitPrice uint64
-	memoValue        string
-	memoryAccount    *common.Account
-	memoryIndex      uint16
-}
-
-func NewCurrencyCreatorBuySwapHandler(
-	data code_data.Provider,
-	vmIndexerClient indexerpb.IndexerClient,
-	buyer *common.Account,
-	temporaryHolder *common.Account,
-	mint *common.Account,
-	amount uint64,
-) SwapHandler {
-	return &CurrencyCreatorBuySwapHandler{
-		data:            data,
-		vmIndexerClient: vmIndexerClient,
-
-		buyer:           buyer,
-		temporaryHolder: temporaryHolder,
-		mint:            mint,
-		amount:          amount,
-
-		computeUnitLimit: 300_000,
-		computeUnitPrice: 1_000,
-		memoValue:        "buy_v0",
-	}
-}
-
-func (h *CurrencyCreatorBuySwapHandler) GetServerParameters() *SwapServerParameters {
-	return &SwapServerParameters{
-		ComputeUnitLimit: h.computeUnitLimit,
-		ComputeUnitPrice: h.computeUnitPrice,
-		MemoValue:        h.memoValue,
-		MemoryAccount:    h.memoryAccount,
-		MemoryIndex:      h.memoryIndex,
-	}
-}
-
-func (h *CurrencyCreatorBuySwapHandler) MakeInstructions(ctx context.Context) ([]solana.Instruction, error) {
-	sourceVmConfig, err := common.GetVmConfigForMint(ctx, h.data, common.CoreMintAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceTimelockAccounts, err := h.buyer.GetTimelockAccounts(sourceVmConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationVmConfig, err := common.GetVmConfigForMint(ctx, h.data, h.mint)
-	if err != nil {
-		return nil, err
-	}
-
-	h.memoryAccount, h.memoryIndex, err = common.GetVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, destinationVmConfig.Vm, h.buyer)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationCurrencyMetadataRecord, err := h.data.GetCurrencyMetadata(ctx, h.mint.PublicKey().ToBase58())
-	if err != nil {
-		return nil, err
-	}
-
-	destinationCurrencyAccounts, err := common.GetLaunchpadCurrencyAccounts(destinationCurrencyMetadataRecord)
-	if err != nil {
-		return nil, err
-	}
-
-	createTemporaryCoreMintAtaIxn, temporaryCoreMintAtaBytes, err := token.CreateAssociatedTokenAccountIdempotent(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-		common.CoreMintAccount.PublicKey().ToBytes(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	temporaryCoreMintAta, err := common.NewAccountFromPublicKeyBytes(temporaryCoreMintAtaBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	transferFromSourceVmSwapAtaIxn := cvm.NewTransferForSwapInstruction(
-		&cvm.TransferForSwapInstructionAccounts{
-			VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          sourceVmConfig.Vm.PublicKey().ToBytes(),
-			Swapper:     h.buyer.PublicKey().ToBytes(),
-			SwapPda:     sourceTimelockAccounts.VmSwapAccounts.Pda.PublicKey().ToBytes(),
-			SwapAta:     sourceTimelockAccounts.VmSwapAccounts.Ata.PublicKey().ToBytes(),
-			Destination: temporaryCoreMintAta.PublicKey().ToBytes(),
-		},
-		&cvm.TransferForSwapInstructionArgs{
-			Amount: h.amount,
-			Bump:   sourceTimelockAccounts.VmSwapAccounts.PdaBump,
-		},
-	)
-
-	buyAndDepositIntoDestinationVmIxn := currencycreator.NewBuyAndDepositIntoVmInstruction(
-		&currencycreator.BuyAndDepositIntoVmInstructionAccounts{
-			Buyer:       h.temporaryHolder.PublicKey().ToBytes(),
-			Pool:        destinationCurrencyAccounts.LiquidityPool.PublicKey().ToBytes(),
-			Currency:    destinationCurrencyAccounts.CurrencyConfig.PublicKey().ToBytes(),
-			TargetMint:  h.mint.PublicKey().ToBytes(),
-			BaseMint:    common.CoreMintAccount.PublicKey().ToBytes(),
-			VaultTarget: destinationCurrencyAccounts.VaultMint.PublicKey().ToBytes(),
-			VaultBase:   destinationCurrencyAccounts.VaultBase.PublicKey().ToBytes(),
-			BuyerBase:   temporaryCoreMintAta.PublicKey().ToBytes(),
-			FeeTarget:   destinationCurrencyAccounts.FeesMint.PublicKey().ToBytes(),
-			FeeBase:     destinationCurrencyAccounts.FeesBase.PublicKey().ToBytes(),
-
-			VmAuthority: destinationVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          destinationVmConfig.Vm.PublicKey().ToBytes(),
-			VmMemory:    h.memoryAccount.PublicKey().ToBytes(),
-			VmOmnibus:   destinationVmConfig.Omnibus.PublicKey().ToBytes(),
-			VtaOwner:    h.buyer.PublicKey().ToBytes(),
-		},
-		&currencycreator.BuyAndDepositIntoVmInstructionArgs{
-			InAmount:      h.amount,
-			MinOutAmount:  0,
-			VmMemoryIndex: h.memoryIndex,
-		},
-	)
-
-	closeTemporaryCoreMintAtaIxn := token.CloseAccount(
-		temporaryCoreMintAta.PublicKey().ToBytes(),
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-	)
-
-	closeSourceVmSwapAccountIfEmptyIxn := cvm.NewCloseSwapAccountIfEmptyInstruction(
-		&cvm.CloseSwapAccountIfEmptyInstructionAccounts{
-			VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          sourceVmConfig.Vm.PublicKey().ToBytes(),
-			Swapper:     h.buyer.PublicKey().ToBytes(),
-			SwapPda:     sourceTimelockAccounts.VmSwapAccounts.Pda.PublicKey().ToBytes(),
-			SwapAta:     sourceTimelockAccounts.VmSwapAccounts.Ata.PublicKey().ToBytes(),
-			Destination: common.GetSubsidizer().PublicKey().ToBytes(),
-		},
-		&cvm.CloseSwapAccountIfEmptyInstructionArgs{
-			Bump: sourceTimelockAccounts.VmSwapAccounts.PdaBump,
-		},
-	)
-
-	return []solana.Instruction{
-		compute_budget.SetComputeUnitLimit(h.computeUnitLimit),
-		compute_budget.SetComputeUnitPrice(h.computeUnitPrice),
-		memo.Instruction(h.memoValue),
-		createTemporaryCoreMintAtaIxn,
-		transferFromSourceVmSwapAtaIxn,
-		buyAndDepositIntoDestinationVmIxn,
-		closeTemporaryCoreMintAtaIxn,
-		closeSourceVmSwapAccountIfEmptyIxn,
-	}, nil
-}
-
-type CurrencyCreatorSellSwapHandler struct {
-	data            code_data.Provider
-	vmIndexerClient indexerpb.IndexerClient
-
-	seller          *common.Account
-	temporaryHolder *common.Account
-	mint            *common.Account
-	amount          uint64
-
-	computeUnitLimit uint32
-	computeUnitPrice uint64
-	memoValue        string
-	memoryAccount    *common.Account
-	memoryIndex      uint16
-}
-
-func NewCurrencyCreatorSellSwapHandler(
-	data code_data.Provider,
-	vmIndexerClient indexerpb.IndexerClient,
-	seller *common.Account,
-	temporaryHolder *common.Account,
-	mint *common.Account,
-	amount uint64,
-) SwapHandler {
-	return &CurrencyCreatorSellSwapHandler{
-		data:            data,
-		vmIndexerClient: vmIndexerClient,
-
-		seller:          seller,
-		temporaryHolder: temporaryHolder,
-		mint:            mint,
-		amount:          amount,
-
-		computeUnitLimit: 300_000,
-		computeUnitPrice: 1_000,
-		memoValue:        "sell_v0",
-	}
-}
-
-func (h *CurrencyCreatorSellSwapHandler) GetServerParameters() *SwapServerParameters {
-	return &SwapServerParameters{
-		ComputeUnitLimit: h.computeUnitLimit,
-		ComputeUnitPrice: h.computeUnitPrice,
-		MemoValue:        h.memoValue,
-		MemoryAccount:    h.memoryAccount,
-		MemoryIndex:      h.memoryIndex,
-	}
-}
-
-func (h *CurrencyCreatorSellSwapHandler) MakeInstructions(ctx context.Context) ([]solana.Instruction, error) {
-	sourceVmConfig, err := common.GetVmConfigForMint(ctx, h.data, h.mint)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceCurrencyMetadataRecord, err := h.data.GetCurrencyMetadata(ctx, h.mint.PublicKey().ToBase58())
-	if err != nil {
-		return nil, err
-	}
-
-	sourceCurrencyAccounts, err := common.GetLaunchpadCurrencyAccounts(sourceCurrencyMetadataRecord)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceTimelockAccounts, err := h.seller.GetTimelockAccounts(sourceVmConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationVmConfig, err := common.GetVmConfigForMint(ctx, h.data, common.CoreMintAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	h.memoryAccount, h.memoryIndex, err = common.GetVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, destinationVmConfig.Vm, h.seller)
-	if err != nil {
-		return nil, err
-	}
-
-	createTemporarySourceCurrencyAtaIxn, temporarySourceCurrencyAtaBytes, err := token.CreateAssociatedTokenAccountIdempotent(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-		h.mint.PublicKey().ToBytes(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	temporarySourceCurrencyAta, err := common.NewAccountFromPublicKeyBytes(temporarySourceCurrencyAtaBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	transferFromSourceVmSwapAtaIxn := cvm.NewTransferForSwapInstruction(
-		&cvm.TransferForSwapInstructionAccounts{
-			VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          sourceVmConfig.Vm.PublicKey().ToBytes(),
-			Swapper:     h.seller.PublicKey().ToBytes(),
-			SwapPda:     sourceTimelockAccounts.VmSwapAccounts.Pda.PublicKey().ToBytes(),
-			SwapAta:     sourceTimelockAccounts.VmSwapAccounts.Ata.PublicKey().ToBytes(),
-			Destination: temporarySourceCurrencyAta.PublicKey().ToBytes(),
-		},
-		&cvm.TransferForSwapInstructionArgs{
-			Amount: h.amount,
-			Bump:   sourceTimelockAccounts.VmSwapAccounts.PdaBump,
-		},
-	)
-
-	sellAndDepositIntoDestinationVmIxn := currencycreator.NewSellAndDepositIntoVmInstruction(
-		&currencycreator.SellAndDepositIntoVmInstructionAccounts{
-			Seller:       h.temporaryHolder.PublicKey().ToBytes(),
-			Pool:         sourceCurrencyAccounts.LiquidityPool.PublicKey().ToBytes(),
-			Currency:     sourceCurrencyAccounts.CurrencyConfig.PublicKey().ToBytes(),
-			TargetMint:   h.mint.PublicKey().ToBytes(),
-			BaseMint:     common.CoreMintAccount.PublicKey().ToBytes(),
-			VaultTarget:  sourceCurrencyAccounts.VaultMint.PublicKey().ToBytes(),
-			VaultBase:    sourceCurrencyAccounts.VaultBase.PublicKey().ToBytes(),
-			SellerTarget: temporarySourceCurrencyAta.PublicKey().ToBytes(),
-			FeeTarget:    sourceCurrencyAccounts.FeesMint.PublicKey().ToBytes(),
-			FeeBase:      sourceCurrencyAccounts.FeesBase.PublicKey().ToBytes(),
-
-			VmAuthority: destinationVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          destinationVmConfig.Vm.PublicKey().ToBytes(),
-			VmMemory:    h.memoryAccount.PublicKey().ToBytes(),
-			VmOmnibus:   destinationVmConfig.Omnibus.PublicKey().ToBytes(),
-			VtaOwner:    h.seller.PublicKey().ToBytes(),
-		},
-		&currencycreator.SellAndDepositIntoVmInstructionArgs{
-			InAmount:      h.amount,
-			MinOutAmount:  0,
-			VmMemoryIndex: h.memoryIndex,
-		},
-	)
-
-	closeTemporarySourceCurrencyAtaIxn := token.CloseAccount(
-		temporarySourceCurrencyAta.PublicKey().ToBytes(),
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-	)
-
-	closeSourceVmSwapAccountIfEmptyIxn := cvm.NewCloseSwapAccountIfEmptyInstruction(
-		&cvm.CloseSwapAccountIfEmptyInstructionAccounts{
-			VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          sourceVmConfig.Vm.PublicKey().ToBytes(),
-			Swapper:     h.seller.PublicKey().ToBytes(),
-			SwapPda:     sourceTimelockAccounts.VmSwapAccounts.Pda.PublicKey().ToBytes(),
-			SwapAta:     sourceTimelockAccounts.VmSwapAccounts.Ata.PublicKey().ToBytes(),
-			Destination: common.GetSubsidizer().PublicKey().ToBytes(),
-		},
-		&cvm.CloseSwapAccountIfEmptyInstructionArgs{
-			Bump: sourceTimelockAccounts.VmSwapAccounts.PdaBump,
-		},
-	)
-
-	return []solana.Instruction{
-		compute_budget.SetComputeUnitLimit(h.computeUnitLimit),
-		compute_budget.SetComputeUnitPrice(h.computeUnitPrice),
-		memo.Instruction(h.memoValue),
-		createTemporarySourceCurrencyAtaIxn,
-		transferFromSourceVmSwapAtaIxn,
-		sellAndDepositIntoDestinationVmIxn,
-		closeTemporarySourceCurrencyAtaIxn,
-		closeSourceVmSwapAccountIfEmptyIxn,
-	}, nil
-}
-
-type CurrencyCreatorBuySellSwapHandler struct {
-	data            code_data.Provider
-	vmIndexerClient indexerpb.IndexerClient
-
-	swapper         *common.Account
-	temporaryHolder *common.Account
-	fromMint        *common.Account
-	toMint          *common.Account
-	amount          uint64
-
-	computeUnitLimit uint32
-	computeUnitPrice uint64
-	memoValue        string
-	memoryAccount    *common.Account
-	memoryIndex      uint16
-}
-
-func NewCurrencyCreatorBuySellSwapHandler(
-	data code_data.Provider,
-	vmIndexerClient indexerpb.IndexerClient,
-	swapper *common.Account,
-	temporaryHolder *common.Account,
-	fromMint *common.Account,
-	toMint *common.Account,
-	amount uint64,
-) SwapHandler {
-	return &CurrencyCreatorBuySellSwapHandler{
-		data:            data,
-		vmIndexerClient: vmIndexerClient,
-
-		swapper:         swapper,
-		temporaryHolder: temporaryHolder,
-		fromMint:        fromMint,
-		toMint:          toMint,
-		amount:          amount,
-
-		computeUnitLimit: 400_000,
-		computeUnitPrice: 1_000,
-		memoValue:        "buy_sell_v0",
-	}
-}
-
-func (h *CurrencyCreatorBuySellSwapHandler) GetServerParameters() *SwapServerParameters {
-	return &SwapServerParameters{
-		ComputeUnitLimit: h.computeUnitLimit,
-		ComputeUnitPrice: h.computeUnitPrice,
-		MemoValue:        h.memoValue,
-		MemoryAccount:    h.memoryAccount,
-		MemoryIndex:      h.memoryIndex,
-	}
-}
-
-func (h *CurrencyCreatorBuySellSwapHandler) MakeInstructions(ctx context.Context) ([]solana.Instruction, error) {
-	sourceVmConfig, err := common.GetVmConfigForMint(ctx, h.data, h.fromMint)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceCurrencyMetadataRecord, err := h.data.GetCurrencyMetadata(ctx, h.fromMint.PublicKey().ToBase58())
-	if err != nil {
-		return nil, err
-	}
-
-	sourceCurrencyAccounts, err := common.GetLaunchpadCurrencyAccounts(sourceCurrencyMetadataRecord)
-	if err != nil {
-		return nil, err
-	}
-
-	sourceTimelockAccounts, err := h.swapper.GetTimelockAccounts(sourceVmConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationVmConfig, err := common.GetVmConfigForMint(ctx, h.data, h.toMint)
-	if err != nil {
-		return nil, err
-	}
-
-	h.memoryAccount, h.memoryIndex, err = common.GetVirtualTimelockAccountLocationInMemory(ctx, h.vmIndexerClient, destinationVmConfig.Vm, h.swapper)
-	if err != nil {
-		return nil, err
-	}
-
-	destinationCurrencyMetadataRecord, err := h.data.GetCurrencyMetadata(ctx, h.toMint.PublicKey().ToBase58())
-	if err != nil {
-		return nil, err
-	}
-
-	destinationCurrencyAccounts, err := common.GetLaunchpadCurrencyAccounts(destinationCurrencyMetadataRecord)
-	if err != nil {
-		return nil, err
-	}
-
-	createTemporaryCoreMintAtaIxn, temporaryCoreMintAtaBytes, err := token.CreateAssociatedTokenAccountIdempotent(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-		common.CoreMintAccount.PublicKey().ToBytes(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	temporaryCoreMintAta, err := common.NewAccountFromPublicKeyBytes(temporaryCoreMintAtaBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	createTemporarySourceCurrencyAtaIxn, temporarySourceCurrencyAtaBytes, err := token.CreateAssociatedTokenAccountIdempotent(
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-		h.fromMint.PublicKey().ToBytes(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	temporarySourceCurrencyAta, err := common.NewAccountFromPublicKeyBytes(temporarySourceCurrencyAtaBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	transferFromSourceVmSwapAtaIxn := cvm.NewTransferForSwapInstruction(
-		&cvm.TransferForSwapInstructionAccounts{
-			VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          sourceVmConfig.Vm.PublicKey().ToBytes(),
-			Swapper:     h.swapper.PublicKey().ToBytes(),
-			SwapPda:     sourceTimelockAccounts.VmSwapAccounts.Pda.PublicKey().ToBytes(),
-			SwapAta:     sourceTimelockAccounts.VmSwapAccounts.Ata.PublicKey().ToBytes(),
-			Destination: temporarySourceCurrencyAta.PublicKey().ToBytes(),
-		},
-		&cvm.TransferForSwapInstructionArgs{
-			Amount: h.amount,
-			Bump:   sourceTimelockAccounts.VmSwapAccounts.PdaBump,
-		},
-	)
-
-	sellIxn := currencycreator.NewSellTokensInstruction(
-		&currencycreator.SellTokensInstructionAccounts{
-			Seller:       h.temporaryHolder.PublicKey().ToBytes(),
-			Pool:         sourceCurrencyAccounts.LiquidityPool.PublicKey().ToBytes(),
-			Currency:     sourceCurrencyAccounts.CurrencyConfig.PublicKey().ToBytes(),
-			TargetMint:   h.fromMint.PublicKey().ToBytes(),
-			BaseMint:     common.CoreMintAccount.PublicKey().ToBytes(),
-			VaultTarget:  sourceCurrencyAccounts.VaultMint.PublicKey().ToBytes(),
-			VaultBase:    sourceCurrencyAccounts.VaultBase.PublicKey().ToBytes(),
-			SellerTarget: temporarySourceCurrencyAta.PublicKey().ToBytes(),
-			SellerBase:   temporaryCoreMintAta.PublicKey().ToBytes(),
-			FeeTarget:    sourceCurrencyAccounts.FeesMint.PublicKey().ToBytes(),
-			FeeBase:      sourceCurrencyAccounts.FeesBase.PublicKey().ToBytes(),
-		},
-		&currencycreator.SellTokensInstructionArgs{
-			InAmount:     h.amount,
-			MinAmountOut: 0,
-		},
-	)
-
-	buyAndDepositIntoDestinationVmIxn := currencycreator.NewBuyAndDepositIntoVmInstruction(
-		&currencycreator.BuyAndDepositIntoVmInstructionAccounts{
-			Buyer:       h.temporaryHolder.PublicKey().ToBytes(),
-			Pool:        destinationCurrencyAccounts.LiquidityPool.PublicKey().ToBytes(),
-			Currency:    destinationCurrencyAccounts.CurrencyConfig.PublicKey().ToBytes(),
-			TargetMint:  h.toMint.PublicKey().ToBytes(),
-			BaseMint:    common.CoreMintAccount.PublicKey().ToBytes(),
-			VaultTarget: destinationCurrencyAccounts.VaultMint.PublicKey().ToBytes(),
-			VaultBase:   destinationCurrencyAccounts.VaultBase.PublicKey().ToBytes(),
-			BuyerBase:   temporaryCoreMintAta.PublicKey().ToBytes(),
-			FeeTarget:   destinationCurrencyAccounts.FeesMint.PublicKey().ToBytes(),
-			FeeBase:     destinationCurrencyAccounts.FeesBase.PublicKey().ToBytes(),
-
-			VmAuthority: destinationVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          destinationVmConfig.Vm.PublicKey().ToBytes(),
-			VmMemory:    h.memoryAccount.PublicKey().ToBytes(),
-			VmOmnibus:   destinationVmConfig.Omnibus.PublicKey().ToBytes(),
-			VtaOwner:    h.swapper.PublicKey().ToBytes(),
-		},
-		&currencycreator.BuyAndDepositIntoVmInstructionArgs{
-			InAmount:      0,
-			MinOutAmount:  0,
-			VmMemoryIndex: h.memoryIndex,
-		},
-	)
-
-	closeTemporaryCoreMintAtaIxn := token.CloseAccount(
-		temporaryCoreMintAta.PublicKey().ToBytes(),
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-	)
-
-	closeTemporarySourceCurrencyAtaIxn := token.CloseAccount(
-		temporarySourceCurrencyAta.PublicKey().ToBytes(),
-		common.GetSubsidizer().PublicKey().ToBytes(),
-		h.temporaryHolder.PublicKey().ToBytes(),
-	)
-
-	closeSourceVmSwapAccountIfEmptyIxn := cvm.NewCloseSwapAccountIfEmptyInstruction(
-		&cvm.CloseSwapAccountIfEmptyInstructionAccounts{
-			VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
-			Vm:          sourceVmConfig.Vm.PublicKey().ToBytes(),
-			Swapper:     h.swapper.PublicKey().ToBytes(),
-			SwapPda:     sourceTimelockAccounts.VmSwapAccounts.Pda.PublicKey().ToBytes(),
-			SwapAta:     sourceTimelockAccounts.VmSwapAccounts.Ata.PublicKey().ToBytes(),
-			Destination: common.GetSubsidizer().PublicKey().ToBytes(),
-		},
-		&cvm.CloseSwapAccountIfEmptyInstructionArgs{
-			Bump: sourceTimelockAccounts.VmSwapAccounts.PdaBump,
-		},
-	)
-
-	return []solana.Instruction{
-		compute_budget.SetComputeUnitLimit(h.computeUnitLimit),
-		compute_budget.SetComputeUnitPrice(h.computeUnitPrice),
-		memo.Instruction(h.memoValue),
-		createTemporaryCoreMintAtaIxn,
-		createTemporarySourceCurrencyAtaIxn,
-		transferFromSourceVmSwapAtaIxn,
-		sellIxn,
-		buyAndDepositIntoDestinationVmIxn,
-		closeTemporaryCoreMintAtaIxn,
-		closeTemporarySourceCurrencyAtaIxn,
-		closeSourceVmSwapAccountIfEmptyIxn,
-	}, nil
+// Consistent intent ID that maps to a 32 byte buffer
+func getSwapDepositIntentID(signature string, destination *common.Account) string {
+	combined := fmt.Sprintf("%s-%s", signature, destination.PublicKey().ToBase58())
+	hashed := sha256.Sum256([]byte(combined))
+	return base58.Encode(hashed[:])
 }
