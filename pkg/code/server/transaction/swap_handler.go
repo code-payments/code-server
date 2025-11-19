@@ -17,6 +17,14 @@ import (
 
 // todo: Move transaction-related stuff to the transaction utility package
 
+type SwapServerParameters struct {
+	ComputeUnitLimit uint32
+	ComputeUnitPrice uint64
+	MemoValue        string
+	MemoryAccount    *common.Account
+	MemoryIndex      uint16
+}
+
 type SwapHandler interface {
 	// GetServerParameter gets the server parameters to return to client for the swap
 	GetServerParameters() *SwapServerParameters
