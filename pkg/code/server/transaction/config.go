@@ -19,7 +19,7 @@ const (
 	defaultSubmitIntentTimeout       = 5 * time.Second
 
 	SwapTimeoutConfigEnvName = envConfigPrefix + "SWAP_TIMEOUT"
-	defaultSwapTimeout       = 60 * time.Second
+	defaultSwapTimeout       = 120 * time.Second
 
 	ClientReceiveTimeoutConfigEnvName = envConfigPrefix + "CLIENT_RECEIVE_TIMEOUT"
 	defaultClientReceiveTimeout       = time.Second

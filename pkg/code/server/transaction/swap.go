@@ -22,8 +22,11 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/common"
 	currency_util "github.com/code-payments/code-server/pkg/code/currency"
+	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/grpc/client"
@@ -141,6 +144,46 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting destination vm config")
 		return handleSwapError(streamer, err)
+	}
+
+	ownerDestinationTimelockVault, err := owner.ToTimelockVault(destinationVmConfig)
+	if err != nil {
+		log.WithError(err).Warn("failure getting owner destination timelock accounts")
+		return handleSwapError(streamer, err)
+	}
+	ownerDestinationTimelockRecord, err := s.data.GetTimelockByVault(ctx, ownerDestinationTimelockVault.PublicKey().ToBase58())
+	if err == timelock.ErrTimelockNotFound {
+		return handleSwapError(streamer, NewSwapValidationError("destination timelock vault account not opened"))
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting destination timelock record")
+		return handleSwapError(streamer, err)
+	}
+
+	//
+	// Section: On-demand account creation
+	//
+
+	// todo: commonalities here and in geyser external deposit flow
+	// todo: this will live somewhere else once we add the state management system
+	if !ownerDestinationTimelockRecord.ExistsOnBlockchain() {
+		err = ensureVirtualTimelockAccountIsInitialzed(ctx, s.data, ownerDestinationTimelockRecord)
+		if err != nil {
+			log.WithError(err).Warn("failure scheduling destination timelock account initialization")
+			return handleSwapError(streamer, err)
+		}
+
+		for range 60 {
+			time.Sleep(time.Second)
+
+			_, _, err = common.GetVirtualTimelockAccountLocationInMemory(ctx, s.vmIndexerClient, destinationVmConfig.Vm, owner)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			log.WithError(err).Warn("timed out waiting for destination timelock account initialization")
+			return handleSwapError(streamer, err)
+		}
 	}
 
 	//
@@ -330,19 +373,14 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: Balance and transaction history
 	//
 
-	// todo: This will live somewhere else once we add the state management system
+	// todo: commonalities here and in geyser external deposit flow
+	// todo: this will live somewhere else once we add the state management system
 	var waitForBalanceUpdate sync.WaitGroup
 	waitForBalanceUpdate.Add(1)
 	go func() {
 		defer waitForBalanceUpdate.Done()
 
 		ctx := context.Background()
-
-		ownerDestinationTimelockVault, err := owner.ToTimelockVault(destinationVmConfig)
-		if err != nil {
-			log.WithError(err).Warn("failure getting owner destination timelock accounts")
-			return
-		}
 
 		var tokenBalances *solana.TransactionTokenBalances
 		for range 30 {
@@ -490,12 +528,38 @@ func (s *transactionServer) boundedSwapRecv(ctx context.Context, streamer transa
 	}
 }
 
-type SwapServerParameters struct {
-	ComputeUnitLimit uint32
-	ComputeUnitPrice uint64
-	MemoValue        string
-	MemoryAccount    *common.Account
-	MemoryIndex      uint16
+func ensureVirtualTimelockAccountIsInitialzed(ctx context.Context, data code_data.Provider, timelockRecord *timelock.Record) error {
+	if !timelockRecord.ExistsOnBlockchain() {
+		initializeFulfillmentRecord, err := data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, timelockRecord.VaultAddress)
+		if err != nil {
+			return err
+		}
+
+		if initializeFulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
+			return errors.New("expected an initialize locked timelock account fulfillment")
+		}
+
+		return markFulfillmentAsActivelyScheduled(ctx, data, initializeFulfillmentRecord)
+	}
+
+	return nil
+}
+
+func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) error {
+	if fulfillmentRecord.Id == 0 {
+		return nil
+	}
+
+	if !fulfillmentRecord.DisableActiveScheduling {
+		return nil
+	}
+
+	if fulfillmentRecord.State != fulfillment.StateUnknown {
+		return nil
+	}
+
+	fulfillmentRecord.DisableActiveScheduling = false
+	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }
 
 func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {
