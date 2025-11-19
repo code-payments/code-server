@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	userAgentPattern = fmt.Sprintf("Code/(iOS|Android)/%s", versionPattern)
+	userAgentPattern = fmt.Sprintf("(Code|OpenCodeProtocol)/(iOS|Android)/%s", versionPattern)
 	userAgentRegex   = regexp.MustCompile(userAgentPattern)
 )
 
@@ -26,7 +26,7 @@ type UserAgent struct {
 }
 
 func (ua *UserAgent) String() string {
-	return fmt.Sprintf("Code/%s/%s", ua.DeviceType.String(), ua.Version.String())
+	return fmt.Sprintf("OpenCodeProtocol/%s/%s", ua.DeviceType.String(), ua.Version.String())
 }
 
 // GetUserAgent gets the Code client user agent value from headers in the provided
