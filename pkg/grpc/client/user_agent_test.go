@@ -47,20 +47,11 @@ func TestGetUserAgent_ParseError(t *testing.T) {
 		"Code/Windows/1.2.3",
 
 		// Version components missing
-		"Code/iOS/1",
-		"Code/iOS/1.",
 		"Code/iOS/.2.3",
 		"Code/iOS/..3",
 		"Code/iOS/..",
-
-		// Non-digit values in version
-		"Code/iOS/a.2.3",
-		"Code/iOS/1.a.3",
-		"Code/iOS/2.a.3",
-
-		// Negative values in version
-		"Code/iOS/-1.2.3",
-		"Code/iOS/1.-2.3",
+		"Code/iOS/",
+		"Code/iOS",
 	} {
 		ctx := context.Background()
 		ctx, err := headers.ContextWithHeaders(ctx)

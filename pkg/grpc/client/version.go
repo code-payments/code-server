@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	versionPattern = "\\d+.\\d+(.\\d+)?"
+	versionPattern = "\\d+(.\\d+){0,2}"
 )
 
 var (
