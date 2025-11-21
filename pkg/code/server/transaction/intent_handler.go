@@ -703,6 +703,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 			// Ensure the destination is the intent mint ATA for the client-provided owner,
 			// if provided. We'll check later if this is absolutely required.
+			var isVmSwapPda bool
 			if metadata.DestinationOwner != nil {
 				destinationOwner, err := common.NewAccountFromProto(metadata.DestinationOwner)
 				if err != nil {
@@ -716,6 +717,28 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 				if ata.PublicKey().ToBase58() != destination.PublicKey().ToBase58() {
 					return NewIntentValidationErrorf("destination is not the ata for %s", destinationOwner.PublicKey().ToBase58())
+				}
+
+				vmSwapPdaTimelockRecord, err := h.data.GetTimelockBySwapPda(ctx, destinationOwner.PublicKey().ToBase58())
+				if err == nil {
+					isVmSwapPda = true
+				} else if err != timelock.ErrTimelockNotFound {
+					return err
+				}
+
+				if isVmSwapPda {
+					accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, vmSwapPdaTimelockRecord.VaultAddress)
+					if err != nil {
+						return err
+					}
+
+					if accountInfoRecord.OwnerAccount != initiatorOwnerAccount.PublicKey().ToBase58() {
+						return NewIntentDeniedError("can only send to your own vm swap pda")
+					}
+
+					if accountInfoRecord.MintAccount != intentMint.PublicKey().ToBase58() {
+						return NewIntentValidationError("vm swap pda is for a different mint")
+					}
 				}
 			}
 
@@ -737,34 +760,6 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 
 				if metadata.DestinationOwner == nil {
 					return NewIntentValidationError("destination owner account is required to derive ata")
-				}
-
-				destinationOwner, err := common.NewAccountFromProto(metadata.DestinationOwner)
-				if err != nil {
-					return err
-				}
-
-				var isVmSwapPda bool
-				vmSwapPdaTimelockRecord, err := h.data.GetTimelockBySwapPda(ctx, destinationOwner.PublicKey().ToBase58())
-				if err == nil {
-					isVmSwapPda = true
-				} else if err != timelock.ErrTimelockNotFound {
-					return err
-				}
-
-				if isVmSwapPda {
-					accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, vmSwapPdaTimelockRecord.VaultAddress)
-					if err != nil {
-						return err
-					}
-
-					if accountInfoRecord.OwnerAccount != initiatorOwnerAccount.PublicKey().ToBase58() {
-						return NewIntentDeniedError("can only send to your own vm swap pda")
-					}
-
-					if accountInfoRecord.MintAccount != intentMint.PublicKey().ToBase58() {
-						return NewIntentValidationError("vm swap pda is for a different mint")
-					}
 				}
 
 				// Only VM swap PDAs are subsidized by server
