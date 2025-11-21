@@ -273,7 +273,7 @@ func (s *transactionServer) airdrop(ctx context.Context, intentId string, owner 
 	noncePool, err := transaction.SelectNoncePool(
 		nonce.EnvironmentCvm,
 		common.CodeVmAccount.PublicKey().ToBase58(),
-		nonce.PurposeClientTransaction,
+		nonce.PurposeClientIntent,
 		s.noncePools...,
 	)
 	if err != nil {

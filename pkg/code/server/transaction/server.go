@@ -64,11 +64,21 @@ func NewTransactionServer(
 	_, err := transaction.SelectNoncePool(
 		nonce.EnvironmentCvm,
 		common.CodeVmAccount.PublicKey().ToBase58(),
-		nonce.PurposeClientTransaction,
+		nonce.PurposeClientIntent,
 		noncePools...,
 	)
 	if err != nil {
-		return nil, errors.New("nonce pool for core mint is not provided")
+		return nil, errors.New("nonce pool for core mint intent operations is not provided")
+	}
+
+	_, err = transaction.SelectNoncePool(
+		nonce.EnvironmentSolana,
+		nonce.EnvironmentInstanceSolanaMainnet,
+		nonce.PurposeClientSwap,
+		noncePools...,
+	)
+	if err != nil {
+		return nil, errors.New("nonce pool for swap operations is not provided")
 	}
 
 	s := &transactionServer{

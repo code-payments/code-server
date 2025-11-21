@@ -48,7 +48,7 @@ func TestEstimateUsedSubsidizerBalance(t *testing.T) {
 		nonceRecord.Authority = "code"
 		nonceRecord.Environment = nonce.EnvironmentSolana
 		nonceRecord.EnvironmentInstance = nonce.EnvironmentInstanceSolanaMainnet
-		nonceRecord.Purpose = nonce.PurposeClientTransaction
+		nonceRecord.Purpose = nonce.PurposeClientIntent
 		require.NoError(t, data.SaveNonce(ctx, nonceRecord))
 	}
 

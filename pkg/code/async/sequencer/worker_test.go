@@ -315,7 +315,7 @@ func (e *workerTestEnv) createAnyFulfillmentInState(t *testing.T, state fulfillm
 		Authority:           "code",
 		Environment:         nonce.EnvironmentSolana,
 		EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
-		Purpose:             nonce.PurposeClientTransaction,
+		Purpose:             nonce.PurposeClientIntent,
 		Signature:           *fulfillmentRecord.Signature,
 		State:               nonce.StateReserved,
 	}

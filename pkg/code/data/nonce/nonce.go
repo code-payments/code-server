@@ -43,9 +43,10 @@ type Purpose uint8
 
 const (
 	PurposeUnknown Purpose = iota
-	PurposeClientTransaction
+	PurposeClientIntent
 	PurposeInternalServerProcess
 	PurposeOnDemandTransaction
+	PurposeClientSwap
 )
 
 type Record struct {
@@ -202,12 +203,14 @@ func (p Purpose) String() string {
 	switch p {
 	case PurposeUnknown:
 		return "unknown"
-	case PurposeClientTransaction:
-		return "client_transaction"
+	case PurposeClientIntent:
+		return "client_intent"
 	case PurposeInternalServerProcess:
 		return "internal_server_process"
 	case PurposeOnDemandTransaction:
 		return "on_demand_transaction"
+	case PurposeClientSwap:
+		return "client_swap"
 	}
 
 	return "unknown"

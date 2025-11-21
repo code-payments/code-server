@@ -402,7 +402,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				noncePool, err := transaction.SelectNoncePool(
 					nonce.EnvironmentCvm,
 					vmAccount.PublicKey().ToBase58(),
-					nonce.PurposeClientTransaction,
+					nonce.PurposeClientIntent,
 					s.noncePools...,
 				)
 				if err != nil {
