@@ -1,6 +1,7 @@
 package async_sequencer
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -12,6 +13,7 @@ import (
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/cvm/ram"
 	"github.com/code-payments/code-server/pkg/code/data/cvm/storage"
+	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
@@ -151,4 +153,44 @@ func isInternalVmTransfer(ctx context.Context, data code_data.Provider, destinat
 	default:
 		return false, err
 	}
+}
+
+func isExternalWithdrawToVmSwapPda(ctx context.Context, data code_data.Provider, intentId string, destinationAta *common.Account) (bool, error) {
+	intentRecord, err := data.GetIntent(ctx, intentId)
+	if err != nil {
+		return false, err
+	}
+
+	if intentRecord.IntentType != intent.SendPublicPayment {
+		return false, nil
+	}
+
+	if !intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+		return false, nil
+	}
+
+	owner, err := common.NewAccountFromPublicKeyString(intentRecord.InitiatorOwnerAccount)
+	if err != nil {
+		return false, err
+	}
+
+	mint, err := common.NewAccountFromPublicKeyString(intentRecord.MintAccount)
+	if err != nil {
+		return false, err
+	}
+
+	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
+	if err != nil {
+		return false, err
+	}
+
+	vmSwapAccounts, err := owner.GetVmSwapAccounts(vmConfig)
+	if err != nil {
+		return false, err
+	}
+
+	if !bytes.Equal(destinationAta.PublicKey().ToBytes(), vmSwapAccounts.Ata.PublicKey().ToBytes()) {
+		return false, nil
+	}
+	return vmSwapAccounts.Pda.PublicKey().ToBase58() == intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount, nil
 }
