@@ -256,11 +256,17 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) CanSubmitToBlockchain
 	if err != nil {
 		return false, err
 	}
-	hasCreateOnSendFee, err := h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
+	isCreateOnSend, err := h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
 	if err != nil {
 		return false, err
 	}
-	if isInternalTransfer || !hasCreateOnSendFee {
+	if !isInternalTransfer && !isCreateOnSend {
+		isCreateOnSend, err = isExternalWithdrawToVmSwapPda(ctx, h.data, fulfillmentRecord.Intent, destinationAccount)
+		if err != nil {
+			return false, err
+		}
+	}
+	if isInternalTransfer || !isCreateOnSend {
 		isDestinationAccountCreated, err := isAccountInitialized(ctx, h.data, *fulfillmentRecord.Destination)
 		if err != nil {
 			return false, err
@@ -410,15 +416,24 @@ func (h *NoPrivacyTransferWithAuthorityFulfillmentHandler) MakeOnDemandTransacti
 			*actionRecord.Quantity,
 		)
 	} else {
-		isFeePayment := actionRecord.FeeType != nil
-
-		var isCreateOnSend bool
 		// The Fee payment can be an external transfer, but we know the account
 		// already exists and doesn't need an idempotent create instruction
+		isFeePayment := actionRecord.FeeType != nil
+
+		// Create-on-send is enabled if there was a fee, or it is to an approved
+		// destination for subsidization.
+		var isCreateOnSend bool
 		if !isFeePayment {
 			isCreateOnSend, err = h.data.HasFeeAction(ctx, fulfillmentRecord.Intent, transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL)
 			if err != nil {
 				return nil, nil, err
+			}
+
+			if !isCreateOnSend {
+				isCreateOnSend, err = isExternalWithdrawToVmSwapPda(ctx, h.data, fulfillmentRecord.Intent, destinationToken)
+				if err != nil {
+					return nil, nil, err
+				}
 			}
 		}
 

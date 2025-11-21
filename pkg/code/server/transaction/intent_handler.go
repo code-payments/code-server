@@ -21,6 +21,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/solana"
 )
@@ -725,7 +726,7 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 			}
 
 			// Check whether the destination account is a token account of the same mint that's
-			// been created on the blockchain. If not, a fee is required
+			// been created on the blockchain. If not, a fee is likely required
 			err = validateExternalTokenAccountWithinIntent(ctx, h.data, destination, intentMint)
 			switch err {
 			case nil:
@@ -734,12 +735,41 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 					return err
 				}
 
-				if !simResult.HasAnyFeePayments() {
-					return NewIntentValidationErrorf("%s fee payment is required", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL.String())
-				}
-
 				if metadata.DestinationOwner == nil {
 					return NewIntentValidationError("destination owner account is required to derive ata")
+				}
+
+				destinationOwner, err := common.NewAccountFromProto(metadata.DestinationOwner)
+				if err != nil {
+					return err
+				}
+
+				var isVmSwapPda bool
+				vmSwapPdaTimelockRecord, err := h.data.GetTimelockBySwapPda(ctx, destinationOwner.PublicKey().ToBase58())
+				if err == nil {
+					isVmSwapPda = true
+				} else if err != timelock.ErrTimelockNotFound {
+					return err
+				}
+
+				if isVmSwapPda {
+					accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, vmSwapPdaTimelockRecord.VaultAddress)
+					if err != nil {
+						return err
+					}
+
+					if accountInfoRecord.OwnerAccount != initiatorOwnerAccount.PublicKey().ToBase58() {
+						return NewIntentDeniedError("can only send to your own vm swap pda")
+					}
+
+					if accountInfoRecord.MintAccount != intentMint.PublicKey().ToBase58() {
+						return NewIntentValidationError("vm swap pda is for a different mint")
+					}
+				}
+
+				// Only VM swap PDAs are subsidized by server
+				if !simResult.HasAnyFeePayments() && !isVmSwapPda {
+					return NewIntentValidationErrorf("%s fee payment is required", transactionpb.FeePaymentAction_CREATE_ON_SEND_WITHDRAWAL.String())
 				}
 			}
 
