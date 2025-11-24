@@ -173,3 +173,25 @@ func (r *Record) Validate() error {
 
 	return nil
 }
+
+func (s State) String() string {
+	switch s {
+	case StateCreated:
+		return "created"
+	case StateFunding:
+		return "funding"
+	case StateFunded:
+		return "funded"
+	case StateSubmitting:
+		return "submitting"
+	case StateFinalized:
+		return "finalized"
+	case StateFailed:
+		return "failed"
+	case StateCancelling:
+		return "cancelling"
+	case StateCancelled:
+		return "cancelled"
+	}
+	return "unknown"
+}
