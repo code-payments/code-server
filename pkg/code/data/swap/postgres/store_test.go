@@ -30,7 +30,7 @@ const (
 			to_mint TEXT NOT NULL,
 			amount BIGINT NULL CHECK (amount > 0),
 
-			funding_id TEXT NOT NULL,
+			funding_id TEXT NOT NULL UNIQUE,
 			funding_source INTEGER NOT NULL,
 
 			nonce TEXT NOT NULL,

@@ -76,6 +76,19 @@ func (s *store) GetById(_ context.Context, id string) (*swap.Record, error) {
 	return &cloned, nil
 }
 
+func (s *store) GetByFundingId(_ context.Context, fundingId string) (*swap.Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	item := s.findByFundingId(fundingId)
+	if item == nil {
+		return nil, swap.ErrNotFound
+	}
+
+	cloned := item.Clone()
+	return &cloned, nil
+}
+
 func (s *store) GetAllByOwnerAndState(_ context.Context, owner string, state swap.State) ([]*swap.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -118,9 +131,18 @@ func (s *store) find(data *swap.Record) *swap.Record {
 	return nil
 }
 
-func (s *store) findById(swapID string) *swap.Record {
+func (s *store) findById(swapId string) *swap.Record {
 	for _, item := range s.records {
-		if item.SwapId == swapID {
+		if item.SwapId == swapId {
+			return item
+		}
+	}
+	return nil
+}
+
+func (s *store) findByFundingId(fundingId string) *swap.Record {
+	for _, item := range s.records {
+		if item.FundingId == fundingId {
 			return item
 		}
 	}

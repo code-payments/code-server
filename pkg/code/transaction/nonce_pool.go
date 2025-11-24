@@ -602,3 +602,26 @@ func (np *LocalNoncePool) getBaseMetricKvs() map[string]interface{} {
 		"nonce_pool_type":    np.poolType.String(),
 	}
 }
+
+// UpdateNonceSignature safely transitions a nonce's signature to a new value
+func UpdateNonceSignature(ctx context.Context, data code_data.Provider, address, prevSig, newSig string) error {
+	record, err := data.GetNonce(ctx, address)
+	if err != nil {
+		return err
+	}
+
+	if len(prevSig) == 0 || len(newSig) == 0 {
+		return errors.New("signature is empty")
+	}
+
+	if record.State != nonce.StateReserved {
+		return errors.New("nonce must be in reserved state")
+	}
+
+	if record.Signature != prevSig {
+		return errors.New("previous nonce signature is invalid")
+	}
+
+	record.Signature = newSig
+	return data.SaveNonce(ctx, record)
+}

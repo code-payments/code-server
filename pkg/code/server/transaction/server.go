@@ -61,24 +61,28 @@ func NewTransactionServer(
 
 	conf := configProvider()
 
-	_, err := transaction.SelectNoncePool(
-		nonce.EnvironmentCvm,
-		common.CodeVmAccount.PublicKey().ToBase58(),
-		nonce.PurposeClientIntent,
-		noncePools...,
-	)
-	if err != nil {
-		return nil, errors.New("nonce pool for core mint intent operations is not provided")
+	if !conf.disableSubmitIntent.Get(ctx) {
+		_, err := transaction.SelectNoncePool(
+			nonce.EnvironmentCvm,
+			common.CodeVmAccount.PublicKey().ToBase58(),
+			nonce.PurposeClientIntent,
+			noncePools...,
+		)
+		if err != nil {
+			return nil, errors.New("nonce pool for core mint intent operations is not provided")
+		}
 	}
 
-	_, err = transaction.SelectNoncePool(
-		nonce.EnvironmentSolana,
-		nonce.EnvironmentInstanceSolanaMainnet,
-		nonce.PurposeClientSwap,
-		noncePools...,
-	)
-	if err != nil {
-		return nil, errors.New("nonce pool for swap operations is not provided")
+	if !conf.disableSwaps.Get(ctx) {
+		_, err := transaction.SelectNoncePool(
+			nonce.EnvironmentSolana,
+			nonce.EnvironmentInstanceSolanaMainnet,
+			nonce.PurposeClientSwap,
+			noncePools...,
+		)
+		if err != nil {
+			return nil, errors.New("nonce pool for swap operations is not provided")
+		}
 	}
 
 	s := &transactionServer{
@@ -101,6 +105,7 @@ func NewTransactionServer(
 		localAccountLocks: make(map[string]*sync.Mutex),
 	}
 
+	var err error
 	s.feeCollector, err = common.NewAccountFromPublicKeyString(s.conf.feeCollectorOwnerPublicKey.Get(ctx))
 	if err != nil {
 		return nil, err

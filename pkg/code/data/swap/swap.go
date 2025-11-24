@@ -12,7 +12,14 @@ type State uint8
 // todo: define all states
 const (
 	StateUnknown State = iota
-	StateConfirmed
+	StateCreated
+	StateFunding
+	StateFunded
+	StateSubmitting
+	StateFinalized
+	StateFailed
+	StateCancelling
+	StateCancelled
 )
 
 type FundingSource uint8

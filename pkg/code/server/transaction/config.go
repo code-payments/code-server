@@ -15,6 +15,9 @@ const (
 	DisableSubmitIntentConfigEnvName = envConfigPrefix + "DISABLE_SUBMIT_INTENT"
 	defaultDisableSubmitIntent       = false
 
+	DisableSwapsConfigEnvName = envConfigPrefix + "DISABLE_SWAPS"
+	defaultDisableSwaps       = false
+
 	SubmitIntentTimeoutConfigEnvName = envConfigPrefix + "SUBMIT_INTENT_TIMEOUT"
 	defaultSubmitIntentTimeout       = 5 * time.Second
 
@@ -42,6 +45,7 @@ const (
 
 type conf struct {
 	disableSubmitIntent          config.Bool
+	disableSwaps                 config.Bool
 	disableAntispamChecks        config.Bool // To avoid limits during testing
 	disableAmlChecks             config.Bool // To avoid limits during testing
 	disableBlockchainChecks      config.Bool // To avoid blockchain checks during testing
@@ -63,6 +67,7 @@ func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
 			disableSubmitIntent:          env.NewBoolConfig(DisableSubmitIntentConfigEnvName, defaultDisableSubmitIntent),
+			disableSwaps:                 env.NewBoolConfig(DisableSwapsConfigEnvName, defaultDisableSwaps),
 			disableAntispamChecks:        wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			disableAmlChecks:             wrapper.NewBoolConfig(memory.NewConfig(false), false),
 			disableBlockchainChecks:      wrapper.NewBoolConfig(memory.NewConfig(false), false),

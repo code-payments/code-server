@@ -12,6 +12,7 @@ import (
 	"github.com/code-payments/code-server/pkg/solana/currencycreator"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 	"github.com/code-payments/code-server/pkg/solana/memo"
+	"github.com/code-payments/code-server/pkg/solana/system"
 	"github.com/code-payments/code-server/pkg/solana/token"
 )
 
@@ -42,6 +43,7 @@ type CurrencyCreatorBuySwapHandler struct {
 	mint            *common.Account
 	amount          uint64
 
+	nonce            *common.Account
 	computeUnitLimit uint32
 	computeUnitPrice uint64
 	memoValue        string
@@ -56,6 +58,7 @@ func NewCurrencyCreatorBuySwapHandler(
 	temporaryHolder *common.Account,
 	mint *common.Account,
 	amount uint64,
+	nonce *common.Account,
 ) SwapHandler {
 	return &CurrencyCreatorBuySwapHandler{
 		data:            data,
@@ -66,6 +69,7 @@ func NewCurrencyCreatorBuySwapHandler(
 		mint:            mint,
 		amount:          amount,
 
+		nonce:            nonce,
 		computeUnitLimit: 300_000,
 		computeUnitPrice: 1_000,
 		memoValue:        "buy_v0",
@@ -188,6 +192,7 @@ func (h *CurrencyCreatorBuySwapHandler) MakeInstructions(ctx context.Context) ([
 	)
 
 	return []solana.Instruction{
+		system.AdvanceNonce(h.nonce.PublicKey().ToBytes(), common.GetSubsidizer().PublicKey().ToBytes()),
 		compute_budget.SetComputeUnitLimit(h.computeUnitLimit),
 		compute_budget.SetComputeUnitPrice(h.computeUnitPrice),
 		memo.Instruction(h.memoValue),
@@ -208,6 +213,7 @@ type CurrencyCreatorSellSwapHandler struct {
 	mint            *common.Account
 	amount          uint64
 
+	nonce            *common.Account
 	computeUnitLimit uint32
 	computeUnitPrice uint64
 	memoValue        string
@@ -222,6 +228,7 @@ func NewCurrencyCreatorSellSwapHandler(
 	temporaryHolder *common.Account,
 	mint *common.Account,
 	amount uint64,
+	nonce *common.Account,
 ) SwapHandler {
 	return &CurrencyCreatorSellSwapHandler{
 		data:            data,
@@ -232,6 +239,7 @@ func NewCurrencyCreatorSellSwapHandler(
 		mint:            mint,
 		amount:          amount,
 
+		nonce:            nonce,
 		computeUnitLimit: 300_000,
 		computeUnitPrice: 1_000,
 		memoValue:        "sell_v0",
@@ -354,6 +362,7 @@ func (h *CurrencyCreatorSellSwapHandler) MakeInstructions(ctx context.Context) (
 	)
 
 	return []solana.Instruction{
+		system.AdvanceNonce(h.nonce.PublicKey().ToBytes(), common.GetSubsidizer().PublicKey().ToBytes()),
 		compute_budget.SetComputeUnitLimit(h.computeUnitLimit),
 		compute_budget.SetComputeUnitPrice(h.computeUnitPrice),
 		memo.Instruction(h.memoValue),
@@ -375,6 +384,7 @@ type CurrencyCreatorBuySellSwapHandler struct {
 	toMint          *common.Account
 	amount          uint64
 
+	nonce            *common.Account
 	computeUnitLimit uint32
 	computeUnitPrice uint64
 	memoValue        string
@@ -390,6 +400,7 @@ func NewCurrencyCreatorBuySellSwapHandler(
 	fromMint *common.Account,
 	toMint *common.Account,
 	amount uint64,
+	nonce *common.Account,
 ) SwapHandler {
 	return &CurrencyCreatorBuySellSwapHandler{
 		data:            data,
@@ -401,6 +412,7 @@ func NewCurrencyCreatorBuySellSwapHandler(
 		toMint:          toMint,
 		amount:          amount,
 
+		nonce:            nonce,
 		computeUnitLimit: 400_000,
 		computeUnitPrice: 1_000,
 		memoValue:        "buy_sell_v0",
@@ -572,6 +584,7 @@ func (h *CurrencyCreatorBuySellSwapHandler) MakeInstructions(ctx context.Context
 	)
 
 	return []solana.Instruction{
+		system.AdvanceNonce(h.nonce.PublicKey().ToBytes(), common.GetSubsidizer().PublicKey().ToBytes()),
 		compute_budget.SetComputeUnitLimit(h.computeUnitLimit),
 		compute_budget.SetComputeUnitPrice(h.computeUnitPrice),
 		memo.Instruction(h.memoValue),

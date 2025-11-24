@@ -141,6 +141,21 @@ func dbGetById(ctx context.Context, db *sqlx.DB, id string) (*model, error) {
 	return res, nil
 }
 
+func dbGetByFundingId(ctx context.Context, db *sqlx.DB, fundingId string) (*model, error) {
+	res := &model{}
+
+	query := `SELECT id, swap_id, owner, from_mint, to_mint, amount, funding_id, funding_source, nonce, blockhash, proof_signature, transaction_signature, transaction_blob, state, version, created_at
+		FROM ` + tableName + `
+		WHERE funding_id = $1
+		LIMIT 1`
+
+	err := db.GetContext(ctx, res, query, fundingId)
+	if err != nil {
+		return nil, pgutil.CheckNoRows(err, swap.ErrNotFound)
+	}
+	return res, nil
+}
+
 func dbGetAllByOwnerAndState(ctx context.Context, db *sqlx.DB, owner string, state swap.State) ([]*model, error) {
 	res := []*model{}
 

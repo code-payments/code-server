@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/config"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
+	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 )
 
 var (
@@ -108,6 +110,54 @@ func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Acco
 	}
 }
 
+func EnsureVirtualTimelockAccountIsInitialized(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, vm, owner *Account, waitForInitialization bool) error {
+	vmConfig, err := GetVmConfigForMint(ctx, data, vm)
+	if err != nil {
+		return err
+	}
+
+	timelockAccounts, err := owner.GetTimelockAccounts(vmConfig)
+	if err != nil {
+		return err
+	}
+
+	timelockRecord, err := data.GetTimelockByVault(ctx, timelockAccounts.Vault.PublicKey().ToBase58())
+	if err != nil {
+		return err
+	}
+
+	if !timelockRecord.ExistsOnBlockchain() {
+		initializeFulfillmentRecord, err := data.GetFirstSchedulableFulfillmentByAddressAsSource(ctx, timelockRecord.VaultAddress)
+		if err != nil {
+			return err
+		}
+
+		if initializeFulfillmentRecord.FulfillmentType != fulfillment.InitializeLockedTimelockAccount {
+			return errors.New("expected an initialize locked timelock account fulfillment")
+		}
+
+		err = markFulfillmentAsActivelyScheduled(ctx, data, initializeFulfillmentRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !waitForInitialization {
+		return nil
+	}
+
+	for range 60 {
+		time.Sleep(time.Second)
+
+		_, _, err := GetVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vm, owner)
+		if err == nil {
+			return nil
+		}
+	}
+
+	return errors.New("timed out waiting for initialization")
+}
+
 func GetVirtualTimelockAccountLocationInMemory(ctx context.Context, vmIndexerClient indexerpb.IndexerClient, vm, owner *Account) (*Account, uint16, error) {
 	resp, err := vmIndexerClient.GetVirtualTimelockAccounts(ctx, &indexerpb.GetVirtualTimelockAccountsRequest{
 		VmAccount: &indexerpb.Address{Value: vm.PublicKey().ToBytes()},
@@ -131,4 +181,21 @@ func GetVirtualTimelockAccountLocationInMemory(ctx context.Context, vmIndexerCli
 		return nil, 0, err
 	}
 	return memory, uint16(protoMemory.Index), nil
+}
+
+func markFulfillmentAsActivelyScheduled(ctx context.Context, data code_data.Provider, fulfillmentRecord *fulfillment.Record) error {
+	if fulfillmentRecord.Id == 0 {
+		return nil
+	}
+
+	if !fulfillmentRecord.DisableActiveScheduling {
+		return nil
+	}
+
+	if fulfillmentRecord.State != fulfillment.StateUnknown {
+		return nil
+	}
+
+	fulfillmentRecord.DisableActiveScheduling = false
+	return data.UpdateFulfillment(ctx, fulfillmentRecord)
 }

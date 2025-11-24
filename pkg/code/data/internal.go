@@ -772,6 +772,9 @@ func (dp *DatabaseProvider) SaveSwap(ctx context.Context, record *swap.Record) e
 func (dp *DatabaseProvider) GetSwapById(ctx context.Context, id string) (*swap.Record, error) {
 	return dp.swaps.GetById(ctx, id)
 }
+func (dp *DatabaseProvider) GetSwapByFundingId(ctx context.Context, fundingId string) (*swap.Record, error) {
+	return dp.swaps.GetByFundingId(ctx, fundingId)
+}
 func (dp *DatabaseProvider) GetAllSwapsByOwnerAndState(ctx context.Context, owner string, state swap.State) ([]*swap.Record, error) {
 	return dp.swaps.GetAllByOwnerAndState(ctx, owner, state)
 }

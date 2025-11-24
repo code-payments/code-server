@@ -26,6 +26,7 @@ func TestLocalNoncePool(t *testing.T) {
 		{"Reload", testLocalNoncePoolReload},
 		{"Refresh", testLocalNoncePoolRefresh},
 		{"ReserveWithSignatureEdgeCases", testLocalNoncePoolReserveWithSignatureEdgeCases},
+		{"UpdateSignature", testLocalNoncePoolUpdateSignature},
 	} {
 		t.Run(
 			tc.name,
@@ -250,6 +251,31 @@ func testLocalNoncePoolReserveWithSignatureEdgeCases(nt *localNoncePoolTest) {
 	require.NoError(nt.t, err)
 	require.Equal(nt.t, actual.State, nonce.StateUnknown)
 	require.Empty(nt.t, actual.Signature)
+}
+
+func testLocalNoncePoolUpdateSignature(nt *localNoncePoolTest) {
+	ctx := context.Background()
+
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent)
+
+	_, err := nt.pool.load(ctx, nt.pool.opts.desiredPoolSize)
+	require.NoError(nt.t, err)
+
+	n, err := nt.pool.GetNonce(ctx)
+	require.NoError(nt.t, err)
+	require.NotNil(nt.t, n)
+
+	require.Error(nt.t, UpdateNonceSignature(ctx, nt.pool.data, n.Account.PublicKey().ToBase58(), "signature", "new_signature"))
+
+	require.NoError(nt.t, n.MarkReservedWithSignature(ctx, "signature1"))
+
+	require.Error(nt.t, UpdateNonceSignature(ctx, nt.pool.data, n.Account.PublicKey().ToBase58(), "signature2", "signature3"))
+	require.NoError(nt.t, UpdateNonceSignature(ctx, nt.pool.data, n.Account.PublicKey().ToBase58(), "signature1", "signature2"))
+
+	actual, err := nt.data.GetNonce(ctx, n.record.Address)
+	require.NoError(nt.t, err)
+	require.Equal(nt.t, actual.State, nonce.StateReserved)
+	require.Equal(nt.t, "signature2", actual.Signature)
 }
 
 type localNoncePoolTest struct {
