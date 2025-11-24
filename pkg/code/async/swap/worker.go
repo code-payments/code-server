@@ -43,7 +43,6 @@ func (p *service) worker(serviceCtx context.Context, state swap.State, interval 
 				return err
 			}
 
-			// Process the batch of nonce accounts in parallel
 			var wg sync.WaitGroup
 			for _, item := range items {
 				wg.Add(1)
