@@ -33,6 +33,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
+	"github.com/code-payments/code-server/pkg/code/data/swap"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/code/data/vault"
@@ -50,6 +51,7 @@ import (
 	messaging_memory_client "github.com/code-payments/code-server/pkg/code/data/messaging/memory"
 	nonce_memory_client "github.com/code-payments/code-server/pkg/code/data/nonce/memory"
 	rendezvous_memory_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/memory"
+	swap_memory_client "github.com/code-payments/code-server/pkg/code/data/swap/memory"
 	timelock_memory_client "github.com/code-payments/code-server/pkg/code/data/timelock/memory"
 	transaction_memory_client "github.com/code-payments/code-server/pkg/code/data/transaction/memory"
 	vault_memory_client "github.com/code-payments/code-server/pkg/code/data/vault/memory"
@@ -67,6 +69,7 @@ import (
 	messaging_postgres_client "github.com/code-payments/code-server/pkg/code/data/messaging/postgres"
 	nonce_postgres_client "github.com/code-payments/code-server/pkg/code/data/nonce/postgres"
 	rendezvous_postgres_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/postgres"
+	swap_postgres_client "github.com/code-payments/code-server/pkg/code/data/swap/postgres"
 	timelock_postgres_client "github.com/code-payments/code-server/pkg/code/data/timelock/postgres"
 	transaction_postgres_client "github.com/code-payments/code-server/pkg/code/data/transaction/postgres"
 	vault_postgres_client "github.com/code-payments/code-server/pkg/code/data/vault/postgres"
@@ -223,6 +226,13 @@ type DatabaseData interface {
 	DeleteRendezvous(ctx context.Context, key, address string) error
 	GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error)
 
+	// Swaps
+	// --------------------------------------------------------------------------------
+	SaveSwap(ctx context.Context, record *swap.Record) error
+	GetSwapById(ctx context.Context, id string) (*swap.Record, error)
+	GetAllSwapsByOwnerAndState(ctx context.Context, owner string, state swap.State) ([]*swap.Record, error)
+	GetAllSwapsByState(ctx context.Context, state swap.State, opts ...query.Option) ([]*swap.Record, error)
+
 	// Timelocks
 	// --------------------------------------------------------------------------------
 	SaveTimelock(ctx context.Context, record *timelock.Record) error
@@ -270,6 +280,7 @@ type DatabaseProvider struct {
 	messages     messaging.Store
 	nonces       nonce.Store
 	rendezvous   rendezvous.Store
+	swaps        swap.Store
 	timelocks    timelock.Store
 	transactions transaction.Store
 	vault        vault.Store
@@ -315,6 +326,7 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		messages:     messaging_postgres_client.New(db),
 		nonces:       nonce_postgres_client.New(db),
 		rendezvous:   rendezvous_postgres_client.New(db),
+		swaps:        swap_postgres_client.New(db),
 		timelocks:    timelock_postgres_client.New(db),
 		transactions: transaction_postgres_client.New(db),
 		vault:        vault_postgres_client.New(db),
@@ -341,6 +353,7 @@ func NewTestDatabaseProvider() DatabaseData {
 		messages:     messaging_memory_client.New(),
 		nonces:       nonce_memory_client.New(),
 		rendezvous:   rendezvous_memory_client.New(),
+		swaps:        swap_memory_client.New(),
 		timelocks:    timelock_memory_client.New(),
 		transactions: transaction_memory_client.New(),
 		vault:        vault_memory_client.New(),
@@ -749,6 +762,28 @@ func (dp *DatabaseProvider) DeleteRendezvous(ctx context.Context, key, address s
 }
 func (dp *DatabaseProvider) GetRendezvous(ctx context.Context, key string) (*rendezvous.Record, error) {
 	return dp.rendezvous.Get(ctx, key)
+}
+
+// Swaps
+// --------------------------------------------------------------------------------
+func (dp *DatabaseProvider) SaveSwap(ctx context.Context, record *swap.Record) error {
+	return dp.swaps.Save(ctx, record)
+}
+func (dp *DatabaseProvider) GetSwapById(ctx context.Context, id string) (*swap.Record, error) {
+	return dp.swaps.GetById(ctx, id)
+}
+func (dp *DatabaseProvider) GetSwapByFundingId(ctx context.Context, fundingId string) (*swap.Record, error) {
+	return dp.swaps.GetByFundingId(ctx, fundingId)
+}
+func (dp *DatabaseProvider) GetAllSwapsByOwnerAndState(ctx context.Context, owner string, state swap.State) ([]*swap.Record, error) {
+	return dp.swaps.GetAllByOwnerAndState(ctx, owner, state)
+}
+func (dp *DatabaseProvider) GetAllSwapsByState(ctx context.Context, state swap.State, opts ...query.Option) ([]*swap.Record, error) {
+	req, err := query.DefaultPaginationHandler(opts...)
+	if err != nil {
+		return nil, err
+	}
+	return dp.swaps.GetAllByState(ctx, state, req.Cursor, req.Limit, req.SortBy)
 }
 
 // Timelocks

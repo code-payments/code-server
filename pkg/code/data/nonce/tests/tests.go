@@ -47,7 +47,7 @@ func testRoundTrip(t *testing.T, s nonce.Store) {
 			Blockhash:           "test_blockhash",
 			Environment:         nonce.EnvironmentSolana,
 			EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
-			Purpose:             nonce.PurposeClientTransaction,
+			Purpose:             nonce.PurposeClientIntent,
 			State:               nonce.StateClaimed,
 			ClaimNodeID:         pointer.String("test_claim_node_id"),
 			ClaimExpiresAt:      pointer.Time(time.Now().Add(time.Hour)),
@@ -276,12 +276,12 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		ctx := context.Background()
 
 		expected := []nonce.Record{
-			{Address: "t1", Authority: "a1", Blockhash: "b1", State: nonce.StateUnknown, Purpose: nonce.PurposeClientTransaction, Signature: "s1"},
-			{Address: "t2", Authority: "a2", Blockhash: "b1", State: nonce.StateInvalid, Purpose: nonce.PurposeClientTransaction, Signature: "s2"},
-			{Address: "t3", Authority: "a3", Blockhash: "b1", State: nonce.StateReserved, Purpose: nonce.PurposeClientTransaction, Signature: "s3"},
-			{Address: "t4", Authority: "a1", Blockhash: "b2", State: nonce.StateReserved, Purpose: nonce.PurposeClientTransaction, Signature: "s4"},
+			{Address: "t1", Authority: "a1", Blockhash: "b1", State: nonce.StateUnknown, Purpose: nonce.PurposeClientIntent, Signature: "s1"},
+			{Address: "t2", Authority: "a2", Blockhash: "b1", State: nonce.StateInvalid, Purpose: nonce.PurposeClientIntent, Signature: "s2"},
+			{Address: "t3", Authority: "a3", Blockhash: "b1", State: nonce.StateReserved, Purpose: nonce.PurposeClientIntent, Signature: "s3"},
+			{Address: "t4", Authority: "a1", Blockhash: "b2", State: nonce.StateReserved, Purpose: nonce.PurposeClientIntent, Signature: "s4"},
 			{Address: "t5", Authority: "a2", Blockhash: "b2", State: nonce.StateReserved, Purpose: nonce.PurposeInternalServerProcess, Signature: "s5"},
-			{Address: "t6", Authority: "a3", Blockhash: "b2", State: nonce.StateInvalid, Purpose: nonce.PurposeClientTransaction, Signature: "s6"},
+			{Address: "t6", Authority: "a3", Blockhash: "b2", State: nonce.StateInvalid, Purpose: nonce.PurposeClientIntent, Signature: "s6"},
 		}
 
 		for index, item := range expected {
@@ -312,7 +312,7 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 3, count)
 
-		count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, nonce.PurposeClientTransaction)
+		count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateReserved, nonce.PurposeClientIntent)
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, count)
 
@@ -320,7 +320,7 @@ func testGetCount(t *testing.T, s nonce.Store) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, count)
 
-		count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeClientTransaction)
+		count, err = s.CountByStateAndPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.StateUnknown, nonce.PurposeClientIntent)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, count)
 
@@ -337,12 +337,12 @@ func testBatchClaimAvailableByPurpose(t *testing.T, s nonce.Store) {
 		minExpiry := time.Now().Add(time.Hour).Truncate(time.Millisecond)
 		maxExpiry := time.Now().Add(2 * time.Hour).Truncate(time.Millisecond)
 
-		nonces, err := s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 100, "my_node_id", minExpiry, maxExpiry)
+		nonces, err := s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent, 100, "my_node_id", minExpiry, maxExpiry)
 		require.Equal(t, nonce.ErrNonceNotFound, err)
 		require.Empty(t, nonces)
 
 		for _, purpose := range []nonce.Purpose{
-			nonce.PurposeClientTransaction,
+			nonce.PurposeClientIntent,
 			nonce.PurposeInternalServerProcess,
 		} {
 			for _, state := range []nonce.State{
@@ -396,7 +396,7 @@ func testBatchClaimAvailableByPurpose(t *testing.T, s nonce.Store) {
 				Blockhash:           "bh",
 				Environment:         nonce.EnvironmentCvm,
 				EnvironmentInstance: "pubkey",
-				Purpose:             nonce.PurposeClientTransaction,
+				Purpose:             nonce.PurposeClientIntent,
 				State:               nonce.StateClaimed,
 				Signature:           "",
 				ClaimNodeID:         pointer.String("other_node_id"),
@@ -407,7 +407,7 @@ func testBatchClaimAvailableByPurpose(t *testing.T, s nonce.Store) {
 
 		var claimed []*nonce.Record
 		for remaining := 75; remaining > 0; {
-			nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 10, "my_node_d", minExpiry, maxExpiry)
+			nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent, 10, "my_node_d", minExpiry, maxExpiry)
 			require.NoError(t, err)
 			require.Len(t, nonces, min(remaining, 10))
 
@@ -424,14 +424,14 @@ func testBatchClaimAvailableByPurpose(t *testing.T, s nonce.Store) {
 				require.LessOrEqual(t, *actual.ClaimExpiresAt, maxExpiry)
 				require.Equal(t, nonce.EnvironmentSolana, actual.Environment)
 				require.Equal(t, nonce.EnvironmentInstanceSolanaMainnet, actual.EnvironmentInstance)
-				require.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
+				require.Equal(t, nonce.PurposeClientIntent, actual.Purpose)
 				require.EqualValues(t, 2, actual.Version)
 
 				claimed = append(claimed, actual)
 			}
 		}
 
-		nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 10, "my_node_id", minExpiry, maxExpiry)
+		nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent, 10, "my_node_id", minExpiry, maxExpiry)
 		require.Equal(t, nonce.ErrNonceNotFound, err)
 		require.Empty(t, nonces)
 
@@ -442,7 +442,7 @@ func testBatchClaimAvailableByPurpose(t *testing.T, s nonce.Store) {
 			s.Save(ctx, claimed[i])
 		}
 
-		nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 30, "my_node_id2", minExpiry, maxExpiry)
+		nonces, err = s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent, 30, "my_node_id2", minExpiry, maxExpiry)
 		require.NoError(t, err)
 		require.Len(t, nonces, 20)
 
@@ -462,7 +462,7 @@ func testBatchClaimAvailableByPurpose(t *testing.T, s nonce.Store) {
 			require.LessOrEqual(t, *actual.ClaimExpiresAt, maxExpiry)
 			require.Equal(t, nonce.EnvironmentSolana, actual.Environment)
 			require.Equal(t, nonce.EnvironmentInstanceSolanaMainnet, actual.EnvironmentInstance)
-			require.Equal(t, nonce.PurposeClientTransaction, actual.Purpose)
+			require.Equal(t, nonce.PurposeClientIntent, actual.Purpose)
 			require.Equal(t, claimed[i].Address, actual.Address)
 			require.EqualValues(t, 4, actual.Version)
 		}
@@ -478,12 +478,12 @@ func testBatchClaimAvailableByPurposeExpirationRandomness(t *testing.T, s nonce.
 
 		for i := 0; i < 1000; i++ {
 			record := &nonce.Record{
-				Address:             fmt.Sprintf("nonce_%s_%s_%d", nonce.PurposeClientTransaction, nonce.StateAvailable, i),
+				Address:             fmt.Sprintf("nonce_%s_%s_%d", nonce.PurposeClientIntent, nonce.StateAvailable, i),
 				Authority:           "authority",
 				Blockhash:           "bh",
 				Environment:         nonce.EnvironmentSolana,
 				EnvironmentInstance: nonce.EnvironmentInstanceSolanaMainnet,
-				Purpose:             nonce.PurposeClientTransaction,
+				Purpose:             nonce.PurposeClientIntent,
 				State:               nonce.StateAvailable,
 				Signature:           "",
 			}
@@ -491,7 +491,7 @@ func testBatchClaimAvailableByPurposeExpirationRandomness(t *testing.T, s nonce.
 			require.NoError(t, s.Save(ctx, record))
 		}
 
-		nonces, err := s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction, 1000, "my_node_id", min, max)
+		nonces, err := s.BatchClaimAvailableByPurpose(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent, 1000, "my_node_id", min, max)
 		require.NoError(t, err)
 		require.Len(t, nonces, 1000)
 

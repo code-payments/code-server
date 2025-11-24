@@ -26,6 +26,7 @@ func TestLocalNoncePool(t *testing.T) {
 		{"Reload", testLocalNoncePoolReload},
 		{"Refresh", testLocalNoncePoolRefresh},
 		{"ReserveWithSignatureEdgeCases", testLocalNoncePoolReserveWithSignatureEdgeCases},
+		{"UpdateSignature", testLocalNoncePoolUpdateSignature},
 	} {
 		t.Run(
 			tc.name,
@@ -41,10 +42,10 @@ func TestLocalNoncePool(t *testing.T) {
 func testLocalNoncePoolHappyPath(nt *localNoncePoolTest) {
 	start := time.Now()
 
-	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent)
 	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeOnDemandTransaction)
-	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaDevnet, nonce.PurposeClientTransaction)
-	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentCvm, testutil.NewRandomAccount(nt.t).PublicKey().ToBase58(), nonce.PurposeClientTransaction)
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaDevnet, nonce.PurposeClientIntent)
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentCvm, testutil.NewRandomAccount(nt.t).PublicKey().ToBase58(), nonce.PurposeClientIntent)
 
 	ctx := context.Background()
 
@@ -72,7 +73,7 @@ func testLocalNoncePoolHappyPath(nt *localNoncePoolTest) {
 		require.NoError(nt.t, err)
 		require.Equal(nt.t, actual.Environment, nonce.EnvironmentSolana)
 		require.Equal(nt.t, actual.EnvironmentInstance, nonce.EnvironmentInstanceSolanaMainnet)
-		require.Equal(nt.t, actual.Purpose, nonce.PurposeClientTransaction)
+		require.Equal(nt.t, actual.Purpose, nonce.PurposeClientIntent)
 		require.Equal(nt.t, actual.State, nonce.StateClaimed)
 		require.Equal(nt.t, *actual.ClaimNodeID, nt.pool.opts.nodeID)
 		require.True(nt.t, actual.ClaimExpiresAt.After(start.Add(nt.pool.opts.minExpiration)))
@@ -152,7 +153,7 @@ func testLocalNoncePoolHappyPath(nt *localNoncePoolTest) {
 func testLocalNoncePoolReload(nt *localNoncePoolTest) {
 	ctx := context.Background()
 
-	nt.initializeNonces(10*nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+	nt.initializeNonces(10*nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent)
 
 	_, err := nt.pool.load(ctx, nt.pool.opts.desiredPoolSize)
 	require.NoError(nt.t, err)
@@ -183,7 +184,7 @@ func testLocalNoncePoolReload(nt *localNoncePoolTest) {
 func testLocalNoncePoolRefresh(nt *localNoncePoolTest) {
 	ctx := context.Background()
 
-	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent)
 
 	_, err := nt.pool.load(ctx, nt.pool.opts.desiredPoolSize)
 	require.NoError(nt.t, err)
@@ -216,7 +217,7 @@ func testLocalNoncePoolRefresh(nt *localNoncePoolTest) {
 func testLocalNoncePoolReserveWithSignatureEdgeCases(nt *localNoncePoolTest) {
 	ctx := context.Background()
 
-	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientTransaction)
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent)
 
 	_, err := nt.pool.load(ctx, nt.pool.opts.desiredPoolSize)
 	require.NoError(nt.t, err)
@@ -252,6 +253,31 @@ func testLocalNoncePoolReserveWithSignatureEdgeCases(nt *localNoncePoolTest) {
 	require.Empty(nt.t, actual.Signature)
 }
 
+func testLocalNoncePoolUpdateSignature(nt *localNoncePoolTest) {
+	ctx := context.Background()
+
+	nt.initializeNonces(nt.pool.opts.desiredPoolSize, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, nonce.PurposeClientIntent)
+
+	_, err := nt.pool.load(ctx, nt.pool.opts.desiredPoolSize)
+	require.NoError(nt.t, err)
+
+	n, err := nt.pool.GetNonce(ctx)
+	require.NoError(nt.t, err)
+	require.NotNil(nt.t, n)
+
+	require.Error(nt.t, UpdateNonceSignature(ctx, nt.pool.data, n.Account.PublicKey().ToBase58(), "signature", "new_signature"))
+
+	require.NoError(nt.t, n.MarkReservedWithSignature(ctx, "signature1"))
+
+	require.Error(nt.t, UpdateNonceSignature(ctx, nt.pool.data, n.Account.PublicKey().ToBase58(), "signature2", "signature3"))
+	require.NoError(nt.t, UpdateNonceSignature(ctx, nt.pool.data, n.Account.PublicKey().ToBase58(), "signature1", "signature2"))
+
+	actual, err := nt.data.GetNonce(ctx, n.record.Address)
+	require.NoError(nt.t, err)
+	require.Equal(nt.t, actual.State, nonce.StateReserved)
+	require.Equal(nt.t, "signature2", actual.Signature)
+}
+
 type localNoncePoolTest struct {
 	t    *testing.T
 	pool *LocalNoncePool
@@ -268,7 +294,7 @@ func newLocalNoncePoolTest(t *testing.T) *localNoncePoolTest {
 		nil,
 		nonce.EnvironmentSolana,
 		nonce.EnvironmentInstanceSolanaMainnet,
-		nonce.PurposeClientTransaction,
+		nonce.PurposeClientIntent,
 		WithNoncePoolRefreshInterval(time.Second),
 		WithNoncePoolRefreshPoolInterval(2*time.Second),
 		WithNoncePoolMinExpiration(10*time.Second),

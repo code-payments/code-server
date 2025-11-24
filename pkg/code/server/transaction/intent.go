@@ -29,6 +29,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/grpc/client"
 	"github.com/code-payments/code-server/pkg/pointer"
+	"github.com/code-payments/code-server/pkg/protoutil"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/code-payments/code-server/pkg/solana/cvm"
 )
@@ -44,7 +45,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 	log = client.InjectLoggingMetadata(ctx, log)
 
 	if s.conf.disableSubmitIntent.Get(ctx) {
-		return status.Error(codes.Unavailable, "temporarily unavailable")
+		return handleSubmitIntentError(ctx, streamer, nil, status.Error(codes.Unavailable, "temporarily unavailable"))
 	}
 
 	okResp := &transactionpb.SubmitIntentResponse{
@@ -57,7 +58,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 
 	// Client initiates phase 1 of the RPC by submitting and intent via a set of
 	// actions and metadata.
-	req, err := s.boundedSubmitIntentRecv(ctx, streamer)
+	req, err := protoutil.BoundedReceive[transactionpb.SubmitIntentRequest](ctx, streamer, s.conf.clientReceiveTimeout.Get(ctx))
 	if err != nil {
 		log.WithError(err).Info("error receiving request from client")
 		return handleSubmitIntentError(ctx, streamer, nil, err)
@@ -402,7 +403,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 				noncePool, err := transaction.SelectNoncePool(
 					nonce.EnvironmentCvm,
 					vmAccount.PublicKey().ToBase58(),
-					nonce.PurposeClientTransaction,
+					nonce.PurposeClientIntent,
 					s.noncePools...,
 				)
 				if err != nil {
@@ -529,7 +530,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 		}
 
-		req, err = s.boundedSubmitIntentRecv(ctx, streamer)
+		req, err = protoutil.BoundedReceive[transactionpb.SubmitIntentRequest](ctx, streamer, s.conf.clientReceiveTimeout.Get(ctx))
 		if err != nil {
 			log.WithError(err).Info("error receiving request from client")
 			return handleSubmitIntentError(ctx, streamer, intentRecord, err)
@@ -692,21 +693,6 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		return handleSubmitIntentError(ctx, streamer, intentRecord, err)
 	}
 	return nil
-}
-
-func (s *transactionServer) boundedSubmitIntentRecv(ctx context.Context, streamer transactionpb.Transaction_SubmitIntentServer) (req *transactionpb.SubmitIntentRequest, err error) {
-	done := make(chan struct{})
-	go func() {
-		req, err = streamer.Recv()
-		close(done)
-	}()
-
-	select {
-	case <-time.After(s.conf.clientReceiveTimeout.Get(ctx)):
-		return nil, ErrTimedOutReceivingRequest
-	case <-done:
-		return req, err
-	}
 }
 
 func (s *transactionServer) GetIntentMetadata(ctx context.Context, req *transactionpb.GetIntentMetadataRequest) (*transactionpb.GetIntentMetadataResponse, error) {

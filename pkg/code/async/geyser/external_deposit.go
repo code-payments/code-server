@@ -91,28 +91,20 @@ func maybeInitiateExternalDepositIntoVm(ctx context.Context, data code_data.Prov
 func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, userAuthority, mint *common.Account, balance uint64) error {
 	vmConfig, err := common.GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error getting vm config")
 	}
 
 	timelockAccounts, err := userAuthority.GetTimelockAccounts(vmConfig)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error getting timelock accounts")
 	}
 
-	err = ensureVirtualTimelockAccountIsInitialzed(ctx, data, timelockAccounts.Vault)
+	err = common.EnsureVirtualTimelockAccountIsInitialized(ctx, data, vmIndexerClient, vmConfig.Vm, userAuthority, true)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error ensuring vta is initialized")
 	}
 
-	var memoryAccount *common.Account
-	var memoryIndex uint16
-	_, err = retry.Retry(
-		func() error {
-			memoryAccount, memoryIndex, err = common.GetVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
-			return err
-		},
-		waitForFinalizationRetryStrategies...,
-	)
+	memoryAccount, memoryIndex, err := common.GetVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, userAuthority)
 	if err != nil {
 		return errors.Wrap(err, "error getting vta location in memory")
 	}
