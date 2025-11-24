@@ -73,7 +73,7 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 				if err != nil {
 					continue
 				}
-				recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeInternalServerProcess, count)
+				recordNonceCountEvent(ctx, nonce.EnvironmentSolana, nonce.EnvironmentInstanceSolanaMainnet, state, nonce.PurposeClientSwap, count)
 			}
 
 			delay = time.Second - time.Since(start)
