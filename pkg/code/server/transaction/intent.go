@@ -594,6 +594,13 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 			return err
 		}
 
+		// Save additional state related to the intent
+		err = intentHandler.OnCommitToDB(ctx)
+		if err != nil {
+			log.WithError(err).Warn("failure executing intent db commit callback handler")
+			return err
+		}
+
 		// Save all actions
 		err = s.data.PutAllActions(ctx, actionRecords...)
 		if err != nil {
@@ -605,7 +612,7 @@ func (s *transactionServer) SubmitIntent(streamer transactionpb.Transaction_Subm
 		for _, actionHandler := range actionHandlers {
 			err = actionHandler.OnCommitToDB(ctx)
 			if err != nil {
-				log.WithError(err).Warn("failure executing action db save callback handler")
+				log.WithError(err).Warn("failure executing action db commit callback handler")
 				return err
 			}
 		}
