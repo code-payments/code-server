@@ -51,6 +51,7 @@ func (p *service) markSwapFinalized(ctx context.Context, record *swap.Record) er
 		return err
 	}
 
+	record.TransactionBlob = nil
 	record.State = swap.StateFinalized
 	return p.data.SaveSwap(ctx, record)
 }
@@ -66,6 +67,7 @@ func (p *service) markSwapFailed(ctx context.Context, record *swap.Record) error
 		return err
 	}
 
+	record.TransactionBlob = nil
 	record.State = swap.StateFailed
 	return p.data.SaveSwap(ctx, record)
 }

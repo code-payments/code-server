@@ -163,10 +163,6 @@ func (r *Record) Validate() error {
 		return errors.New("transaction signature is empty")
 	}
 
-	if r.TransactionSignature != nil && len(r.TransactionBlob) == 0 {
-		return errors.New("transaction blob is empty")
-	}
-
 	if len(r.TransactionBlob) != 0 && r.TransactionSignature == nil {
 		return errors.New("transaction signature is missing")
 	}
