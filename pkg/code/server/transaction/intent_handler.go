@@ -21,6 +21,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/account"
 	"github.com/code-payments/code-server/pkg/code/data/action"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
+	"github.com/code-payments/code-server/pkg/code/data/swap"
 	"github.com/code-payments/code-server/pkg/code/data/timelock"
 	currency_lib "github.com/code-payments/code-server/pkg/currency"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -62,6 +63,11 @@ type CreateIntentHandler interface {
 
 	// AllowCreation determines whether the new intent creation should be allowed.
 	AllowCreation(ctx context.Context, intentRecord *intent.Record, metadata *transactionpb.Metadata, actions []*transactionpb.Action) error
+
+	// OnCommitToDB is a callback when the intent is being committed to the DB
+	// within the scope of a DB transaction. Additional supporting DB records
+	// relevant to the intent should be saved here.
+	OnCommitToDB(ctx context.Context) error
 }
 
 type OpenAccountsIntentHandler struct {
@@ -221,7 +227,17 @@ func (h *OpenAccountsIntentHandler) AllowCreation(ctx context.Context, intentRec
 	// Part 4: Validate fee payments
 	//
 
-	return validateFeePayments(ctx, h.data, h.conf, intentRecord, simResult)
+	err = validateFeePayments(ctx, h.data, h.conf, intentRecord, simResult)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 5: Validate reserved intent IDs
+	//
+
+	_, err = validateSwapFunding(ctx, h.data, intentRecord)
+	return err
 }
 
 func (h *OpenAccountsIntentHandler) validateActions(
@@ -331,6 +347,10 @@ func (h *OpenAccountsIntentHandler) validateActions(
 	return nil
 }
 
+func (h *OpenAccountsIntentHandler) OnCommitToDB(ctx context.Context) error {
+	return nil
+}
+
 type SendPublicPaymentIntentHandler struct {
 	conf          *conf
 	data          code_data.Provider
@@ -338,6 +358,7 @@ type SendPublicPaymentIntentHandler struct {
 	amlGuard      *aml.Guard
 
 	cachedDestinationAccountInfoRecord *account.Record
+	cachedSwapRecord                   *swap.Record
 }
 
 func NewSendPublicPaymentIntentHandler(
@@ -574,7 +595,16 @@ func (h *SendPublicPaymentIntentHandler) AllowCreation(ctx context.Context, inte
 	}
 
 	//
-	// Part 7: Validate the individual actions
+	// Part 7: Validate reserved intent IDs
+	//
+
+	h.cachedSwapRecord, err = validateSwapFunding(ctx, h.data, intentRecord)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 8: Validate the individual actions
 	//
 
 	return h.validateActions(
@@ -719,26 +749,11 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 					return NewIntentValidationErrorf("destination is not the ata for %s", destinationOwner.PublicKey().ToBase58())
 				}
 
-				vmSwapPdaTimelockRecord, err := h.data.GetTimelockBySwapPda(ctx, destinationOwner.PublicKey().ToBase58())
+				_, err = h.data.GetTimelockBySwapPda(ctx, destinationOwner.PublicKey().ToBase58())
 				if err == nil {
 					isVmSwapPda = true
 				} else if err != timelock.ErrTimelockNotFound {
 					return err
-				}
-
-				if isVmSwapPda {
-					accountInfoRecord, err := h.data.GetAccountInfoByTokenAddress(ctx, vmSwapPdaTimelockRecord.VaultAddress)
-					if err != nil {
-						return err
-					}
-
-					if accountInfoRecord.OwnerAccount != initiatorOwnerAccount.PublicKey().ToBase58() {
-						return NewIntentDeniedError("can only send to your own vm swap pda")
-					}
-
-					if accountInfoRecord.MintAccount != intentMint.PublicKey().ToBase58() {
-						return NewIntentValidationError("vm swap pda is for a different mint")
-					}
 				}
 			}
 
@@ -871,6 +886,15 @@ func (h *SendPublicPaymentIntentHandler) validateActions(
 		if len(simResult.GetClosedAccounts()) > 0 {
 			return NewIntentValidationError("cannot close any account")
 		}
+	}
+
+	return nil
+}
+
+func (h *SendPublicPaymentIntentHandler) OnCommitToDB(ctx context.Context) error {
+	if h.cachedSwapRecord != nil {
+		h.cachedSwapRecord.State = swap.StateFunding
+		return h.data.SaveSwap(ctx, h.cachedSwapRecord)
 	}
 
 	return nil
@@ -1087,7 +1111,16 @@ func (h *ReceivePaymentsPubliclyIntentHandler) AllowCreation(ctx context.Context
 	}
 
 	//
-	// Part 7: Validate the individual actions
+	// Part 7: Validate reserved intent IDs
+	//
+
+	_, err = validateSwapFunding(ctx, h.data, intentRecord)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 8: Validate the individual actions
 	//
 
 	return h.validateActions(
@@ -1192,6 +1225,10 @@ func (h *ReceivePaymentsPubliclyIntentHandler) validateActions(
 	//
 
 	return validateMoneyMovementActionUserAccounts(ctx, h.data, intent.ReceivePaymentsPublicly, initiatorAccountsByVault, actions)
+}
+
+func (h *ReceivePaymentsPubliclyIntentHandler) OnCommitToDB(ctx context.Context) error {
+	return nil
 }
 
 type PublicDistributionIntentHandler struct {
@@ -1392,7 +1429,16 @@ func (h *PublicDistributionIntentHandler) AllowCreation(ctx context.Context, int
 	}
 
 	//
-	// Part 5: Validate actions
+	// Part 5: Validate reserved intent IDs
+	//
+
+	_, err = validateSwapFunding(ctx, h.data, intentRecord)
+	if err != nil {
+		return err
+	}
+
+	//
+	// Part 6: Validate actions
 	//
 
 	return h.validateActions(typedMetadata, actions, simResult)
@@ -1522,6 +1568,10 @@ func (h *PublicDistributionIntentHandler) validateActions(
 		return NewActionValidationError(closedAccounts[0].CloseAction, "action cannot be an auto-return")
 	}
 
+	return nil
+}
+
+func (h *PublicDistributionIntentHandler) OnCommitToDB(ctx context.Context) error {
 	return nil
 }
 
@@ -1940,6 +1990,89 @@ func validateDistributedPool(ctx context.Context, data code_data.Provider, poolV
 	}
 
 	return nil
+}
+
+func validateSwapFunding(ctx context.Context, data code_data.Provider, intentRecord *intent.Record) (*swap.Record, error) {
+	swapRecord, err := data.GetSwapByFundingId(ctx, intentRecord.IntentId)
+	if err != nil && err != swap.ErrNotFound {
+		return nil, err
+	}
+	isIntentReservedForSwap := swapRecord != nil
+
+	if isIntentReservedForSwap && swapRecord.State != swap.StateCreated {
+		return nil, errors.Errorf("unexpected swap state: %s", swapRecord.State)
+	}
+
+	// Intent-specific validation for swaps
+	if isIntentReservedForSwap {
+		if intentRecord.IntentType != intent.SendPublicPayment {
+			return nil, NewIntentDeniedError("intent id reserved to fund swap")
+		}
+
+		if intentRecord.InitiatorOwnerAccount != swapRecord.Owner {
+			return nil, NewIntentDeniedError("not the owner of the swap")
+		}
+
+		if !intentRecord.SendPublicPaymentMetadata.IsWithdrawal {
+			return nil, NewIntentValidationError("swap funding must be an external withdrawal")
+		}
+
+		if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) == 0 {
+			return nil, NewIntentValidationError("destination owner must be a vm swap pda")
+		}
+
+		if intentRecord.MintAccount != swapRecord.FromMint {
+			return nil, NewIntentValidationErrorf("must fund swap with %s mint", swapRecord.FromMint)
+		}
+
+		if intentRecord.SendPublicPaymentMetadata.Quantity != swapRecord.Amount {
+			return nil, NewIntentValidationErrorf("must fund swap with %d quarks", swapRecord.Amount)
+		}
+	}
+	if !isIntentReservedForSwap && intentRecord.IntentType != intent.SendPublicPayment {
+		return nil, nil
+	}
+
+	// Account-specific validation for swaps
+	if len(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount) > 0 {
+		destinationOwner, err := common.NewAccountFromPublicKeyString(intentRecord.SendPublicPaymentMetadata.DestinationOwnerAccount)
+		if err != nil {
+			return nil, err
+		}
+
+		var isVmSwapPda bool
+		vmSwapPdaTimelockRecord, err := data.GetTimelockBySwapPda(ctx, destinationOwner.PublicKey().ToBase58())
+		if err == nil {
+			isVmSwapPda = true
+		} else if err != timelock.ErrTimelockNotFound {
+			return nil, err
+		}
+
+		if isVmSwapPda {
+			if !isIntentReservedForSwap {
+				return nil, NewIntentDeniedError("intent id is not reserved for a swap")
+			}
+
+			accountInfoRecord, err := data.GetAccountInfoByTokenAddress(ctx, vmSwapPdaTimelockRecord.VaultAddress)
+			if err != nil {
+				return nil, err
+			}
+
+			if accountInfoRecord.OwnerAccount != intentRecord.InitiatorOwnerAccount {
+				return nil, NewIntentDeniedError("can only send to your own vm swap pda")
+			}
+
+			if accountInfoRecord.MintAccount != intentRecord.MintAccount {
+				return nil, NewIntentValidationError("vm swap pda is for a different mint")
+			}
+		}
+
+		if !isVmSwapPda && isIntentReservedForSwap {
+			return nil, NewIntentValidationError("destination owner must be a vm swap pda")
+		}
+	}
+
+	return swapRecord, nil
 }
 
 func validateTimelockUnlockStateDoesntExist(ctx context.Context, data code_data.Provider, openAction *transactionpb.OpenAccountAction) error {

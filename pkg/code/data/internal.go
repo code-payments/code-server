@@ -230,6 +230,7 @@ type DatabaseData interface {
 	// --------------------------------------------------------------------------------
 	SaveSwap(ctx context.Context, record *swap.Record) error
 	GetSwapById(ctx context.Context, id string) (*swap.Record, error)
+	GetSwapByFundingId(ctx context.Context, fundingId string) (*swap.Record, error)
 	GetAllSwapsByOwnerAndState(ctx context.Context, owner string, state swap.State) ([]*swap.Record, error)
 	GetAllSwapsByState(ctx context.Context, state swap.State, opts ...query.Option) ([]*swap.Record, error)
 
