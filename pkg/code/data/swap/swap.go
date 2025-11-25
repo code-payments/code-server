@@ -9,7 +9,6 @@ import (
 
 type State uint8
 
-// todo: define all states
 const (
 	StateUnknown State = iota
 	StateCreated

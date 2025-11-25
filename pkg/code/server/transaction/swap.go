@@ -189,9 +189,13 @@ func (s *transactionServer) StartSwap(streamer transactionpb.Transaction_StartSw
 		return handleStartSwapError(streamer, status.Error(codes.InvalidArgument, "StartSwapRequest.SubmitSignature is nil"))
 	}
 
-	verifiedMetadata := &transactionpb.VerifiedCurrencyCreatorSwapMetadata{
-		ClientParameters: startCurrencyCreatorSwapReq,
-		ServerParameters: serverParameters,
+	verifiedMetadata := &transactionpb.VerifiedSwapMetadata{
+		Kind: &transactionpb.VerifiedSwapMetadata_CurrencyCreator{
+			CurrencyCreator: &transactionpb.VerifiedCurrencyCreatorSwapMetadata{
+				ClientParameters: startCurrencyCreatorSwapReq,
+				ServerParameters: serverParameters,
+			},
+		},
 	}
 
 	metadataSignature := submitSignatureReq.Signature
