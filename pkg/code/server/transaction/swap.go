@@ -15,6 +15,7 @@ import (
 	commonpb "github.com/code-payments/code-protobuf-api/generated/go/common/v1"
 	transactionpb "github.com/code-payments/code-protobuf-api/generated/go/transaction/v2"
 
+	"github.com/code-payments/code-server/pkg/code/balance"
 	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
@@ -104,6 +105,14 @@ func (s *transactionServer) StartSwap(streamer transactionpb.Transaction_StartSw
 	// Section: Validation
 	//
 
+	_, err = s.data.GetSwapById(ctx, swapId)
+	if err == nil {
+		return handleStartSwapError(streamer, NewSwapDeniedError("attempt to reuse swap id"))
+	} else if err != swap.ErrNotFound {
+		log.WithError(err).Warn("failure checking for existing swap record")
+		return handleStartSwapError(streamer, err)
+	}
+
 	if bytes.Equal(fromMint.PublicKey().ToBytes(), toMint.PublicKey().ToBytes()) {
 		return handleStartSwapError(streamer, NewSwapValidationError("must swap between two different mints"))
 	}
@@ -112,7 +121,7 @@ func (s *transactionServer) StartSwap(streamer transactionpb.Transaction_StartSw
 		return handleStartSwapError(streamer, NewSwapValidationError("amount must be positive"))
 	}
 
-	_, err = common.GetVmConfigForMint(ctx, s.data, fromMint)
+	sourceVmConfig, err := common.GetVmConfigForMint(ctx, s.data, fromMint)
 	if err == common.ErrUnsupportedMint {
 		return handleStartSwapError(streamer, NewSwapValidationError("invalid source mint"))
 	} else if err != nil {
@@ -120,11 +129,48 @@ func (s *transactionServer) StartSwap(streamer transactionpb.Transaction_StartSw
 		return handleStartSwapError(streamer, err)
 	}
 
-	_, err = common.GetVmConfigForMint(ctx, s.data, toMint)
+	destinationVmConfig, err := common.GetVmConfigForMint(ctx, s.data, toMint)
 	if err == common.ErrUnsupportedMint {
 		return handleStartSwapError(streamer, NewSwapValidationError("invalid destination mint"))
 	} else if err != nil {
 		log.WithError(err).Warn("failure getting destination vm config")
+		return handleStartSwapError(streamer, err)
+	}
+
+	ownerSourceTimelockVault, err := owner.ToTimelockVault(sourceVmConfig)
+	if err != nil {
+		log.WithError(err).Warn("failure getting owner destination timelock vault")
+		return handleStartSwapError(streamer, err)
+	}
+
+	_, err = s.data.GetTimelockByVault(ctx, ownerSourceTimelockVault.PublicKey().ToBase58())
+	if err == timelock.ErrTimelockNotFound {
+		return handleStartSwapError(streamer, NewSwapValidationError("source timelock vault account not opened"))
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting source timelock record")
+		return handleStartSwapError(streamer, err)
+	}
+
+	balance, err := balance.CalculateFromCache(ctx, s.data, ownerSourceTimelockVault)
+	if err != nil {
+		log.WithError(err).Warn("failure getting owner source timelock vault balance")
+		return handleStartSwapError(streamer, err)
+	}
+	if balance < startCurrencyCreatorSwapReq.Amount {
+		return handleStartSwapError(streamer, NewSwapValidationError("insufficient balance"))
+	}
+
+	ownerDestinationTimelockVault, err := owner.ToTimelockVault(destinationVmConfig)
+	if err != nil {
+		log.WithError(err).Warn("failure getting owner destination timelock vault")
+		return handleStartSwapError(streamer, err)
+	}
+
+	_, err = s.data.GetTimelockByVault(ctx, ownerDestinationTimelockVault.PublicKey().ToBase58())
+	if err == timelock.ErrTimelockNotFound {
+		return handleStartSwapError(streamer, NewSwapValidationError("destination timelock vault account not opened"))
+	} else if err != nil {
+		log.WithError(err).Warn("failure getting destination timelock record")
 		return handleStartSwapError(streamer, err)
 	}
 
@@ -475,11 +521,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		log.WithError(err).Warn("failure getting owner source vm swap ata")
 		return handleSwapError(streamer, err)
 	}
-	ownerDestinationTimelockVault, err := owner.ToTimelockVault(destinationVmConfig)
-	if err != nil {
-		log.WithError(err).Warn("failure getting owner destination timelock vault")
-		return handleSwapError(streamer, err)
-	}
 
 	//
 	// Section: Validation
@@ -495,18 +536,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	if owner.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
 		return handleSwapError(streamer, NewSwapValidationError("owner cannot be swap authority"))
-	}
-
-	if bytes.Equal(fromMint.PublicKey().ToBytes(), toMint.PublicKey().ToBytes()) {
-		return handleSwapError(streamer, NewSwapValidationError("must swap between two different mints"))
-	}
-
-	_, err = s.data.GetTimelockByVault(ctx, ownerDestinationTimelockVault.PublicKey().ToBase58())
-	if err == timelock.ErrTimelockNotFound {
-		return handleSwapError(streamer, NewSwapValidationError("destination timelock vault account not opened"))
-	} else if err != nil {
-		log.WithError(err).Warn("failure getting destination timelock record")
-		return handleSwapError(streamer, err)
 	}
 
 	// todo: for any of these invalid funding cases, we should cancel the swap
