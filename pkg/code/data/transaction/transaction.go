@@ -10,6 +10,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/config"
 	"github.com/code-payments/code-server/pkg/solana"
 	"github.com/mr-tron/base58/base58"
+	"github.com/pkg/errors"
 )
 
 // Token balance changes as a result of a transaction
@@ -86,48 +87,11 @@ func (r *Record) Unmarshal() (*solana.Transaction, error) {
 	return &tx, nil
 }
 
-func FromTransaction(tx *solana.Transaction) (*Record, error) {
-	sig := tx.Signature()
-	res := &Record{
-		Signature:         base58.Encode(sig),
-		Data:              tx.Marshal(),
-		ConfirmationState: ConfirmationUnknown,
-		CreatedAt:         time.Now(),
-	}
-	return res, nil
-}
-
-func FromBlockTransaction(tx *solana.BlockTransaction, slot uint64, t time.Time) (*Record, error) {
-	sig := tx.Transaction.Signature()
-	res := &Record{
-		Signature:         base58.Encode(sig),
-		Slot:              slot,
-		Data:              tx.Transaction.Marshal(),
-		HasErrors:         tx.Err != nil,
-		BlockTime:         t,
-		ConfirmationState: ConfirmationFinalized,
-		CreatedAt:         time.Now(),
-	}
-
-	if res.HasErrors {
-		res.ConfirmationState = ConfirmationFailed
-	}
-
-	if tx.Meta != nil {
-		res.Fee = &tx.Meta.Fee
-	}
-
-	tokenBalances, err := getTokenBalanceSet(tx.Meta, tx.Transaction.Message.Accounts)
-	if err != nil {
-		return nil, err
-	}
-
-	res.TokenBalances = tokenBalances
-
-	return res, nil
-}
-
 func FromConfirmedTransaction(tx *solana.ConfirmedTransaction) (*Record, error) {
+	if tx.Transaction.Message.Version != solana.MessageVersionLegacy {
+		return nil, errors.New("unsupported transaction version")
+	}
+
 	sig := tx.Transaction.Signature()
 	res := &Record{
 		Signature:         base58.Encode(sig),
@@ -149,49 +113,6 @@ func FromConfirmedTransaction(tx *solana.ConfirmedTransaction) (*Record, error) 
 	tokenBalances, err := getTokenBalanceSet(tx.Meta, tx.Transaction.Message.Accounts)
 	if err != nil {
 		return nil, err
-	}
-
-	res.TokenBalances = tokenBalances
-
-	return res, nil
-}
-
-func FromLocalSimulation(tx *solana.Transaction, pre, post map[string]uint64) (*Record, error) {
-	sig := tx.Signature()
-	res := &Record{
-		Signature:         base58.Encode(sig),
-		Data:              tx.Marshal(),
-		ConfirmationState: ConfirmationUnknown,
-		CreatedAt:         time.Now(),
-	}
-
-	txBalances := map[string]*TokenBalance{}
-
-	for tokenAccount, tokenBalance := range pre {
-		if val, ok := txBalances[tokenAccount]; ok {
-			val.PreBalance = tokenBalance
-		} else {
-			txBalances[tokenAccount] = &TokenBalance{
-				Account:    tokenAccount,
-				PreBalance: tokenBalance,
-			}
-		}
-	}
-
-	for tokenAccount, tokenBalance := range post {
-		if val, ok := txBalances[tokenAccount]; ok {
-			val.PostBalance = tokenBalance
-		} else {
-			txBalances[tokenAccount] = &TokenBalance{
-				Account:     tokenAccount,
-				PostBalance: tokenBalance,
-			}
-		}
-	}
-
-	var tokenBalances []*TokenBalance
-	for _, tb := range txBalances {
-		tokenBalances = append(tokenBalances, tb)
 	}
 
 	res.TokenBalances = tokenBalances

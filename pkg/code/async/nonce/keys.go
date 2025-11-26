@@ -49,7 +49,7 @@ func (p *service) generateKeys(ctx context.Context) error {
 				return err
 			}
 
-			reserveSize := (p.conf.solanaMainnetNoncePoolSize.Get(ctx) * 2)
+			reserveSize := ((p.conf.onDemandTransactionNoncePoolSize.Get(ctx) + p.conf.clientSwapNoncePoolSize.Get(ctx)) * 2)
 
 			// If we have sufficient keys, don't generate any more.
 			if res >= reserveSize {
