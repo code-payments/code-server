@@ -16,6 +16,8 @@ import (
 // - Need some level of memory account management with the ability to find a free index
 // - Does not require a vault key record
 
+// todo: Split out Solana mainnet nonce allocation based on use case
+
 func (p *service) generateNonceAccountsOnSolanaMainnet(serviceCtx context.Context) error {
 
 	hasWarnedUser := false
