@@ -45,7 +45,8 @@ func (p *service) Start(ctx context.Context, interval time.Duration) error {
 	go p.generateKeys(ctx)
 
 	// Watch the size of the Solana mainnet nonce pool and create accounts if necessary
-	go p.generateNonceAccountsOnSolanaMainnet(ctx)
+	go p.generateNonceAccountsOnSolanaMainnet(ctx, nonce.PurposeOnDemandTransaction, p.conf.onDemandTransactionNoncePoolSize.Get(ctx))
+	go p.generateNonceAccountsOnSolanaMainnet(ctx, nonce.PurposeClientSwap, p.conf.clientSwapNoncePoolSize.Get(ctx))
 
 	// Setup workers to watch for nonce state changes on the Solana side
 	for _, state := range []nonce.State{
