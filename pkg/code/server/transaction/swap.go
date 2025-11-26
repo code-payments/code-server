@@ -532,7 +532,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	if swapRecord.State != swap.StateFunded {
-		return handleSwapError(streamer, NewSwapValidationErrorf("swap state is %s", swapRecord.State))
+		return handleSwapError(streamer, NewSwapDeniedErrorf("swap state is %s", swapRecord.State))
 	}
 
 	if owner.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
