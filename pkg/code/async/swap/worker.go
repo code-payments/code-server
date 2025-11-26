@@ -11,7 +11,6 @@ import (
 
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/swap"
-	"github.com/code-payments/code-server/pkg/code/data/transaction"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/metrics"
 	"github.com/code-payments/code-server/pkg/retry"
@@ -106,17 +105,15 @@ func (p *service) handleStateSubmitting(ctx context.Context, record *swap.Record
 		return err
 	}
 
-	finalizedTxn, err := p.getTransaction(ctx, record)
+	finalizedTxn, err := p.data.GetBlockchainTransaction(ctx, *record.TransactionSignature, solana.CommitmentFinalized)
 	if err != nil && err != solana.ErrSignatureNotFound {
 		return errors.Wrap(err, "error getting finalized transaction")
 	}
 
 	if finalizedTxn != nil {
-		if finalizedTxn.HasErrors || finalizedTxn.ConfirmationState == transaction.ConfirmationFailed {
+		if finalizedTxn.Err != nil || finalizedTxn.Meta.Err != nil {
 			return p.markSwapFailed(ctx, record)
-		}
-
-		if finalizedTxn.ConfirmationState == transaction.ConfirmationFinalized {
+		} else {
 			err = p.updateBalances(ctx, record)
 			if err != nil {
 				return errors.Wrap(err, "error updating balances")

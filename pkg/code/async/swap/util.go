@@ -179,35 +179,6 @@ func (p *service) markNonceReleasedDueToSubmittedTransaction(ctx context.Context
 	return p.data.SaveNonce(ctx, nonceRecord)
 }
 
-func (p *service) getTransaction(ctx context.Context, record *swap.Record) (*transaction.Record, error) {
-	if record.TransactionSignature == nil || len(*record.TransactionSignature) == 0 {
-		return nil, transaction.ErrNotFound
-	}
-
-	if p.conf.enableCachedTransactionLookup.Get(ctx) {
-		return p.data.GetTransaction(ctx, *record.TransactionSignature)
-	}
-
-	return p.getTransactionFromBlockchain(ctx, record)
-}
-
-func (p *service) getTransactionFromBlockchain(ctx context.Context, record *swap.Record) (*transaction.Record, error) {
-	stx, err := p.data.GetBlockchainTransaction(ctx, *record.TransactionSignature, solana.CommitmentFinalized)
-	if err == solana.ErrSignatureNotFound {
-		return nil, transaction.ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	tx, err := transaction.FromConfirmedTransaction(stx)
-	if err != nil {
-		return nil, err
-	}
-
-	return tx, nil
-}
-
 func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {
 	var preQuarkBalance, postQuarkBalance int64
 	var err error

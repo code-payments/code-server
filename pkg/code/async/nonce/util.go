@@ -66,24 +66,19 @@ func (p *service) getLatestBlockhash(ctx context.Context) (*solana.Blockhash, er
 	return &bh, nil
 }
 
-func (p *service) getTransaction(ctx context.Context, signature string) (*transaction.Record, error) {
+func (p *service) getTransaction(ctx context.Context, signature string) (*solana.ConfirmedTransaction, error) {
 	return p.getTransactionFromBlockchain(ctx, signature)
 }
 
-func (p *service) getTransactionFromBlockchain(ctx context.Context, signature string) (*transaction.Record, error) {
-	stx, err := p.data.GetBlockchainTransaction(ctx, signature, solana.CommitmentFinalized)
+func (p *service) getTransactionFromBlockchain(ctx context.Context, signature string) (*solana.ConfirmedTransaction, error) {
+	txn, err := p.data.GetBlockchainTransaction(ctx, signature, solana.CommitmentFinalized)
 	if err == solana.ErrSignatureNotFound {
 		return nil, transaction.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-
-	tx, err := transaction.FromConfirmedTransaction(stx)
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
+	return txn, nil
 }
 
 func (p *service) getRentAmount(ctx context.Context) (uint64, error) {

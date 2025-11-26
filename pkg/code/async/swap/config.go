@@ -3,8 +3,6 @@ package async_swap
 import (
 	"github.com/code-payments/code-server/pkg/config"
 	"github.com/code-payments/code-server/pkg/config/env"
-	"github.com/code-payments/code-server/pkg/config/memory"
-	"github.com/code-payments/code-server/pkg/config/wrapper"
 )
 
 const (
@@ -15,8 +13,7 @@ const (
 )
 
 type conf struct {
-	batchSize                     config.Uint64
-	enableCachedTransactionLookup config.Bool
+	batchSize config.Uint64
 }
 
 // ConfigProvider defines how config values are pulled
@@ -26,8 +23,7 @@ type ConfigProvider func() *conf
 func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
-			batchSize:                     env.NewUint64Config(BatchSizeConfigEnvName, defaultFulfillmentBatchSize),
-			enableCachedTransactionLookup: wrapper.NewBoolConfig(memory.NewConfig(false), false),
+			batchSize: env.NewUint64Config(BatchSizeConfigEnvName, defaultFulfillmentBatchSize),
 		}
 	}
 }

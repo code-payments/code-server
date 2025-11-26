@@ -110,8 +110,8 @@ func GetVmConfigForMint(ctx context.Context, data code_data.Provider, mint *Acco
 	}
 }
 
-func EnsureVirtualTimelockAccountIsInitialized(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, vm, owner *Account, waitForInitialization bool) error {
-	vmConfig, err := GetVmConfigForMint(ctx, data, vm)
+func EnsureVirtualTimelockAccountIsInitialized(ctx context.Context, data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, mint, owner *Account, waitForInitialization bool) error {
+	vmConfig, err := GetVmConfigForMint(ctx, data, mint)
 	if err != nil {
 		return err
 	}
@@ -147,12 +147,12 @@ func EnsureVirtualTimelockAccountIsInitialized(ctx context.Context, data code_da
 	}
 
 	for range 60 {
-		time.Sleep(time.Second)
-
-		_, _, err := GetVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vm, owner)
+		_, _, err := GetVirtualTimelockAccountLocationInMemory(ctx, vmIndexerClient, vmConfig.Vm, owner)
 		if err == nil {
 			return nil
 		}
+
+		time.Sleep(time.Second)
 	}
 
 	return errors.New("timed out waiting for initialization")
