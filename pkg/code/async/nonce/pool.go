@@ -199,7 +199,7 @@ func (p *service) handleReleased(ctx context.Context, record *nonce.Record) erro
 	// Nonces that exist but we don't yet know their stored blockhash.
 
 	// Fetch the Solana transaction where the nonce would be consumed
-	var txn *transaction.Record
+	var txn *solana.ConfirmedTransaction
 	var err error
 	switch record.Environment {
 	case nonce.EnvironmentSolana:
@@ -220,7 +220,7 @@ func (p *service) handleReleased(ctx context.Context, record *nonce.Record) erro
 	}
 
 	// Sanity check the Solana transaction is in a finalized or failed state
-	if txn.ConfirmationState != transaction.ConfirmationFinalized && txn.ConfirmationState != transaction.ConfirmationFailed {
+	if txn == nil {
 		return nil
 	}
 

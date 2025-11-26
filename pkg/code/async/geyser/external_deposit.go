@@ -99,7 +99,7 @@ func initiateExternalDepositIntoVm(ctx context.Context, data code_data.Provider,
 		return errors.Wrap(err, "error getting timelock accounts")
 	}
 
-	err = common.EnsureVirtualTimelockAccountIsInitialized(ctx, data, vmIndexerClient, vmConfig.Vm, userAuthority, true)
+	err = common.EnsureVirtualTimelockAccountIsInitialized(ctx, data, vmIndexerClient, mint, userAuthority, true)
 	if err != nil {
 		return errors.Wrap(err, "error ensuring vta is initialized")
 	}

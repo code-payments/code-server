@@ -190,6 +190,7 @@ func (s *transactionServer) StartSwap(streamer transactionpb.Transaction_StartSw
 		nonce.EnvironmentSolana,
 		nonce.EnvironmentInstanceSolanaMainnet,
 		nonce.PurposeClientSwap,
+		s.noncePools...,
 	)
 	if err != nil {
 		log.WithError(err).Warn("failure selecting nonce pool")
@@ -531,7 +532,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	}
 
 	if swapRecord.State != swap.StateFunded {
-		return handleSwapError(streamer, NewSwapValidationError("swap is not in a funded state"))
+		return handleSwapError(streamer, NewSwapValidationErrorf("swap state is %s", swapRecord.State))
 	}
 
 	if owner.PublicKey().ToBase58() == swapAuthority.PublicKey().ToBase58() {
@@ -558,7 +559,7 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 	// Section: On-demand account creation
 	//
 
-	err = common.EnsureVirtualTimelockAccountIsInitialized(ctx, s.data, s.vmIndexerClient, destinationVmConfig.Vm, owner, true)
+	err = common.EnsureVirtualTimelockAccountIsInitialized(ctx, s.data, s.vmIndexerClient, toMint, owner, true)
 	if err != nil {
 		log.WithError(err).Warn("timed out waiting for destination timelock account initialization")
 		return handleSwapError(streamer, err)
@@ -630,7 +631,6 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 
 	txn.SetBlockhash(solana.Blockhash(blockhash))
 
-	marshalledTxn := txn.Marshal()
 	marshalledTxnMessage := txn.Message.Marshal()
 
 	//
@@ -722,6 +722,8 @@ func (s *transactionServer) Swap(streamer transactionpb.Transaction_SwapServer) 
 		log.WithError(err).Info("failure signing transaction")
 		return handleSwapError(streamer, err)
 	}
+
+	marshalledTxn := txn.Marshal()
 
 	txnSignature := base58.Encode(txn.Signature())
 
