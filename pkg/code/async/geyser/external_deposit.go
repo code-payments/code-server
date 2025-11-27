@@ -377,7 +377,7 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		}
 
 		// Best-effort processing for notification back to the user
-		integration.OnDepositReceived(ctx, ownerAccount, mint, currencyName, uint64(deltaQuarksIntoOmnibus), usdMarketValue)
+		integration.OnDepositReceived(ctx, ownerAccount, mint, currencyName, usdMarketValue)
 
 		return nil
 	default:

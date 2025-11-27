@@ -2000,7 +2000,7 @@ func validateSwapFunding(ctx context.Context, data code_data.Provider, intentRec
 	isIntentReservedForSwap := swapRecord != nil
 
 	if isIntentReservedForSwap && swapRecord.State != swap.StateCreated {
-		return nil, errors.Errorf("unexpected swap state: %s", swapRecord.State)
+		return nil, NewIntentDeniedErrorf("swap state is %s", swapRecord.State)
 	}
 
 	// Intent-specific validation for swaps

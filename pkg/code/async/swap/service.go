@@ -12,16 +12,18 @@ import (
 )
 
 type service struct {
-	log  *logrus.Entry
-	conf *conf
-	data code_data.Provider
+	log         *logrus.Entry
+	conf        *conf
+	data        code_data.Provider
+	integration Integration
 }
 
-func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, integration Integration, configProvider ConfigProvider) async.Service {
 	return &service{
-		log:  logrus.StandardLogger().WithField("service", "swap"),
-		conf: configProvider(),
-		data: data,
+		log:         logrus.StandardLogger().WithField("service", "swap"),
+		conf:        configProvider(),
+		data:        data,
+		integration: integration,
 	}
 
 }
@@ -29,6 +31,7 @@ func New(data code_data.Provider, configProvider ConfigProvider) async.Service {
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
 
 	for _, state := range []swap.State{
+		swap.StateCreated,
 		swap.StateFunding,
 		swap.StateSubmitting,
 	} {

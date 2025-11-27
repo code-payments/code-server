@@ -73,6 +73,10 @@ func NewIntentDeniedError(message string) IntentDeniedError {
 	}
 }
 
+func NewIntentDeniedErrorf(format string, args ...any) IntentDeniedError {
+	return NewIntentDeniedError(fmt.Sprintf(format, args...))
+}
+
 func (e IntentDeniedError) Error() string {
 	return e.message
 }
