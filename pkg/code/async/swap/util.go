@@ -152,6 +152,34 @@ func (p *service) updateBalances(ctx context.Context, record *swap.Record) error
 	})
 }
 
+func (p *service) notifySwapFinalized(ctx context.Context, swapRecord *swap.Record) error {
+	owner, err := common.NewAccountFromPublicKeyString(swapRecord.Owner)
+	if err != nil {
+		return err
+	}
+
+	toMint, err := common.NewAccountFromPublicKeyString(swapRecord.ToMint)
+	if err != nil {
+		return err
+	}
+
+	currencyName := common.CoreMintName
+	if !common.IsCoreMint(toMint) {
+		currencyMetadataRecord, err := p.data.GetCurrencyMetadata(ctx, toMint.PublicKey().ToBase58())
+		if err != nil {
+			return nil
+		}
+		currencyName = currencyMetadataRecord.Name
+	}
+
+	fundingIntentRecord, err := p.data.GetIntent(ctx, swapRecord.FundingId)
+	if err != nil {
+		return err
+	}
+
+	return p.integration.OnSwapFinalized(ctx, owner, toMint, currencyName, fundingIntentRecord.SendPublicPaymentMetadata.ExchangeCurrency, fundingIntentRecord.SendPublicPaymentMetadata.NativeAmount)
+}
+
 func (p *service) markNonceReleasedDueToSubmittedTransaction(ctx context.Context, record *swap.Record) error {
 	err := p.validateSwapState(record, swap.StateSubmitting)
 	if err != nil {

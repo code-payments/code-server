@@ -73,11 +73,21 @@ func (p *service) worker(serviceCtx context.Context, state swap.State, interval 
 
 func (p *service) handle(ctx context.Context, record *swap.Record) error {
 	switch record.State {
+	case swap.StateCreated:
+		return p.handleStateCreated(ctx, record)
 	case swap.StateFunding:
 		return p.handleStateFunding(ctx, record)
 	case swap.StateSubmitting:
 		return p.handleStateSubmitting(ctx, record)
 	}
+	return nil
+}
+
+func (p *service) handleStateCreated(ctx context.Context, record *swap.Record) error {
+	if err := p.validateSwapState(record, swap.StateCreated); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -118,7 +128,12 @@ func (p *service) handleStateSubmitting(ctx context.Context, record *swap.Record
 			if err != nil {
 				return errors.Wrap(err, "error updating balances")
 			}
-			return p.markSwapFinalized(ctx, record)
+			err = p.markSwapFinalized(ctx, record)
+			if err != nil {
+				return errors.Wrap(err, "error marking swap as finalized")
+			}
+
+			go p.notifySwapFinalized(ctx, record)
 		}
 	}
 
