@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
+	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 	"github.com/code-payments/code-server/pkg/database/query"
 	"github.com/code-payments/code-server/pkg/retry"
 	"github.com/code-payments/code-server/pkg/solana"
@@ -264,11 +264,11 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		return nil
 	}
 
-	deltaQuarksIntoOmnibus, err := getDeltaQuarksFromTokenBalances(vmConfig.Omnibus, tokenBalances)
+	deltaQuarksIntoOmnibus, err := transaction_util.GetDeltaQuarksFromTokenBalances(vmConfig.Omnibus, tokenBalances)
 	if err != nil {
 		return errors.Wrap(err, "error getting delta quarks for vm omnibus from token balances")
 	}
-	deltaQuarksOutOfVmDepositAta, err := getDeltaQuarksFromTokenBalances(vmDepositAta, tokenBalances)
+	deltaQuarksOutOfVmDepositAta, err := transaction_util.GetDeltaQuarksFromTokenBalances(vmDepositAta, tokenBalances)
 	if err != nil {
 		return errors.Wrap(err, "error getting delta quarks for vm deposit ata from token balances")
 	}
@@ -384,31 +384,6 @@ func processPotentialExternalDepositIntoVm(ctx context.Context, data code_data.P
 		syncedDepositCache.Insert(cacheKey, true, 1)
 		return nil
 	}
-}
-
-func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {
-	var preQuarkBalance, postQuarkBalance int64
-	var err error
-	for _, tokenBalance := range tokenBalances.PreTokenBalances {
-		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
-			preQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
-			if err != nil {
-				return 0, errors.Wrap(err, "error parsing pre token balance")
-			}
-			break
-		}
-	}
-	for _, tokenBalance := range tokenBalances.PostTokenBalances {
-		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
-			postQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
-			if err != nil {
-				return 0, errors.Wrap(err, "error parsing post token balance")
-			}
-			break
-		}
-	}
-
-	return postQuarkBalance - preQuarkBalance, nil
 }
 
 func markDepositsAsSynced(ctx context.Context, data code_data.Provider, userAuthority, mint *common.Account) error {

@@ -88,6 +88,10 @@ func (p *service) handleStateCreated(ctx context.Context, record *swap.Record) e
 		return err
 	}
 
+	if time.Since(record.CreatedAt) > p.conf.clientFundingTimeout.Get(ctx) {
+		return p.markSwapCancelled(ctx, record)
+	}
+
 	return nil
 }
 

@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
-	"strconv"
+	"slices"
 	"time"
 
 	"github.com/mr-tron/base58"
@@ -18,14 +18,12 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/swap"
 	"github.com/code-payments/code-server/pkg/code/data/transaction"
-	"github.com/code-payments/code-server/pkg/solana"
+	transaction_util "github.com/code-payments/code-server/pkg/code/transaction"
 )
 
 func (p *service) validateSwapState(record *swap.Record, states ...swap.State) error {
-	for _, validState := range states {
-		if record.State == validState {
-			return nil
-		}
+	if slices.Contains(states, record.State) {
+		return nil
 	}
 	return errors.New("invalid swap state")
 }
@@ -41,35 +39,56 @@ func (p *service) markSwapFunded(ctx context.Context, record *swap.Record) error
 }
 
 func (p *service) markSwapFinalized(ctx context.Context, record *swap.Record) error {
-	err := p.validateSwapState(record, swap.StateSubmitting)
-	if err != nil {
-		return err
-	}
+	return p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+		err := p.validateSwapState(record, swap.StateSubmitting)
+		if err != nil {
+			return err
+		}
 
-	err = p.markNonceReleasedDueToSubmittedTransaction(ctx, record)
-	if err != nil {
-		return err
-	}
+		err = p.markNonceReleasedDueToSubmittedTransaction(ctx, record)
+		if err != nil {
+			return err
+		}
 
-	record.TransactionBlob = nil
-	record.State = swap.StateFinalized
-	return p.data.SaveSwap(ctx, record)
+		record.TransactionBlob = nil
+		record.State = swap.StateFinalized
+		return p.data.SaveSwap(ctx, record)
+	})
 }
 
 func (p *service) markSwapFailed(ctx context.Context, record *swap.Record) error {
-	err := p.validateSwapState(record, swap.StateSubmitting)
-	if err != nil {
-		return err
-	}
+	return p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+		err := p.validateSwapState(record, swap.StateSubmitting)
+		if err != nil {
+			return err
+		}
 
-	err = p.markNonceReleasedDueToSubmittedTransaction(ctx, record)
-	if err != nil {
-		return err
-	}
+		err = p.markNonceReleasedDueToSubmittedTransaction(ctx, record)
+		if err != nil {
+			return err
+		}
 
-	record.TransactionBlob = nil
-	record.State = swap.StateFailed
-	return p.data.SaveSwap(ctx, record)
+		record.TransactionBlob = nil
+		record.State = swap.StateFailed
+		return p.data.SaveSwap(ctx, record)
+	})
+}
+
+func (p *service) markSwapCancelled(ctx context.Context, record *swap.Record) error {
+	return p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+		err := p.validateSwapState(record, swap.StateCreated)
+		if err != nil {
+			return err
+		}
+
+		err = p.markNonceAvailableDueToCancelledSwap(ctx, record)
+		if err != nil {
+			return err
+		}
+
+		record.State = swap.StateCancelled
+		return p.data.SaveSwap(ctx, record)
+	})
 }
 
 // todo: commonalities between this and geyser external deposit logic
@@ -99,7 +118,7 @@ func (p *service) updateBalances(ctx context.Context, record *swap.Record) error
 		return err
 	}
 
-	deltaQuarksIntoOmnibus, err := getDeltaQuarksFromTokenBalances(destinationVmConfig.Omnibus, tokenBalances)
+	deltaQuarksIntoOmnibus, err := transaction_util.GetDeltaQuarksFromTokenBalances(destinationVmConfig.Omnibus, tokenBalances)
 	if err != nil {
 		return err
 	}
@@ -207,29 +226,32 @@ func (p *service) markNonceReleasedDueToSubmittedTransaction(ctx context.Context
 	return p.data.SaveNonce(ctx, nonceRecord)
 }
 
-func getDeltaQuarksFromTokenBalances(tokenAccount *common.Account, tokenBalances *solana.TransactionTokenBalances) (int64, error) {
-	var preQuarkBalance, postQuarkBalance int64
-	var err error
-	for _, tokenBalance := range tokenBalances.PreTokenBalances {
-		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
-			preQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
-			if err != nil {
-				return 0, errors.Wrap(err, "error parsing pre token balance")
-			}
-			break
-		}
-	}
-	for _, tokenBalance := range tokenBalances.PostTokenBalances {
-		if tokenBalances.Accounts[tokenBalance.AccountIndex] == tokenAccount.PublicKey().ToBase58() {
-			postQuarkBalance, err = strconv.ParseInt(tokenBalance.TokenAmount.Amount, 10, 64)
-			if err != nil {
-				return 0, errors.Wrap(err, "error parsing post token balance")
-			}
-			break
-		}
+func (p *service) markNonceAvailableDueToCancelledSwap(ctx context.Context, record *swap.Record) error {
+	err := p.validateSwapState(record, swap.StateCreated)
+	if err != nil {
+		return err
 	}
 
-	return postQuarkBalance - preQuarkBalance, nil
+	nonceRecord, err := p.data.GetNonce(ctx, record.Nonce)
+	if err != nil {
+		return err
+	}
+
+	if record.ProofSignature != nonceRecord.Signature {
+		return errors.New("unexpected nonce signature")
+	}
+
+	if record.Blockhash != nonceRecord.Blockhash {
+		return errors.New("unexpected nonce blockhash")
+	}
+
+	if nonceRecord.State != nonce.StateReserved {
+		return errors.New("unexpected nonce state")
+	}
+
+	nonceRecord.State = nonce.StateAvailable
+	nonceRecord.Signature = ""
+	return p.data.SaveNonce(ctx, nonceRecord)
 }
 
 func getSwapDepositIntentID(signature string, destination *common.Account) string {
