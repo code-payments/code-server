@@ -149,46 +149,46 @@ func (p *service) submitTransaction(ctx context.Context, record *swap.Record) er
 	return nil
 }
 
-func (p *service) updateBalancesForFinalizedSwap(ctx context.Context, record *swap.Record) error {
+func (p *service) updateBalancesForFinalizedSwap(ctx context.Context, record *swap.Record) (uint64, error) {
 	owner, err := common.NewAccountFromPublicKeyString(record.Owner)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	toMint, err := common.NewAccountFromPublicKeyString(record.ToMint)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	destinationVmConfig, err := common.GetVmConfigForMint(ctx, p.data, toMint)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	ownerDestinationTimelockVault, err := owner.ToTimelockVault(destinationVmConfig)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	tokenBalances, err := p.data.GetBlockchainTransactionTokenBalances(ctx, *record.TransactionSignature)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	deltaQuarksIntoOmnibus, err := transaction_util.GetDeltaQuarksFromTokenBalances(destinationVmConfig.Omnibus, tokenBalances)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if deltaQuarksIntoOmnibus <= 0 {
-		return errors.New("delta quarks into destination vm omnibus is not positive")
+		return 0, errors.New("delta quarks into destination vm omnibus is not positive")
 	}
 
 	usdMarketValue, _, err := currency_util.CalculateUsdMarketValue(ctx, p.data, toMint, uint64(deltaQuarksIntoOmnibus), time.Now())
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
+	err = p.data.ExecuteInTx(ctx, sql.LevelDefault, func(ctx context.Context) error {
 		// For transaction history
 		intentRecord := &intent.Record{
 			IntentId:   getSwapDepositIntentID(*record.TransactionSignature, ownerDestinationTimelockVault),
@@ -226,6 +226,10 @@ func (p *service) updateBalancesForFinalizedSwap(ctx context.Context, record *sw
 		}
 		return p.data.SaveExternalDeposit(ctx, externalDepositRecord)
 	})
+	if err != nil {
+		return 0, err
+	}
+	return uint64(deltaQuarksIntoOmnibus), nil
 }
 
 func (p *service) updateBalancesForCancelledSwap(ctx context.Context, record *swap.Record) error {

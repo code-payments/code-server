@@ -78,3 +78,6 @@ func (s *store) GetAllByState(ctx context.Context, state swap.State, cursor quer
 	}
 	return res, nil
 }
+func (s *store) CountByState(ctx context.Context, state swap.State) (uint64, error) {
+	return dbCountByState(ctx, s.db, state)
+}
