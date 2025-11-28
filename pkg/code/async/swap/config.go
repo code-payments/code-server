@@ -13,13 +13,17 @@ const (
 	BatchSizeConfigEnvName      = envConfigPrefix + "WORKER_BATCH_SIZE"
 	defaultFulfillmentBatchSize = 100
 
-	ClientFundingTimeoutConfigEnvName = envConfigPrefix + "CLIENT_FUNDING_TIMEOUT"
-	defaultClientFundingTimeout       = 3 * time.Minute
+	ClientTimeoutToFundConfigEnvName = envConfigPrefix + "CLIENT_TIMEOUT_TO_FUND"
+	defaultClientTimeoutToFund       = 3 * time.Minute
+
+	ClientTimeoutToSwapConfigEnvName = envConfigPrefix + "CLIENT_TIMEOUT_TO_SWAP"
+	defaultClientTimeoutToSwap       = 5 * time.Minute
 )
 
 type conf struct {
-	batchSize            config.Uint64
-	clientFundingTimeout config.Duration
+	batchSize           config.Uint64
+	clientTimeoutToFund config.Duration
+	clientTimeoutToSwap config.Duration
 }
 
 // ConfigProvider defines how config values are pulled
@@ -29,8 +33,9 @@ type ConfigProvider func() *conf
 func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
-			batchSize:            env.NewUint64Config(BatchSizeConfigEnvName, defaultFulfillmentBatchSize),
-			clientFundingTimeout: env.NewDurationConfig(ClientFundingTimeoutConfigEnvName, defaultClientFundingTimeout),
+			batchSize:           env.NewUint64Config(BatchSizeConfigEnvName, defaultFulfillmentBatchSize),
+			clientTimeoutToFund: env.NewDurationConfig(ClientTimeoutToFundConfigEnvName, defaultClientTimeoutToFund),
+			clientTimeoutToSwap: env.NewDurationConfig(ClientTimeoutToSwapConfigEnvName, defaultClientTimeoutToSwap),
 		}
 	}
 }
