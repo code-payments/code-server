@@ -302,6 +302,7 @@ func (t *Transaction) String() string {
 	sb.WriteString(fmt.Sprintf("    NumSignatures: %d\n", t.Message.Header.NumSignatures))
 	sb.WriteString(fmt.Sprintf("    NumReadOnly: %d\n", t.Message.Header.NumReadOnly))
 	sb.WriteString(fmt.Sprintf("    NumReadOnlySigned: %d\n", t.Message.Header.NumReadonlySigned))
+	sb.WriteString(fmt.Sprintf("  Blockhash: %s\n", base58.Encode(t.Message.RecentBlockhash[:])))
 	sb.WriteString("  Accounts:\n")
 	for i, a := range t.Message.Accounts {
 		sb.WriteString(fmt.Sprintf("    %d: %s\n", i, base58.Encode(a)))

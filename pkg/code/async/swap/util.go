@@ -374,10 +374,10 @@ func (p *service) getCancellationTransaction(ctx context.Context, record *swap.R
 
 	txn := solana.NewLegacyTransaction(
 		common.GetSubsidizer().PublicKey().ToBytes(),
+		system.AdvanceNonce(nonce.PublicKey().ToBytes(), common.GetSubsidizer().PublicKey().ToBytes()),
 		compute_budget.SetComputeUnitLimit(200_000), // todo: optimize this
 		compute_budget.SetComputeUnitPrice(1_000),
 		memo.Instruction("cancel_swap_v0"),
-		system.AdvanceNonce(nonce.PublicKey().ToBytes(), common.GetSubsidizer().PublicKey().ToBytes()),
 		cvm.NewCancelSwapInstruction(
 			&cvm.CancelSwapInstructionAccounts{
 				VmAuthority: sourceVmConfig.Authority.PublicKey().ToBytes(),
