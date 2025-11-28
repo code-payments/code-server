@@ -6,34 +6,39 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	indexerpb "github.com/code-payments/code-vm-indexer/generated/indexer/v1"
+
 	"github.com/code-payments/code-server/pkg/code/async"
 	code_data "github.com/code-payments/code-server/pkg/code/data"
 	"github.com/code-payments/code-server/pkg/code/data/swap"
 )
 
 type service struct {
-	log         *logrus.Entry
-	conf        *conf
-	data        code_data.Provider
-	integration Integration
+	log             *logrus.Entry
+	conf            *conf
+	data            code_data.Provider
+	vmIndexerClient indexerpb.IndexerClient
+	integration     Integration
 }
 
-func New(data code_data.Provider, integration Integration, configProvider ConfigProvider) async.Service {
+func New(data code_data.Provider, vmIndexerClient indexerpb.IndexerClient, integration Integration, configProvider ConfigProvider) async.Service {
 	return &service{
-		log:         logrus.StandardLogger().WithField("service", "swap"),
-		conf:        configProvider(),
-		data:        data,
-		integration: integration,
+		log:             logrus.StandardLogger().WithField("service", "swap"),
+		conf:            configProvider(),
+		data:            data,
+		vmIndexerClient: vmIndexerClient,
+		integration:     integration,
 	}
 
 }
 
 func (p *service) Start(ctx context.Context, interval time.Duration) error {
-
 	for _, state := range []swap.State{
 		swap.StateCreated,
 		swap.StateFunding,
+		swap.StateFunded,
 		swap.StateSubmitting,
+		swap.StateCancelling,
 	} {
 		go func(state swap.State) {
 

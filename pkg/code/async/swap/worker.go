@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mr-tron/base58"
 	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/pkg/errors"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/code-payments/code-server/pkg/solana"
 )
 
-// todo: Need to handle cancellations, but assume everything is submitted to completion with success
 func (p *service) worker(serviceCtx context.Context, state swap.State, interval time.Duration) error {
 	var cursor query.Cursor
 	delay := interval
@@ -77,8 +75,12 @@ func (p *service) handle(ctx context.Context, record *swap.Record) error {
 		return p.handleStateCreated(ctx, record)
 	case swap.StateFunding:
 		return p.handleStateFunding(ctx, record)
+	case swap.StateFunded:
+		return p.handleStateFunded(ctx, record)
 	case swap.StateSubmitting:
 		return p.handleStateSubmitting(ctx, record)
+	case swap.StateCancelling:
+		return p.handleStateCancelling(ctx, record)
 	}
 	return nil
 }
@@ -88,7 +90,9 @@ func (p *service) handleStateCreated(ctx context.Context, record *swap.Record) e
 		return err
 	}
 
-	if time.Since(record.CreatedAt) > p.conf.clientFundingTimeout.Get(ctx) {
+	// Cancel the swap if the client hasn't submitted the intent to fund the swap
+	// within a reasonable amount of time
+	if time.Since(record.CreatedAt) > p.conf.clientTimeoutToFund.Get(ctx) {
 		return p.markSwapCancelled(ctx, record)
 	}
 
@@ -100,6 +104,8 @@ func (p *service) handleStateFunding(ctx context.Context, record *swap.Record) e
 		return err
 	}
 
+	// Wait for the funding intent to be confirmed before to transition the swap
+	// to a funded state
 	intentRecord, err := p.data.GetIntent(ctx, record.FundingId)
 	if err != nil {
 		return errors.Wrap(err, "error getting funding intent record")
@@ -108,16 +114,44 @@ func (p *service) handleStateFunding(ctx context.Context, record *swap.Record) e
 	case intent.StateConfirmed:
 		return p.markSwapFunded(ctx, record)
 	case intent.StateFailed:
+		// todo: Should never happen, but maybe cancel the swap?
 		return errors.New("funding intent failed")
 	default:
 		return nil
 	}
 }
 
+func (p *service) handleStateFunded(ctx context.Context, record *swap.Record) error {
+	if err := p.validateSwapState(record, swap.StateFunded); err != nil {
+		return err
+	}
+
+	intentRecord, err := p.data.GetIntent(ctx, record.FundingId)
+	if err != nil {
+		return err
+	}
+
+	// Cancel the swap if the client hasn't signed the swap transaction within a
+	// reasonable amount of time. The funds for the swap will be deposited back
+	// into the source VM.
+	if time.Since(intentRecord.CreatedAt) > p.conf.clientTimeoutToSwap.Get(ctx) {
+		txn, err := p.getCancellationTransaction(ctx, record)
+		if err != nil {
+			return err
+		}
+
+		return p.markSwapCancelling(ctx, record, txn)
+	}
+
+	return nil
+}
+
 func (p *service) handleStateSubmitting(ctx context.Context, record *swap.Record) error {
 	if err := p.validateSwapState(record, swap.StateSubmitting); err != nil {
 		return err
 	}
+
+	// Monitor for a finalized swap transaction
 
 	finalizedTxn, err := p.data.GetBlockchainTransaction(ctx, *record.TransactionSignature, solana.CommitmentFinalized)
 	if err != nil && err != solana.ErrSignatureNotFound {
@@ -126,35 +160,57 @@ func (p *service) handleStateSubmitting(ctx context.Context, record *swap.Record
 
 	if finalizedTxn != nil {
 		if finalizedTxn.Err != nil || finalizedTxn.Meta.Err != nil {
+			// todo: Recovery flow to put back source funds into the source VM
 			return p.markSwapFailed(ctx, record)
 		} else {
-			err = p.updateBalances(ctx, record)
+			err = p.updateBalancesForFinalizedSwap(ctx, record)
 			if err != nil {
 				return errors.Wrap(err, "error updating balances")
 			}
+
 			err = p.markSwapFinalized(ctx, record)
 			if err != nil {
 				return errors.Wrap(err, "error marking swap as finalized")
 			}
 
 			go p.notifySwapFinalized(ctx, record)
+
+			return nil
 		}
 	}
 
-	var txn solana.Transaction
-	err = txn.Unmarshal(record.TransactionBlob)
-	if err != nil {
-		return errors.Wrap(err, "error unmarshalling transaction")
+	// Otherwise, continually retry submitting the transaction
+
+	return p.submitTransaction(ctx, record)
+}
+
+func (p *service) handleStateCancelling(ctx context.Context, record *swap.Record) error {
+	if err := p.validateSwapState(record, swap.StateCancelling); err != nil {
+		return err
 	}
 
-	if base58.Encode(txn.Signature()) != *record.TransactionSignature {
-		return errors.New("unexpected transaction signature")
+	// Monitor for a finalized cancellation transaction
+
+	finalizedTxn, err := p.data.GetBlockchainTransaction(ctx, *record.TransactionSignature, solana.CommitmentFinalized)
+	if err != nil && err != solana.ErrSignatureNotFound {
+		return errors.Wrap(err, "error getting finalized transaction")
 	}
 
-	_, err = p.data.SubmitBlockchainTransaction(ctx, &txn)
-	if err != nil {
-		return errors.Wrap(err, "error submitting transaction")
+	if finalizedTxn != nil {
+		if finalizedTxn.Err != nil || finalizedTxn.Meta.Err != nil {
+			// todo: Try again?
+			return p.markSwapCancelled(ctx, record)
+		} else {
+			err = p.updateBalancesForCancelledSwap(ctx, record)
+			if err != nil {
+				return errors.Wrap(err, "error updating balances")
+			}
+
+			return p.markSwapCancelled(ctx, record)
+		}
 	}
 
-	return nil
+	// Otherwise, continually retry submitting the transaction
+
+	return p.submitTransaction(ctx, record)
 }
