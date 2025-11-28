@@ -119,6 +119,14 @@ func (s *store) GetAllByState(_ context.Context, state swap.State, cursor query.
 	return nil, swap.ErrNotFound
 }
 
+func (s *store) CountByState(ctx context.Context, state swap.State) (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := s.findByState(state)
+	return uint64(len(items)), nil
+}
+
 func (s *store) find(data *swap.Record) *swap.Record {
 	for _, item := range s.records {
 		if item.Id == data.Id {

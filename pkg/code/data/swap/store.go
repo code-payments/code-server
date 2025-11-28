@@ -28,4 +28,7 @@ type Store interface {
 
 	// GetAllByState gets all swaps by state
 	GetAllByState(ctx context.Context, state State, cursor query.Cursor, limit uint64, direction query.Ordering) ([]*Record, error)
+
+	// CountByState returns the count of swaps in the requested state
+	CountByState(ctx context.Context, state State) (uint64, error)
 }

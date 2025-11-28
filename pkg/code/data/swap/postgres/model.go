@@ -196,3 +196,13 @@ func dbGetAllByState(ctx context.Context, db *sqlx.DB, state swap.State, cursor 
 	}
 	return res, nil
 }
+
+func dbCountByState(ctx context.Context, db *sqlx.DB, state swap.State) (uint64, error) {
+	var res uint64
+	query := `SELECT COUNT(*) FROM ` + tableName + ` WHERE state = $1`
+	err := db.GetContext(ctx, &res, query, state)
+	if err != nil {
+		return 0, err
+	}
+	return res, nil
+}

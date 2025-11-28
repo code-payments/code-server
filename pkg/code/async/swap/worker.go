@@ -163,7 +163,7 @@ func (p *service) handleStateSubmitting(ctx context.Context, record *swap.Record
 			// todo: Recovery flow to put back source funds into the source VM
 			return p.markSwapFailed(ctx, record)
 		} else {
-			err = p.updateBalancesForFinalizedSwap(ctx, record)
+			quarksBought, err := p.updateBalancesForFinalizedSwap(ctx, record)
 			if err != nil {
 				return errors.Wrap(err, "error updating balances")
 			}
@@ -172,6 +172,8 @@ func (p *service) handleStateSubmitting(ctx context.Context, record *swap.Record
 			if err != nil {
 				return errors.Wrap(err, "error marking swap as finalized")
 			}
+
+			recordSwapFinalizedEvent(ctx, record, quarksBought)
 
 			go p.notifySwapFinalized(ctx, record)
 

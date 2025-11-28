@@ -225,6 +225,7 @@ type DatabaseData interface {
 	GetSwapByFundingId(ctx context.Context, fundingId string) (*swap.Record, error)
 	GetAllSwapsByOwnerAndState(ctx context.Context, owner string, state swap.State) ([]*swap.Record, error)
 	GetAllSwapsByState(ctx context.Context, state swap.State, opts ...query.Option) ([]*swap.Record, error)
+	GetSwapCountByState(ctx context.Context, state swap.State) (uint64, error)
 
 	// Timelocks
 	// --------------------------------------------------------------------------------
@@ -765,6 +766,9 @@ func (dp *DatabaseProvider) GetAllSwapsByState(ctx context.Context, state swap.S
 		return nil, err
 	}
 	return dp.swaps.GetAllByState(ctx, state, req.Cursor, req.Limit, req.SortBy)
+}
+func (dp *DatabaseProvider) GetSwapCountByState(ctx context.Context, state swap.State) (uint64, error) {
+	return dp.swaps.CountByState(ctx, state)
 }
 
 // Timelocks
