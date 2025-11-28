@@ -29,7 +29,6 @@ import (
 	"github.com/code-payments/code-server/pkg/code/data/deposit"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/code/data/intent"
-	"github.com/code-payments/code-server/pkg/code/data/merkletree"
 	"github.com/code-payments/code-server/pkg/code/data/messaging"
 	"github.com/code-payments/code-server/pkg/code/data/nonce"
 	"github.com/code-payments/code-server/pkg/code/data/rendezvous"
@@ -47,7 +46,6 @@ import (
 	deposit_memory_client "github.com/code-payments/code-server/pkg/code/data/deposit/memory"
 	fulfillment_memory_client "github.com/code-payments/code-server/pkg/code/data/fulfillment/memory"
 	intent_memory_client "github.com/code-payments/code-server/pkg/code/data/intent/memory"
-	merkletree_memory_client "github.com/code-payments/code-server/pkg/code/data/merkletree/memory"
 	messaging_memory_client "github.com/code-payments/code-server/pkg/code/data/messaging/memory"
 	nonce_memory_client "github.com/code-payments/code-server/pkg/code/data/nonce/memory"
 	rendezvous_memory_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/memory"
@@ -65,7 +63,6 @@ import (
 	deposit_postgres_client "github.com/code-payments/code-server/pkg/code/data/deposit/postgres"
 	fulfillment_postgres_client "github.com/code-payments/code-server/pkg/code/data/fulfillment/postgres"
 	intent_postgres_client "github.com/code-payments/code-server/pkg/code/data/intent/postgres"
-	merkletree_postgres_client "github.com/code-payments/code-server/pkg/code/data/merkletree/postgres"
 	messaging_postgres_client "github.com/code-payments/code-server/pkg/code/data/messaging/postgres"
 	nonce_postgres_client "github.com/code-payments/code-server/pkg/code/data/nonce/postgres"
 	rendezvous_postgres_client "github.com/code-payments/code-server/pkg/code/data/rendezvous/postgres"
@@ -198,11 +195,6 @@ type DatabaseData interface {
 	GetGiftCardClaimedIntent(ctx context.Context, giftCardVault string) (*intent.Record, error)
 	GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error)
 
-	// Merkle Trees
-	// --------------------------------------------------------------------------------
-	InitializeNewMerkleTree(ctx context.Context, name string, levels uint8, seeds []merkletree.Seed, readOnly bool) (*merkletree.MerkleTree, error)
-	LoadExistingMerkleTree(ctx context.Context, name string, readOnly bool) (*merkletree.MerkleTree, error)
-
 	// Messaging
 	// --------------------------------------------------------------------------------
 	CreateMessage(ctx context.Context, record *messaging.Record) error
@@ -277,7 +269,6 @@ type DatabaseProvider struct {
 	deposits     deposit.Store
 	fulfillments fulfillment.Store
 	intents      intent.Store
-	merkleTrees  merkletree.Store
 	messages     messaging.Store
 	nonces       nonce.Store
 	rendezvous   rendezvous.Store
@@ -323,7 +314,6 @@ func NewDatabaseProvider(dbConfig *pg.Config) (DatabaseData, error) {
 		deposits:     deposit_postgres_client.New(db),
 		fulfillments: fulfillment_postgres_client.New(db),
 		intents:      intent_postgres_client.New(db),
-		merkleTrees:  merkletree_postgres_client.New(db),
 		messages:     messaging_postgres_client.New(db),
 		nonces:       nonce_postgres_client.New(db),
 		rendezvous:   rendezvous_postgres_client.New(db),
@@ -350,7 +340,6 @@ func NewTestDatabaseProvider() DatabaseData {
 		deposits:     deposit_memory_client.New(),
 		fulfillments: fulfillment_memory_client.New(),
 		intents:      intent_memory_client.New(),
-		merkleTrees:  merkletree_memory_client.New(),
 		messages:     messaging_memory_client.New(),
 		nonces:       nonce_memory_client.New(),
 		rendezvous:   rendezvous_memory_client.New(),
@@ -698,15 +687,6 @@ func (dp *DatabaseProvider) SaveIntent(ctx context.Context, record *intent.Recor
 }
 func (dp *DatabaseProvider) GetTransactedAmountForAntiMoneyLaundering(ctx context.Context, owner string, since time.Time) (uint64, float64, error) {
 	return dp.intents.GetTransactedAmountForAntiMoneyLaundering(ctx, owner, since)
-}
-
-// Merkle Trees
-// --------------------------------------------------------------------------------
-func (dp *DatabaseProvider) InitializeNewMerkleTree(ctx context.Context, name string, levels uint8, seeds []merkletree.Seed, readOnly bool) (*merkletree.MerkleTree, error) {
-	return merkletree.InitializeNew(ctx, dp.merkleTrees, name, levels, seeds, readOnly)
-}
-func (dp *DatabaseProvider) LoadExistingMerkleTree(ctx context.Context, name string, readOnly bool) (*merkletree.MerkleTree, error) {
-	return merkletree.LoadExisting(ctx, dp.merkleTrees, name, readOnly)
 }
 
 // Messaging
