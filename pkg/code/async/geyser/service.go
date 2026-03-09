@@ -43,6 +43,7 @@ type service struct {
 
 	backupTimelockStateWorkerDuration *time.Duration
 	backupTimelockStateWorkerStatus   bool
+	backupTimelockProcessedCache      sync.Map
 
 	backupExternalDepositWorkerStatus bool
 }

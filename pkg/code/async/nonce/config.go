@@ -8,6 +8,9 @@ import (
 const (
 	envConfigPrefix = "NONCE_SERVICE_"
 
+	BatchSizeConfigEnvName = envConfigPrefix + "WORKER_BATCH_SIZE"
+	defaultBatchSize       = 100
+
 	solanaMainnetNoncePubkeyPrefixConfigEnvName = envConfigPrefix + "SOLANA_MAINNET_NONCE_PUBKEY_PREFIX"
 	defaultSolanaMainnetNoncePubkeyPrefix       = "non"
 
@@ -19,6 +22,7 @@ const (
 )
 
 type conf struct {
+	batchSize                        config.Uint64
 	solanaMainnetNoncePubkeyPrefix   config.String
 	onDemandTransactionNoncePoolSize config.Uint64
 	clientSwapNoncePoolSize          config.Uint64
@@ -31,6 +35,7 @@ type ConfigProvider func() *conf
 func WithEnvConfigs() ConfigProvider {
 	return func() *conf {
 		return &conf{
+			batchSize:                        env.NewUint64Config(BatchSizeConfigEnvName, defaultBatchSize),
 			solanaMainnetNoncePubkeyPrefix:   env.NewStringConfig(solanaMainnetNoncePubkeyPrefixConfigEnvName, defaultSolanaMainnetNoncePubkeyPrefix),
 			onDemandTransactionNoncePoolSize: env.NewUint64Config(onDemandTransactiontNoncePoolSizeConfigEnvName, defaultOnDemandTransactionNoncePoolSize),
 			clientSwapNoncePoolSize:          env.NewUint64Config(clientSwapNoncePoolSizeConfigEnvName, defaultClientSwapNoncePoolSize),

@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/code-payments/code-server/pkg/code/common"
 	"github.com/code-payments/code-server/pkg/code/data/fulfillment"
 	"github.com/code-payments/code-server/pkg/metrics"
 )
@@ -39,11 +38,6 @@ func (p *service) metricsGaugeWorker(ctx context.Context) error {
 				}
 			}
 
-			lamports, err := common.GetCurrentSubsidizerBalance(ctx, p.data)
-			if err == nil {
-				recordSubsidizerBalanceEvent(ctx, lamports)
-			}
-
 			delay = time.Second - time.Since(start)
 		}
 	}
@@ -54,11 +48,5 @@ func recordFulfillmentCountEvent(ctx context.Context, fulfillmentType fulfillmen
 		"count": count,
 		"state": state.String(),
 		"type":  fulfillmentType.String(),
-	})
-}
-
-func recordSubsidizerBalanceEvent(ctx context.Context, lamports uint64) {
-	metrics.RecordEvent(ctx, subsidizerBalanceEventName, map[string]interface{}{
-		"lamports": lamports,
 	})
 }

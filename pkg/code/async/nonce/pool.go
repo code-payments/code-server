@@ -19,7 +19,7 @@ import (
 // todo: We can generalize nonce handling by environment using an interface
 
 const (
-	nonceBatchSize = 100
+	nonceBatchSize = 32
 )
 
 func (p *service) worker(serviceCtx context.Context, env nonce.Environment, instance string, state nonce.State, interval time.Duration) error {

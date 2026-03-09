@@ -56,7 +56,7 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 					state,
 					query.WithDirection(query.Ascending),
 					query.WithCursor(cursor),
-					query.WithLimit(256),
+					query.WithLimit(p.conf.backupTimelockWorkerBatchSize.Get(serviceCtx)),
 				)
 				if err == timelock.ErrTimelockNotFound {
 					p.metricStatusLock.Lock()
@@ -74,8 +74,16 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 					return
 				}
 
+				reprocessDelay := p.conf.backupTimelockWorkerReprocessDelay.Get(serviceCtx)
+
 				var wg sync.WaitGroup
 				for _, timelockRecord := range timelockRecords {
+					if lastProcessed, ok := p.backupTimelockProcessedCache.Load(timelockRecord.Address); ok {
+						if time.Since(lastProcessed.(time.Time)) < reprocessDelay {
+							continue
+						}
+					}
+
 					wg.Add(1)
 
 					go func(timelockRecord *timelock.Record) {
@@ -86,7 +94,10 @@ func (p *service) backupTimelockStateWorker(serviceCtx context.Context, state ti
 						err := updateTimelockAccountRecord(tracedCtx, p.data, timelockRecord)
 						if err != nil {
 							log.WithError(err).Warn("failed to update timelock account")
+							return
 						}
+
+						p.backupTimelockProcessedCache.Store(timelockRecord.Address, time.Now())
 					}(timelockRecord)
 				}
 
@@ -126,7 +137,7 @@ func (p *service) backupExternalDepositWorker(serviceCtx context.Context, interv
 				defer m.End()
 				tracedCtx := newrelic.NewContext(serviceCtx, m)
 
-				accountInfoRecords, err := p.data.GetPrioritizedAccountInfosRequiringDepositSync(tracedCtx, 256)
+				accountInfoRecords, err := p.data.GetPrioritizedAccountInfosRequiringDepositSync(tracedCtx, p.conf.backupExternalDepositWorkerBatchSize.Get(serviceCtx))
 				if err == account.ErrAccountInfoNotFound {
 					return
 				} else if err != nil {
